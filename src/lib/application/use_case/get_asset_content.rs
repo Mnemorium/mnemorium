@@ -1,30 +1,27 @@
+use crate::application::authorization::{AuthorizationError, allows, authorize};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     AssetTarget, ContentOutcome, GetAssetContentCommand, GetAssetContentError,
     GetAssetContentResponse, GetAssetContentUseCase,
 };
 use crate::application::use_case::{media_path, media_root};
-use crate::domain::model::File;
+use crate::domain::model::{Action, File, ResourceKind, ResourceRef};
 use crate::domain::port::{
     AssetUnitOfWork, AudioFilter, AudioRepository as _, FileFilter, FileRepository as _,
     FileStorage, IdentityUnitOfWork, ImageFilter, ImageRepository as _, LibraryUnitOfWork,
-    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork, VideoFilter, VideoRepository as _,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    VideoFilter, VideoRepository as _,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for reading the content of one asset.
 ///
 /// The asset is authorized inside the unit of work; only a readable asset's
 /// bytes are read from storage, so a denied caller never reaches the file and
-/// cannot observe its existence through timing or size (`API-044`). A request
-/// carrying a playback credential is already authorized: it names exactly one
-/// file, and the credential verifier rejected every other value.
+/// cannot observe its existence through timing or size (`API-044`). Every
+/// request is decided on the spot from its session caller.
 pub(crate) struct GetAssetContent<F, S> {
     /// Storage adapter reading the stored bytes.
     file_storage: Arc<S>,
@@ -80,60 +77,63 @@ where
                 .map_err(|error| GetAssetContentError::Unknown(error.into()))?;
 
             let target = command.target();
-            let result = if let Some(caller_id) = command.caller_id() {
-                async {
-                    let caller = unit_of_work
-                        .users()
-                        .search(&UserFilter {
-                            id: Some(caller_id),
-                            ..UserFilter::default()
-                        })
-                        .await
-                        .map_err(|error| GetAssetContentError::Unknown(error.into()))?
-                        .into_iter()
-                        .next()
-                        .ok_or(GetAssetContentError::NoSuchCaller)?;
-                    let permissions = unit_of_work
-                        .permissions()
-                        .search(&PermissionFilter {
-                            user_id: Some(caller.id()),
-                            ..PermissionFilter::default()
-                        })
-                        .await
-                        .map_err(|error| GetAssetContentError::Unknown(error.into()))?;
-                    let file = resolve_file(&mut unit_of_work, target).await?;
+            let result = async {
+                let caller = unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.caller_id()),
+                        ..UserFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetAssetContentError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(GetAssetContentError::NoSuchCaller)?;
+                let file = resolve_file(&mut unit_of_work, target).await?;
 
-                    if let Decision::Deny(denial) =
-                        Authorization::decide_asset(&caller, &permissions, &file)
-                    {
-                        warn!(
-                            target: "security",
-                            event = "authz_failed",
-                            actor = caller.id(),
-                            action = %denial.action().verb(),
-                            target = %denial.action().target(),
-                            "denied an action"
-                        );
-                        return Err(GetAssetContentError::NoSuchAsset);
-                    }
-                    Ok(file)
+                let address = ResourceRef::new(ResourceKind::File, file.id());
+                let decision = authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    address,
+                    action_for(target),
+                    None,
+                )
+                .await;
+                if let Err(error) = decision {
+                    return match error {
+                        AuthorizationError::Unknown(source) => {
+                            Err(GetAssetContentError::Unknown(source))
+                        }
+                        AuthorizationError::Denied(_) => {
+                            let discovers = allows(
+                                &mut unit_of_work.resources(),
+                                &caller,
+                                address,
+                                Action::Discover,
+                                None,
+                            )
+                            .await;
+                            Err(if discovers {
+                                GetAssetContentError::Forbidden
+                            } else {
+                                GetAssetContentError::NoSuchAsset
+                            })
+                        }
+                    };
                 }
-                .await
-            } else {
-                // A playback credential names exactly one file, and the verifier
-                // rejected every other value, so no caller decision runs.
-                resolve_file(&mut unit_of_work, target).await
-            };
 
-            let file = match result {
+                let file_name = if matches!(target, AssetTarget::File(_)) {
+                    media_original_name(&mut unit_of_work, &file).await?
+                } else {
+                    None
+                };
+                Ok((file, file_name))
+            }
+            .await;
+
+            let (file, file_name) = match result {
                 Ok(value) => {
-                    if command
-                        .credential_file_id()
-                        .is_some_and(|file_id| file_id != value.id())
-                    {
-                        let _rollback = unit_of_work.rollback().await;
-                        return Err(GetAssetContentError::InvalidCredential);
-                    }
                     unit_of_work
                         .commit()
                         .await
@@ -171,6 +171,7 @@ where
                     size_bytes,
                     file.modified_at(),
                     etag,
+                    file_name,
                     ContentOutcome::NotModified,
                     None,
                     None,
@@ -247,6 +248,7 @@ where
                         size_bytes,
                         file.modified_at(),
                         etag,
+                        file_name,
                         ContentOutcome::Unsatisfiable,
                         None,
                         None,
@@ -275,12 +277,69 @@ where
                 served_size,
                 file.modified_at(),
                 etag,
+                file_name,
                 outcome,
                 selected_range,
                 reader,
             ))
         })
     }
+}
+
+/// Return the action the addressed content route decides.
+fn action_for(target: AssetTarget) -> Action {
+    match target {
+        AssetTarget::File(_) => Action::Download,
+        AssetTarget::Image(_) => Action::View,
+        AssetTarget::Audio(_) | AssetTarget::Video(_) => Action::Stream,
+    }
+}
+
+/// Resolve the original name of a file saved through the file content route.
+///
+/// A typed media row stores the name the intake assigned; a bare file, or a
+/// video that carries no name, falls back to the final segment of its stored
+/// path.
+async fn media_original_name<U>(
+    unit_of_work: &mut U,
+    file: &File,
+) -> Result<Option<String>, GetAssetContentError>
+where
+    U: LibraryUnitOfWork,
+{
+    if let Some(image) = unit_of_work
+        .images()
+        .search(&ImageFilter {
+            file_id: Some(file.id()),
+            ..ImageFilter::default()
+        })
+        .await
+        .map_err(|error| GetAssetContentError::Unknown(error.into()))?
+        .into_iter()
+        .next()
+    {
+        return Ok(Some(image.name().to_owned()));
+    }
+    if let Some(audio) = unit_of_work
+        .audios()
+        .search(&AudioFilter {
+            file_id: Some(file.id()),
+            ..AudioFilter::default()
+        })
+        .await
+        .map_err(|error| GetAssetContentError::Unknown(error.into()))?
+        .into_iter()
+        .next()
+    {
+        return Ok(Some(audio.name().to_owned()));
+    }
+    Ok(Some(
+        file.path()
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or(file.path())
+            .to_owned(),
+    ))
 }
 
 /// Resolve the file behind an addressed asset, if the asset exists.
@@ -349,12 +408,13 @@ mod tests {
     use crate::domain::NumericID;
 
     use crate::domain::model::{
-        AssetOwner, Audio, File, IntegrityHash, ProtectedResource, ResourceKind, ResourceRef,
+        AssetOwner, Audio, File, Image, IntegrityHash, Orientation, Resource, ResourceAccess,
+        Visibility,
     };
 
     use crate::domain::port::{
-        MockAudioRepository, MockFileRepository, MockFileStorage, MockUserRepository, OpenedFile,
-        RepositoryError, StorageError,
+        MockAudioRepository, MockFileRepository, MockFileStorage, MockImageRepository,
+        MockResourceRepository, MockUserRepository, OpenedFile, RepositoryError, StorageError,
     };
 
     use crate::test_helpers::*;
@@ -385,32 +445,6 @@ mod tests {
             None,
         )?
         .with_owner(owner))
-    }
-
-    fn resource(
-        kind: ResourceKind,
-        id: NumericID,
-        owner_id: Option<NumericID>,
-        is_public: bool,
-    ) -> AssetOwner {
-        AssetOwner::Resource(ProtectedResource::new(
-            ResourceRef::new(kind, id),
-            owner_id,
-            is_public,
-        ))
-    }
-
-    fn audio(id: NumericID, file_id: NumericID) -> Result<Audio, Box<dyn Error>> {
-        Ok(Audio::try_new(
-            id,
-            "track".to_owned(),
-            None,
-            "mp3".to_owned(),
-            None,
-            None,
-            None,
-            file_id,
-        )?)
     }
 
     /// Expect the library root to exist.
@@ -456,11 +490,111 @@ mod tests {
             });
     }
 
-    /// A fixture holding `users`, `files` and no permission override.
-    fn fixture(users: MockUserRepository, files: MockFileRepository) -> TestUnitOfWork {
+    /// A resource repository whose every addressed resource is public.
+    ///
+    /// A public resource grants the viewer bundle: `Discover`, `ViewMetadata`,
+    /// `View` and `Stream`. It grants no `Download`.
+    fn public_resources() -> MockResourceRepository {
+        let mut resources = MockResourceRepository::new();
+        resources.expect_search().returning(|filter, _caller| {
+            let resource = Resource::from_stored(
+                1,
+                filter.kind.unwrap_or(ResourceKind::File),
+                filter.entity_id.unwrap_or_default(),
+                Some(99),
+                None,
+                Visibility::Public,
+            );
+            Box::pin(async move {
+                Ok(vec![ResourceAccess::new(
+                    resource,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                )])
+            })
+        });
+        resources
+    }
+
+    /// A resource repository whose every addressed resource is private to another user.
+    fn concealed_resources() -> MockResourceRepository {
+        let mut resources = MockResourceRepository::new();
+        resources.expect_search().returning(|filter, _caller| {
+            let resource = Resource::from_stored(
+                1,
+                filter.kind.unwrap_or(ResourceKind::File),
+                filter.entity_id.unwrap_or_default(),
+                Some(99),
+                None,
+                Visibility::Private,
+            );
+            Box::pin(async move {
+                Ok(vec![ResourceAccess::new(
+                    resource,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                )])
+            })
+        });
+        resources
+    }
+
+    fn image(id: NumericID, file_id: NumericID, name: &str) -> Result<Image, Box<dyn Error>> {
+        Ok(Image::try_new(
+            id,
+            name.to_owned(),
+            10,
+            20,
+            Orientation::Portrait,
+            NaiveDate::default(),
+            file_id,
+            None,
+        )?)
+    }
+
+    fn fixture_with_resources(
+        users: MockUserRepository,
+        files: MockFileRepository,
+        resources: MockResourceRepository,
+    ) -> TestUnitOfWork {
+        let mut images = MockImageRepository::new();
+        images
+            .expect_search()
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let mut audios = MockAudioRepository::new();
+        audios
+            .expect_search()
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         TestUnitOfWork {
+            audios,
             files,
-            permissions: no_permissions(),
+            images,
+            resources,
+            users,
+            ..TestUnitOfWork::default()
+        }
+    }
+
+    /// A fixture holding `users` and `files` over the default resource stub.
+    ///
+    /// The image and audio doubles answer with no row, so a file content test
+    /// falls back to the stored path's final segment unless it stages one.
+    fn fixture(users: MockUserRepository, files: MockFileRepository) -> TestUnitOfWork {
+        let mut images = MockImageRepository::new();
+        images
+            .expect_search()
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let mut audios = MockAudioRepository::new();
+        audios
+            .expect_search()
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        TestUnitOfWork {
+            audios,
+            files,
+            images,
+            resources: no_resources(),
             users,
             ..TestUnitOfWork::default()
         }
@@ -476,21 +610,16 @@ mod tests {
             .with_if_range(Some("if-range".to_owned()));
 
         // Assert
-        assert_eq!(command.caller_id(), Some(9));
+        assert_eq!(command.caller_id(), 9);
         assert!(command.head());
         assert_eq!(command.range(), Some("bytes=0-9"));
         assert_eq!(command.if_none_match(), Some("etag"));
         assert_eq!(command.if_range(), Some("if-range"));
-        assert_eq!(command.credential_file_id(), None);
-
-        let credentialed = GetAssetContentCommand::credentialed(AssetTarget::File(100), 100);
-        assert_eq!(credentialed.credential_file_id(), Some(100));
-        assert_eq!(credentialed.caller_id(), None);
     }
 
     #[tokio::test]
     async fn content_of_a_readable_file_carries_its_media_type() -> Result<(), Box<dyn Error>> {
-        // Arrange: a library image readable through `library.read`.
+        // Arrange: a library image readable through `ViewMetadata` on the catalogue.
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9)?;
         let mut files = MockFileRepository::new();
@@ -525,40 +654,6 @@ mod tests {
         assert!(response.into_reader().is_some());
         Ok(())
     }
-
-    #[tokio::test]
-    async fn content_of_an_unreadable_asset_reads_no_bytes() -> Result<(), Box<dyn Error>> {
-        // Arrange: another caller's private gallery image.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9)?;
-        let mut files = MockFileRepository::new();
-        let stored_file = file(
-            100,
-            3,
-            Some(resource(ResourceKind::Gallery, 2, Some(3), false)),
-        )?;
-        files
-            .expect_search()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness = AssetFactoryHarness::new(fixture(users, files));
-        let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
-        storage.expect_file_size().times(0);
-        storage.expect_open_range().times(0);
-        let use_case: UseCase =
-            GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
-
-        // Act
-        let result = use_case
-            .execute(GetAssetContentCommand::new(9, AssetTarget::File(100)))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(GetAssetContentError::NoSuchAsset)));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn a_closed_range_serves_only_the_requested_span() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -923,53 +1018,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_credentialed_audio_read_resolves_its_file_without_a_caller()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut audios = MockAudioRepository::new();
-        let stored_audio = audio(7, 100)?;
-        audios
-            .expect_search()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(vec![stored_audio]) }));
-        let mut files = MockFileRepository::new();
-        let stored_file = file(100, 3, None)?;
-        files
-            .expect_search()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness = AssetFactoryHarness::new(TestUnitOfWork {
-            audios,
-            files,
-            ..TestUnitOfWork::default()
-        });
-        let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
-        expect_open(
-            &mut storage,
-            &media_path("100.png"),
-            10,
-            0,
-            None,
-            &[1, 2, 3],
-        );
-        let use_case: UseCase =
-            GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
-
-        // Act
-        let response = use_case
-            .execute(GetAssetContentCommand::credentialed(
-                AssetTarget::Audio(7),
-                100,
-            ))
-            .await?;
-
-        // Assert: the audio resolved to file 100, the file the credential names.
-        assert_eq!(response.outcome(), ContentOutcome::Full);
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn a_storage_failure_is_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = AssetFactoryHarness::new(TestUnitOfWork::default());
@@ -1015,6 +1063,233 @@ mod tests {
         // Assert
         assert!(matches!(result, Err(GetAssetContentError::Unknown(_))));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn file_content_without_download_is_forbidden() -> Result<(), Box<dyn Error>> {
+        // Arrange: a public file grants the viewer bundle, which includes
+        // `View` and excludes `Download`, so the file route refuses.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 3)?;
+        let mut files = MockFileRepository::new();
+        let stored_file = file(100, 3, None)?;
+        files
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
+        let harness =
+            AssetFactoryHarness::new(fixture_with_resources(users, files, public_resources()));
+        let mut storage = MockFileStorage::new();
+        root_present(&mut storage);
+        storage.expect_file_size().times(0);
+        let use_case: UseCase =
+            GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
+
+        // Act
+        let result = use_case
+            .execute(GetAssetContentCommand::new(3, AssetTarget::File(100)))
+            .await;
+
+        // Assert
+        assert!(
+            matches!(result, Err(GetAssetContentError::Forbidden)),
+            "{:?}",
+            result.as_ref().err().map(ToString::to_string)
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_public_image_reads_its_content_through_view() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 3)?;
+        let mut images = MockImageRepository::new();
+        let stored_image = image(19, 100, "cover.png")?;
+        images
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored_image]) }));
+        let mut files = MockFileRepository::new();
+        let stored_file = file(100, 3, None)?;
+        files
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
+        let harness = AssetFactoryHarness::new(TestUnitOfWork {
+            files,
+            images,
+            resources: public_resources(),
+            users,
+            ..TestUnitOfWork::default()
+        });
+        let mut storage = MockFileStorage::new();
+        root_present(&mut storage);
+        expect_open(&mut storage, &media_path("100.png"), 3, 0, None, &[1, 2, 3]);
+        let use_case: UseCase =
+            GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
+
+        // Act
+        let response = use_case
+            .execute(GetAssetContentCommand::new(3, AssetTarget::Image(19)))
+            .await?;
+
+        // Assert
+        assert_eq!(response.outcome(), ContentOutcome::Full);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_public_audio_reads_its_content_through_stream() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 3)?;
+        let mut audios = MockAudioRepository::new();
+        let stored_audio = Audio::try_new(
+            7,
+            "Track".to_owned(),
+            None,
+            "mp3".to_owned(),
+            None,
+            None,
+            None,
+            100,
+        )?;
+        audios
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored_audio]) }));
+        let mut files = MockFileRepository::new();
+        let stored_file = file(100, 3, None)?;
+        files
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
+        let harness = AssetFactoryHarness::new(TestUnitOfWork {
+            audios,
+            files,
+            resources: public_resources(),
+            users,
+            ..TestUnitOfWork::default()
+        });
+        let mut storage = MockFileStorage::new();
+        root_present(&mut storage);
+        expect_open(&mut storage, &media_path("100.png"), 3, 0, None, &[1, 2, 3]);
+        let use_case: UseCase =
+            GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
+
+        // Act
+        let response = use_case
+            .execute(GetAssetContentCommand::new(3, AssetTarget::Audio(7)))
+            .await?;
+
+        // Assert
+        assert_eq!(response.outcome(), ContentOutcome::Full);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_refusal_opens_no_bytes() -> Result<(), Box<dyn Error>> {
+        // Arrange: the file is public, so the decision refuses `Download`, and
+        // the storage doubles assert that neither size nor range is read.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 3)?;
+        let mut files = MockFileRepository::new();
+        let stored_file = file(100, 3, None)?;
+        files
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
+        let harness =
+            AssetFactoryHarness::new(fixture_with_resources(users, files, public_resources()));
+        let mut storage = MockFileStorage::new();
+        root_present(&mut storage);
+        storage.expect_file_size().times(0);
+        storage.expect_open_range().times(0);
+        let use_case: UseCase =
+            GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
+
+        // Act
+        let result = use_case
+            .execute(GetAssetContentCommand::new(3, AssetTarget::File(100)))
+            .await;
+
+        // Assert
+        assert!(
+            matches!(result, Err(GetAssetContentError::Forbidden)),
+            "{:?}",
+            result.as_ref().err().map(ToString::to_string)
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn an_undiscoverable_file_is_not_found() -> Result<(), Box<dyn Error>> {
+        // Arrange: a private resource owned by another user conceals the file.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 3)?;
+        let mut files = MockFileRepository::new();
+        let stored_file = file(100, 3, None)?;
+        files
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
+        let harness =
+            AssetFactoryHarness::new(fixture_with_resources(users, files, concealed_resources()));
+        let mut storage = MockFileStorage::new();
+        root_present(&mut storage);
+        storage.expect_file_size().times(0);
+        let use_case: UseCase =
+            GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
+
+        // Act
+        let result = use_case
+            .execute(GetAssetContentCommand::new(3, AssetTarget::File(100)))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(GetAssetContentError::NoSuchAsset)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn file_content_names_the_typed_media_row() -> Result<(), Box<dyn Error>> {
+        // Arrange: the file backs an image whose name differs from the path.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 3)?;
+        let mut files = MockFileRepository::new();
+        let stored_file = file(100, 3, None)?;
+        files
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
+        let mut images = MockImageRepository::new();
+        let stored_image = image(19, 100, "holiday.png")?;
+        images
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored_image]) }));
+        let harness = AssetFactoryHarness::new(TestUnitOfWork {
+            files,
+            images,
+            resources: no_resources(),
+            users,
+            ..TestUnitOfWork::default()
+        });
+        let mut storage = MockFileStorage::new();
+        root_present(&mut storage);
+        expect_open(&mut storage, &media_path("100.png"), 3, 0, None, &[1, 2, 3]);
+        let use_case: UseCase =
+            GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
+
+        // Act
+        let response = use_case
+            .execute(GetAssetContentCommand::new(3, AssetTarget::File(100)))
+            .await?;
+
+        // Assert
+        assert_eq!(response.file_name(), Some("holiday.png"));
         Ok(())
     }
 }

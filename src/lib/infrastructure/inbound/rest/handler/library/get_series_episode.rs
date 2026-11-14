@@ -12,7 +12,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
 
 /// Fetch one episode of a season of a show.
 ///
-/// Any authenticated caller may read an episode; the show is not owned and
+/// A caller that may `View` an episode reads it; the show is not owned and
 /// carries no visibility flag. The episode is scoped to the show and season
 /// named in the path.
 #[utoipa::path(

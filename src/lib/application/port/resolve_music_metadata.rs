@@ -83,7 +83,7 @@ pub(crate) enum ResolveMusicMetadataError {
 /// Use case turning a music target into the metadata of a configured provider.
 ///
 /// It resolves once, reports an item the provider does not know as no response
-/// and never persists or logs the target. It is guarded by `library.read`.
+/// and never persists or logs the target. It is guarded by `ViewMetadata` on the catalogue.
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait ResolveMusicMetadataUseCase: Send + Sync {
     /// Resolve the command's target through the configured provider, reporting

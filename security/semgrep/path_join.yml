@@ -1,0 +1,36 @@
+---
+# A request-supplied name never reaches a path join unvalidated.
+#
+# Upload file names are validated by `Upload::try_new`, stored paths are keyed
+# by identifier, and `LocalMediaSource::stat` accepts only `Component::Normal`
+# segments before joining. This rule guards a new call site that joins a
+# request field directly, which would escape the library or staging root.
+rules:
+  - id: mnemorium.rust.security.path-join-untrusted
+    languages: [rust]
+    severity: ERROR
+    message: >-
+      A path is joined with a request-derived value. Validate it the way
+      `Upload::try_new` and `LocalMediaSource::stat` do (no separators, no
+      `..`, only `Component::Normal`), or address the file by identifier.
+    metadata:
+      category: security
+      subcategory:
+        - path-traversal
+      cwe: "CWE-22: Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')"
+      confidence: MEDIUM
+      references:
+        - docs/development/TechnicalDesign.md#10-security
+    paths:
+      include:
+        - src/lib/application
+        - src/lib/infrastructure/inbound
+        - src/lib/infrastructure/outbound/file_system
+    patterns:
+      - pattern-either:
+          - pattern: '$PATH.join($VALUE)'
+          - pattern: '$PATH.push($VALUE)'
+      - metavariable-regex:
+          metavariable: $VALUE
+          regex: >-
+            (?i).*(file_name|filename|request|body|query|user_input).*

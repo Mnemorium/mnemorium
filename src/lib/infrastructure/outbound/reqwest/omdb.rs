@@ -402,6 +402,7 @@ fn refusal(error: Option<&str>) -> Option<ExternalServiceError> {
 mod tests {
     use super::*;
     use crate::domain::model::MediaQueryError;
+    use allure_cargotest::allure_test;
 
     use chrono::Datelike as _;
     use rstest::rstest;
@@ -480,8 +481,12 @@ mod tests {
         MediaQuery::try_new(kind, title.to_owned(), year, None)
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn omdb_search_returns_the_provider_order() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-002");
+        allure.story("SCN-METADATA-ENRICHMENT-002-B");
         // Arrange
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -521,8 +526,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn omdb_search_reports_not_found_as_no_candidate() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-001");
+        allure.story("SCN-METADATA-ENRICHMENT-001-B");
         // Arrange: OMDb reports "not found" as HTTP 200 with `Response:"False"`.
         let server = MockServer::start().await;
         mount_json(&server, NOT_FOUND).await;
@@ -557,8 +566,16 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn omdb_lookup_maps_a_film_to_canonical_metadata() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-003");
+        allure.feature("REQ-METADATA-ENRICHMENT-007");
+        allure.feature("REQ-METADATA-ENRICHMENT-014");
+        allure.story("SCN-METADATA-ENRICHMENT-003-A");
+        allure.story("SCN-METADATA-ENRICHMENT-007-A");
+        allure.story("SCN-METADATA-ENRICHMENT-014-A");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, MOVIE).await;
@@ -600,9 +617,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn omdb_lookup_treats_a_placeholder_release_date_as_absent() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-006");
+        allure.story("SCN-METADATA-ENRICHMENT-006-B");
         // Arrange: the payload reports the `N/A` placeholder instead of a date.
         let server = MockServer::start().await;
         mount_json(&server, MOVIE_PLACEHOLDERS).await;
@@ -623,8 +644,14 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn omdb_lookup_drops_an_unmappable_country() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-014");
+        allure.feature("REQ-METADATA-ENRICHMENT-006");
+        allure.story("SCN-METADATA-ENRICHMENT-014-B");
+        allure.story("SCN-METADATA-ENRICHMENT-006-C");
         // Arrange: the payload's country has no code in the mapping.
         let server = MockServer::start().await;
         mount_json(&server, MOVIE_UNMAPPABLE_COUNTRY).await;
@@ -648,8 +675,16 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn omdb_lookup_maps_a_series_to_canonical_metadata() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-003");
+        allure.feature("REQ-METADATA-ENRICHMENT-007");
+        allure.feature("REQ-METADATA-ENRICHMENT-014");
+        allure.story("SCN-METADATA-ENRICHMENT-003-B");
+        allure.story("SCN-METADATA-ENRICHMENT-007-A");
+        allure.story("SCN-METADATA-ENRICHMENT-014-A");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, SERIES).await;
@@ -677,8 +712,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn omdb_lookup_maps_an_episode_to_canonical_metadata() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-003");
+        allure.story("SCN-METADATA-ENRICHMENT-003-C");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, EPISODE).await;
@@ -709,8 +748,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn omdb_lookup_reports_a_missing_item_as_absent() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-017");
+        allure.story("SCN-METADATA-ENRICHMENT-017-G");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, NOT_FOUND).await;
@@ -824,8 +867,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn omdb_lookup_downloads_the_artwork_as_content() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-005");
+        allure.story("SCN-METADATA-ENRICHMENT-005-A");
         // Arrange
         let server = MockServer::start().await;
         // The artwork mock is mounted first, so the payload's catch-all does not
@@ -852,10 +899,14 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     #[traced_test]
     async fn omdb_lookup_reports_no_artwork_when_the_download_fails() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-005");
+        allure.story("SCN-METADATA-ENRICHMENT-005-B");
         // Arrange
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -879,8 +930,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn omdb_lookup_does_not_follow_a_cross_host_redirect() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-005");
+        allure.story("SCN-METADATA-ENRICHMENT-005-B");
         // Arrange: the poster address redirects to another server.
         let origin = MockServer::start().await;
         let target_server = MockServer::start().await;
@@ -913,9 +968,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     #[traced_test]
     async fn omdb_never_leaks_the_api_key() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-016");
+        allure.story("SCN-METADATA-ENRICHMENT-016-A");
         // Arrange: the key travels in the query string and the provider fails.
         let server = MockServer::start().await;
         Mock::given(method("GET"))

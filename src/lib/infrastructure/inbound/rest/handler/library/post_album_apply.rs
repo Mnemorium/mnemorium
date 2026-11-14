@@ -51,9 +51,9 @@ pub(crate) struct ApplyAlbumRequest {
 
 /// Apply external metadata to a music album.
 ///
-/// Only a caller whose `library.manage` scope covers the album may write it.
-/// The provider reference is resolved once; the album and its medium structure
-/// are written, and only the supplied placements move a recording.
+/// Applying metadata requires `ViewMetadata` and then `EditMetadata` on the
+/// album. The provider reference is resolved once; the album and its medium
+/// structure are written, and only the supplied placements move a recording.
 #[utoipa::path(
     post,
     operation_id = "apply_album_metadata",

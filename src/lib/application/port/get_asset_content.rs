@@ -10,11 +10,8 @@ use crate::domain::port::FileReader;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub(crate) struct GetAssetContentCommand {
-    /// Identifier of the authenticated caller, absent when the request carries
-    /// a file-scoped playback credential instead.
-    caller_id: Option<NumericID>,
-    /// File the presented playback credential names, when one is presented.
-    credential_file_id: Option<NumericID>,
+    /// Identifier of the authenticated caller.
+    caller_id: NumericID,
     /// Whether the request is a `HEAD`, which answers headers without a body.
     head: bool,
     /// `If-None-Match` value, when the request carries one.
@@ -28,30 +25,10 @@ pub(crate) struct GetAssetContentCommand {
 }
 
 impl GetAssetContentCommand {
-    /// Return the identifier of the authenticated caller, if any.
+    /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub(crate) fn caller_id(&self) -> Option<NumericID> {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
-    }
-
-    /// Return the file the presented playback credential names, if any.
-    #[must_use]
-    pub(crate) fn credential_file_id(&self) -> Option<NumericID> {
-        self.credential_file_id
-    }
-
-    /// Create a command authorized by a file-scoped playback credential.
-    #[must_use]
-    pub(crate) fn credentialed(target: AssetTarget, file_id: NumericID) -> Self {
-        Self {
-            caller_id: None,
-            credential_file_id: Some(file_id),
-            head: false,
-            if_none_match: None,
-            if_range: None,
-            range: None,
-            target,
-        }
     }
 
     /// Return whether the request answers headers only.
@@ -76,8 +53,7 @@ impl GetAssetContentCommand {
     #[must_use]
     pub(crate) fn new(caller_id: NumericID, target: AssetTarget) -> Self {
         Self {
-            caller_id: Some(caller_id),
-            credential_file_id: None,
+            caller_id,
             head: false,
             if_none_match: None,
             if_range: None,
@@ -146,6 +122,8 @@ pub(crate) enum ContentOutcome {
 pub(crate) struct GetAssetContentResponse {
     /// Validator derived from the stored whole-file digest, when present.
     etag: Option<String>,
+    /// Original name a save surface offers, present for file content.
+    file_name: Option<String>,
     /// Identifier of the stored media type of the asset.
     mime_type_id: String,
     /// Instant at which the content was last modified.
@@ -165,6 +143,12 @@ impl GetAssetContentResponse {
     #[must_use]
     pub(crate) fn etag(&self) -> Option<&str> {
         self.etag.as_deref()
+    }
+
+    /// Return the original name a save surface offers, when present.
+    #[must_use]
+    pub(crate) fn file_name(&self) -> Option<&str> {
+        self.file_name.as_deref()
     }
 
     /// Take the reader over the requested bytes, if any.
@@ -187,17 +171,23 @@ impl GetAssetContentResponse {
 
     /// Create a new asset-content response.
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the constructor mirrors the response's fields one-to-one"
+    )]
     pub(crate) fn new(
         mime_type_id: String,
         size_bytes: u64,
         modified_at: NaiveDateTime,
         etag: Option<String>,
+        file_name: Option<String>,
         outcome: ContentOutcome,
         selected_range: Option<(u64, u64)>,
         reader: Option<FileReader>,
     ) -> Self {
         Self {
             etag,
+            file_name,
             mime_type_id,
             modified_at,
             outcome,
@@ -247,16 +237,17 @@ pub(crate) enum GetAssetContentError {
     /// The registered file's bytes are absent while the library root exists.
     #[error("the file record exists but its bytes are absent")]
     BytesMissing,
-    /// The presented playback credential names another file.
-    #[error("the playback credential does not address this asset")]
-    InvalidCredential,
+    /// The caller can discover the asset but its action refuses.
+    #[error("the caller may not read the asset")]
+    Forbidden,
     /// The library root is unavailable.
     #[error("the library root is unavailable")]
     LibraryUnavailable,
-    /// The asset does not exist, or the caller may not read it.
+    /// The asset does not exist, or the caller cannot discover it.
     ///
     /// Both outcomes are reported the same way so a caller cannot probe for
-    /// assets it may not read, and no bytes are read for an unreadable asset.
+    /// assets it may not discover, and no bytes are read for an unreadable
+    /// asset.
     #[error("the asset does not exist")]
     NoSuchAsset,
     /// The caller does not exist.

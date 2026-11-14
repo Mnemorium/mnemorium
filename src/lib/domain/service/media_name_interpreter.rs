@@ -686,6 +686,7 @@ fn take_digits(text: &str) -> Option<(u32, &str)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use allure_cargotest::allure_test;
     use rstest::rstest;
 
     /// Assert every query of one interpreted name keeps the corpus invariants.
@@ -728,6 +729,7 @@ mod tests {
         );
     }
 
+    #[allure_test]
     #[rstest]
     #[case::folder_year(
         "Movies/Inception (2010)/Inception.2010.1080p.BluRay.mkv",
@@ -803,6 +805,14 @@ mod tests {
         #[case] year: Option<u32>,
         #[case] episode: Option<(u32, u32)>,
     ) {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-009");
+        allure.feature("REQ-METADATA-ENRICHMENT-010");
+        allure.story("SCN-METADATA-ENRICHMENT-009-A");
+        allure.story("SCN-METADATA-ENRICHMENT-009-B");
+        allure.story("SCN-METADATA-ENRICHMENT-009-C");
+        allure.story("SCN-METADATA-ENRICHMENT-010-A");
+        allure.story("SCN-METADATA-ENRICHMENT-010-B");
         // Act
         let queries = MediaNameInterpreter::interpret(name);
 
@@ -831,6 +841,7 @@ mod tests {
         );
     }
 
+    #[allure_test]
     #[rstest]
     #[case("Movies/Inception (2010)/Inception.2010.1080p.BluRay.mkv")]
     #[case("The.Matrix.1999.1080p.mkv")]
@@ -846,15 +857,24 @@ mod tests {
     #[case("Amélie.2001.1080p.mkv")]
     #[case("Movies/Inception (2010)/Inception.2010.1080p.BluRay")]
     fn media_name_interpreter_interpret_keeps_the_corpus_invariants(#[case] name: &str) {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-009");
+        allure.feature("REQ-METADATA-ENRICHMENT-011");
+        allure.story("SCN-METADATA-ENRICHMENT-009-A");
+        allure.story("SCN-METADATA-ENRICHMENT-011-B");
         // Act & Assert
         assert_invariants(name);
     }
 
+    #[allure_test]
     #[rstest]
     #[case::sample("sample.mkv")]
     #[case::extras_folder("Movie/Extras/featurette.mkv")]
     #[case::release_only("1080p.mkv")]
     fn media_name_interpreter_interpret_yields_no_query_for_an_unusable_name(#[case] name: &str) {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-009");
+        allure.story("SCN-METADATA-ENRICHMENT-009-D");
         // Act
         let queries = MediaNameInterpreter::interpret(name);
 
@@ -865,8 +885,13 @@ mod tests {
         );
     }
 
+    #[allure_test]
     #[test]
     fn media_name_interpreter_interpret_orders_the_folder_year_before_the_file_year() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-011");
+        allure.story("SCN-METADATA-ENRICHMENT-011-A");
+        allure.story("SCN-METADATA-ENRICHMENT-011-B");
         // Arrange: the folder names 2010 and the file names 2011.
         let name = "Inception (2010)/Inception.2011.1080p.mkv";
 
@@ -893,8 +918,14 @@ mod tests {
         );
     }
 
+    #[allure_test]
     #[test]
     fn media_name_interpreter_interpret_returns_a_numeric_title_once() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-009");
+        allure.feature("REQ-METADATA-ENRICHMENT-011");
+        allure.story("SCN-METADATA-ENRICHMENT-009-C");
+        allure.story("SCN-METADATA-ENRICHMENT-011-B");
         // Arrange: the folder and the file name the same work.
         let name = "Movies/1917 (2019)/1917.2019.1080p.mkv";
 

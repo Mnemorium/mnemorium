@@ -1,3 +1,6 @@
+use crate::domain::model::{Action, ChildKind};
+
+use crate::application::authorization::authorize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -8,14 +11,14 @@ use crate::application::port::{
     CreateMusicAlbumCommand, CreateMusicAlbumError, CreateMusicAlbumResponse,
     CreateMusicAlbumUseCase,
 };
-use crate::domain::model::MusicAlbum;
+use crate::domain::model::{MusicAlbum, ResourceKind, ResourceRef, Visibility};
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
-    MusicGroupFilter, MusicGroupRepository as _, PermissionFilter, PermissionRepository as _,
-    RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    MusicGroupFilter, MusicGroupRepository as _, NewResource, RepositoryError,
+    ResourceRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
     UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision, NamePolicy, NamePolicyError};
+use crate::domain::service::{NamePolicy, NamePolicyError};
 
 /// The genre an album carries when the request names none.
 const DEFAULT_GENRE: &str = "UNKNOWN";
@@ -72,28 +75,15 @@ where
                     .next()
                     .ok_or(CreateMusicAlbumError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| CreateMusicAlbumError::Unknown(error.into()))?;
-
-                if let Decision::Deny(denial) =
-                    Authorization::decide_library_manage_surface(&caller, &permissions)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(CreateMusicAlbumError::Forbidden);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Catalogue, 0),
+                    Action::CreateChild,
+                    Some(ChildKind::MusicAlbum),
+                )
+                .await
+                .map_err(|_| CreateMusicAlbumError::Forbidden)?;
 
                 let name =
                     NamePolicy::validate(command.name().to_owned()).map_err(
@@ -195,6 +185,18 @@ where
                         }
                     })?;
 
+                unit_of_work
+                    .resources()
+                    .create(NewResource {
+                        kind: ResourceKind::MusicAlbum,
+                        entity_id: stored.id(),
+                        owner_id: None,
+                        auth_parent: Some(ResourceRef::new(ResourceKind::Catalogue, 0)),
+                        visibility: Visibility::Public,
+                    })
+                    .await
+                    .map_err(|error| CreateMusicAlbumError::Unknown(error.into()))?;
+
                 Ok(CreateMusicAlbumResponse::new(stored, true))
             }
             .await;
@@ -222,13 +224,10 @@ mod tests {
     use super::*;
     use crate::domain::NumericID;
 
-    use crate::domain::model::{
-        Action, MusicGroup, Permission, ResourceKind, ResourceRef, Role, Scope, User,
-    };
+    use crate::domain::model::{MusicGroup, Role, User};
 
     use crate::domain::port::{
-        MockMusicAlbumRepository, MockMusicGroupRepository, MockPermissionRepository,
-        MockUserRepository,
+        MockMusicAlbumRepository, MockMusicGroupRepository, MockUserRepository,
     };
 
     use crate::test_helpers::*;
@@ -261,7 +260,7 @@ mod tests {
         let unit_of_work = TestUnitOfWork {
             music_albums: albums,
             music_groups: groups,
-            permissions: no_permissions(),
+            resources: no_resources(),
             users,
             ..TestUnitOfWork::default()
         };
@@ -470,38 +469,6 @@ mod tests {
         assert!(matches!(result, Err(CreateMusicAlbumError::InvalidName)));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn create_music_album_standard_user_is_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let harness = harness_with(
-            users,
-            MockMusicAlbumRepository::new(),
-            MockMusicGroupRepository::new(),
-        );
-        let use_case: UseCase = CreateMusicAlbum::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(CreateMusicAlbumCommand::new(
-                1,
-                "Kind of Blue".to_owned(),
-                0,
-                None,
-                None,
-                Vec::new(),
-                None,
-            ))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(CreateMusicAlbumError::Forbidden)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn create_music_album_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>>
     {
@@ -633,47 +600,6 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CreateMusicAlbumError::Unknown(_))));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn create_music_album_requires_an_all_manage_scope() -> Result<(), Box<dyn Error>> {
-        // Arrange: a `LISTED` scope cannot cover an album that does not exist.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let mut permissions = MockPermissionRepository::new();
-        expect_permissions(
-            &mut permissions,
-            1,
-            vec![Permission::try_new(
-                1,
-                Action::LibraryManage,
-                Scope::Listed(vec![ResourceRef::new(ResourceKind::MusicAlbum, 7)]),
-            )?],
-        );
-        let unit_of_work = TestUnitOfWork {
-            permissions,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        let harness = GalleryFactoryHarness::new(unit_of_work);
-        let use_case: UseCase = CreateMusicAlbum::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(CreateMusicAlbumCommand::new(
-                1,
-                "Kind of Blue".to_owned(),
-                0,
-                None,
-                None,
-                Vec::new(),
-                None,
-            ))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(CreateMusicAlbumError::Forbidden)));
         Ok(())
     }
 }

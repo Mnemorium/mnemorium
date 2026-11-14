@@ -14,6 +14,7 @@ use utoipa_axum::router::OpenApiRouter;
 
 use crate::domain::model::{ClientIpHeader, RateLimit};
 use crate::infrastructure::inbound::rest::{ApiError, AppState};
+use crate::infrastructure::rate_limit::RateLimitCleanup;
 
 /// A [`KeyExtractor`] that trusts one declared client-address header from the
 /// configured proxy addresses.
@@ -99,53 +100,6 @@ impl KeyExtractor for TrustedProxyKeyExtractor {
     }
 }
 
-/// Periodic upkeep for the login rate limiter.
-///
-/// `governor` keeps one entry per client address and never reclaims it on its
-/// own; an attacker rotating addresses would otherwise grow the map without
-/// bound. Each prune closure drops the entries whose quota has fully
-/// replenished. The closures are opaque so no `governor` type leaks into a
-/// signature.
-#[derive(Default)]
-struct RateLimitCleanup {
-    /// Per-limiter prune closures.
-    prunes: Vec<Box<dyn Fn() + Send + Sync>>,
-}
-
-impl RateLimitCleanup {
-    /// Build a cleanup from a single prune closure.
-    fn from_prune(prune: Box<dyn Fn() + Send + Sync>) -> Self {
-        Self {
-            prunes: vec![prune],
-        }
-    }
-
-    /// Fold `other`'s prune closures into `self`.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "part of the type's declared contract; no caller exercises it yet"
-        )
-    )]
-    pub(crate) fn merge(&mut self, other: Self) {
-        self.prunes.extend(other.prunes);
-    }
-
-    /// Create an empty cleanup.
-    #[must_use]
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
-    /// Run every registered prune.
-    pub(crate) fn prune(&self) {
-        for prune in &self.prunes {
-            prune();
-        }
-    }
-}
-
 /// A process-lifetime login rate limiter and its periodic cleanup.
 ///
 /// It is the stateful adapter the login route is wrapped with: the composition
@@ -155,8 +109,6 @@ impl RateLimitCleanup {
 pub(crate) struct LoginRateLimiter {
     /// The wired governor layer, erased behind `apply`.
     apply: Box<dyn Fn(OpenApiRouter<AppState>) -> OpenApiRouter<AppState> + Send + Sync>,
-    /// Periodic upkeep the composition root drives.
-    cleanup: RateLimitCleanup,
 }
 
 impl LoginRateLimiter {
@@ -166,13 +118,13 @@ impl LoginRateLimiter {
         (self.apply)(router)
     }
 
-    /// Build the login limiter from `rate_limit`.
+    /// Build the login limiter from `rate_limit`, with its prune upkeep.
     ///
     /// A validated [`RateLimit`] cannot make the governor configuration
     /// invalid; should it ever be, the limiter is skipped so the endpoint stays
     /// reachable.
     #[must_use]
-    pub(crate) fn new(rate_limit: &RateLimit) -> Self {
+    pub(crate) fn new(rate_limit: &RateLimit) -> (Self, RateLimitCleanup) {
         if rate_limit.trusted_proxies().is_empty() {
             build(rate_limit, PeerIpKeyExtractor)
         } else {
@@ -185,15 +137,10 @@ impl LoginRateLimiter {
             )
         }
     }
-
-    /// Drive the periodic prune of the limiter's keyed store.
-    pub(crate) fn prune(&self) {
-        self.cleanup.prune();
-    }
 }
 
 /// Build the governor layer for `extractor` and its prune closure.
-fn build<K>(rate_limit: &RateLimit, extractor: K) -> LoginRateLimiter
+fn build<K>(rate_limit: &RateLimit, extractor: K) -> (LoginRateLimiter, RateLimitCleanup)
 where
     K: KeyExtractor + Send + Sync + 'static,
     K::Key: Send + Sync,
@@ -204,17 +151,21 @@ where
         .burst_size(rate_limit.burst_size());
     let Some(config) = builder.finish() else {
         error!("the login rate limit configuration is invalid; rate limiting is disabled");
-        return LoginRateLimiter {
-            apply: Box::new(|router| router),
-            cleanup: RateLimitCleanup::new(),
-        };
+        return (
+            LoginRateLimiter {
+                apply: Box::new(|router| router),
+            },
+            RateLimitCleanup::new(),
+        );
     };
     let limiter = Arc::clone(config.limiter());
     let layer = GovernorLayer::new(config).error_handler(rate_limit_error);
-    LoginRateLimiter {
-        apply: Box::new(move |router| router.route_layer(layer.clone())),
-        cleanup: RateLimitCleanup::from_prune(Box::new(move || limiter.retain_recent())),
-    }
+    (
+        LoginRateLimiter {
+            apply: Box::new(move |router| router.route_layer(layer.clone())),
+        },
+        RateLimitCleanup::from_prune(Box::new(move || limiter.retain_recent())),
+    )
 }
 
 /// Parse a single address, trimming surrounding whitespace and brackets.

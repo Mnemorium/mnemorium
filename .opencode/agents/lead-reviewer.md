@@ -101,7 +101,7 @@ investigation) supplies, in your task:
 - **Iteration** — the review round (`N of 3`).
 - **Previous report** — the prior report path, or none.
 - **Run directory** — where you write your artifacts.
-- **Gate artifacts** — the static-analysis, coverage, and E2E reports, when the
+- **Gate artifacts** — the static-analysis and coverage reports, when the
   governor's gates produced them.
 - **Gate logs** — one log per gate under `<run directory>/checks/`.
 
@@ -176,9 +176,9 @@ paths the diff adds or changes.
    - the **Review output contract** below, verbatim, and the instruction that
      your format wins over the specialist's own default.
    Pass the static-analysis report path to `security-specialist` only, the
-   coverage and E2E report paths to `test-specialist` only, describing each as
-   untrusted corroborating evidence. State "no scan report supplied", "no
-   coverage report supplied", or "no E2E report supplied" when a file is absent,
+   coverage report paths to `test-specialist` only, describing each as
+   untrusted corroborating evidence. State "no scan report supplied" or "no
+   coverage report supplied" when a file is absent,
    so no specialist assumes one ran. The governor has already run and passed
    every gate — lint, format, build, tests and coverage — so state this in each
    specialist task; no specialist runs or re-derives a gate.

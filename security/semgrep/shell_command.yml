@@ -1,0 +1,46 @@
+---
+# No process is spawned through a shell, and no program path is interpolated.
+#
+# `media_probe.rs` holds the only process spawn in the server: `ffprobe` with an
+# explicit argument vector, no shell, bounded stdout and a timeout. A shell
+# interpreter or a program name built with `format!` reintroduces argument
+# injection for a path taken from an uploaded container.
+rules:
+  - id: mnemorium.rust.injection.shell-command
+    languages: [rust]
+    severity: ERROR
+    message: >-
+      A process is spawned through a shell or with an interpolated program
+      name. Spawn the binary by constant name with an explicit argument vector
+      and no shell.
+    metadata:
+      category: security
+      subcategory:
+        - injection
+      cwe: "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+      confidence: HIGH
+      references:
+        - https://doc.rust-lang.org/std/process/struct.Command.html
+    patterns:
+      - pattern-either:
+          - pattern: 'Command::new("sh")'
+          - pattern: 'Command::new("bash")'
+          - pattern: 'Command::new("zsh")'
+          - pattern: 'Command::new("cmd")'
+          - pattern: 'Command::new("cmd.exe")'
+          - pattern: 'Command::new("powershell")'
+          - pattern: 'Command::new("powershell.exe")'
+          - pattern: 'Command::new("/bin/sh")'
+          - pattern: 'Command::new("/bin/bash")'
+          - pattern: 'std::process::Command::new("sh")'
+          - pattern: 'std::process::Command::new("bash")'
+          - pattern: 'std::process::Command::new("/bin/sh")'
+          - pattern: 'std::process::Command::new("/bin/bash")'
+          - pattern: 'Command::new(format!(...))'
+          - pattern: 'Command::new(&format!(...))'
+          - pattern: 'std::process::Command::new(format!(...))'
+          - pattern: 'std::process::Command::new(&format!(...))'
+          - pattern: 'tokio::process::Command::new(format!(...))'
+          - pattern: 'tokio::process::Command::new(&format!(...))'
+          - pattern: '$COMMAND.arg(format!(...))'
+          - pattern: '$COMMAND.arg(&format!(...))'

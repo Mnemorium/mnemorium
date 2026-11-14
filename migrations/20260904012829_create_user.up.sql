@@ -2,7 +2,7 @@ CREATE TABLE user (
     user_id INTEGER NOT NULL,
     role VARCHAR(50) NOT NULL,
     username VARCHAR(100) NOT NULL,
-    email TEXT,
+    email TEXT COLLATE nocase,
     credential_id INTEGER NOT NULL,
     CONSTRAINT pk_user_user_id PRIMARY KEY (user_id),
     CONSTRAINT uq_user_username UNIQUE (username),
@@ -17,5 +17,13 @@ CREATE TABLE user (
         AND username = lower(username)
         AND username = trim(username)
     ),
-    CONSTRAINT chk_user_email CHECK (email LIKE '%_@_%._%')
+    CONSTRAINT chk_user_email CHECK (
+        email IS NULL
+        OR (
+            email = trim(email)
+            AND length(email) > 0
+            AND instr(email, '@') > 1
+            AND instr(email, '@') < length(email)
+        )
+    )
 );

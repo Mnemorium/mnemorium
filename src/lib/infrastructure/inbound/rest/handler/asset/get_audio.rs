@@ -68,10 +68,7 @@ impl AssetAudioResponse {
             file_id: response.file_id(),
             id: response.id(),
             links: AssetAudioLinks {
-                content: Link::new(&content_href(
-                    &format!("/api/v1/asset/audio/{}/content", response.id()),
-                    response.content_link(),
-                )),
+                content: content_href("audio", response.id()),
                 file: Link::new(&asset_file_href(response.file_id())),
                 self_link: Link::new(&asset_audio_href(response.id())),
             },
@@ -107,7 +104,7 @@ impl From<GetAudioError> for ApiError {
             body = AssetAudioResponse,
             content_type = "application/hal+json",
             description = "Audio found",
-            headers(("Cache-Control" = String, description = "Always `no-store`"))
+            headers(("Cache-Control" = String, description = "Always `private, max-age=60`"))
         ),
         (
             status = BAD_REQUEST,
@@ -149,8 +146,9 @@ pub(crate) async fn get_audio(
         .execute(GetAudioCommand::new(caller.user_id(), audio_id))
         .await?;
     let mut representation = hal_json(AssetAudioResponse::from_response(&response));
-    representation
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    representation.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=60"),
+    );
     Ok(representation)
 }

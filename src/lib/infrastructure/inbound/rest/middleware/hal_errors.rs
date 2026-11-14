@@ -93,6 +93,10 @@ mod tests {
                 get(|| async { ApiError::BadRequest("bad request".to_owned()) }),
             )
             .route(
+                "/unauthorized",
+                get(|| async { ApiError::Unauthorized("invalid credentials".to_owned()) }),
+            )
+            .route(
                 "/raw-json",
                 get(|| async {
                     (
@@ -354,12 +358,21 @@ mod tests {
     async fn hal_errors_wraps_a_method_not_allowed_and_keeps_allow() -> Result<(), Box<dyn Error>> {
         // Act
         let response = send(router(), "POST", "/only").await?;
+        let challenge = send(router(), "GET", "/unauthorized").await?;
 
         // Assert
         assert_eq!(content_type(&response), Some("application/hal+json"));
         assert!(
             response.headers().get(header::ALLOW).is_some(),
             "the Allow header must survive the rewrite"
+        );
+        assert_eq!(
+            challenge
+                .headers()
+                .get(header::WWW_AUTHENTICATE)
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer"),
+            "the WWW-Authenticate header must survive the rewrite"
         );
         let (status, payload) = into_status_and_body(response).await?;
         assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
@@ -368,6 +381,15 @@ mod tests {
             json!({
                 "error": "Method Not Allowed",
                 "_links": { "self": { "href": "/only" } },
+            })
+        );
+        let (challenge_status, challenge_payload) = into_status_and_body(challenge).await?;
+        assert_eq!(challenge_status, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            challenge_payload,
+            json!({
+                "error": "invalid credentials",
+                "_links": { "self": { "href": "/unauthorized" } },
             })
         );
         Ok(())

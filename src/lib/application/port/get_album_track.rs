@@ -65,6 +65,7 @@ impl GetAlbumTrackCommand {
 pub(crate) struct GetAlbumTrackResponse {
     /// Identifier of the album the track belongs to.
     album_id: NumericID,
+    /// Identifier of the image holding the album's cover, when one resolves.
     /// Identifier of the backing file.
     file_id: NumericID,
     /// ISRC code of the recording, when set.

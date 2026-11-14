@@ -38,8 +38,8 @@ pub(crate) struct PostSeriesRequest {
 
 /// Create a show.
 ///
-/// Only a caller whose `library.manage` scope covers the whole catalogue may
-/// create a show. Creation is insert-only: the schema holds no unique show
+/// Creating a show requires the `CreateChild` action on the catalogue with the
+/// show child kind. Creation is insert-only: the schema holds no unique show
 /// name, so a repeated name creates another show.
 #[utoipa::path(
     post,

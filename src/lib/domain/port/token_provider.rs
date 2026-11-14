@@ -66,8 +66,16 @@ pub(crate) trait TokenProvider: Send + Sync {
 mod tests {
     use super::*;
 
+    use allure_cargotest::allure_test;
+
+    #[allure_test]
     #[test]
     fn issued_token_debug_redacts_the_value_but_keeps_the_lifetime() {
+        allure.epic("Authentication");
+        allure.feature("REQ-AUTHENTICATION-006");
+        allure.story("SCN-AUTHENTICATION-006-B");
+        allure.parameter("subject", "IssuedToken");
+
         // Arrange
         let token = IssuedToken::new("LEAK_SENTINEL".to_owned(), 3600);
 

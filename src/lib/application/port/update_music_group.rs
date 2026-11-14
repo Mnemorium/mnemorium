@@ -1,6 +1,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use crate::application::FieldUpdate;
 use crate::domain::NumericID;
 use crate::domain::model::MusicGroup;
 
@@ -10,9 +11,9 @@ use crate::domain::model::MusicGroup;
 pub(crate) struct UpdateMusicGroupCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
-    /// Identifier of the image holding the group's artwork, when the request
-    /// replaces it.
-    cover_image_id: Option<NumericID>,
+    /// The artwork update the request names: absent keeps the stored cover,
+    /// `null` clears it and an identifier replaces it.
+    cover_image_id: FieldUpdate<NumericID>,
     /// Identifier of the group to update.
     group_id: NumericID,
     /// New stage name, when the request renames the group.
@@ -26,9 +27,9 @@ impl UpdateMusicGroupCommand {
         self.caller_id
     }
 
-    /// Return the replacement cover image, if any.
+    /// Return the artwork update the request names.
     #[must_use]
-    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> FieldUpdate<NumericID> {
         self.cover_image_id
     }
 
@@ -50,7 +51,7 @@ impl UpdateMusicGroupCommand {
         caller_id: NumericID,
         group_id: NumericID,
         name: Option<String>,
-        cover_image_id: Option<NumericID>,
+        cover_image_id: FieldUpdate<NumericID>,
     ) -> Self {
         Self {
             caller_id,

@@ -196,7 +196,7 @@ impl MusicCandidateListResponse {
 /// Search the configured music metadata provider.
 ///
 /// The route is a read of the provider, not of the catalogue: it is guarded by
-/// `library.read`, returns the provider's candidates in its order and never
+/// `ViewMetadata` on the catalogue, returns the provider's candidates in its order and never
 /// ranks them. With no provider configured it answers an `available: false`
 /// document, which a client tells apart from a search that found nothing.
 #[utoipa::path(

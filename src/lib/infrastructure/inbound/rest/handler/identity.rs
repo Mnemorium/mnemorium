@@ -1,350 +1,367 @@
-/// The identity context endpoints.
+/// The permission share revocation endpoint.
+mod delete_permission_share;
+/// The permission summary endpoint.
 mod get_permission;
+/// The resource permission read endpoint.
+mod get_resource_permission;
 /// The identity context endpoints.
 mod patch_credential;
 /// The identity context endpoints.
 mod post_login;
+/// The permission share endpoint.
+mod post_permission_share;
 /// The identity context endpoints.
 mod post_register;
 /// The identity context endpoints.
-mod put_permission;
+mod post_token;
+/// The resource permission replacement endpoint.
+mod put_resource_permission;
 
-pub(crate) use self::get_permission::{__path_get_permission, get_permission};
-pub(crate) use self::put_permission::{__path_put_permission, put_permission};
+#[cfg(test)]
+pub(crate) use post_login::{LoginRequest, LoginResponse, post_login as handle_login};
+#[cfg(test)]
+pub(crate) use post_token::{TokenResponse, post_token as handle_token};
 
 use axum::middleware;
+use serde::{Deserialize, Serialize};
+use tracing::warn;
+use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
-
 use crate::application::port::{
-    GetPermissionResponse as GetPermissionResponseData, PermissionRequest as PermissionRequestData,
+    GrantRequest, GrantedResource, PermissionError, ResourcePermission,
 };
 use crate::domain::NumericID;
-use crate::domain::model::{Action, ResourceKind, ResourceRef, Role, Scope};
+use crate::domain::model::{
+    Action, ChildKind, Grant, GrantEffect, Principal, ResourceKind, ResourceRef, ResourceRole,
+    Role, Visibility,
+};
 use crate::infrastructure::inbound::rest::middleware::{LoginRateLimiter, authenticate};
 use crate::infrastructure::inbound::rest::{ApiError, AppState, SelfLinks};
 use crate::infrastructure::outbound::jwt::JwtTokenProvider;
 
-/// Kind of an aggregate a `LISTED` scope names.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+/// Kind, identifier and stored identity of one addressed resource.
+#[derive(Debug, Clone, Serialize, ToSchema)]
 #[non_exhaustive]
-pub(crate) enum PermissionResourceKind {
-    /// A stored file.
-    #[serde(rename = "FILE")]
-    File,
-    /// A gallery.
-    #[serde(rename = "GALLERY")]
-    Gallery,
-    /// A film.
-    #[serde(rename = "MOVIE")]
-    Movie,
-    /// A music album.
-    #[serde(rename = "MUSIC_ALBUM")]
-    MusicAlbum,
-    /// A music playlist.
-    #[serde(rename = "MUSIC_PLAYLIST")]
-    MusicPlaylist,
-    /// A show.
-    #[serde(rename = "SERIES")]
-    Series,
-    /// An upload session.
-    #[serde(rename = "UPLOAD")]
-    Upload,
-    /// A user account.
-    #[serde(rename = "USER")]
-    User,
-}
-
-impl From<PermissionResourceKind> for ResourceKind {
-    fn from(kind: PermissionResourceKind) -> Self {
-        match kind {
-            PermissionResourceKind::File => Self::File,
-            PermissionResourceKind::Gallery => Self::Gallery,
-            PermissionResourceKind::Movie => Self::Movie,
-            PermissionResourceKind::MusicAlbum => Self::MusicAlbum,
-            PermissionResourceKind::MusicPlaylist => Self::MusicPlaylist,
-            PermissionResourceKind::Series => Self::Series,
-            PermissionResourceKind::Upload => Self::Upload,
-            PermissionResourceKind::User => Self::User,
-        }
-    }
-}
-
-impl From<ResourceKind> for PermissionResourceKind {
-    fn from(kind: ResourceKind) -> Self {
-        match kind {
-            ResourceKind::File => Self::File,
-            ResourceKind::Gallery => Self::Gallery,
-            ResourceKind::Movie => Self::Movie,
-            ResourceKind::MusicAlbum => Self::MusicAlbum,
-            ResourceKind::MusicPlaylist => Self::MusicPlaylist,
-            ResourceKind::Series => Self::Series,
-            ResourceKind::Upload => Self::Upload,
-            ResourceKind::User => Self::User,
-        }
-    }
-}
-
-/// Action a permission override names.
-#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
-#[non_exhaustive]
-pub(crate) enum PermissionAction {
-    /// Replace the password behind a credential.
-    #[serde(rename = "credential.patch")]
-    CredentialPatch,
-    /// Read a stored file.
-    #[serde(rename = "file.read")]
-    FileRead,
-    /// Reference a stored file from a library resource.
-    #[serde(rename = "file.use")]
-    FileUse,
-    /// Manage a gallery.
-    #[serde(rename = "gallery.manage")]
-    GalleryManage,
-    /// Moderate gallery items.
-    #[serde(rename = "gallery.moderate")]
-    GalleryModerate,
-    /// Read a gallery and its items.
-    #[serde(rename = "gallery.read")]
-    GalleryRead,
-    /// Write a film, show or album catalogue item.
-    #[serde(rename = "library.manage")]
-    LibraryManage,
-    /// Read the film, show and album catalogue.
-    #[serde(rename = "library.read")]
-    LibraryRead,
-    /// Read, replace and reset permission overrides.
-    #[serde(rename = "permission.manage")]
-    PermissionManage,
-    /// Manage a playlist.
-    #[serde(rename = "playlist.manage")]
-    PlaylistManage,
-    /// Moderate playlist tracks.
-    #[serde(rename = "playlist.moderate")]
-    PlaylistModerate,
-    /// Read a playlist and its tracks.
-    #[serde(rename = "playlist.read")]
-    PlaylistRead,
-    /// Read an upload session.
-    #[serde(rename = "upload.read")]
-    UploadRead,
-    /// Write an upload session.
-    #[serde(rename = "upload.write")]
-    UploadWrite,
-    /// Create a Standard user account.
-    #[serde(rename = "user.create")]
-    UserCreate,
-    /// Create an Admin user account.
-    #[serde(rename = "user.create_admin")]
-    UserCreateAdmin,
-    /// Read a user account.
-    #[serde(rename = "user.read")]
-    UserRead,
-    /// Change a user's role.
-    #[serde(rename = "user.role_change")]
-    UserRoleChange,
-    /// Update a user account.
-    #[serde(rename = "user.update")]
-    UserUpdate,
-}
-
-impl From<PermissionAction> for Action {
-    fn from(action: PermissionAction) -> Self {
-        match action {
-            PermissionAction::CredentialPatch => Self::CredentialPatch,
-            PermissionAction::FileRead => Self::FileRead,
-            PermissionAction::FileUse => Self::FileUse,
-            PermissionAction::GalleryManage => Self::GalleryManage,
-            PermissionAction::GalleryModerate => Self::GalleryModerate,
-            PermissionAction::GalleryRead => Self::GalleryRead,
-            PermissionAction::LibraryManage => Self::LibraryManage,
-            PermissionAction::LibraryRead => Self::LibraryRead,
-            PermissionAction::PermissionManage => Self::PermissionManage,
-            PermissionAction::PlaylistManage => Self::PlaylistManage,
-            PermissionAction::PlaylistModerate => Self::PlaylistModerate,
-            PermissionAction::PlaylistRead => Self::PlaylistRead,
-            PermissionAction::UploadRead => Self::UploadRead,
-            PermissionAction::UploadWrite => Self::UploadWrite,
-            PermissionAction::UserCreate => Self::UserCreate,
-            PermissionAction::UserCreateAdmin => Self::UserCreateAdmin,
-            PermissionAction::UserRead => Self::UserRead,
-            PermissionAction::UserRoleChange => Self::UserRoleChange,
-            PermissionAction::UserUpdate => Self::UserUpdate,
-        }
-    }
-}
-
-/// Scope a permission override requests.
-#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
-#[non_exhaustive]
-pub(crate) enum PermissionScope {
-    /// Every aggregate.
-    #[serde(rename = "ALL")]
-    All,
-    /// The named aggregates.
-    #[serde(rename = "LISTED")]
-    Listed,
-    /// No aggregate.
-    #[serde(rename = "NONE")]
-    None,
-    /// Aggregates the caller owns.
-    #[serde(rename = "OWNED")]
-    Owned,
-    /// Public aggregates and the caller's own.
-    #[serde(rename = "PUBLIC_OR_OWNED")]
-    PublicOrOwned,
-}
-
-impl From<PermissionScope> for Scope {
-    fn from(scope: PermissionScope) -> Self {
-        match scope {
-            PermissionScope::All => Self::All,
-            PermissionScope::Listed => Self::Listed(Vec::new()),
-            PermissionScope::None => Self::None,
-            PermissionScope::Owned => Self::Owned,
-            PermissionScope::PublicOrOwned => Self::PublicOrOwned,
-        }
-    }
-}
-
-/// One named aggregate of a `LISTED` scope in a permission representation.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-#[non_exhaustive]
-pub(crate) struct PermissionResource {
-    /// Identifier of the aggregate.
+pub(crate) struct ResourceBody {
+    /// Identifier of the entity in its own table.
     pub id: NumericID,
-    /// Kind of the aggregate (`GALLERY`, `MUSIC_PLAYLIST`, ...).
-    pub kind: PermissionResourceKind,
+    /// Kind of the addressed resource.
+    pub kind: String,
 }
 
-/// One action's scope in a permission representation.
-#[derive(Debug, Serialize, ToSchema)]
-#[non_exhaustive]
-pub(crate) struct PermissionGrantResponse {
-    /// Stored name of the action (`playlist.read`).
-    pub action: String,
-    /// Aggregates a `LISTED` scope names; empty otherwise.
-    pub resources: Vec<PermissionResource>,
-    /// The scope the action grants (`ALL`, `LISTED`, ...).
-    pub scope: String,
+impl ResourceBody {
+    /// Project one resource address onto its wire shape.
+    pub(crate) fn new(address: ResourceRef) -> Self {
+        Self {
+            id: address.id(),
+            kind: address.kind().as_wire().to_owned(),
+        }
+    }
 }
 
-/// Effective permissions of one user.
+/// The principal a grant names.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct PrincipalBody {
+    /// Identifier of the user principal, when the grant names one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<NumericID>,
+    /// Kind of the principal (`USER`, `ROLE` or `ROOT`).
+    pub kind: String,
+    /// Role the grant names, when the principal is a role.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+}
+
+impl PrincipalBody {
+    /// Project one domain principal onto its wire shape.
+    pub(crate) fn from_principal(principal: Principal) -> Self {
+        match principal {
+            Principal::Role(role) => Self {
+                id: None,
+                kind: "ROLE".to_owned(),
+                role: Some(role.as_wire().to_owned()),
+            },
+            Principal::Root => Self {
+                id: None,
+                kind: "ROOT".to_owned(),
+                role: None,
+            },
+            Principal::User(id) => Self {
+                id: Some(id),
+                kind: "USER".to_owned(),
+                role: None,
+            },
+        }
+    }
+}
+
+/// Visibility, owner and grants of one resource.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub(crate) struct PermissionResponse {
-    /// Role presets per configurable action.
-    pub defaults: Vec<PermissionGrantResponse>,
-    /// Link to the permission resource itself.
+pub(crate) struct ResourcePermissionBody {
+    /// The addressed resource.
+    pub address: ResourceBody,
+    /// Grants stored on the resource.
+    pub grants: Vec<GrantBody>,
+    /// Link to the representation itself.
     #[serde(rename = "_links")]
     pub links: SelfLinks,
-    /// Stored overrides per action.
-    pub overrides: Vec<PermissionGrantResponse>,
-    /// Role the presets are read from.
-    pub role: Role,
-    /// Identifier of the user the permissions apply to.
-    pub user_id: NumericID,
+    /// Identifier of the owning user, when the resource is owned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_id: Option<NumericID>,
+    /// Visibility of the resource.
+    pub visibility: String,
 }
 
-/// One requested override.
-#[derive(Debug, Deserialize, ToSchema)]
-#[non_exhaustive]
-pub(crate) struct PermissionOverrideRequest {
-    /// Action the override names (`playlist.read`).
-    pub action: PermissionAction,
-    /// Aggregates a `LISTED` scope names; empty otherwise.
-    #[serde(default)]
-    pub resources: Vec<PermissionResource>,
-    /// Requested scope (`ALL`, `PUBLIC_OR_OWNED`, `OWNED`, `LISTED`, `NONE`).
-    pub scope: PermissionScope,
-}
-
-/// Complete override set a user must end with.
-#[derive(Debug, Deserialize, ToSchema)]
-#[non_exhaustive]
-pub(crate) struct PermissionRequest {
-    /// Every override the user must hold.
-    pub permissions: Vec<PermissionOverrideRequest>,
-}
-
-/// Map the permissions onto their HTTP representation.
-impl From<GetPermissionResponseData> for PermissionResponse {
-    fn from(response: GetPermissionResponseData) -> Self {
-        let user_id = response.user_id();
+impl ResourcePermissionBody {
+    /// Project one stored permission onto its wire shape.
+    pub(crate) fn from_permission(permission: &ResourcePermission) -> Self {
         Self {
-            defaults: response
-                .defaults()
+            grants: permission
+                .grants
                 .iter()
-                .map(|preset| grant_response(preset.action(), preset.scope()))
+                .map(|grant| GrantBody::from_grant(grant, permission.address))
                 .collect(),
-            overrides: response
-                .overrides()
-                .iter()
-                .map(|permission| grant_response(permission.action(), permission.scope()))
-                .collect(),
-            role: response.role(),
-            user_id,
-            links: SelfLinks::new(&format!("/api/v1/user/{user_id}/permission")),
+            links: SelfLinks::new(&resource_permission_href(permission.address)),
+            owner_id: permission.owner_id,
+            address: ResourceBody::new(permission.address),
+            visibility: permission.visibility.as_wire().to_owned(),
         }
     }
 }
 
-/// Validate one requested override and map it onto the application request.
-impl TryFrom<PermissionOverrideRequest> for PermissionRequestData {
-    type Error = ApiError;
+/// One grant as a permission representation reports it.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct GrantBody {
+    /// The resource the grant is stored on.
+    pub address: ResourceBody,
+    /// Kind of child the grant permits when its role includes `CreateChild`.
+    pub child_kind: String,
+    /// Whether the grant allows or denies its role's actions.
+    pub effect: String,
+    /// Stored identity of the grant, when the caller may see grant internals.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grant_id: Option<NumericID>,
+    /// Link to the representation itself.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
+    /// The principal the grant applies to, when the caller may see it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub principal: Option<PrincipalBody>,
+    /// The resource role the grant carries.
+    pub role: String,
+}
 
-    fn try_from(request: PermissionOverrideRequest) -> Result<Self, Self::Error> {
-        let action = Action::from(request.action);
-        let stored_scope = Scope::from(request.scope);
-        let resolved_scope = match stored_scope {
-            Scope::Listed(_) => {
-                let references = request
-                    .resources
-                    .iter()
-                    .map(|resource| {
-                        ResourceRef::new(ResourceKind::from(resource.kind), resource.id)
-                    })
-                    .collect::<Vec<_>>();
-                Scope::Listed(references)
-            }
-            Scope::All | Scope::None | Scope::Owned | Scope::PublicOrOwned => {
-                if request.resources.is_empty() {
-                    stored_scope
-                } else {
-                    return Err(ApiError::UnprocessableEntity(
-                        "a non-listed scope must not name resources".to_owned(),
-                    ));
-                }
-            }
-        };
-        Ok(Self::new(action, resolved_scope))
+impl GrantBody {
+    /// Project one grant with its stored identity.
+    pub(crate) fn detailed(granted: &GrantedResource) -> Self {
+        let mut response = Self::effective(granted);
+        response.grant_id = Some(granted.grant.id());
+        response.principal = Some(PrincipalBody::from_principal(granted.grant.principal()));
+        response.links = SelfLinks::new(&share_href(granted.resource, granted.grant.id()));
+        response
+    }
+
+    /// Project one effective grant without its stored identity.
+    ///
+    /// An ordinary caller receives the permissions, never the grants behind
+    /// them (`REQ-AUTHORIZATION-029`).
+    pub(crate) fn effective(granted: &GrantedResource) -> Self {
+        Self {
+            child_kind: granted.grant.child_kind().as_wire().to_owned(),
+            effect: granted.grant.effect().as_wire().to_owned(),
+            grant_id: None,
+            principal: None,
+            address: ResourceBody::new(granted.resource),
+            links: SelfLinks::new(&resource_permission_href(granted.resource)),
+            role: granted.grant.role().as_wire().to_owned(),
+        }
+    }
+
+    /// Project one stored grant on a known resource.
+    pub(crate) fn from_grant(grant: &Grant, address: ResourceRef) -> Self {
+        Self {
+            child_kind: grant.child_kind().as_wire().to_owned(),
+            effect: grant.effect().as_wire().to_owned(),
+            grant_id: Some(grant.id()),
+            principal: Some(PrincipalBody::from_principal(grant.principal())),
+            address: ResourceBody::new(address),
+            links: SelfLinks::new(&share_href(address, grant.id())),
+            role: grant.role().as_wire().to_owned(),
+        }
     }
 }
 
-/// Map an action and its scope onto their HTTP representation.
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "the scope owns its listed resources, so it is matched through a reference"
-)]
-fn grant_response(action: Action, scope: &Scope) -> PermissionGrantResponse {
-    let resources = match scope {
-        Scope::Listed(references) => references
-            .iter()
-            .map(|reference| PermissionResource {
-                id: reference.id(),
-                kind: PermissionResourceKind::from(reference.kind()),
-            })
-            .collect(),
-        Scope::All | Scope::None | Scope::Owned | Scope::PublicOrOwned => Vec::new(),
-    };
-    PermissionGrantResponse {
-        action: action.as_wire().to_owned(),
-        resources,
-        scope: scope.as_wire().to_owned(),
+/// The principal a grant names.
+#[derive(Debug, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct PrincipalPayload {
+    /// Identifier of the user principal.
+    pub id: Option<NumericID>,
+    /// Kind of the principal (`USER` or `ROLE`).
+    pub kind: String,
+    /// Role the principal names, when the principal is a role.
+    pub role: Option<String>,
+}
+
+impl PrincipalPayload {
+    /// Turn the payload into the domain principal it names.
+    pub(crate) fn into_principal(self) -> Result<Principal, ApiError> {
+        match self.kind.as_str() {
+            "USER" => {
+                let id = self.id.ok_or_else(|| {
+                    ApiError::UnprocessableEntity("the principal identifier is required".to_owned())
+                })?;
+                Ok(Principal::User(id))
+            }
+            "ROLE" => {
+                let stored = self.role.ok_or_else(|| {
+                    ApiError::UnprocessableEntity("the principal role is required".to_owned())
+                })?;
+                let role = Role::from_wire(&stored).ok_or_else(|| {
+                    ApiError::UnprocessableEntity("unknown principal role".to_owned())
+                })?;
+                Ok(Principal::Role(role))
+            }
+            _ => Err(ApiError::UnprocessableEntity(
+                "unknown principal kind".to_owned(),
+            )),
+        }
     }
+}
+
+/// One grant a replacement requests.
+#[derive(Debug, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct GrantPayload {
+    /// Kind of child the grant permits when its role includes `CreateChild`.
+    pub child_kind: Option<String>,
+    /// Whether the grant allows or denies its role's actions.
+    pub effect: String,
+    /// The user principal the grant applies to.
+    pub principal: PrincipalPayload,
+    /// The resource role the grant carries.
+    pub role: String,
+}
+
+impl GrantPayload {
+    /// Turn the payload into its application-layer request.
+    pub(crate) fn into_request(self) -> Result<GrantRequest, ApiError> {
+        let principal = self.principal.into_principal()?;
+        let child_kind = match self.child_kind.as_deref() {
+            None => ChildKind::All,
+            Some(value) => ChildKind::from_wire(value)
+                .ok_or_else(|| ApiError::UnprocessableEntity("unknown child kind".to_owned()))?,
+        };
+        let effect = GrantEffect::from_wire(&self.effect)
+            .ok_or_else(|| ApiError::UnprocessableEntity("unknown grant effect".to_owned()))?;
+        Ok(GrantRequest {
+            child_kind,
+            effect,
+            principal,
+            role: parse_resource_role(&self.role)?,
+        })
+    }
+}
+
+/// Map a permission error to its API error.
+impl From<PermissionError> for ApiError {
+    fn from(error: PermissionError) -> Self {
+        match error {
+            PermissionError::Forbidden => Self::Forbidden(error.to_string()),
+            PermissionError::Invalid(reason) => Self::UnprocessableEntity(reason.to_owned()),
+            PermissionError::NotFound => Self::NotFound(error.to_string()),
+            PermissionError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Render the URI reference of one shared grant.
+#[must_use]
+pub(crate) fn share_href(address: ResourceRef, grant_id: NumericID) -> String {
+    format!(
+        "/api/v1/identity/permission/resource/{}/{}/share/{grant_id}",
+        address.kind().as_wire(),
+        address.id()
+    )
+}
+
+/// Render a resource's permission URI reference.
+#[must_use]
+pub(crate) fn resource_permission_href(address: ResourceRef) -> String {
+    format!(
+        "/api/v1/identity/permission/resource/{}/{}",
+        address.kind().as_wire(),
+        address.id()
+    )
+}
+
+/// Parse an addressed resource from its path segments.
+pub(crate) fn parse_address(kind: &str, id: &str) -> Result<ResourceRef, ApiError> {
+    let parsed = id
+        .parse::<NumericID>()
+        .map_err(|_| ApiError::BadRequest("invalid resource identifier".to_owned()))?;
+    Ok(ResourceRef::new(parse_resource_kind(kind)?, parsed))
+}
+
+/// Parse an action from its wire representation.
+pub(crate) fn parse_action(value: &str) -> Result<Action, ApiError> {
+    Action::from_wire(value).ok_or_else(|| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "action",
+            reason = "invalid_enum",
+            "rejected an unknown action"
+        );
+        ApiError::UnprocessableEntity("unknown action".to_owned())
+    })
+}
+
+/// Parse a resource kind from its wire representation.
+pub(crate) fn parse_resource_kind(value: &str) -> Result<ResourceKind, ApiError> {
+    ResourceKind::from_wire(value).ok_or_else(|| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "resource_kind",
+            reason = "invalid_enum",
+            "rejected an unknown resource kind"
+        );
+        ApiError::UnprocessableEntity("unknown resource kind".to_owned())
+    })
+}
+
+/// Parse a resource role from its wire representation.
+pub(crate) fn parse_resource_role(value: &str) -> Result<ResourceRole, ApiError> {
+    ResourceRole::from_wire(value).ok_or_else(|| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "role",
+            reason = "invalid_enum",
+            "rejected an unknown resource role"
+        );
+        ApiError::UnprocessableEntity("unknown resource role".to_owned())
+    })
+}
+
+/// Parse a visibility from its wire representation.
+pub(crate) fn parse_visibility(value: &str) -> Result<Visibility, ApiError> {
+    Visibility::from_wire(value).ok_or_else(|| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "visibility",
+            reason = "invalid_enum",
+            "rejected an unknown visibility"
+        );
+        ApiError::UnprocessableEntity("unknown visibility".to_owned())
+    })
 }
 
 /// Register the protected routes of the identity bounded context.
@@ -353,8 +370,14 @@ fn grant_response(action: Action, scope: &Scope) -> PermissionGrantResponse {
 /// applied by [`identity_routes`].
 pub(crate) fn identity_protected_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
-        .routes(routes!(post_register::post_register))
+        .routes(routes!(get_permission::get_permission))
+        .routes(routes!(get_resource_permission::get_resource_permission))
+        .routes(routes!(delete_permission_share::delete_permission_share))
         .routes(routes!(patch_credential::patch_credential))
+        .routes(routes!(post_permission_share::post_permission_share))
+        .routes(routes!(post_register::post_register))
+        .routes(routes!(post_token::post_token))
+        .routes(routes!(put_resource_permission::put_resource_permission))
 }
 
 /// Register the public routes of the identity bounded context.
@@ -367,10 +390,10 @@ pub(crate) fn identity_public_router() -> OpenApiRouter<AppState> {
 
 /// Routes of the identity bounded context.
 ///
-/// `login` is public; `register` and the credential password change require an
-/// authenticated caller. The public `login` route is rate limited per client
-/// address by the `limiter` the composition root built; the other routes are
-/// not.
+/// `login` is public; `register`, the credential password change and token
+/// regeneration require an authenticated caller. The public `login` route is
+/// rate limited per client address by the `limiter` the composition root built;
+/// the other routes are not.
 pub(crate) fn identity_routes(state: &AppState, limiter: &LoginRateLimiter) -> OpenApiRouter<()> {
     let protected = identity_protected_router().route_layer(middleware::from_fn_with_state(
         state.clone(),

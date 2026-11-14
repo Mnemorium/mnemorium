@@ -2,7 +2,6 @@ use std::future::Future;
 use std::pin::Pin;
 
 use crate::domain::NumericID;
-use crate::domain::port::ContentLink;
 
 /// Command to fetch one typed audio.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,8 +45,6 @@ pub(crate) struct GetAudioResponse {
     block_size: Option<i64>,
     /// Codec of the audio.
     codec: String,
-    /// Playback credential scoped to the backing file.
-    content_link: ContentLink,
     /// Duration, in milliseconds, absent when the content does not report one.
     duration_ms: Option<f64>,
     /// Identifier of the backing file.
@@ -77,12 +74,6 @@ impl GetAudioResponse {
     #[must_use]
     pub(crate) fn codec(&self) -> &str {
         &self.codec
-    }
-
-    /// Return the playback credential scoped to the backing file.
-    #[must_use]
-    pub(crate) fn content_link(&self) -> &ContentLink {
-        &self.content_link
     }
 
     /// Return the duration, in milliseconds, if the content reports one.
@@ -124,13 +115,11 @@ impl GetAudioResponse {
         bit_depth: Option<i64>,
         block_size: Option<i64>,
         file_id: NumericID,
-        content_link: ContentLink,
     ) -> Self {
         Self {
             bit_depth,
             block_size,
             codec,
-            content_link,
             duration_ms,
             file_id,
             id,

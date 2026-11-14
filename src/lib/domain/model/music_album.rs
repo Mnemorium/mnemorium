@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 
 use crate::domain::NumericID;
-use crate::domain::model::{MusicMedium, Protected, ResourceKind, ResourceRef};
+use crate::domain::model::MusicMedium;
 
 /// Production type of a music album.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -206,23 +206,5 @@ impl MusicAlbum {
             production_type,
             release_date,
         })
-    }
-}
-
-impl Protected for MusicAlbum {
-    fn is_privileged_account(&self) -> bool {
-        false
-    }
-
-    fn is_publicly_visible(&self) -> bool {
-        true
-    }
-
-    fn owner_id(&self) -> Option<NumericID> {
-        None
-    }
-
-    fn resource_ref(&self) -> Option<ResourceRef> {
-        Some(ResourceRef::new(ResourceKind::MusicAlbum, self.id))
     }
 }

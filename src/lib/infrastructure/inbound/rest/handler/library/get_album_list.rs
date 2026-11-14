@@ -8,7 +8,7 @@ use utoipa::IntoParams;
 use super::{DEFAULT_LIMIT, MAX_LIMIT};
 use crate::application::port::ListAlbumsCommand;
 use crate::infrastructure::inbound::rest::handler::library::{
-    AlbumListLinks, AlbumListResponse, AlbumResponse,
+    AlbumEmbedded, AlbumListLinks, AlbumListResponse, AlbumSummary,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
@@ -114,7 +114,9 @@ pub(crate) async fn get_album_list(
     let returned = response.albums().len();
     let total = response.total();
     let body = AlbumListResponse {
-        items: response.albums().iter().map(AlbumResponse::from).collect(),
+        embedded: AlbumEmbedded {
+            items: response.albums().iter().map(AlbumSummary::from).collect(),
+        },
         links: AlbumListLinks::for_page(&query, limit, offset, returned, total),
     };
     Ok(hal_json(body))

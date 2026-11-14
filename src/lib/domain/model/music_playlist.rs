@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use chrono::NaiveDateTime;
 
 use crate::domain::NumericID;
-use crate::domain::model::{MusicRecording, Protected, ResourceKind, ResourceRef, TrackIndex};
+use crate::domain::model::{MusicRecording, TrackIndex};
 
 /// Error returned when initialising or updating a `MusicPlaylist`.
 #[derive(Debug, thiserror::Error)]
@@ -202,6 +202,11 @@ impl MusicPlaylist {
         self.tracks.len() != before
     }
 
+    /// Replace the playlist's artwork, or clear it.
+    pub(crate) fn set_cover_image_id(&mut self, cover_image_id: Option<NumericID>) {
+        self.cover_image_id = cover_image_id;
+    }
+
     /// Update whether the playlist is visible to every user.
     pub(crate) fn set_is_public(&mut self, is_public: bool) {
         self.is_public = is_public;
@@ -278,23 +283,5 @@ impl MusicPlaylist {
             ));
         }
         Ok(reordered)
-    }
-}
-
-impl Protected for MusicPlaylist {
-    fn is_privileged_account(&self) -> bool {
-        false
-    }
-
-    fn is_publicly_visible(&self) -> bool {
-        self.is_public()
-    }
-
-    fn owner_id(&self) -> Option<NumericID> {
-        Some(self.user_id)
-    }
-
-    fn resource_ref(&self) -> Option<ResourceRef> {
-        Some(ResourceRef::new(ResourceKind::MusicPlaylist, self.id))
     }
 }

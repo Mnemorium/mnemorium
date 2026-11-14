@@ -145,13 +145,28 @@ include-operation-id = "patch_credential"
 parameters = { id = 9001 }
 
 [[operations]]
-include-operation-id = "get_permission"
+include-operation-id = "get_permission_summary"
 parameters = { user_id = 9001 }
+# A decision query supplies `resource_kind`, `resource_id` and `action`
+# together; the query schema cannot express that dependency, so a partial one is
+# a documented `400`. A value outside the closed action or kind vocabulary is a
+# documented `422`, classified as an `enum_validation_failed` event.
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  400,
+  401,
+  403,
+  404,
+  422,
+  429,
+  "5xx",
+] } }
 
 # A body or query value naming a resource rather than the URI is a body value
 # under `API-044`, so a missing reference is a `422`, not a `404`.
 [[operations]]
-include-operation-id = "put_permission"
+include-operation-id = "put_resource_permission"
 warnings = { display = ["missing_test_data"] }
 checks = { positive_data_acceptance = { expected-statuses = [
   "2xx",
@@ -160,6 +175,49 @@ checks = { positive_data_acceptance = { expected-statuses = [
   403,
   404,
   409,
+  422,
+  429,
+  "5xx",
+] } }
+
+# A resource kind, grant role, principal kind or effect outside the closed
+# vocabulary is a documented `422`: the handler validates the raw wire value so
+# the rejection is an `enum_validation_failed` event rather than a framework
+# decode failure.
+[[operations]]
+include-operation-id = "get_resource_permission"
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  422,
+  429,
+  "5xx",
+] } }
+
+[[operations]]
+include-operation-id = "post_permission_share"
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  422,
+  429,
+  "5xx",
+] } }
+
+[[operations]]
+include-operation-id = "delete_permission_share"
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
   422,
   429,
   "5xx",

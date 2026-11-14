@@ -1,8 +1,10 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::{error, warn};
+use tracing::error;
 
 use crate::application::port::{
     ListAlbumTracksCommand, ListAlbumTracksError, ListAlbumTracksItem, ListAlbumTracksResponse,
@@ -11,10 +13,8 @@ use crate::application::port::{
 use crate::domain::model::Action;
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
-    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for listing the tracks of one medium of one music
 /// album.
@@ -69,15 +69,6 @@ where
                     .next()
                     .ok_or(ListAlbumTracksError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| ListAlbumTracksError::Unknown(error.into()))?;
-
                 let album = unit_of_work
                     .music_albums()
                     .search(&MusicAlbumFilter {
@@ -89,19 +80,15 @@ where
                     .into_iter()
                     .next()
                     .ok_or(ListAlbumTracksError::NoSuchAlbum)?;
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &album)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(ListAlbumTracksError::NoSuchAlbum);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicAlbum, album.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| ListAlbumTracksError::NoSuchAlbum)?;
 
                 // The aggregate read carries each medium's recording
                 // occurrences, so the requested medium is resolved from the
@@ -234,7 +221,7 @@ mod tests {
         albums: MockMusicAlbumRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             music_albums: albums,
             users,
             ..TestUnitOfWork::default()

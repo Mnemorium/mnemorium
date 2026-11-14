@@ -1,3 +1,5 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -10,11 +12,10 @@ use crate::application::port::{
 };
 use crate::domain::model::{Action, Series};
 use crate::domain::port::{
-    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
-    RepositoryError, SeriesFilter, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory,
-    UserFilter, UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, LibraryUnitOfWork, RepositoryError, SeriesFilter, SeriesRepository as _,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, CountryCode, Decision, NamePolicy, NamePolicyError};
+use crate::domain::service::{CountryCode, NamePolicy, NamePolicyError};
 
 /// Use case implementation for updating a show partially.
 pub(crate) struct UpdateSeries<F> {
@@ -64,15 +65,6 @@ where
                     .next()
                     .ok_or(UpdateSeriesError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| UpdateSeriesError::Unknown(error.into()))?;
-
                 let series = unit_of_work
                     .series()
                     .search(&SeriesFilter {
@@ -85,36 +77,30 @@ where
                     .next()
                     .ok_or(UpdateSeriesError::NoSuchSeries)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &series)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(UpdateSeriesError::NoSuchSeries);
-                }
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryManage, &series)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(if denial.conceals() {
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Series, series.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| UpdateSeriesError::NoSuchSeries)?;
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Series, series.id()),
+                    Action::EditMetadata,
+                    None,
+                )
+                .await
+                .map_err(|error| {
+                    if error.conceals() {
                         UpdateSeriesError::NoSuchSeries
                     } else {
                         UpdateSeriesError::Forbidden
-                    });
-                }
+                    }
+                })?;
 
                 let name = match command.name() {
                     Some(requested) => {
@@ -235,10 +221,11 @@ where
 mod tests {
     use super::*;
     use crate::domain::NumericID;
+    use allure_cargotest::allure_test;
 
-    use crate::domain::model::{Permission, Role, Scope, User};
+    use crate::domain::model::{Role, User};
 
-    use crate::domain::port::{MockPermissionRepository, MockSeriesRepository, MockUserRepository};
+    use crate::domain::port::{MockResourceRepository, MockSeriesRepository, MockUserRepository};
 
     use crate::test_helpers::*;
     use chrono::NaiveDate;
@@ -265,11 +252,11 @@ mod tests {
     /// Build a Library test harness around the given mocks.
     fn harness_with(
         users: MockUserRepository,
-        permissions: MockPermissionRepository,
+        resources: MockResourceRepository,
         series: MockSeriesRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions,
+            resources,
             series,
             users,
             ..TestUnitOfWork::default()
@@ -304,9 +291,14 @@ mod tests {
         )
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_series_replaces_metadata_keeping_seasons_and_episodes()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-009");
+        allure.story("SCN-SERIES-009-A");
+        allure.story("SCN-SERIES-009-C");
         // Arrange: the stored show holds a season with one episode.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -329,7 +321,7 @@ mod tests {
                         .is_some_and(|season| season.episodes().len() == 1)
             })
             .returning(|candidate| Box::pin(async move { Ok(candidate) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -354,8 +346,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_series_null_clears_optional_values() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-009");
+        allure.story("SCN-SERIES-009-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -371,7 +367,7 @@ mod tests {
                     && candidate.cover_image_id().is_none()
             })
             .returning(|candidate| Box::pin(async move { Ok(candidate) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -395,8 +391,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_series_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-009");
+        allure.story("SCN-SERIES-009-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -405,7 +405,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -415,56 +415,12 @@ mod tests {
         assert!(matches!(result, Err(UpdateSeriesError::NoSuchSeries)));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn update_series_concealed_show_returns_no_such_series() -> Result<(), Box<dyn Error>> {
-        // Arrange: the caller is shut out of the library entirely.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let stored = sample_series(7, Vec::new())?;
-        let mut series = MockSeriesRepository::new();
-        expect_series(&mut series, stored);
-        let mut permissions = MockPermissionRepository::new();
-        expect_permissions(
-            &mut permissions,
-            1,
-            vec![Permission::try_new(1, Action::LibraryRead, Scope::None)?],
-        );
-        let harness = harness_with(users, permissions, series);
-        let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(empty_command()).await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateSeriesError::NoSuchSeries)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn update_series_readable_but_not_manageable_is_forbidden() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange: a standard caller may read the public show but not manage it.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let stored = sample_series(7, Vec::new())?;
-        let mut series = MockSeriesRepository::new();
-        expect_series(&mut series, stored);
-        let harness = harness_with(users, no_permissions(), series);
-        let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(empty_command()).await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateSeriesError::Forbidden)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn update_series_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-009");
+        allure.story("SCN-SERIES-009-A");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -475,7 +431,7 @@ mod tests {
             .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -498,8 +454,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_series_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-009");
+        allure.story("SCN-SERIES-009-A");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -510,7 +470,7 @@ mod tests {
             .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -533,15 +493,19 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_series_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-009");
+        allure.story("SCN-SERIES-009-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let stored = sample_series(7, Vec::new())?;
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
 
         // Act

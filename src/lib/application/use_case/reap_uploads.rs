@@ -10,9 +10,10 @@ use crate::application::port::{
 };
 use crate::application::use_case::{staged_path, uploads_path};
 use crate::domain::NumericID;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use crate::domain::port::{
-    AssetUnitOfWork, FileStorage, UnitOfWork as _, UnitOfWorkFactory, UploadFilter,
-    UploadRepository as _,
+    AssetUnitOfWork, FileStorage, IdentityUnitOfWork, ResourceRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UploadFilter, UploadRepository as _,
 };
 
 /// Bound after which a verification seal is considered stale, in seconds.
@@ -54,7 +55,7 @@ impl<F: UnitOfWorkFactory, S: FileStorage> ReapUploads<F, S> {
 impl<F, S> ReapUploadsUseCase for ReapUploads<F, S>
 where
     F: UnitOfWorkFactory,
-    F::Uow: AssetUnitOfWork,
+    F::Uow: AssetUnitOfWork + IdentityUnitOfWork,
     S: FileStorage,
 {
     fn execute<'future>(
@@ -114,6 +115,11 @@ where
                     .await
                     .map_err(|error| ReapUploadsError::Unknown(error.into()))?;
                 if deleted {
+                    expired_unit_of_work
+                        .resources()
+                        .delete(ResourceRef::new(ResourceKind::Upload, session.upload_id()))
+                        .await
+                        .map_err(|error| ReapUploadsError::Unknown(error.into()))?;
                     expired = expired.saturating_add(1);
                 }
             }
@@ -228,6 +234,7 @@ mod tests {
     use crate::domain::port::{MockFileStorage, MockUploadRepository, RepositoryError};
 
     use crate::test_helpers::*;
+    use allure_cargotest::allure_test;
     use chrono::NaiveDateTime;
     use std::error::Error;
     use std::path::PathBuf;
@@ -335,6 +342,12 @@ mod tests {
             .times(1)
             .withf(|filter| filter.upload_id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
+        let mut phase_one_resources = caller_owned_resources();
+        phase_one_resources
+            .expect_delete()
+            .times(1)
+            .withf(|address| address.kind() == ResourceKind::Upload && address.id() == 7)
+            .returning(|_| Box::pin(async { Ok(true) }));
         let mut phase_two_uploads = MockUploadRepository::new();
         phase_two_uploads
             .expect_search()
@@ -348,6 +361,7 @@ mod tests {
         expect_no_staged_content(&mut file_storage);
         let harness = use_case_with(
             TestUnitOfWork {
+                resources: phase_one_resources,
                 uploads: phase_one_uploads,
                 ..TestUnitOfWork::default()
             },
@@ -362,7 +376,8 @@ mod tests {
         // Act
         let response = harness.use_case.execute(ReapUploadsCommand::new()).await?;
 
-        // Assert
+        // Assert: the expired session and its staging file are removed, and its
+        // resource row goes with it.
         assert_eq!(response.expired(), 1);
         assert_eq!(response.orphaned(), 0);
         assert_eq!(response.unsealed(), 0);
@@ -371,8 +386,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn reap_uploads_unseals_a_stale_verification() -> Result<(), Box<dyn Error>> {
+        allure.epic("Upload");
+        allure.feature("REQ-UPLOAD-015");
+        allure.story("SCN-UPLOAD-015-B");
+
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
         phase_one_uploads
@@ -581,9 +601,14 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     #[traced_test]
     async fn reap_uploads_never_logs_a_path_or_a_name() -> Result<(), Box<dyn Error>> {
+        allure.epic("Upload");
+        allure.feature("REQ-UPLOAD-015");
+        allure.story("SCN-UPLOAD-015-E");
+
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
         let mut phase_two_uploads = MockUploadRepository::new();

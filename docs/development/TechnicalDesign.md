@@ -306,7 +306,8 @@ single envelope builder: it reads the attached message and serves the one `Error
 
 Every error response carries the same body, a HAL representation served as `application/hal+json`: the human-readable
 `error` message at the root (`API-033`) and a `_links.self` whose `href` is the request path the client called
-(`API-039`, `API-043`).
+(`API-039`, `API-043`). This is the operation-self rule of `API-042` applied to a failure: the envelope is an instance
+of the representation rule, not an exception to it.
 
 Drawn from `src/lib/infrastructure/inbound/rest/api_error.rs`:
 
@@ -612,6 +613,31 @@ fn validate_email_scenario_returns_expected(
     assert_eq!(validate_email(email), expected);
 }
 ```
+
+Scenario labels:
+
+Every test carries three Allure labels: `epic` names the capability (for example `Authentication`), `feature` the
+requirement ID (`REQ-AUTHENTICATION-002`) and `story` the scenario ID (`SCN-AUTHENTICATION-002-A`). A test that proves
+two scenarios in one case carries one `story` label per scenario.
+
+A system test declares them with the pytest decorators `@allure.epic("Authentication")`,
+`@allure.feature("REQ-AUTHENTICATION-002")` and `@allure.story("SCN-AUTHENTICATION-002-A")`, stacked once per scenario.
+A Rust test uses `#[allure_test]` above its test attribute and calls the facade it injects, as the unit test in
+`src/lib/infrastructure/outbound/random/password_generator.rs` does:
+
+```rust
+#[allure_test]
+#[tokio::test]
+async fn random_password_generator_samples_follow_declared_shape() {
+    allure.epic("Authentication");
+    allure.feature("REQ-AUTHENTICATION-002");
+    allure.story("SCN-AUTHENTICATION-002-A");
+    // [...]
+}
+```
+
+`#[allure_test]` is the outermost attribute, directly above `#[test]` or `#[tokio::test]`, because it owns the test
+lifecycle and injects the `allure` facade.
 
 ---
 
@@ -1065,44 +1091,55 @@ their registry.
 | `library.startup.media_root_wait_seconds` | The bounded wait for an absent library root in the composition root (`src/lib/app.rs`) and the ingest runner.                                                                                                         | A new value applies after a restart. |
 | `library.startup.fail_without_media_root` | The startup decision in the composition root (`src/lib/app.rs`): refuse startup, or start and reconcile the library as empty.                                                                                         | A new value applies after a restart. |
 | `logging.level`                           | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                                                                                    | None.                                |
-| `security.rate_limit.trusted_proxies`     | The login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                                          | None.                                |
-| `security.rate_limit.client_ip_header`    | The login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                                          | None.                                |
-| `security.rate_limit.burst_size`          | The login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                                          | None.                                |
-| `security.rate_limit.period_seconds`      | The login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                                          | None.                                |
+| `security.log_root_admin_password`        | The Root Admin bootstrap in the composition root (`src/lib/app.rs`): the guard refusing a first start that could not reveal the only password, and the one-time reveal itself.                                        | A new value applies after a restart. |
+| `security.rate_limit.trusted_proxies`     | The per-client login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                               | None.                                |
+| `security.rate_limit.client_ip_header`    | The per-client login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                               | None.                                |
+| `security.rate_limit.burst_size`          | The two login limiters — per client and per account — built in the composition root (`src/lib/app.rs`).                                                                                                               | None.                                |
+| `security.rate_limit.period_seconds`      | The two login limiters — per client and per account — built in the composition root (`src/lib/app.rs`).                                                                                                               | None.                                |
 
 The registry is **extensible**: a setting becomes startup-only by being added here. Adding one records, in the same
 change, how a change to its value is surfaced to the operator (a startup warning, or an explicit `None`).
 
 ##### 10.2 Instance identity
 
-The instance state is the non-derivable part of the instance: the site pepper, the token signing secret and the instant
-the state was established. It is not configuration — configuration is derivable and total, the state is existential.
-`LoadState` is read before configuration and before the datastore is opened; a failure to read it stops startup before
-any datastore file is opened.
+The state is specified by `openspec/specs/state/spec.md` (`REQ-STATE-001`–`REQ-STATE-008`). It is the non-derivable part
+of the instance: the site pepper, the token signing secret and the instant the state was established. It is not
+configuration — configuration is derivable and total, the state is existential.
 
-It is a supporting capability of the Identity bounded context, not a bounded context of its own: the two secrets are the
-authentication root the password hasher and the token provider consume, so `InstanceState` and `InstanceStateStore`
-belong to that context under `ARCH-002`. It has no catalogue entry, no REST surface and no E2E folder of its own.
+The Rust vocabulary stays in the Identity bounded context: `InstanceState` and `InstanceStateStore` are the
+authentication root the password hasher and the token provider consume, so they belong there under `ARCH-002`. The
+capability has no catalogue entry and no REST surface of its own.
 
 The file is a versioned YAML document (`version`, `created_at`, `pepper`, `jwt_secret`) holding both secrets as the
-exact 64-character hexadecimal strings the password hasher and the token provider consume. It is capped at 4 KiB,
-decoded with `deny_unknown_fields`, and written atomically at mode `0600` under an exclusive lock on `state.yaml.lock`,
-so two processes starting against a fresh instance cannot each persist a different identity. An unknown version, an
-unknown field, a non-hex secret or a truncated document fails startup and is never treated as absent.
+exact 64-character hexadecimal strings the password hasher and the token provider consume (`REQ-STATE-001`,
+`REQ-STATE-002`, `REQ-STATE-003`). It is capped at 4 KiB, decoded with `deny_unknown_fields`, and written atomically at
+mode `0600` under an exclusive lock on `state.yaml.lock`, so two processes starting against a fresh instance cannot each
+persist a different identity (`REQ-STATE-007`). An unknown version, an unknown field, a non-hex secret or a truncated
+document fails startup and is never treated as absent.
+
+The state is loaded before the datastore is opened; a failure to read the state stops startup before any datastore file
+is opened (`REQ-STATE-005`). The ordering against configuration is a startup design decision, not a state requirement:
+`LoadState` runs first because the logging settings are themselves configuration.
 
 `LoadState` mirrors `LoadConfiguration`: it takes no command and no injected presence flag. It reads the persisted state
-from `InstanceStateStore` and the creation seeds from `StateSeedSource`, and it inspects the fixed `DATABASE_PATH`
-itself with `Path::try_exists` — not `exists`, so an unreadable datastore fails startup rather than reading as a new
-instance and writing a second identity beside it. The seed port carries the seeds through the `StateSeeds` capability
-trait, so the seed struct itself lives in the envy adapter and the application layer never names an adapter type
-(`ARCH-001`).
+from `InstanceStateStore`, the creation seeds from `StateSeedSource`, and the datastore's presence from
+`DatastorePresence`. The file adapter maps a missing path to `false` and every other `try_exists` failure to an error,
+so an unreadable datastore fails startup rather than reading as a new instance and writing a second identity beside it
+(`REQ-STATE-006`). The seed port carries the seeds through the `StateSeeds` capability trait, so the seed struct itself
+lives in the envy adapter and the application layer never names an adapter type (`ARCH-001`).
 
 State is created only for a genuinely new instance. `LoadState` checks the datastore first: when the datastore exists
 and no state does, startup fails and no replacement is written; when neither exists, the state is created first and the
 datastore afterwards. The two environment seeds are applied only at creation, and a supplied seed that differs from the
-persisted value fails startup naming the variable, never its value (`OBS-004`). A prefixed variable that is neither a
-seed nor a configuration override is discarded, never rejected. Creation emits `system_object` and one
+persisted value fails startup naming the variable, never its value (`REQ-STATE-004`, `OBS-004`). A prefixed variable
+that is neither a seed nor a configuration override is discarded, never rejected. Creation emits `system_object` and one
 `secret_initialized` per generated secret, once the subscriber is installed; reuse emits neither.
+
+A persisted state is private to the server account (`REQ-STATE-008`): the opened descriptor must be a regular file owned
+by the account that owns the working directory, and a wider mode is tightened to `0600` with `File::set_permissions`
+before the file is read. A file owned by another account, or one whose mode cannot be repaired, fails startup and is
+left unchanged; the error names the `chmod`/`chown` remedy and never a secret. The repair runs on the descriptor, so a
+symlink or a file swap between the check and the read cannot bypass it.
 
 ---
 
@@ -1342,17 +1379,17 @@ are documented inline, at the source, with `#[utoipa::path(...)]` macros.
 | `API-029` | Responses                 | Declare `link` to another operation through its `operation_id` (optional).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ 6](#6-response-example)                  |
 | `API-030` | Responses                 | Declare every possible response, the success case as well as every error.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | [§ 6](#6-response-example)                  |
 | `API-031` | HAL payload               | Use `application/hal+json` for HAL responses.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | [§ HAL payload](#hal-payload-guidelines)    |
-| `API-032` | HAL payload               | Always include `_links.self`, a relative URI reference, on resource representations. A resource representation carries an addressable business resource (single or collection); token issues, probes and `204` responses are not representations.                                                                                                                                                                                                                                                                                                                                                          | [§ HAL payload](#hal-payload-guidelines)    |
-| `API-033` | HAL payload               | Keep business data at the root of the payload.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-032` | HAL payload               | Always include `_links.self`, a relative URI reference, on every JSON success. A resource representation names its canonical resource; an operation with no addressed resource — login, token regeneration, the probe — names the operation's request path; `204` carries no body.                                                                                                                                                                                                                                                                                                                         | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-033` | HAL payload               | Keep business data at the root of the payload. The only nesting is a catalog collection's partial page items under `_embedded.items` (`API-035`).                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ HAL payload](#hal-payload-guidelines)    |
 | `API-034` | HAL payload               | Reserve `_links` for navigation and related resources.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | [§ HAL payload](#hal-payload-guidelines)    |
-| `API-035` | HAL payload               | Do not use `_embedded` unless there is a proven performance need.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-035` | HAL payload               | Do not use `_embedded` unless there is a proven performance need recorded in the rulebook. The four catalog list response structs are the recorded need: their partial page items spare one request per item. Every other `_embedded` is reported.                                                                                                                                                                                                                                                                                                                                                         | [§ HAL payload](#hal-payload-guidelines)    |
 | `API-036` | HAL payload               | Expose search and filtering through URI templates (`templated: true`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | [§ HAL payload](#hal-payload-guidelines)    |
 | `API-037` | HAL payload               | Keep actions discoverable through links; clients never construct or hardcode URLs.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ HAL payload](#hal-payload-guidelines)    |
 | `API-038` | HAL payload               | HAL is a response representation format; requests carry only business data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ HAL payload](#hal-payload-guidelines)    |
 | `API-039` | HAL payload               | Error responses are HAL representations: the `error` message at the root plus `_links.self` carrying the request path, served as `application/hal+json`. The same envelope is returned for every error the server emits, including routing fallbacks and extractor rejections.                                                                                                                                                                                                                                                                                                                             | [§ 2.5](#25-error-public-payload)           |
 | `API-040` | HAL payload               | The `error` message is a stable, server-authored, client-safe string. It carries no request payload content, no extractor or framework wording, and no internal detail such as field paths, expected types, parse positions or type names. Rejection detail is logged, never returned.                                                                                                                                                                                                                                                                                                                     | [§ 2.5](#25-error-public-payload)           |
 | `API-041` | Responses                 | Return the status code that reflects _why_ the request failed, independently of the layer that caught it. `400 Bad Request` when the server cannot parse the request; `422 Unprocessable Content` when it parses but its shape or values fail a schema, framing or business rule; `401 Unauthorized` for any authentication outcome; `415 Unsupported Media Type` for an unsupported request or declared media type. An unclassified variant of a `#[non_exhaustive]` framework rejection enum is a `500`, because the server cannot establish why the request failed and must not report a client status. | [§ Response codes](#response-codes)         |
-| `API-042` | HAL payload               | `_links.self` carries the canonical relative URI of the resource the representation is about: when a representation reports the outcome of an action, `self` is the addressed resource and a resource the payload reports or references is exposed as a named link (`API-034`), never as `self`; error responses follow `API-039`.                                                                                                                                                                                                                                                                         | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-042` | HAL payload               | `_links.self` carries the canonical relative URI of the resource the representation is about: when a representation reports the outcome of an action, `self` is the addressed resource and a resource the payload reports or references is exposed as a named link (`API-034`), never as `self`; a representation of an operation with no addressed resource, including a failure, names the operation's request path (`API-043`).                                                                                                                                                                         | [§ HAL payload](#hal-payload-guidelines)    |
 | `API-043` | HAL payload               | An error envelope's `_links.self` carries the request path component of the request URI, never the query string; the query is a raw client-supplied value that may carry personal data or a token, withheld for the reason `OBS-003` withholds it from logs.                                                                                                                                                                                                                                                                                                                                               | [§ 2.5](#25-error-public-payload)           |
 | `API-044` | Responses                 | A request whose client-visible outcome depends on whether a resource the caller does not own exists must not disclose that existence: the "does not exist" and "not owned" outcomes of one request return one status and one client-safe message. `404` is reserved for the URI-addressed resource; a resource named by the request body is a body value under `API-041`.                                                                                                                                                                                                                                  | [§ Response codes](#response-codes)         |
 | `API-045` | Parameters                | A constraint attribute a parameter or a `#[schema(...)]` model property declares is enforced by the handler or use case: a value that violates it answers `422` (`API-041`), or the attribute is not declared.                                                                                                                                                                                                                                                                                                                                                                                             | [§ 3](#3-constraint-attributes)             |
@@ -1808,22 +1845,22 @@ type — is always `415`.
 The table lists every status the server currently emits, with a concrete example drawn from the codebase. It is extended
 as new codes are introduced; completeness is not required.
 
-| Code  | Name                   | Represents                                                                           | Example                                                                                                                           |
-| ----- | ---------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `200` | OK                     | The request succeeded; the body carries the representation when there is one.        | `GET /api/v1/user/{id}`; `POST /api/v1/asset/upload/{id}/complete`.                                                               |
-| `201` | Created                | A resource was created; the `Location` header names it.                              | `POST /api/v1/identity/register`; `POST /api/v1/asset/upload`.                                                                    |
-| `204` | No Content             | The request succeeded and deliberately carries no body.                              | `PATCH /api/v1/identity/credential/{id}`.                                                                                         |
-| `400` | Bad Request            | The server cannot parse the request.                                                 | A register body that is not JSON; a malformed `Content-Range` on `PUT .../chunk/{n}`; a non-numeric `{id}`.                       |
-| `401` | Unauthorized           | Authentication is required, or the credentials are invalid.                          | `POST /api/v1/identity/login` with a wrong password; a missing or expired bearer token.                                           |
-| `403` | Forbidden              | The caller is authenticated but not permitted to perform the request.                | A non-admin `PATCH /api/v1/user/{id}`; a non-root admin granting the `ADMIN` role.                                                |
-| `404` | Not Found              | The addressed resource does not exist.                                               | An unknown `{id}` in `GET /api/v1/user/{id}`; an unknown upload session.                                                          |
-| `405` | Method Not Allowed     | The method is not supported on the route; the response carries `Allow`.              | `DELETE /health` (only `GET` is routed; `hal_errors` keeps the `Allow` header).                                                   |
-| `409` | Conflict               | The request conflicts with the current state of the resource.                        | Registering a username that is already taken; a chunk on a finished upload.                                                       |
-| `410` | Gone                   | The resource existed but is no longer available.                                     | `PUT .../chunk/{n}` against an expired upload session.                                                                            |
-| `413` | Content Too Large      | The request body (or a declared size) exceeds the server limit.                      | A begin-upload declaring a file size above the maximum; a body over `DefaultBodyLimit`.                                           |
-| `415` | Unsupported Media Type | The request's or a declared media type is not supported.                             | A JSON endpoint called without `Content-Type: application/json`; an unsupported upload content type.                              |
-| `422` | Unprocessable Content  | The request parses, but its shape or values fail a schema, framing or business rule. | Registering with an empty username or a weak password; a missing required header; a `Content-Range` that does not match the body. |
-| `500` | Internal Server Error  | An unexpected server-side failure occurred.                                          | Any unmapped `Unknown(_)`; an unclassified framework rejection variant; the fixed body `"an unexpected error occurred"`.          |
+| Code  | Name                   | Represents                                                                                                   | Example                                                                                                                           |
+| ----- | ---------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `200` | OK                     | The request succeeded; the body carries the representation when there is one.                                | `GET /api/v1/user/{id}`; `POST /api/v1/asset/upload/{id}/complete`.                                                               |
+| `201` | Created                | A resource was created; the `Location` header names it.                                                      | `POST /api/v1/identity/register`; `POST /api/v1/asset/upload`.                                                                    |
+| `204` | No Content             | The request succeeded and deliberately carries no body.                                                      | `PATCH /api/v1/identity/credential/{id}`.                                                                                         |
+| `400` | Bad Request            | The server cannot parse the request.                                                                         | A register body that is not JSON; a malformed `Content-Range` on `PUT .../chunk/{n}`; a non-numeric `{id}`.                       |
+| `401` | Unauthorized           | Authentication is required, or the credentials are invalid; the response carries `WWW-Authenticate: Bearer`. | `POST /api/v1/identity/login` with a wrong password; a missing or expired bearer token.                                           |
+| `403` | Forbidden              | The caller is authenticated but not permitted to perform the request.                                        | A non-admin `PATCH /api/v1/user/{id}`; a non-root admin granting the `ADMIN` role.                                                |
+| `404` | Not Found              | The addressed resource does not exist.                                                                       | An unknown `{id}` in `GET /api/v1/user/{id}`; an unknown upload session.                                                          |
+| `405` | Method Not Allowed     | The method is not supported on the route; the response carries `Allow`.                                      | `DELETE /health` (only `GET` is routed; `hal_errors` keeps the `Allow` header).                                                   |
+| `409` | Conflict               | The request conflicts with the current state of the resource.                                                | Registering a username that is already taken; a chunk on a finished upload.                                                       |
+| `410` | Gone                   | The resource existed but is no longer available.                                                             | `PUT .../chunk/{n}` against an expired upload session.                                                                            |
+| `413` | Content Too Large      | The request body (or a declared size) exceeds the server limit.                                              | A begin-upload declaring a file size above the maximum; a body over `DefaultBodyLimit`.                                           |
+| `415` | Unsupported Media Type | The request's or a declared media type is not supported.                                                     | A JSON endpoint called without `Content-Type: application/json`; an unsupported upload content type.                              |
+| `422` | Unprocessable Content  | The request parses, but its shape or values fail a schema, framing or business rule.                         | Registering with an empty username or a weak password; a missing required header; a `Content-Range` that does not match the body. |
+| `500` | Internal Server Error  | An unexpected server-side failure occurred.                                                                  | Any unmapped `Unknown(_)`; an unclassified framework rejection variant; the fixed body `"an unexpected error occurred"`.          |
 
 ---
 
@@ -1873,20 +1910,23 @@ not:
 ```rust
 #[must_use]
 pub(crate) fn openapi() -> OpenApi {
-    let (_, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
+    let (_, mut openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(get_health::get_health))
         .nest("/library", library_router())
         // [...]
         .split_for_parts();
+    utoipa::Modify::modify(&UnauthorizedChallengeAddon, &mut openapi);
     openapi
 }
 ```
 
 The server assembles the document at startup from the same registration, so the document it serves cannot drift from the
-routes. With the `api-docs` feature `setup_routes` serves an interactive reference through `utoipa-scalar` at `/doc` and
-the same document as JSON at `/doc/openapi.json`, both outside the `/api/v1` base; the feature is off by default, so a
-default build serves neither. There is no generated artifact to commit — the served document is the published
-specification.
+routes. The last step runs an addon over the collected paths: every `401` response declares the
+`WWW-Authenticate: Bearer` challenge the server sends, declared once instead of on each of the handler paths that can
+answer `401`. With the `api-docs` feature `setup_routes` serves an interactive reference through `utoipa-scalar` at
+`/doc` and the same document as JSON at `/doc/openapi.json`, both outside the `/api/v1` base; the feature is off by
+default, so a default build serves neither. There is no generated artifact to commit — the served document is the
+published specification.
 
 ---
 
@@ -1895,18 +1935,27 @@ specification.
 The examples below use `/orders` as the resource and show how each HTTP method maps onto HAL. Errors use the same
 representation format; their body is defined in [§ 2.5](#25-error-public-payload) and governed by `API-039`.
 
-A **resource representation** is a success response that carries an addressable business resource — a single item or a
-collection. Every resource representation includes `_links.self`, a relative URI reference to the resource (`API-032`).
-Token-issuing responses, liveness probes and `204 No Content` responses are not resource representations and keep their
-plain `application/json` representation.
+Every successful response that carries a JSON body is an `application/hal+json` representation with `_links.self`
+(`API-031`, `API-032`). That includes token issuance, token regeneration and the liveness probe. Stored content keeps
+its stored media type, an empty or redirect response carries no JSON body, and the published OpenAPI document is the one
+JSON response outside this rule.
 
 A representation's `_links.self` names the resource it is about, by that resource's canonical relative URI (`API-042`).
 When a representation reports the outcome of an action on a resource, `self` is the addressed resource, and a resource
-the payload reports or references is exposed as a named link (`API-034`) — never promoted to `self`. The canonical URI
-is used even when the request used an alias: `GET /api/v1/user/me` returns `self` = `/api/v1/user/{id}`, and
-`POST /api/v1/asset/upload/{upload_id}/complete` reports the completion of the session it addressed, so its `self` is
-`/api/v1/asset/upload/{upload_id}` while the produced file is carried as `file_id` and linked by name. Error envelopes
-are the exception: their `self` is the request path (`API-039`, `API-043`).
+the payload reports or references is exposed as a named link (`API-034`) — never promoted to `self`. A representation of
+an operation with no addressed resource — login, token regeneration, the probe — names the operation's request path. The
+canonical URI is used even when the request used an alias: `GET /api/v1/user/me` returns `self` = `/api/v1/user/{id}`,
+and `POST /api/v1/asset/upload/{upload_id}/complete` reports the completion of the session it addressed, so its `self`
+is `/api/v1/asset/upload/{upload_id}` while the produced file is carried as `file_id` and linked by name. A failure
+follows the same rule and names the request path (`API-039`, `API-043`): the error envelope is an instance of the rule,
+not an exception to it.
+
+A HAL payload keeps business data at the root and publishes related resources as named links (`API-033`, `API-034`). A
+**catalog collection** — the film, show, album and music-group listings — embeds each page item's **partial
+representation** under `_embedded.items`; that is the recorded performance need `API-035` permits. The partial carries
+only the browse fields — identifier, name and cover image identifier — plus `_links.self` and the `cover` link its
+capability declares; the detail route returns the full representation. Every other collection keeps its items at the
+root under `items`.
 
 A representation that carries a referenced file's `file_id` also links that file by name, to
 `/api/v1/asset/{type}/{file_id}`. The link is published whether or not the route is served: a client that builds the URI
@@ -2104,16 +2153,20 @@ and `Last-Modified` from `modified_at` always. A matching `If-None-Match` answer
 does not match answers the whole content instead of a range. The opened handle's metadata, not `file.size_bytes`,
 governs the response.
 
-Every file, image, audio and video representation carries `_links.content`, whose `href` is the content route plus `exp`
-and `sig`. `sig` is an `HS256` credential over a domain-separated message (audience `media-link`, the file identifier
-and the expiry), signed with the instance signing secret; its lifetime is twelve hours. A content request accepts either
-the `Authorization` header or that credential, rejects both together with `400 Bad Request`, and rejects an invalid or
-expired credential with `401 Unauthorized`. Representations that mint a link answer `Cache-Control: no-store`. The trace
-middleware logs the path and not the query string (`OBS-003`), so the credential never reaches a log sink.
+Every file, image, audio and video representation carries `_links.content`, whose `href` is the content route. A content
+request authenticates with the session `Authorization: Bearer` token only and is decided on every request: the image
+route decides `View`, the audio and video routes decide `Stream`, and the file route decides `Download`. The query
+string is never a credential. The four representations answer `Cache-Control: private, max-age=60`, and the trace
+middleware logs the path and not the query string (`OBS-003`).
 
-Content outcomes are distinguishable: an unknown or unreadable asset is `404 Not Found` and reads no bytes; an absent
-library root is `503 Service Unavailable` without an authorization read; a registered file whose bytes are absent while
-the root exists is `500 Internal Server Error`, which the next scan reconciles.
+The file content route answers `Content-Disposition: attachment`, naming the typed media row's original name or, for a
+bare file, the final segment of its stored path. A name that a quoted string cannot carry is emitted as an RFC 6266
+`filename*` value with a sanitized ASCII fallback. The image, audio and video content routes carry no disposition.
+
+Content outcomes are distinguishable: an asset the caller cannot discover is `404 Not Found` and reads no bytes; a
+discoverable asset whose action refuses is `403 Forbidden` and reads no bytes; an absent library root is
+`503 Service Unavailable` without an authorization read; a registered file whose bytes are absent while the root exists
+is `500 Internal Server Error`, which the next scan reconciles.
 
 ---
 
@@ -2155,6 +2208,38 @@ deleted pair (this change deletes the `20260904012859_create_gallery_video` pair
 instead of leaving a stale-but-running database. Reset by deleting the SQLite file (default `mnemorium.db`) together
 with its `-wal` and `-shm` sidecars and restarting the server; the development database is disposable and is rebuilt
 from `migrations/`.
+
+### Authorization resource graph
+
+The authorization engine stores its state in three tables, created by one migration that also backfills the resource
+graph and seeds the role grants.
+
+- **`resource`** holds one row per authorizable entity: a surrogate `resource_id`, the `(kind, entity_id)` external
+  address, a nullable `owner_id`, a nullable `auth_parent_id` and a `visibility`. `(kind, entity_id)` is unique; the
+  kind and visibility are constrained to the catalog; a resource cannot parent itself; a `USER` resource carries no
+  owner and a catalogue resource carries no owner (`chk_resource_user_has_no_owner`,
+  `chk_resource_catalogue_has_no_owner`). A gallery, a playlist and a typed asset carry their user as owner; the
+  `Instance`, `Library`, `Catalogue`, the four creation surfaces and every catalogue resource carry none.
+- **`resource_relation`** holds the containment and reference edges (`ALBUM_MEMBER`, `PLAYLIST_ENTRY`, `GROUP_MEMBER`)
+  with an optional `position`, keyed by `(from_resource_id, to_resource_id, kind)`. A partial unique index on
+  `(from_resource_id, kind, position)` makes an order unique, and a self-edge is rejected. The edge lends read actions
+  only and never becomes an authorization parent.
+- **`grant`** holds one row per grant: `principal_kind` (`USER` or `ROLE`), the user identifier or the role, the
+  addressed `resource_id`, a resource role, a `child_kind` and an `effect` (`ALLOW` or `DENY`). `Owner` is allowed only
+  for a role principal, `ChildKind::Admin` is never grantable, and the principal/effect pair is unique through the
+  partial indexes `uq_grant_user` and `uq_grant_role`; two partial indexes replace one composite key because SQLite
+  treats `NULL` values as distinct.
+
+The `auth_parent_id` column is the only inheritance edge. A write rejects a cycle and a chain deeper than 32 in the same
+transaction as the assignment; the decision walks at most 32 edges. The backfill runs in this order: the `Instance`,
+`Library` and `Catalogue` singletons and the four creation surfaces; one row per existing gallery, playlist, user,
+upload, typed asset and file; the album, playlist and group relations; the `Standard` and `Admin` role grants. No stored
+override is translated, because an `ALL`/`LISTED`/`OWNED`/`NONE` scope has no faithful grant equivalent and the project
+is pre-release (`REQ-AUTHORIZATION-037`).
+
+A decision reads the resource, its authorization-parent chain and the matching grants in one read transaction; a storage
+error, a malformed row or a missing resource denies. A listing reads the caller's grants once and filters the page
+without emitting an `authz_failed` event.
 
 ---
 
@@ -2456,18 +2541,33 @@ entity gallery_item {
    * added_at: TEXT <<NN, DF(CURRENT_TIMESTAMP)>>
 }
 
-entity permission {
-   * permission_id: INTEGER <<PK>>
+entity resource {
+   * resource_id: INTEGER <<PK>>
    --
-   * user_id: INTEGER <<FK, NN, UN(user_id, action_name)>>
-   * action_name: TEXT <<NN, UN(user_id, action_name)>>
-   * scope: TEXT <<NN, CC(scope IN ('ALL', 'PUBLIC_OR_OWNED', 'OWNED', 'LISTED', 'NONE'))>>
+   * kind: TEXT <<NN, CC(kind IN ('INSTANCE', 'LIBRARY', 'CATALOGUE', 'USER', 'UPLOAD', 'GALLERY', 'GALLERY_ITEM', 'MOVIE', 'SERIES', 'SEASON', 'EPISODE', 'MUSIC_GROUP', 'MUSIC_ALBUM', 'MUSIC_MEDIUM', 'MUSIC_RECORDING', 'MUSIC_PLAYLIST', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', 'GALLERY_COLLECTION', 'PLAYLIST_COLLECTION', 'UPLOAD_COLLECTION', 'USER_COLLECTION'))>>
+   * entity_id: INTEGER <<NN, UN(kind, entity_id)>>
+   owner_id: INTEGER <<FK>>
+   auth_parent_id: INTEGER <<FK>>
+   * visibility: TEXT <<NN, CC(visibility IN ('PRIVATE', 'RESTRICTED', 'PUBLIC')), DF(PRIVATE)>>
 }
 
-entity permission_resource {
-   * permission_id: INTEGER <<PK, FK>>
-   * resource_type: TEXT <<PK>>
-   * resource_id: INTEGER <<PK>>
+entity resource_relation {
+   * from_resource_id: INTEGER <<PK, FK, NN>>
+   * to_resource_id: INTEGER <<PK, FK, NN>>
+   * kind: TEXT <<PK, NN, CC(kind IN ('ALBUM_MEMBER', 'PLAYLIST_ENTRY', 'GROUP_MEMBER'))>>
+   position: INTEGER <<CC(position IS NULL OR position >= 0)>>
+}
+
+entity grant {
+   * grant_id: INTEGER <<PK>>
+   --
+   * principal_kind: TEXT <<NN, CC(principal_kind IN ('USER', 'ROLE'))>>
+   principal_id: INTEGER
+   principal_role: VARCHAR(50)
+   * resource_id: INTEGER <<FK, NN>>
+   * role: TEXT <<NN, CC(role IN ('VIEWER', 'DOWNLOADER', 'CONTRIBUTOR', 'EDITOR', 'MANAGER', 'OWNER'))>>
+   * child_kind: TEXT <<NN, CC(child_kind IN ('ALL', 'GALLERY', 'MUSIC_PLAYLIST', 'UPLOAD', 'USER', 'ADMIN', 'MOVIE', 'SERIES', 'SEASON', 'EPISODE', 'MUSIC_GROUP', 'MUSIC_ALBUM', 'MUSIC_MEDIUM', 'MUSIC_RECORDING', 'GALLERY_ITEM', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE')), DF(ALL)>>
+   * effect: TEXT <<NN, CC(effect IN ('ALLOW', 'DENY'))>>
 }
 
 
@@ -2545,8 +2645,10 @@ gallery ||--o{ gallery_item
 image ||--o| gallery_item
 video ||--o| gallery_item
 
-user ||--o{ permission
-permission ||--o{ permission_resource
+user ||--o{ resource
+resource ||--o{ resource
+resource ||--o{ resource_relation
+resource ||--o{ grant
 
 @enduml
 ```
@@ -2644,62 +2746,52 @@ registered as a new record rather than restoring the removed one. Content under 
 
 ## Testing
 
-This section defines the testing strategy per layer — unit, integration, and E2E — and the rules every test must
+This section defines the testing strategy per layer — unit, integration and system — and the rules every test must
 satisfy. The naming and structure of Rust tests are governed by [§ 1 (Code Style Guidelines)](#code-style-guidelines);
-the flows the E2E suite covers come from the critical exception paths in [UseCases.md](UseCases.md).
+the flows the system suite covers come from the critical exception paths in [UseCases.md](UseCases.md).
 
-| ID         | Section            | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | More info                                       |
-| ---------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `TEST-001` | Unit test          | The test module lives in the same file as the unit under test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ Unit test](#unit-test)                       |
-| `TEST-002` | Unit test          | Mock an external dependency with `mockall`'s `#[automock]` attribute.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ Unit test](#unit-test)                       |
-| `TEST-003` | Unit test          | Unit tests cover every layer except the outbound port adapters (SQLite, configuration source), which are exercised in the [Integration test](#integration-test) section, and the REST HTTP handler layer, which is exercised by the [E2E test](#e2e-test) suite and by Schemathesis against the served OpenAPI document.                                                                                                                                                                                                                                                                                                                                                                                      | [§ Unit test](#unit-test)                       |
-| `TEST-004` | Unit test          | Do not test the payload DTOs (`<Context>Request`, `<Context>Query`, `<Context>Response`) in isolation; the [E2E test](#e2e-test) suite and Schemathesis cover them through the endpoints that consume them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ Unit test](#unit-test)                       |
-| `TEST-005` | Unit test          | Repository query filters must be tested for strictness: the filter backs the SQLite repository and a rejected filter must surface its error unchanged.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | [§ Unit test](#unit-test)                       |
-| `TEST-006` | Unit test          | Generic tests (those whose subject is not password behavior) use the shared `SECRET_PASSWORD` from `crate::test_helpers` for any password they need.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Unit test](#unit-test)                       |
-| `TEST-007` | Unit test          | Tests whose subject is password behavior (policy validation, wrong-password rejection, change-password, hashing, verification) keep their own explicit passwords and must not use the shared secret.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Unit test](#unit-test)                       |
-| `TEST-017` | Application        | Application tests are `async`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ Application](#application-strategy)          |
-| `TEST-018` | Application        | Have one or more happy-path tests.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Application](#application-strategy)          |
-| `TEST-019` | Application        | Test the domain models here — **they have no dedicated test of their own** (domain services _do_; see [§ Domain service](#domain-service-strategy)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Application](#application-strategy)          |
-| `TEST-020` | Application        | Cover business-rule violations.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [§ Application](#application-strategy)          |
-| `TEST-021` | Application        | Cover validation errors.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ Application](#application-strategy)          |
-| `TEST-022` | Application        | Cover dependency failures.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | [§ Application](#application-strategy)          |
-| `TEST-023` | Application        | Any test that falls outside the scope above (rare situation, cheap coverage) must be justified in the documentation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Application](#application-strategy)          |
-| `TEST-024` | Domain service     | Domain services (in `src/lib/domain/service/`) have a dedicated unit test module of their own, living in the same file as the service under test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | [§ Domain service](#domain-service-strategy)    |
-| `TEST-025` | Domain service     | Cover the business rules each service enforces.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [§ Domain service](#domain-service-strategy)    |
-| `TEST-026` | Domain service     | Domain services are pure — no external dependency, so no mocking.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | [§ Domain service](#domain-service-strategy)    |
-| `TEST-027` | Integration test   | Integration tests exercise the outbound port adapters: the repository (SQLite), the configuration source, and the external services.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Integration test](#integration-test)         |
-| `TEST-028` | Integration test   | The test module lives in the same file as the code under test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ Integration test](#integration-test)         |
-| `TEST-029` | Repository         | Have one happy-path test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | [§ Repository](#repository)                     |
-| `TEST-030` | Repository         | Verify every constraint — declared in the db schema and reflected in the rest of the project.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ Repository](#repository)                     |
-| `TEST-031` | Repository         | Test every trigger defined in the schema.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | [§ Repository](#repository)                     |
-| `TEST-032` | Repository         | When one test covers two rules at once it is acceptable, but it must be documented. Any test that falls outside the scope above (rare situation, cheap coverage) must be justified in the documentation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ Repository](#repository)                     |
-| `TEST-033` | SQLite3            | Use an in-memory database — one `:memory:` connection per test, so each test runs against a fresh database.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ SQLite3](#sqlite3)                           |
-| `TEST-034` | SQLite3            | Configure sqlx with the SQLite option that caps the pool at one connection.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ SQLite3](#sqlite3)                           |
-| `TEST-035` | External service   | Stub the service with `wiremock`; canned responses come from golden files.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | [§ External service](#external-service)         |
-| `TEST-036` | External service   | Test every possible server response — including failures such as `Timeout`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ External service](#external-service)         |
-| `TEST-037` | External service   | The test module lives in the same file as the client under test. Reformat the file when needed so the test module stays clear.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ External service](#external-service)         |
-| `TEST-038` | E2E                | Tests are written in Python with `pytest`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | [§ E2E test](#e2e-test)                         |
-| `TEST-039` | E2E                | One file per catalogued business use case, matching an entry in the [use case catalog](UseCases.md).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ E2E test](#e2e-test)                         |
-| `TEST-040` | E2E                | One folder per bounded context, as listed in the [Bounded context section of the Overview](Overview.md#bounded-context).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ E2E test](#e2e-test)                         |
-| `TEST-041` | E2E                | Generic tests (those whose subject is not password behavior) use the shared `SECRET_PASSWORD` from `test/e2e/conftest.py` for any user they provision or register.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ E2E test](#e2e-test)                         |
-| `TEST-042` | E2E                | Tests whose subject is password behavior (password policy validation, change-password flows, wrong-password login) pick their own explicit passwords and must not use the shared secret.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ E2E test](#e2e-test)                         |
-| `TEST-043` | E2E                | The Root Admin's password is random per container and obtained through the `default_password` fixture; the shared secret never applies to it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ E2E test](#e2e-test)                         |
-| `TEST-044` | Test helpers       | A helper a test module shares lives in an inline, `#[cfg(test)]`-gated `mod test_helpers`, declared once per root file: crate-wide helpers in `src/lib/lib.rs`, helpers shared only by the descendants of one module in that module's own root (for example `src/lib/infrastructure/outbound/sqlx.rs`); never a separate helper file or module.                                                                                                                                                                                                                                                                                                                                                               | [§ Test helpers](#test-helpers)                 |
-| `TEST-045` | Test helpers       | Adding a new shared test helper, or changing the existing helper surface, requires the developer's explicit approval (their thumbs-up on the change).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ Test helpers](#test-helpers)                 |
-| `TEST-046` | Factory            | Production factory structs need no dedicated test; they only wire use cases, adapters and transactions, so test the assembled parts, not the wiring.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Factory](#factory-strategy)                  |
-| `TEST-048` | Shell script       | Shell scripts in the `script/` folder are tooling and CI glue and are exempt from the unit, integration and E2E test requirements; they are validated by their own gates — `shellcheck` and `shfmt` plus their pre-commit and CI execution — not by a test module.                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Shell script](#shell-script)                 |
-| `TEST-049` | CI / prompt assets | GitHub workflow files (`.github/workflows/*`) and the opencode agent, command and skill prompts (`.opencode/agents/*`, `.opencode/commands/*`, `.opencode/skills/*/SKILL.md`, `.agents/skills/**`) are tooling and agent configuration, not application code; they are exempt from the unit, integration and E2E test requirements. A workflow's YAML is validated by `yamllint`. The triage workflow's `gh`-driven inline prompt, its `OPENCODE_CONFIG_CONTENT` shell permission allowlist, and its effect on issues are exercised only when the workflow runs; they have no automated behavioural gate and no dry-run rehearsal — an explicit residual, validated by review rather than asserted by a test. | [§ CI and prompt assets](#ci-and-prompt-assets) |
-| `TEST-050` | E2E                | A golden file or a test media file the E2E suite consumes is stored under `test/e2e/fixture/`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ E2E test](#e2e-test)                         |
-| `TEST-051` | E2E                | A catalogued use case's E2E file sits in the folder named by the bounded-context section that holds its entry (`TEST-040`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ E2E test](#e2e-test)                         |
-| `TEST-052` | Integration test   | An outbound adapter that drives a native binary is covered by an integration test in the same file; the child process is replaced by a stub executable through the adapter's test-only program seam, every child outcome is asserted, and the real binary is exercised by the container E2E suite.                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Native binary](#native-binary)               |
-| `TEST-053` | Configuration test | One module per configuration section of `default_config.yaml` — `asset_settings.py`, `library_settings.py`, `logging_settings.py`, `security_settings.py` — plus `config_layers.py` for precedence, `instance_state.py` for the identity lifecycle, `test_harness.py` for the empty configuration and `test_scenarios.py` for the meta-test.                                                                                                                                                                                                                                                                                                                                                                  | [§ Configuration test](#configuration-test)     |
-| `TEST-054` | Configuration test | `instance_state.py` maps every scenario of `openspec/specs/instance/state/spec.md` to a test; `test_scenarios.py` is a meta-test that fails when a scenario has no test, or a test names a scenario that does not exist.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ Configuration test](#configuration-test)     |
-| `TEST-055` | Configuration test | The suite asserts behaviour only — the effect of a valid value. Input parsing and input rejection (wrong type, unknown key, malformed environment value, malformed seed, domain-invalid value) are owned by the Rust application and integration tests.                                                                                                                                                                                                                                                                                                                                                                                                                                                       | [§ Configuration test](#configuration-test)     |
-| `TEST-056` | Configuration test | A test sleeps at most 3 s on purpose. A longer-horizon observation is reached by pre-seeding the directory the component reads at startup, never by waiting for it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | [§ Configuration test](#configuration-test)     |
-| `TEST-057` | Configuration test | An operator message is matched through the suite's single constants module, never inline. A structured `event=` / `component=` field is matched where the server emits one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ Configuration test](#configuration-test)     |
-| `TEST-058` | Configuration test | Each test starts its own container with its own writable working directory, published on a random loopback port; no test touches another test's container, the `test/e2e` container, or the repository working tree.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Configuration test](#configuration-test)     |
-| `TEST-059` | Configuration test | A refusal case asserts the refusal effect: the persisted file is byte-identical, no replacement identity is written, no `config.yaml` or datastore is created, and the secret value never reaches stdout or a log file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | [§ Configuration test](#configuration-test)     |
-| `TEST-060` | Logging test       | A test that asserts on emitted log output is annotated `#[traced_test]` from `tracing-test` and matches through `logs_contain`/`logs_assert`; it installs no subscriber of its own — no `tracing::subscriber::set_default`, no `MakeWriter`/capture writer and no `capture_logs`/`captured_logs` helper.                                                                                                                                                                                                                                                                                                                                                                                                      | [§ Logging test](#logging-test)                 |
+| ID         | Section            | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | More info                                       |
+| ---------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `TEST-001` | Unit test          | The test module lives in the same file as the unit under test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ Unit test](#unit-test)                       |
+| `TEST-002` | Unit test          | Mock an external dependency with `mockall`'s `#[automock]` attribute.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [§ Unit test](#unit-test)                       |
+| `TEST-003` | Unit test          | Unit tests cover every layer except the outbound port adapters (SQLite, configuration source), which are exercised in the [Integration test](#integration-test) section, and the REST HTTP handler layer, which is exercised by the [system test](#system-test) suite and by Schemathesis against the served OpenAPI document.                                                                                                                                                                                                                                                                                                                                                                                      | [§ Unit test](#unit-test)                       |
+| `TEST-004` | Unit test          | Do not test the payload DTOs (`<Context>Request`, `<Context>Query`, `<Context>Response`) in isolation; the [system test](#system-test) suite and Schemathesis cover them through the endpoints that consume them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ Unit test](#unit-test)                       |
+| `TEST-005` | Unit test          | Repository query filters must be tested for strictness: the filter backs the SQLite repository and a rejected filter must surface its error unchanged.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | [§ Unit test](#unit-test)                       |
+| `TEST-006` | Unit test          | Generic tests (those whose subject is not password behavior) use the shared `SECRET_PASSWORD` from `crate::test_helpers` for any password they need.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ Unit test](#unit-test)                       |
+| `TEST-007` | Unit test          | Tests whose subject is password behavior (policy validation, wrong-password rejection, change-password, hashing, verification) keep their own explicit passwords and must not use the shared secret.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ Unit test](#unit-test)                       |
+| `TEST-017` | Application        | Application tests are `async`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ Application](#application-strategy)          |
+| `TEST-018` | Application        | Have one or more happy-path tests.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | [§ Application](#application-strategy)          |
+| `TEST-019` | Application        | Test the domain models here — **they have no dedicated test of their own** (domain services _do_; see [§ Domain service](#domain-service-strategy)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ Application](#application-strategy)          |
+| `TEST-020` | Application        | Cover business-rule violations.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | [§ Application](#application-strategy)          |
+| `TEST-021` | Application        | Cover validation errors.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Application](#application-strategy)          |
+| `TEST-022` | Application        | Cover dependency failures.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Application](#application-strategy)          |
+| `TEST-023` | Application        | Any test that falls outside the scope above (rare situation, cheap coverage) must be justified in the documentation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ Application](#application-strategy)          |
+| `TEST-024` | Domain service     | Domain services (in `src/lib/domain/service/`) have a dedicated unit test module of their own, living in the same file as the service under test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ Domain service](#domain-service-strategy)    |
+| `TEST-025` | Domain service     | Cover the business rules each service enforces.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | [§ Domain service](#domain-service-strategy)    |
+| `TEST-026` | Domain service     | Domain services are pure — no external dependency, so no mocking.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ Domain service](#domain-service-strategy)    |
+| `TEST-027` | Integration test   | Integration tests exercise the outbound port adapters: the repository (SQLite), the configuration source, and the external services.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ Integration test](#integration-test)         |
+| `TEST-028` | Integration test   | The test module lives in the same file as the code under test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ Integration test](#integration-test)         |
+| `TEST-029` | Repository         | Have one happy-path test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | [§ Repository](#repository)                     |
+| `TEST-030` | Repository         | Verify every constraint — declared in the db schema and reflected in the rest of the project.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | [§ Repository](#repository)                     |
+| `TEST-031` | Repository         | Test every trigger defined in the schema.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | [§ Repository](#repository)                     |
+| `TEST-032` | Repository         | When one test covers two rules at once it is acceptable, but it must be documented. Any test that falls outside the scope above (rare situation, cheap coverage) must be justified in the documentation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Repository](#repository)                     |
+| `TEST-033` | SQLite3            | Use an in-memory database — one `:memory:` connection per test, so each test runs against a fresh database.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ SQLite3](#sqlite3)                           |
+| `TEST-034` | SQLite3            | Configure sqlx with the SQLite option that caps the pool at one connection.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ SQLite3](#sqlite3)                           |
+| `TEST-035` | External service   | Stub the service with `wiremock`; canned responses come from golden files.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ External service](#external-service)         |
+| `TEST-036` | External service   | Test every possible server response — including failures such as `Timeout`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ External service](#external-service)         |
+| `TEST-037` | External service   | The test module lives in the same file as the client under test. Reformat the file when needed so the test module stays clear.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ External service](#external-service)         |
+| `TEST-044` | Test helpers       | A helper a test module shares lives in an inline, `#[cfg(test)]`-gated `mod test_helpers`, declared once per root file: crate-wide helpers in `src/lib/lib.rs`, helpers shared only by the descendants of one module in that module's own root (for example `src/lib/infrastructure/outbound/sqlx.rs`); never a separate helper file or module.                                                                                                                                                                                                                                                                                                                                                                     | [§ Test helpers](#test-helpers)                 |
+| `TEST-045` | Test helpers       | Adding a new shared test helper, or changing the existing helper surface, requires the developer's explicit approval (their thumbs-up on the change).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [§ Test helpers](#test-helpers)                 |
+| `TEST-046` | Factory            | Production factory structs need no dedicated test; they only wire use cases, adapters and transactions, so test the assembled parts, not the wiring.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ Factory](#factory-strategy)                  |
+| `TEST-048` | Shell script       | Shell scripts in the `script/` folder are tooling and CI glue and are exempt from the unit, integration and black-box test requirements; they are validated by their own gates — `shellcheck` and `shfmt` plus their pre-commit and CI execution — not by a test module.                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Shell script](#shell-script)                 |
+| `TEST-049` | CI / prompt assets | GitHub workflow files (`.github/workflows/*`) and the opencode agent, command and skill prompts (`.opencode/agents/*`, `.opencode/commands/*`, `.opencode/skills/*/SKILL.md`, `.agents/skills/**`) are tooling and agent configuration, not application code; they are exempt from the unit, integration and black-box test requirements. A workflow's YAML is validated by `yamllint`. The triage workflow's `gh`-driven inline prompt, its `OPENCODE_CONFIG_CONTENT` shell permission allowlist, and its effect on issues are exercised only when the workflow runs; they have no automated behavioural gate and no dry-run rehearsal — an explicit residual, validated by review rather than asserted by a test. | [§ CI and prompt assets](#ci-and-prompt-assets) |
+| `TEST-052` | Integration test   | An outbound adapter that drives a native binary is covered by an integration test in the same file; the child process is replaced by a stub executable through the adapter's test-only program seam, every child outcome is asserted, and the real binary is exercised by the container system suite.                                                                                                                                                                                                                                                                                                                                                                                                               | [§ Native binary](#native-binary)               |
+| `TEST-054` | System test        | Every system test carries the three Allure labels: `epic` for the capability, `feature` for the requirement and `story` for each scenario it proves. The suite keeps no separate scenario map or meta-test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ System test](#system-test)                   |
+| `TEST-056` | System test        | A test sleeps at most 3 s on purpose. A longer-horizon observation is reached by pre-seeding the directory the component reads at startup, never by waiting for it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ System test](#system-test)                   |
+| `TEST-057` | System test        | An operator message is matched through the suite's single constants module, never inline. A structured `event=` / `component=` field is matched where the server emits one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ System test](#system-test)                   |
+| `TEST-058` | System test        | Each test starts its own container with its own writable working directory, published on a random loopback port; no test touches another test's container or the repository working tree.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | [§ System test](#system-test)                   |
+| `TEST-059` | System test        | A refusal case asserts the refusal effect: the persisted file is byte-identical, no replacement identity is written, no `config.yaml` or datastore is created, and the secret value never reaches stdout or a log file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | [§ System test](#system-test)                   |
+| `TEST-060` | Logging test       | A test that asserts on emitted log output is annotated `#[traced_test]` from `tracing-test` and matches through `logs_contain`/`logs_assert`; it installs no subscriber of its own — no `tracing::subscriber::set_default`, no `MakeWriter`/capture writer and no `capture_logs`/`captured_logs` helper.                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Logging test](#logging-test)                 |
 
 ---
 
@@ -2713,8 +2805,8 @@ those ports are covered by the [Integration test](#integration-test) layer inste
 #### HTTP handler strategy
 
 REST handlers have no Rust unit-test module. Their routing, extraction, handler and HAL representation are exercised end
-to end by the [E2E test](#e2e-test) suite (`script/e2e.sh`) and by Schemathesis (`script/api_fuzz.sh`) against the
-served OpenAPI document. The middleware the project owns (`auth`, `hal_errors`, `rate_limit`, `trace`) keeps its own
+to end by the [system test](#system-test) suite (`script/system.sh`) and by Schemathesis (`script/api_fuzz.sh`) against
+the served OpenAPI document. The middleware the project owns (`auth`, `hal_errors`, `rate_limit`, `trace`) keeps its own
 middleware-level unit tests, and `rest.rs` keeps its OpenAPI document tests.
 
 ---
@@ -2778,34 +2870,11 @@ An outbound adapter that drives a native binary — `LocalMediaProbe` in `src/li
 runs `ffprobe` — is an outbound-port adapter, so [`TEST-027`](#integration-test) puts its integration test in the same
 file. The child process is replaced through the adapter's test-only program seam (`LocalMediaProbe::with_program`), so
 the test drives every child outcome without the binary: a success, a non-zero exit, non-JSON output, and a timeout
-([`TEST-052`](#native-binary)). The real binary is a container concern, exercised by the E2E suite, which supplies it on
-the image.
+([`TEST-052`](#native-binary)). The real binary is a container concern, exercised by the system suite, which supplies it
+on the image.
 
 Handing the staged, caller-supplied bytes to `ffprobe` is a security event governed by
 [`OBS-008`](#logging--observability); the test seam does not replace that obligation.
-
----
-
-### E2E test
-
-End-to-end tests drive the containerised server through its REST API as a black box. In CI they run against the image
-built from the repository `Dockerfile` by the `system` job in `.github/workflows/ci.yml`, which then runs the
-[configuration test](#configuration-test) suite against the same image. That job triggers on changes to Rust sources,
-Python tests, the container inputs, SQL migrations, or the workflows themselves, so a schema-only pull request is
-exercised by the black-box suite as well as by the repository integration tests (`rust`). Its report (`junit.xml`,
-best-effort) is an optional, untrusted review input, not a gate on its own.
-
-`script/e2e.sh` starts the container and mounts a fresh, writable directory at the library root the server reads
-(`/app/media`): the server never creates that root, so the harness supplies it both for the upload flow, which promotes
-into it, and for the startup scan.
-
-A golden file or a test media file the suite consumes is stored under `test/e2e/fixture/` and loaded from there by the
-test that needs it ([TEST-050](#e2e-test)); such files are kept out of the per-context test folders
-([TEST-040](#e2e-test)).
-
-A use case's catalog entry lives in the bounded-context section that owns it ([UseCases.md](UseCases.md)), and its E2E
-file sits in that context's folder ([TEST-051](#e2e-test)): UC-006 (Upload Media File) is filed under `## Asset`, so its
-file stays in `test/e2e/asset/`. `TEST-040` lists the folders a bounded context may name.
 
 ---
 
@@ -2820,18 +2889,56 @@ pull request.
 
 ---
 
-### Configuration test
+### System test
 
-Configuration tests ask one question per setting: when the operator changes it, does the server do what it promises?
-They drive the containerised image as a black box like the E2E suite, but each test starts **its own** container with
-its own writable working directory, published on a random loopback port (`TEST-058`). The image is named by
-`MNEMORIUM_IMAGE`, default `mnemorium:latest`; a test never builds it.
+System tests prove a capability's specification scenarios black box. They drive the containerised image as a black box,
+and each test starts **its own** container with its own writable working directory, published on a random loopback port
+(`TEST-058`). The image is named by `MNEMORIUM_IMAGE`, default `mnemorium:latest`; a test never builds it. One module
+per feature area sits directly under `test/system/` — `api.py`, `audio.py`, `authentication.py`, `authorization.py`,
+`configuration.py`, `cover_art.py`, `download.py`, `file.py`, `gallery.py`, `image.py`, `logging_events.py`,
+`media_ingest.py`, `metadata_enrichment.py`, `movies.py`, `music.py`, `series.py`, `state.py`, `upload.py`, `user.py`
+and `video.py`; `hal_test.py` holds the suite's HAL helper unit cases. `test/system/conftest.py` collects those
+unprefixed names because the global `python_files` patterns match none of them. Each case asserts only what an operator
+can observe: the HTTP response, standard output, the log sink and the working directory. `authorization.py` is the
+primary proof of the authorization capability and groups its scenarios by fixture; one container may serve every
+scenario in a group that shares a fixture, and a scenario that needs a different fixture starts its own.
 
-Input parsing and input rejection are not configuration-test subjects (`TEST-055`). A wrong type, an unknown key, a
-malformed environment value, a malformed seed and a domain-invalid value all fail startup in
-[§ 10 (Configuration)](#10-configuration); those cases are covered by the Rust application and integration tests that
-own the loader and the domain constructors. The suite asserts the effect of a **valid** value, plus the two semantic
-refusals the instance state owns (a seed that differs from the persisted one, and a datastore without an identity).
+Configuration has no suite of its own: resolution is proved here on cheap probes rather than on every setting, so
+`configuration.py` proves the layer order and the file's lifecycle, and `upload.py` proves the `asset.upload.*` effects,
+because each one is an upload scenario rather than a configuration-layer property. Input parsing and input rejection are
+not system-test subjects: a wrong type, an unknown key, a malformed environment value and a domain-invalid value all
+fail startup in [§ 10 (Configuration)](#10-configuration); those cases are covered by the Rust application and
+integration tests that own the loader and the domain constructors. The suite asserts the effect of a **valid** value.
+
+`state.py` starts, stops or restarts its own container in every case, so it uses the `sut` fixture directly rather than
+the shared `server` fixture. Each case carries the three Allure labels (`epic`, `feature`, `story`) so the report groups
+the proof by requirement and scenario; the suite keeps no separate scenario map or meta-test.
+
+The suite holds `/api/v1` as its only base literal, and only `harness.Sut.index` writes it. Every other route is
+resolved from the index (`Sut.href`), from a representation's named link (`link_of`, `Sut.follow`) or — when a case
+asserts a value — compared against the response's own `_links.self.href`. The permission summary is published by the
+index (`permission`), and the resource-policy and share routes extend it, so the suite builds no permission path from a
+base literal.
+
+A scenario's proof is a system test whenever the container can observe the outcome. A Rust test follows only for what
+the black box cannot reach — a failure injected into a port, a redaction mechanism, a sampling distribution or response
+timing. A declared status, content type, body shape or response header belongs to the [API fuzz test](#api-fuzz-test).
+
+When one black-box suite takes a scenario over from another, the replaced case is deleted in the same change, so one
+failure never reports twice.
+
+Every test carries the three Allure labels of § 1.5: `epic` names the capability, `feature` the requirement ID and
+`story` the scenario ID, with one `story` label per scenario a case proves. A system test stacks `@allure.epic(...)`,
+`@allure.feature(...)` and `@allure.story(...)`; a Rust test puts `#[allure_test]` above its `#[test]`/`#[tokio::test]`
+and calls `allure.epic(...)`, `allure.feature(...)` and `allure.story(...)` in the body.
+
+The authorization capability splits its proof by level. The decision engine in `src/lib/domain/service/authorization.rs`
+is a pure domain service, so its grant algebra, traversal bound, relation lend, owner/root/upload special cases and
+explanation live in its own test module. The resource, principal, grant, action and role models have no dedicated test
+and are covered by **application tests** through the use cases that construct and read them (`TEST-019`). The
+resource-and-grant read adapter is covered by **repository integration tests** (`TEST-027`–`TEST-030`). The published
+scenarios are proven black box by the **system suite** in `test/system/authorization.py`; a Rust test runs only for a
+mechanism the container cannot observe.
 
 ---
 
@@ -2857,8 +2964,8 @@ run owns the directory it populates; a build without the feature still never cre
 cargo run --features test-seed --bin server
 ```
 
-The feature is exercised by its own unit tests and by `cargo llvm-cov --features test-seed`; the standard E2E image
-stays unseeded because the existing suite asserts seed-free counts. The disposable server `script/api_fuzz.sh` starts is
+The feature is exercised by its own unit tests and by `cargo llvm-cov --features test-seed`; the standard test image
+stays unseeded because the existing suites assert seed-free counts. The disposable server `script/api_fuzz.sh` starts is
 built with both `api-docs` and `test-seed`, so Schemathesis fuzzes a populated library. The run takes its fixture
 identifiers from `schemathesis.toml`: reads address the fixed seed rows, and the provider-backed `apply` operations are
 deselected because the disposable server configures no metadata provider. One upload is completed before fuzzing, so the
@@ -2938,7 +3045,7 @@ not assert logs emitted from `spawn_blocking`, a worker thread or the `notify` w
 ### Shell script
 
 Shell scripts in the `script/` folder are tooling and CI glue, not application code, so they have no unit, integration
-or E2E test ([TEST-048](#shell-script)). Their gate is `shellcheck` and `shfmt` — the `lint:shell` and `fmt:shell`
+or black-box test ([TEST-048](#shell-script)). Their gate is `shellcheck` and `shfmt` — the `lint:shell` and `fmt:shell`
 devenv tasks — plus their own execution in pre-commit and CI.
 
 ---
@@ -2947,10 +3054,11 @@ devenv tasks — plus their own execution in pre-commit and CI.
 
 GitHub workflow files (`.github/workflows/*`) and the opencode agent, command and skill prompts (`.opencode/agents/*`,
 `.opencode/commands/*`, `.opencode/skills/*/SKILL.md`, `.agents/skills/**`) are tooling and agent configuration, not
-application code, so they have no unit, integration or E2E test module ([TEST-049](#ci-and-prompt-assets)). A workflow's
-YAML is validated by `yamllint`. The triage workflow's `gh`-driven inline prompt, its `OPENCODE_CONFIG_CONTENT` shell
-permission allowlist, and its effect on issues are exercised only when the workflow runs; they have no automated
-behavioural gate and no dry-run rehearsal — an explicit residual, validated by review rather than asserted by a test.
+application code, so they have no unit, integration or black-box test module ([TEST-049](#ci-and-prompt-assets)). A
+workflow's YAML is validated by `yamllint`. The triage workflow's `gh`-driven inline prompt, its
+`OPENCODE_CONFIG_CONTENT` shell permission allowlist, and its effect on issues are exercised only when the workflow
+runs; they have no automated behavioural gate and no dry-run rehearsal — an explicit residual, validated by review
+rather than asserted by a test.
 
 ---
 
@@ -3052,6 +3160,7 @@ Source: `Cargo.toml`.
 | [chrono](https://crates.io/crates/chrono)                         | Date and time library for Rust.                                                 | 0.4.45  | MIT OR Apache-2.0 |
 | [email_address](https://crates.io/crates/email_address)           | RFC-compliant `EmailAddress` newtype.                                           | 0.2.9   | MIT               |
 | [envy](https://crates.io/crates/envy)                             | Deserializes a struct from prefixed environment variables.                      | 0.4.2   | MIT               |
+| [governor](https://crates.io/crates/governor)                     | Rate-limiting quotas and keyed state behind the login limiters.                 | 0.10.4  | MIT               |
 | [image](https://crates.io/crates/image)                           | Image decoding and metadata: dimensions and EXIF orientation.                   | 0.25.10 | MIT OR Apache-2.0 |
 | [infer](https://crates.io/crates/infer)                           | Infers a file type from its magic number signature.                             | 0.22.0  | MIT               |
 | [jsonwebtoken](https://crates.io/crates/jsonwebtoken)             | Creates and decodes JWTs in a strongly typed way.                               | 11.0.0  | MIT               |
@@ -3096,32 +3205,39 @@ Source: `Cargo.toml`.
 
 Source: `devenv.nix`.
 
-| Name                                                              | Description                                                             | Version | License |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------- | ------- | ------- |
-| [betterleaks](https://github.com/dortort/betterleaks)             | Secret scanning in pre-commit and CI.                                   | 1.8.1   | TODO    |
-| [cargo-about](https://github.com/EmbarkStudios/cargo-about)       | Generates the third-party license notices in `THIRD_PARTY_NOTICES.txt`. | 0.9.0   | TODO    |
-| [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)         | Audits `Cargo.lock` for advisories, licenses, bans, and sources.        | 0.20.2  | TODO    |
-| [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov)       | Coverage instrumentation and reporting for Rust.                        | 0.9.0   | TODO    |
-| [cargo-machete](https://github.com/bnjbvr/cargo-machete)          | Reports direct dependencies no source file uses; pre-commit and CI.     | 0.9.2   | MIT     |
-| [ffmpeg-headless](https://ffmpeg.org/)                            | Headless FFmpeg build providing the `ffprobe` binary.                   | 6.1.2   | TODO    |
-| [git](https://git-scm.com/)                                       | Version control.                                                        | 2.55.0  | TODO    |
-| [llvm](https://llvm.org/)                                         | LLVM tools used by coverage (`llvm-cov`, `llvm-profdata`).              | 21.1.8  | TODO    |
-| [ls-lint](https://ls-lint.org/)                                   | File and directory naming linter.                                       | 2.3.1   | TODO    |
-| [nixfmt](https://github.com/NixOS/nixfmt)                         | Nix code formatter.                                                     | 1.4.0   | TODO    |
-| [nodejs](https://nodejs.org/)                                     | Node.js runtime for tooling.                                            | 24.19.0 | TODO    |
-| [prettier](https://prettier.io/)                                  | Markdown formatter.                                                     | 3.8.3   | TODO    |
-| [Python toolchain](https://www.python.org/)                       | Python runtime for tooling and tests.                                   | 3.14.6  | TODO    |
-| [Rust toolchain](https://www.rust-lang.org/)                      | Rust compiler and standard tooling.                                     | 1.98.0  | TODO    |
-| [schemathesis](https://github.com/schemathesis/schemathesis)      | Property-based API tests against the served OpenAPI document.           | 4.33.1  | MIT     |
-| [semgrep](https://semgrep.dev/)                                   | Static-analysis (SAST) scanner; CI and the `security:semgrep` task.     | 1.172.0 | TODO    |
-| [shellcheck](https://github.com/koalaman/shellcheck)              | Shell script linter.                                                    | 0.11.0  | TODO    |
-| [shfmt](https://github.com/mvdan/sh)                              | Shell script formatter.                                                 | 3.13.1  | TODO    |
-| [sqlfluff](https://sqlfluff.com/)                                 | SQL linter and formatter (SQLite dialect).                              | 4.3.0   | TODO    |
-| [sqlite](https://sqlite.org/)                                     | SQLite command-line shell.                                              | 3.51.2  | TODO    |
-| [sqlx-cli](https://github.com/launchbadge/sqlx)                   | SQLx migrations and database CLI.                                       | 0.9.0   | TODO    |
-| [taplo](https://taplo.tamasfe.dev/)                               | TOML formatter.                                                         | 0.10.0  | TODO    |
-| [xdg-utils](https://www.freedesktop.org/wiki/Software/xdg-utils/) | Desktop integration helpers (opens reports in a browser).               | 1.2.1   | TODO    |
-| [yamllint](https://github.com/adrienverge/yamllint)               | YAML linter.                                                            | 1.37.1  | TODO    |
+| Name                                                              | Description                                                                                                           | Version | License    |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------- | ---------- |
+| [allure](https://github.com/allure-framework/allure3)             | Allure Report CLI for the results the black-box suites emit.                                                          | 3.33.0  | Apache-2.0 |
+| [betterleaks](https://github.com/dortort/betterleaks)             | Secret scanning in pre-commit and CI.                                                                                 | 1.8.1   | TODO       |
+| [cargo-about](https://github.com/EmbarkStudios/cargo-about)       | Generates the third-party license notices in `THIRD_PARTY_NOTICES.txt`.                                               | 0.9.0   | TODO       |
+| [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)         | Audits `Cargo.lock` for advisories, licenses, bans, and sources.                                                      | 0.20.2  | TODO       |
+| [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov)       | Coverage instrumentation and reporting for Rust.                                                                      | 0.9.0   | TODO       |
+| [cargo-machete](https://github.com/bnjbvr/cargo-machete)          | Reports direct dependencies no source file uses; pre-commit and CI.                                                   | 0.9.2   | MIT        |
+| [ffmpeg-headless](https://ffmpeg.org/)                            | Headless FFmpeg build providing the `ffprobe` binary.                                                                 | 6.1.2   | TODO       |
+| [git](https://git-scm.com/)                                       | Version control.                                                                                                      | 2.55.0  | TODO       |
+| [llvm](https://llvm.org/)                                         | LLVM tools used by coverage (`llvm-cov`, `llvm-profdata`).                                                            | 21.1.8  | TODO       |
+| [ls-lint](https://ls-lint.org/)                                   | File and directory naming linter.                                                                                     | 2.3.1   | TODO       |
+| [nixfmt](https://github.com/NixOS/nixfmt)                         | Nix code formatter.                                                                                                   | 1.4.0   | TODO       |
+| [nodejs](https://nodejs.org/)                                     | Node.js runtime for tooling.                                                                                          | 24.19.0 | TODO       |
+| [prettier](https://prettier.io/)                                  | Markdown formatter.                                                                                                   | 3.8.3   | TODO       |
+| [Python toolchain](https://www.python.org/)                       | Python runtime for tooling and tests.                                                                                 | 3.14.6  | TODO       |
+| [Rust toolchain](https://www.rust-lang.org/)                      | Rust compiler and standard tooling.                                                                                   | 1.98.0  | TODO       |
+| [schemathesis](https://github.com/schemathesis/schemathesis)      | Property-based API tests against the served OpenAPI document.                                                         | 4.33.1  | MIT        |
+| [semgrep](https://semgrep.dev/)                                   | Static-analysis (SAST) scanner; CI and the `security:semgrep` task, with the repository rules in `security/semgrep/`. | 1.172.0 | TODO       |
+| [shellcheck](https://github.com/koalaman/shellcheck)              | Shell script linter.                                                                                                  | 0.11.0  | TODO       |
+| [shfmt](https://github.com/mvdan/sh)                              | Shell script formatter.                                                                                               | 3.13.1  | TODO       |
+| [sqlfluff](https://sqlfluff.com/)                                 | SQL linter and formatter (SQLite dialect).                                                                            | 4.3.0   | TODO       |
+| [sqlite](https://sqlite.org/)                                     | SQLite command-line shell.                                                                                            | 3.51.2  | TODO       |
+| [sqlx-cli](https://github.com/launchbadge/sqlx)                   | SQLx migrations and database CLI.                                                                                     | 0.9.0   | TODO       |
+| [taplo](https://taplo.tamasfe.dev/)                               | TOML formatter.                                                                                                       | 0.10.0  | TODO       |
+| [xdg-utils](https://www.freedesktop.org/wiki/Software/xdg-utils/) | Desktop integration helpers (opens reports in a browser).                                                             | 1.2.1   | TODO       |
+| [yamllint](https://github.com/adrienverge/yamllint)               | YAML linter.                                                                                                          | 1.37.1  | TODO       |
+
+The repository rules in `security/semgrep/` complement the registry packs with the checks that name this server's own
+sinks: SQL interpolation, process spawns, secret-bearing logs, JWT validation, path joins, file modes, weak randomness
+and password hashing, direct stdout, body limits and client-sized allocations. A rule's `severity` is its gate: an
+`ERROR` finding fails the `semgrep` CI job, while a `WARNING` finding is reported in the SARIF artifact without failing
+until the finding it names is remediated.
 
 ---
 
@@ -3162,7 +3278,7 @@ Source: `.github/workflows/*`.
 | [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO                                                     | v31     | TODO       |
 | [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO                                                     | 9.3.1   | TODO       |
 | [DavidAnson/markdownlint-cli2-action](https://github.com/DavidAnson/markdownlint-cli2-action)                          | TODO                                                     | v24     | TODO       |
-| [docker/build-push-action](https://github.com/docker/build-push-action)                                                | Builds the E2E image with a local BuildKit cache.        | v7      | Apache-2.0 |
+| [docker/build-push-action](https://github.com/docker/build-push-action)                                                | Builds the test image with a local BuildKit cache.       | v7      | Apache-2.0 |
 | [docker/login-action](https://github.com/docker/login-action)                                                          | TODO                                                     | v4      | TODO       |
 | [docker/setup-buildx-action](https://github.com/docker/setup-buildx-action)                                            | BuildKit builder setup for cached image builds.          | v4      | Apache-2.0 |
 | [dortort/betterleaks-action](https://github.com/dortort/betterleaks-action)                                            | TODO                                                     | v0.1.0  | TODO       |
@@ -3247,7 +3363,6 @@ longest-prefix match, and every scope owns at least one path. Adding or removing
 | Code    | `server`         | `src/bin/**`                              | Server binaries                 |
 | Code    | `server`         | `src/lib/app.rs`                          | Composition root                |
 | Tests   | `test-e2e`       | `test/**`                                 | Tests                           |
-| Tests   | `test-config`    | `test/configuration/**`                   | Configuration tests             |
 | Docs    | `user`           | `README.md`                               | Repository README               |
 | Docs    | `user`           | `docs/index.md`                           | Documentation home page         |
 | Docs    | `user`           | `docs/Permissions.md`                     | Permissions guide               |
@@ -3291,6 +3406,8 @@ longest-prefix match, and every scope owns at least one path. Adding or removing
 | Tooling | `devops`         | `Dockerfile`                              | Container build                 |
 | Tooling | `devops`         | `.dockerignore`                           | Build-context ignore rules      |
 | Tooling | `devops`         | `script/**`                               | Repository scripts              |
+| Tooling | `devops`         | `security/**`                             | Security scan configuration     |
+| Tooling | `devops`         | `.semgrepignore`                          | Semgrep ignore rules            |
 
 Two things are exempt because the release tooling generates them and they bypass the pull-request gate: a bot commit
 (semantic-release, `github-actions[bot]`) and the generated `CHANGELOG.md`. Neither carries a scope.
@@ -3560,9 +3677,8 @@ The post conditions state what the business guarantees once the use case succeed
 
 The entry states intent and outcome; its acceptance criteria are not part of it. A rule about what the input must
 satisfy, what may never be deleted or when a name is unique belongs to the specification of the capability — the
-OpenSpec requirement that owns it — and to the E2E test that covers it (`TEST-039`). Do not add a `Business rules`
-field, and do not restate a specification rule in a flow: when a rule changes the outcome, change the flow and the
-specification together.
+OpenSpec requirement that owns it. Do not add a `Business rules` field, and do not restate a specification rule in a
+flow: when a rule changes the outcome, change the flow and the specification together.
 
 #### 5.7 Business vocabulary (`DOC-007`)
 
@@ -3609,8 +3725,6 @@ A use case is done when all of the following hold:
 - the parameters list the event's data in business terms;
 - no removed field appears, and no field — `Trigger` included — names the wire, the storage or the implementation;
 - the use case appears in its section's diagram (§ 6);
-- the E2E file `test/e2e/<context>/uc<seq>_<name>.py` exists, or its absence is recorded as an exemption in
-  `rule_enforcer.yaml` (`TEST-039`);
 - `script/rule_enforcer.sh check` passes.
 
 #### 5.9 Worked example
@@ -3700,23 +3814,25 @@ keeps the GitHub-style links to this section resolvable in the published mkdocs 
 
 ## Logging & Observability
 
-This section governs what the server logs, from which layer, at what severity, and what must never reach a log sink. It
-complements the error model in [§ 1 (Code Style Guidelines)](#2-error-handling): that detail describes how an error is
-abstracted as it crosses a boundary; this section describes where it is logged on the way up. A logging obligation lives
-only here — a rule in another section cites an `OBS-*` rule, it never restates one. The section also owns the
-trust-boundary obligation for an adapter that hands untrusted content to an external native parser, since such a parser
-is a security event source (`OBS-008`).
+This section holds the `OBS-*` rules the rest of the rulebook cites. The logging contract itself is normative in the
+`logging` capability (`openspec/specs/logging/spec.md`): its requirements state the two sinks and their rotation, the
+verbosity control and its non-suppressible floor, the emitting layers, the once-only rule, log content and redaction,
+the five severities, and the closed security-event catalog. Each rule below states the obligation the build enforces and
+names the requirement it cites instead of restating it. A logging obligation lives only in that capability — a rule in
+another section cites an `OBS-*` rule, it never restates one. The section also owns the trust-boundary obligation for an
+adapter that hands untrusted content to an external native parser, since such a parser is a security event source
+(`OBS-008`).
 
-| ID        | Section         | Rule                                                                                                                                                                                                                                                                             | More info                                     |
-| --------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `OBS-001` | Layers          | Emit log events only from the application and infrastructure layers. The domain returns errors as values and never logs; the composition root is infrastructure and may log lifecycle events.                                                                                    | [§ 1](#1-logging-layers)                      |
-| `OBS-002` | Ownership       | Log each error or security event exactly once, at the layer that owns the decision that produced it or that still holds its detail; every layer above maps it to a coarser form and never logs it again.                                                                         | [§ 2](#2-log-once-at-the-owning-layer)        |
-| `OBS-003` | Content         | Log a stable classification — an event code or a `kind()` — never the `Display`/`Debug` of an extractor, deserializer, database, filesystem or framework error, and never a raw client-supplied value such as a query string, file name or request-body field.                   | [§ 3](#3-log-content)                         |
-| `OBS-004` | Redaction       | Never log application source, session identifiers, access or JWT tokens, passwords or password material, database connection strings, the pepper or JWT signing secret, or personal data; a type that holds a secret must not derive a `Debug` that exposes it.                  | [§ 4](#4-redaction)                           |
-| `OBS-005` | Severity        | Use only the levels `error`, `warn`, `info`, `debug` and `trace`, assigned per [§ 5](#5-severity); `error` is an operator-actionable fault, `warn` a reviewable security event, `info` a security success or lifecycle event.                                                    | [§ 5](#5-severity)                            |
-| `OBS-006` | Catalog         | Emit every event in the catalog in [§ 6](#6-security-event-catalog) at its declared level and with its declared fields; a `security`-target event must be one the catalog declares.                                                                                              | [§ 6](#6-security-event-catalog)              |
-| `OBS-007` | Suppression     | Security events target the reserved `security` target; `Logging::try_new` rejects `off`/`none` as a whole-level value and any directive that targets `security`, and `logging::setup` appends the non-suppressible floor, so `logging.level` can never suppress a catalog event. | [§ 7](#7-non-suppressible-security-events)    |
-| `OBS-008` | Untrusted input | An adapter that hands caller-supplied content to an external native parser restricts the protocols it may open to an explicit allow-list, bounds the child's wall clock and output, and records the residual isolation gap rather than implying the parser is sandboxed.         | [§ 8](#8-external-parsers-on-untrusted-input) |
+| ID        | Section         | Rule                                                                                                                                                                                                                                                                                                     | More info                                     |
+| --------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `OBS-001` | Layers          | Emit log events only from the application and infrastructure layers; the domain returns errors as values and emits none, and the composition root is infrastructure — `logging` `REQ-LOGGING-005`.                                                                                                       | [§ 1](#1-logging-layers)                      |
+| `OBS-002` | Ownership       | Record each error or security event exactly once, at the layer that owns the decision that produced it or that still holds its detail; every layer above maps it to a coarser form without recording it again — `logging` `REQ-LOGGING-006`.                                                             | [§ 2](#2-log-once-at-the-owning-layer)        |
+| `OBS-003` | Content         | Carry a stable classification — an event code or a `kind()` — and structured identifiers, never the rendered message of a framework, extractor, deserializer, database or filesystem error, and never a raw client-supplied query string, file name or request-body value — `logging` `REQ-LOGGING-007`. | [§ 3](#3-log-content)                         |
+| `OBS-004` | Redaction       | Never record application source, session identifiers, access tokens, passwords or password material, database connection strings, the pepper, the signing secret or personal data; a type holding one must not expose it through `Debug` — `logging` `REQ-LOGGING-008`.                                  | [§ 4](#4-redaction)                           |
+| `OBS-005` | Severity        | Use only `error`, `warn`, `info`, `debug` and `trace` with the meanings the capability declares; an expected business rejection is never `error` — `logging` `REQ-LOGGING-009`.                                                                                                                          | [§ 5](#5-severity)                            |
+| `OBS-006` | Catalog         | Emit only events the security-event catalog in [§ 6](#6-security-event-catalog) declares, at the declared severity and with exactly the declared fields, and emit every declared event — `logging` `REQ-LOGGING-010`.                                                                                    | [§ 6](#6-security-event-catalog)              |
+| `OBS-007` | Suppression     | Emit every catalogued event on the reserved `security` target under a floor no configured verbosity can undercut; `Logging::try_new` rejects `off`/`none` and any directive that targets `security` — `logging` `REQ-LOGGING-004`.                                                                       | [§ 7](#7-non-suppressible-security-events)    |
+| `OBS-008` | Untrusted input | An adapter that hands caller-supplied content to an external native parser restricts the protocols it may open to an explicit allow-list, bounds the child's wall clock and output, and records the residual isolation gap rather than implying the parser is sandboxed.                                 | [§ 8](#8-external-parsers-on-untrusted-input) |
 
 ---
 
@@ -3806,62 +3922,12 @@ the same way.
 
 ### 6. Security-event catalog
 
-These events are normative: each is emitted at its declared level with its declared fields, and a `security`-target
-event must be one this catalog declares. A field is an identifier, a code or a classification — never a value. Each
-owning layer writes its emission inline with the `tracing` macro; this table is the single catalog, and `check_obs_006`
-verifies every emission site against it.
-
-| Event                            | Level   | Fields                                                                             | Emitted when                                                                                |
-| -------------------------------- | ------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `input_validation_failed`        | `warn`  | `field`, `reason`                                                                  | a client-supplied value fails validation in a handler or use case                           |
-| `enum_validation_failed`         | `warn`  | `field`, `reason`                                                                  | a discrete, finite list (for example `Role`) rejects a value                                |
-| `output_validation_failed`       | `warn`  | `reason`                                                                           | stored data fails to decode, or an integrity check fails                                    |
-| `authn_succeeded`                | `info`  | `actor`                                                                            | a credential is accepted                                                                    |
-| `authn_failed`                   | `warn`  | `claimed_identity`, `reason`                                                       | a credential is rejected; one reason, never distinguishing a bad identity from a bad secret |
-| `authz_failed`                   | `warn`  | `actor`, `action`, `target`                                                        | an authorization decision denies an action                                                  |
-| `session_validation_failed`      | `warn`  | `reason`                                                                           | a token is missing, invalid or expired                                                      |
-| `rate_limit_exceeded`            | `warn`  | `route`, `reason`                                                                  | a request is rejected by a rate limiter                                                     |
-| `limit_exceeded`                 | `warn`  | `source`, `reason`                                                                 | a request body or query string exceeds a configured size limit                              |
-| `metadata_provider_fallback`     | `warn`  | `provider`, `classification`                                                       | a metadata provider is skipped because of a classified failure                              |
-| `metadata_provider_unconfigured` | `warn`  | `provider`                                                                         | a lookup names a metadata provider that is not configured                                   |
-| `metadata_genre_unmatched`       | `debug` | `count`                                                                            | a metadata provider reports a genre outside the shared vocabulary                           |
-| `metadata_artwork_failed`        | `warn`  | `provider`, `reason`                                                               | artwork a provider reports cannot be downloaded or accepted                                 |
-| `deserialization_failed`         | `warn`  | `source`, `reason`                                                                 | a JSON body or the configuration fails to deserialize                                       |
-| `extractor_fault`                | `error` | `reason`                                                                           | an inbound extractor rejects a request for a server-side fault                              |
-| `ingest`                         | `info`  | `registered`, `completed`, `untouched`, `changed`, `missing`, `removed`, `skipped` | a library ingest operation (scan or observed change) finishes; never a file name or path    |
-| `ingest_fault`                   | `warn`  | `kind`, `operation`                                                                | the change observer degraded (a failed watch registration, a watcher error or overflow)     |
-| `application_error`              | `error` | `operation`                                                                        | a use case originates an internal `Unknown`                                                 |
-| `port_fault`                     | `error` | `kind`, `operation`                                                                | an outbound adapter maps a dependency failure                                               |
-| `constraint_rejected`            | `warn`  | `kind`, `operation`                                                                | an outbound adapter maps an expected constraint to a business result                        |
-| `token_provider_fault`           | `error` | `kind`                                                                             | the inbound token boundary receives an operational fault from the token provider            |
-| `lifecycle`                      | `info`  | `component`, `outcome`                                                             | startup, shutdown or logging initialization                                                 |
-| `user_admin`                     | `info`  | `actor`, `action`, `target`                                                        | a user is created, updated or deleted, a role or credential changes                         |
-| `secret_initialized`             | `info`  | `component`                                                                        | the pepper or the signing secret is generated when the instance identity is created         |
-| `credential_rotated`             | `info`  | `actor`                                                                            | a password is replaced or rehashed                                                          |
-| `upload`                         | `info`  | `actor`, `upload`, `outcome`                                                       | an upload is accepted, a chunk written, an upload completed or cancelled                    |
-| `upload_reap`                    | `info`  | `expired`, `orphaned`, `unsealed`                                                  | an upload reaping run finishes; aggregate counts only, never a file name or path            |
-| `suspicious_business_logic`      | `warn`  | `actor`, `action`, `reason`                                                        | an action is out of order, nonsensical in context, or exceeds a limit                       |
-| `sensitive_data_access`          | `debug` | `actor`, `object`                                                                  | a request reads personal data                                                               |
-| `system_object`                  | `info`  | `object`, `action`                                                                 | a system-level object is created (the instance identity, the Root Admin)                    |
-| `unexpected_http_method`         | `warn`  | `method`, `path`                                                                   | a request uses a method the route does not support                                          |
-
-The `authz_failed` fields are a closed vocabulary shared with the permission catalog (`docs/Permissions.md`). `action`
-is the denied action's verb, one of `read`, `moderate`, `manage`, `use`, `write`, `update`, `update_role`, `create`,
-`delete` or `patch_credential`; `target` is its target, one of `library`, `gallery`, `playlist`, `file`, `upload` or
-`user`. The `Authorization` domain service names both, and the application use case that loads the caller, the caller's
-permissions and the resource emits exactly one event per denied decision before mapping the denial. A collection filter
-that drops an item by asking the same service is a negative decision, not a denial, so it emits no event.
-
-An explicit, narrow exception to the field rule above: `authn_failed.claimed_identity` is the submitted username,
-because it is the only identity available when authentication fails and no identifier can stand in for it. The field
-escapes control characters and bounds its length, so it cannot forge a log record (`OBS-003`); `OBS-003` and `OBS-004`
-remain in force for every other event: they still forbid a raw client-supplied request-body field and personal data.
-
-A transport body- or query-size rejection is `limit_exceeded`; an application-declared business-limit rejection is
-`suspicious_business_logic`.
-
-Events with no surface in this server are deliberately absent: import/export, network and TLS failures, payment,
-geolocation and consent, fraud, excessive use, and key rotation.
+The security-event catalog is normative in the `logging` capability. `REQ-LOGGING-010` states the closed set, the
+reserved `security` target and the declared severity and fields; the table it introduces, `The security-event catalog:`,
+declares each event's severity, fields and recorded-when condition, including `upload` and `upload_reap` from the
+`upload` capability. `OBS-006` cites that requirement, and `check_obs_006` parses the table from
+`openspec/specs/logging/spec.md` and verifies every emission site against it, so a `security`-target event the catalog
+does not declare fails the build.
 
 ---
 
@@ -3931,6 +3997,8 @@ key, or an access token. The canonical set is the one `OBS-004` names — `Insta
 
 A raw secret supplied _in_ a request body — a login password — is an input, not a secret-bearing struct. It is governed
 by the endpoint's own authentication requirement and by the log-content rules (`OBS-003`, `OBS-004`), not by `SEC-001`.
+
+---
 
 ---
 

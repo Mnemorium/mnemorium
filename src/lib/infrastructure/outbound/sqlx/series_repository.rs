@@ -1080,7 +1080,7 @@ mod tests {
         assert_eq!(
             second_season.cover_image_id(),
             None,
-            "a season must not inherit its show's cover"
+            "the repository reports the season's stored cover, not its show's"
         );
         Ok(())
     }

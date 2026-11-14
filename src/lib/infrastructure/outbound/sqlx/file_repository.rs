@@ -113,13 +113,30 @@ impl FileRepository for SqlxFileRepository<'_> {
 
     async fn save(&mut self, file: File) -> Result<File, RepositoryError> {
         let row = sqlx::query_as::<_, SqlxFile>(
-            "INSERT INTO file (file_id, path, is_public, integrity_hash)
-             VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT (file_id) DO UPDATE SET
+            "INSERT INTO file (
+                file_id,
+                path,
+                user_id,
+                is_public,
+                mime_type_id,
+                uploaded_at,
+                size_bytes,
+                modified_at,
+                origin,
+                integrity_hash
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            ON CONFLICT (file_id) DO UPDATE SET
                 path = excluded.path,
+                user_id = excluded.user_id,
                 is_public = excluded.is_public,
+                mime_type_id = excluded.mime_type_id,
+                uploaded_at = excluded.uploaded_at,
+                size_bytes = excluded.size_bytes,
+                modified_at = excluded.modified_at,
+                origin = excluded.origin,
                 integrity_hash = excluded.integrity_hash
-             RETURNING
+            RETURNING
                 file_id,
                 path,
                 user_id,
@@ -133,11 +150,16 @@ impl FileRepository for SqlxFileRepository<'_> {
         )
         .bind(file.id())
         .bind(file.path())
+        .bind(file.user_id())
         .bind(file.is_public())
+        .bind(file.mime_type_id())
+        .bind(file.uploaded_at())
+        .bind(file.size_bytes())
+        .bind(file.modified_at())
+        .bind(file.origin().as_str())
         .bind(file.integrity_hash().map(IntegrityHash::as_str))
-        .fetch_optional(&mut **self.transaction)
-        .await?
-        .ok_or(RepositoryError::OperationFailed)?;
+        .fetch_one(&mut **self.transaction)
+        .await?;
 
         domain_file(row)
     }
@@ -717,6 +739,63 @@ mod tests {
         assert_eq!(persisted.origin(), Origin::Scanned);
         assert_eq!(persisted.size_bytes(), 2048);
         assert_eq!(found.first(), Some(&persisted));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn save_moves_an_existing_record_to_a_new_path() -> Result<(), Box<dyn Error>> {
+        // Arrange: a scanned file already recorded under its old location.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 100, "found/clip.mp4", 1).await?;
+        let mut repository = SqlxFileRepository::new(&mut transaction);
+        let mut record = repository
+            .search(&FileFilter {
+                id: Some(100),
+                ..FileFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next()
+            .ok_or("the seeded file was not found")?;
+        record.set_path("found/renamed.mp4".to_owned())?;
+
+        // Act
+        let saved = repository.save(record).await?;
+        let found = repository
+            .search(&FileFilter {
+                id: Some(100),
+                ..FileFilter::default()
+            })
+            .await?;
+
+        // Assert: the location moved and the row kept its other columns.
+        assert_eq!(saved.path(), "found/renamed.mp4");
+        assert_eq!(found.first().map(File::path), Some("found/renamed.mp4"));
+        assert_eq!(found.first().map(File::size_bytes), Some(10));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn save_a_missing_record_inserts_it() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let pending = scanned(999, "found/missing.mp4", 1)?;
+
+        // Act: `save` is an upsert by identity.
+        let mut repository = SqlxFileRepository::new(&mut transaction);
+        let saved = repository.save(pending).await?;
+        let found = repository
+            .search(&FileFilter {
+                id: Some(999),
+                ..FileFilter::default()
+            })
+            .await?;
+
+        // Assert
+        assert_eq!(saved.id(), 999);
+        assert_eq!(found.first().map(File::path), Some("found/missing.mp4"));
         Ok(())
     }
 

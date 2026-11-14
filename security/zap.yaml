@@ -1,0 +1,72 @@
+---
+# OWASP ZAP Automation Framework plan for a disposable Mnemorium server.
+#
+# `script/zap_scan.sh` is the supported runner: it starts a seeded server in a
+# temporary directory, captures the one-time Root Admin password, exports
+# TARGET_URL and ROOT_ADMIN_PASSWORD, and mounts this file at
+# /zap/wrk/zap.yaml. The active scanner is destructive, so never point this
+# plan at an instance whose data matters.
+env:
+  contexts:
+    - name: mnemorium
+      urls:
+        - ${TARGET_URL}
+      authentication:
+        method: json
+        parameters:
+          # A cheap page for ZAP's cookie-renewal request before the login.
+          loginPageUrl: ${TARGET_URL}/health
+          loginRequestUrl: ${TARGET_URL}/api/v1/identity/login
+          # ZAP substitutes the user's credentials for these placeholders and
+          # JSON-escapes both values before sending the login request.
+          loginRequestBody: '{"username":"{%username%}","password":"{%password%}"}'
+      sessionManagement:
+        method: headers
+        parameters:
+          Authorization: "Bearer {%json:access_token%}"
+      users:
+        - name: root
+          credentials:
+            username: root
+            password: ${ROOT_ADMIN_PASSWORD}
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+    maxDuration: 3600
+jobs:
+  # Retrieve the served document and seed the sites tree with every operation.
+  # `targetUrl` replaces the document's `0.0.0.0` authority while each
+  # operation keeps its own server path: `/health` at the root and the contexts
+  # under `/api/v1`.
+  - type: openapi
+    parameters:
+      apiUrl: ${TARGET_URL}/doc/openapi.json
+      targetUrl: ${TARGET_URL}
+      context: mnemorium
+      user: root
+  - type: activeScan
+    parameters:
+      context: mnemorium
+      user: root
+      # `script/zap_scan.sh` rewrites this line when QUICK=1 or ZAP_POLICY is
+      # set; an empty value runs the scanner's default policy.
+      policy: ""
+      threadPerHost: 4
+      maxRuleDurationInMins: 3
+      maxScanDurationInMins: 30
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+  - type: report
+    parameters:
+      template: risk-confidence-html
+      reportDir: /zap/wrk/reports
+      reportFile: zap-report
+      reportTitle: Mnemorium API scan
+  - type: report
+    parameters:
+      template: traditional-json
+      reportDir: /zap/wrk/reports
+      reportFile: zap-report
+      reportTitle: Mnemorium API scan

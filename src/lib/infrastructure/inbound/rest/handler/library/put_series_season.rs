@@ -26,9 +26,9 @@ pub(crate) struct PutSeriesSeasonRequest {
 
 /// Create or replace a show season.
 ///
-/// Only a caller whose `library.manage` scope covers the whole catalogue may
-/// write it. The write is idempotent by index: a free index creates the season
-/// and an existing index replaces its metadata, keeping its episodes.
+/// Writing a season requires the `CreateChild` action on the show with the
+/// season child kind. The write is idempotent by index: a free index creates the
+/// season and an existing index replaces its metadata, keeping its episodes.
 #[utoipa::path(
     put,
     operation_id = "put_series_season",

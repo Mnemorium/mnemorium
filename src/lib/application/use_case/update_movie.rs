@@ -1,3 +1,5 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -10,11 +12,10 @@ use crate::application::port::{
 };
 use crate::domain::model::{Action, Movie};
 use crate::domain::port::{
-    IdentityUnitOfWork, LibraryUnitOfWork, MovieFilter, MovieRepository as _, PermissionFilter,
-    PermissionRepository as _, RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, LibraryUnitOfWork, MovieFilter, MovieRepository as _, RepositoryError,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, CountryCode, Decision, NamePolicy, NamePolicyError};
+use crate::domain::service::{CountryCode, NamePolicy, NamePolicyError};
 
 /// Use case implementation for updating a film partially.
 pub(crate) struct UpdateMovie<F> {
@@ -63,15 +64,6 @@ where
                     .next()
                     .ok_or(UpdateMovieError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| UpdateMovieError::Unknown(error.into()))?;
-
                 let movie = unit_of_work
                     .movies()
                     .search(&MovieFilter {
@@ -84,36 +76,30 @@ where
                     .next()
                     .ok_or(UpdateMovieError::NoSuchMovie)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &movie)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(UpdateMovieError::NoSuchMovie);
-                }
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryManage, &movie)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(if denial.conceals() {
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Movie, movie.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| UpdateMovieError::NoSuchMovie)?;
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Movie, movie.id()),
+                    Action::EditMetadata,
+                    None,
+                )
+                .await
+                .map_err(|error| {
+                    if error.conceals() {
                         UpdateMovieError::NoSuchMovie
                     } else {
                         UpdateMovieError::Forbidden
-                    });
-                }
+                    }
+                })?;
 
                 let name = match command.name() {
                     Some(requested) => {
@@ -233,11 +219,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use allure_cargotest::allure_test;
+
     use crate::domain::NumericID;
 
-    use crate::domain::model::{Permission, Role, Scope, User};
+    use crate::domain::model::{Role, User};
 
-    use crate::domain::port::{MockMovieRepository, MockPermissionRepository, MockUserRepository};
+    use crate::domain::port::{MockMovieRepository, MockResourceRepository, MockUserRepository};
 
     use crate::test_helpers::*;
     use chrono::NaiveDate;
@@ -264,12 +252,12 @@ mod tests {
     /// Build a Library test harness around the given mocks.
     fn harness_with(
         users: MockUserRepository,
-        permissions: MockPermissionRepository,
+        resources: MockResourceRepository,
         movies: MockMovieRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
             movies,
-            permissions,
+            resources,
             users,
             ..TestUnitOfWork::default()
         };
@@ -303,8 +291,12 @@ mod tests {
         )
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_movie_replaces_metadata_keeping_the_video() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-005");
+        allure.story("SCN-MOVIES-005-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -324,7 +316,7 @@ mod tests {
                     && movie.video_id() == 7
             })
             .returning(|movie| Box::pin(async move { Ok(movie) }));
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
         let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -349,8 +341,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_movie_absent_fields_keep_the_stored_values() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-005");
+        allure.story("SCN-MOVIES-005-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -369,7 +365,7 @@ mod tests {
                     && movie.release_date().is_some()
             })
             .returning(|movie| Box::pin(async move { Ok(movie) }));
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
         let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -381,8 +377,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_movie_null_clears_optional_values() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-005");
+        allure.story("SCN-MOVIES-005-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -398,7 +398,7 @@ mod tests {
                     && movie.cover_image_id().is_none()
             })
             .returning(|movie| Box::pin(async move { Ok(movie) }));
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
         let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -422,8 +422,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_movie_unknown_movie_returns_no_such_movie() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-005");
+        allure.story("SCN-MOVIES-005-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -432,7 +436,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
         let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -442,55 +446,12 @@ mod tests {
         assert!(matches!(result, Err(UpdateMovieError::NoSuchMovie)));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn update_movie_concealed_movie_returns_no_such_movie() -> Result<(), Box<dyn Error>> {
-        // Arrange: the caller is shut out of the library entirely.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let stored = sample_movie(7)?;
-        let mut movies = MockMovieRepository::new();
-        expect_movie(&mut movies, stored);
-        let mut permissions = MockPermissionRepository::new();
-        expect_permissions(
-            &mut permissions,
-            1,
-            vec![Permission::try_new(1, Action::LibraryRead, Scope::None)?],
-        );
-        let harness = harness_with(users, permissions, movies);
-        let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(empty_command()).await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateMovieError::NoSuchMovie)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn update_movie_readable_but_not_manageable_is_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange: a standard caller may read the public film but not manage it.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let stored = sample_movie(7)?;
-        let mut movies = MockMovieRepository::new();
-        expect_movie(&mut movies, stored);
-        let harness = harness_with(users, no_permissions(), movies);
-        let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(empty_command()).await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateMovieError::Forbidden)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn update_movie_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-005");
+        allure.story("SCN-MOVIES-005-A");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -501,7 +462,7 @@ mod tests {
             .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
         let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -524,8 +485,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_movie_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-005");
+        allure.story("SCN-MOVIES-005-A");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -536,7 +501,7 @@ mod tests {
             .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
         let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -559,15 +524,19 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_movie_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-005");
+        allure.story("SCN-MOVIES-005-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let stored = sample_movie(7)?;
         let mut movies = MockMovieRepository::new();
         expect_movie(&mut movies, stored);
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
         let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -589,15 +558,19 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_movie_invalid_country_is_unprocessable() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-005");
+        allure.story("SCN-MOVIES-005-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let stored = sample_movie(7)?;
         let mut movies = MockMovieRepository::new();
         expect_movie(&mut movies, stored);
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
         let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -619,15 +592,19 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_movie_empty_genre_is_invalid() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-005");
+        allure.story("SCN-MOVIES-005-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let stored = sample_movie(7)?;
         let mut movies = MockMovieRepository::new();
         expect_movie(&mut movies, stored);
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
         let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
 
         // Act

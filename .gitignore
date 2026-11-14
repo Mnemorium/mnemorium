@@ -23,11 +23,11 @@ dev.db*
 mnemorium.db*
 
 # Local config
-config.yaml
+/config.yaml
 
 # Local secrets
 .env
-state.*
+/state.*
 
 # Python
 .ruff_cache/

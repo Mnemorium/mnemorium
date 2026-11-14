@@ -122,6 +122,11 @@ pub(crate) enum LoadStateError {
         "the instance state in state.yaml is corrupt; restore state.yaml from a backup — deleting it does not regenerate credentials: {0}"
     )]
     StateCorrupt(#[source] anyhow::Error),
+    /// The persisted state is not private to the server account.
+    #[error(
+        "the instance state in state.yaml is readable or writable by another account; run chmod 600 state.yaml or chown it to the account that owns the working directory, then restart the server"
+    )]
+    StateInsecure,
     /// The datastore exists but no state is persisted.
     #[error(
         "the instance state file state.yaml is missing while mnemorium.db exists; restore state.yaml from a backup — deleting the datastore does not regenerate credentials"

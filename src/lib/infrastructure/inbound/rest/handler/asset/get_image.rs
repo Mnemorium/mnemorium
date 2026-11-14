@@ -66,10 +66,7 @@ impl ImageResponse {
             height_px: response.height_px(),
             id: response.id(),
             links: ImageLinks {
-                content: Link::new(&content_href(
-                    &format!("/api/v1/asset/image/{}/content", response.id()),
-                    response.content_link(),
-                )),
+                content: content_href("image", response.id()),
                 file: Link::new(&asset_file_href(response.file_id())),
                 self_link: Link::new(&asset_image_href(response.id())),
             },
@@ -109,7 +106,7 @@ impl From<GetImageError> for ApiError {
             body = ImageResponse,
             content_type = "application/hal+json",
             description = "Image found",
-            headers(("Cache-Control" = String, description = "Always `no-store`"))
+            headers(("Cache-Control" = String, description = "Always `private, max-age=60`"))
         ),
         (
             status = BAD_REQUEST,
@@ -153,8 +150,9 @@ pub(crate) async fn get_image(
         .execute(GetImageCommand::new(caller.user_id(), image_id))
         .await?;
     let mut representation = hal_json(ImageResponse::from_response(&response));
-    representation
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    representation.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=60"),
+    );
     Ok(representation)
 }

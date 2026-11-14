@@ -3,10 +3,13 @@ use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
+use crate::application::FieldUpdate;
 use crate::application::port::UpdatePlaylistCommand;
 use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
-use crate::infrastructure::inbound::rest::handler::library::{PlaylistResponse, parse_playlist_id};
+use crate::infrastructure::inbound::rest::handler::library::{
+    PlaylistResponse, deserialize_field_update, parse_playlist_id,
+};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
@@ -20,15 +23,20 @@ pub(crate) struct AddPlaylistTrackRequest {
 
 /// Payload to update a playlist's metadata and/or append a recording.
 ///
-/// Every field is optional. `name` and `is_public` require `playlist.manage`,
-/// which the role presets grant to the owner and the Root Admin; `add_track`
-/// requires `playlist.moderate`. A request mixing the two from a caller that
-/// may moderate but not manage is rejected as a whole.
+/// Every field is optional. `name`, `is_public` and `cover_image_id` require
+/// `EditMetadata` on the playlist; `add_track` requires `CreateChild` for a
+/// music recording on the playlist and `ViewMetadata` on the recording. A
+/// request that fails one check is rejected as a whole.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct PatchPlaylistRequest {
     /// Recording to append to the playlist, when requested.
     pub add_track: Option<AddPlaylistTrackRequest>,
+    /// Replacement identifier of the image holding the playlist's artwork;
+    /// `null` clears it.
+    #[serde(default, deserialize_with = "deserialize_field_update")]
+    #[schema(value_type = Option<NumericID>, nullable = true, example = 1)]
+    pub cover_image_id: FieldUpdate<NumericID>,
     /// New visibility, when requested.
     pub is_public: Option<bool>,
     /// New name, when requested.
@@ -38,9 +46,10 @@ pub(crate) struct PatchPlaylistRequest {
 
 /// Update a playlist's metadata and/or append a recording.
 ///
-/// Omitted fields stay unchanged. `name` and `is_public` require
-/// `playlist.manage`; adding a track requires `playlist.moderate`. The request
-/// is atomic: a rejected field applies nothing.
+/// Omitted fields stay unchanged. `name`, `is_public` and `cover_image_id`
+/// require `EditMetadata` on the playlist; adding a track requires
+/// `CreateChild` for a music recording on the playlist and `ViewMetadata` on
+/// the recording. The request is atomic: a rejected field applies nothing.
 #[utoipa::path(
     patch,
     operation_id = "patch_playlist",
@@ -134,7 +143,10 @@ pub(crate) async fn patch_playlist(
             request.name,
             request.is_public,
             request.add_track.map(|add_track| add_track.recording_id),
+            request.cover_image_id,
         ))
         .await?;
-    Ok(hal_json(PlaylistResponse::new(response.playlist())))
+    Ok(hal_json(PlaylistResponse::from_playlist(
+        response.playlist(),
+    )))
 }

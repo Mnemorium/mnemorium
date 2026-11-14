@@ -149,6 +149,7 @@ base64 = "0.23.1"
 tower_governor = { version = "0.8.0", default-features = false, features = [
   "axum",
 ] }
+governor = "0.10.4"
 image = { version = "0.25.10", default-features = false, features = [
   "bmp",
   "jpeg",
@@ -172,3 +173,4 @@ wiremock = "0.6.5"
 tempfile = "3"
 tower = "0.5.3"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
+allure-cargotest = "1.6.1"

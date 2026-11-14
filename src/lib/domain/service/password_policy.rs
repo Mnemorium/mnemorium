@@ -65,23 +65,34 @@ impl Default for PasswordPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use allure_cargotest::allure_test;
     use rstest::rstest;
 
+    #[allure_test]
     #[rstest]
     #[case::with_letter_and_symbol("password!")]
     #[case::with_digit_and_symbol("12345678#")]
     #[case::only_symbols("!#$%&*()-_")]
     #[case::exactly_min_length("p4ssw0rd+")]
     fn password_policy_valid_password_accepted(#[case] password: &str) {
+        allure.epic("Authentication");
+        allure.feature("REQ-AUTHENTICATION-018");
+        allure.story("SCN-AUTHENTICATION-018-A");
+
         // Act & Assert
         let result = PasswordPolicy::new().validate(password);
         assert_eq!(result, Ok(()));
     }
 
+    #[allure_test]
     #[rstest]
     #[case::seven_characters("aB3!xYz")]
     #[case::empty("")]
     fn password_policy_short_password_rejected(#[case] password: &str) {
+        allure.epic("Authentication");
+        allure.feature("REQ-AUTHENTICATION-018");
+        allure.story("SCN-AUTHENTICATION-018-B");
+
         // Act
         let result = PasswordPolicy::new().validate(password);
 
@@ -89,11 +100,16 @@ mod tests {
         assert_eq!(result, Err(PasswordPolicyError::PasswordTooShort));
     }
 
+    #[allure_test]
     #[rstest]
     #[case::letters_only("password")]
     #[case::digits_only("12345678")]
     #[case::letters_and_digits("password123")]
     fn password_policy_password_without_symbol_rejected(#[case] password: &str) {
+        allure.epic("Authentication");
+        allure.feature("REQ-AUTHENTICATION-018");
+        allure.story("SCN-AUTHENTICATION-018-C");
+
         // Act
         let result = PasswordPolicy::new().validate(password);
 

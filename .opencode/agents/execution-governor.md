@@ -204,7 +204,7 @@ lead-reviewer expects.
 | `**/*.sh`, `script/**`                          | `shellcheck script/*.sh`; `shfmt -d script/*.sh`                                                                                                                              |
 | `**/*.nix`, `devenv.lock`, `devenv.yaml`, `.github/workflows/ci.yml` | `nixfmt --check devenv.nix`                                                                                                                                                                                                                                         |
 | `Cargo.toml`, `Cargo.lock`                      | `cargo deny check`; `script/generate_third_party_notices.sh --check`                                                                                                                                                                                                |
-| Rust, Python, container, SQL, or CI changed     | container E2E: `script/e2e.sh` — builds the image, runs `mnemorium-e2e`, waits for `/health`, runs `pytest -p no:cacheprovider -ra --tb=short --junitxml=.artifacts/e2e/junit.xml test/e2e`, and cleans up (`NO_BUILD=1` reuses an existing image)                                                                                        |
+| Rust, Python, container, SQL, or CI changed     | container system: `script/system.sh` — builds `mnemorium:latest`, runs `pytest -p no:cacheprovider -ra --tb=short test/system`, and sweeps the containers it started (`NO_BUILD=1` reuses an existing image)                                                                                        |
 
 Collect the static-analysis artifact (`.artifacts/semgrep.sarif`) when the
 security gate ran. If a required tool is missing, stop and report the missing
@@ -223,7 +223,7 @@ Plan: <the plan being executed this iteration>
 Iteration: <N of 3>
 Previous report: <path | none>
 Run directory: <.artifacts/execution/run-XXXXXX>
-Gate artifacts: <semgrep.sarif path | none>; <coverage summary/lcov paths | none>; <e2e junit path | none>
+Gate artifacts: <semgrep.sarif path | none>; <coverage summary/lcov paths | none>
 Gate logs: <run directory>/checks/
 
 Collect the diff yourself against the base ref, select the panel, review, write

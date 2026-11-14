@@ -1,19 +1,17 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     GetSeriesCommand, GetSeriesError, GetSeriesResponse, GetSeriesSeasonItem, GetSeriesUseCase,
 };
 use crate::domain::model::Action;
 use crate::domain::port::{
-    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
-    SeriesFilter, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, LibraryUnitOfWork, SeriesFilter, SeriesRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching one show.
 pub(crate) struct GetSeries<F> {
@@ -62,15 +60,6 @@ where
                     .next()
                     .ok_or(GetSeriesError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| GetSeriesError::Unknown(error.into()))?;
-
                 let shown = unit_of_work
                     .series()
                     .search(&SeriesFilter {
@@ -82,19 +71,15 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetSeriesError::NoSuchSeries)?;
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &shown)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(GetSeriesError::NoSuchSeries);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Series, shown.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| GetSeriesError::NoSuchSeries)?;
 
                 let seasons = shown
                     .seasons()
@@ -144,6 +129,7 @@ where
 mod tests {
     use super::*;
     use crate::domain::model::{Season, SeasonIndex, Series};
+    use allure_cargotest::allure_test;
 
     use crate::domain::port::{MockSeriesRepository, MockUserRepository, RepositoryError};
 
@@ -160,7 +146,7 @@ mod tests {
         series: MockSeriesRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             series,
             users,
             ..TestUnitOfWork::default()
@@ -168,8 +154,13 @@ mod tests {
         GalleryFactoryHarness::new(unit_of_work)
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_series_returns_its_metadata_and_season_summaries() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-002");
+        allure.story("SCN-SERIES-002-A");
+        allure.story("SCN-SERIES-002-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -213,9 +204,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_series_carries_the_cover_of_the_show_and_each_season() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-002");
+        allure.story("SCN-SERIES-002-B");
         // Arrange: the show carries artwork, its first season its own, and the
         // second season none.
         let mut users = MockUserRepository::new();
@@ -273,14 +268,18 @@ mod tests {
                 .get(1)
                 .and_then(GetSeriesSeasonItem::cover_image_id),
             None,
-            "a season must not inherit its show's cover"
+            "the stored cover of a season without artwork is absent"
         );
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_series_without_a_season_returns_no_season_summaries() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-002");
+        allure.story("SCN-SERIES-002-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -304,8 +303,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_series_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-002");
+        allure.story("SCN-SERIES-002-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -332,8 +335,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_series_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-002");
+        allure.story("SCN-SERIES-002-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -354,8 +361,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_series_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-002");
+        allure.story("SCN-SERIES-002-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;

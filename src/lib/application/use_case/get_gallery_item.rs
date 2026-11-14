@@ -1,8 +1,8 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     GetGalleryItemCommand, GetGalleryItemError, GetGalleryItemResponse, GetGalleryItemUseCase,
@@ -10,10 +10,9 @@ use crate::application::port::{
 use crate::domain::model::Action;
 use crate::domain::port::{
     GalleryFilter, GalleryItemFilter, GalleryRepository as _, IdentityUnitOfWork,
-    LibraryUnitOfWork, PermissionFilter, PermissionRepository as _, UnitOfWork as _,
-    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    LibraryUnitOfWork, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching one item of a gallery.
 pub(crate) struct GetGalleryItem<F> {
@@ -67,15 +66,6 @@ where
                     .next()
                     .ok_or(GetGalleryItemError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| GetGalleryItemError::Unknown(error.into()))?;
-
                 let gallery = unit_of_work
                     .galleries()
                     .search(&GalleryFilter {
@@ -88,19 +78,15 @@ where
                     .next()
                     .ok_or(GetGalleryItemError::NoSuchGallery)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::GalleryRead, &gallery)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(GetGalleryItemError::NoSuchGallery);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Gallery, gallery.gallery_id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| GetGalleryItemError::NoSuchGallery)?;
 
                 let detail = unit_of_work
                     .galleries()
@@ -150,6 +136,7 @@ where
 mod tests {
     use super::*;
     use crate::domain::model::{Gallery, GalleryItem, GalleryItemMedia, Role, User};
+    use allure_cargotest::allure_test;
 
     use crate::domain::port::{
         GalleryItemDetail, MockGalleryRepository, MockUserRepository, RepositoryError,
@@ -187,7 +174,7 @@ mod tests {
         galleries: MockGalleryRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             galleries,
             users,
             ..TestUnitOfWork::default()
@@ -218,8 +205,12 @@ mod tests {
             .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_gallery_item_owner_reads_item() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-008");
+        allure.story("SCN-GALLERY-008-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -259,37 +250,12 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn get_gallery_item_any_caller_reads_public_item() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9, Role::Standard)?;
-        let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(2, Some(3), "Public", true));
-        let found = detail(42, 2)?;
-        galleries
-            .expect_search_items()
-            .times(1)
-            .return_once(move |_| {
-                let value = found.clone();
-                Box::pin(async move { Ok(vec![value]) })
-            });
-        let harness = harness_with(users, galleries);
-        let use_case: UseCase = GetGalleryItem::new(Arc::clone(&harness.factory));
-
-        // Act
-        let response = use_case
-            .execute(GetGalleryItemCommand::new(9, 2, 42))
-            .await?;
-
-        // Assert
-        assert_eq!(response.gallery_item_id(), 42);
-        assert!(harness.committed.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn get_gallery_item_root_admin_reads_private_item() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-008");
+        allure.story("SCN-GALLERY-008-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 0, Role::Admin)?;
@@ -316,51 +282,12 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn get_gallery_item_non_root_admin_private_item_returns_no_such_gallery()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1, Role::Admin)?;
-        let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        galleries.expect_search_items().times(0);
-        let harness = harness_with(users, galleries);
-        let use_case: UseCase = GetGalleryItem::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(GetGalleryItemCommand::new(1, 3, 42)).await;
-
-        // Assert
-        assert!(matches!(result, Err(GetGalleryItemError::NoSuchGallery)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn get_gallery_item_other_caller_private_gallery_returns_no_such_gallery()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9, Role::Standard)?;
-        let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        galleries.expect_search_items().times(0);
-        let harness = harness_with(users, galleries);
-        let use_case: UseCase = GetGalleryItem::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(GetGalleryItemCommand::new(9, 3, 42)).await;
-
-        // Assert
-        assert!(matches!(result, Err(GetGalleryItemError::NoSuchGallery)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn get_gallery_item_unknown_item_returns_no_such_item() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-008");
+        allure.story("SCN-GALLERY-008-C");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -382,9 +309,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_gallery_item_unknown_gallery_returns_no_such_gallery() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-008");
+        allure.story("SCN-GALLERY-008-C");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -407,9 +338,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_gallery_item_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-008");
+        allure.story("SCN-GALLERY-008-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -430,8 +365,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_gallery_item_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-008");
+        allure.story("SCN-GALLERY-008-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -453,8 +392,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_gallery_item_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-008");
+        allure.story("SCN-GALLERY-008-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;

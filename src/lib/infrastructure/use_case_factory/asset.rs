@@ -9,10 +9,9 @@ use crate::application::use_case::{
     BeginUpload, CancelUpload, CompleteUpload, GetAssetContent, GetAudio, GetFile, GetImage,
     GetUpload, GetVideo, ReapUploads, WriteUploadChunk,
 };
-use crate::domain::model::{Configuration, InstanceState};
+use crate::domain::model::Configuration;
 use crate::infrastructure::outbound::LocalMediaProbe;
 use crate::infrastructure::outbound::file_system::FileSystemStorage;
-use crate::infrastructure::outbound::jwt::JwtContentLinkProvider;
 use crate::infrastructure::outbound::sha2::Sha2ContentHasher;
 use crate::infrastructure::outbound::sqlx::SqlxUnitOfWorkFactory;
 
@@ -30,8 +29,6 @@ pub(crate) struct RuntimeAssetUseCaseFactory {
     chunk_size_bytes: u64,
     /// Live application configuration.
     configuration: Arc<Configuration>,
-    /// Immutable instance identity carrying the signing secret.
-    instance_state: Arc<InstanceState>,
     /// Permit pool bounding concurrent media probes, owned by the composition root.
     probe_permits: Arc<Semaphore>,
     /// Factory opening the unit of work wrapping the Asset use cases.
@@ -39,13 +36,6 @@ pub(crate) struct RuntimeAssetUseCaseFactory {
 }
 
 impl RuntimeAssetUseCaseFactory {
-    /// Build a fresh content-link adapter for one use case.
-    fn content_link(&self) -> Arc<JwtContentLinkProvider> {
-        Arc::new(JwtContentLinkProvider::new(
-            self.instance_state.jwt_secret().to_owned(),
-        ))
-    }
-
     /// Build a fresh file storage adapter for one use case.
     fn file_storage() -> Arc<FileSystemStorage> {
         Arc::new(FileSystemStorage::new())
@@ -55,14 +45,12 @@ impl RuntimeAssetUseCaseFactory {
     #[must_use]
     pub(crate) fn new(
         configuration: Arc<Configuration>,
-        instance_state: Arc<InstanceState>,
         unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
         probe_permits: Arc<Semaphore>,
     ) -> Self {
         Self {
             chunk_size_bytes: configuration.asset().upload().chunk_size_bytes(),
             configuration,
-            instance_state,
             probe_permits,
             unit_of_work_factory,
         }
@@ -110,24 +98,15 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
     }
 
     fn get_audio(&self) -> Arc<dyn GetAudioUseCase> {
-        Arc::new(GetAudio::new(
-            Arc::clone(&self.unit_of_work_factory),
-            self.content_link(),
-        ))
+        Arc::new(GetAudio::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn get_file(&self) -> Arc<dyn GetFileUseCase> {
-        Arc::new(GetFile::new(
-            Arc::clone(&self.unit_of_work_factory),
-            self.content_link(),
-        ))
+        Arc::new(GetFile::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn get_image(&self) -> Arc<dyn GetImageUseCase> {
-        Arc::new(GetImage::new(
-            Arc::clone(&self.unit_of_work_factory),
-            self.content_link(),
-        ))
+        Arc::new(GetImage::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn get_upload(&self) -> Arc<dyn GetUploadUseCase> {
@@ -140,10 +119,7 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
     }
 
     fn get_video(&self) -> Arc<dyn GetVideoUseCase> {
-        Arc::new(GetVideo::new(
-            Arc::clone(&self.unit_of_work_factory),
-            self.content_link(),
-        ))
+        Arc::new(GetVideo::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn reap_uploads(&self) -> Arc<dyn ReapUploadsUseCase> {

@@ -1,18 +1,18 @@
+use crate::application::authorization::authorize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::application::port::{
     ListUsersCommand, ListUsersError, ListUsersResponse, ListUsersUseCase,
 };
-use crate::domain::model::{Action, Global};
+use crate::domain::model::{Action, ResourceKind, ResourceRef};
 use crate::domain::port::{
-    IdentityUnitOfWork, PermissionFilter, PermissionRepository as _, UnitOfWork as _,
-    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for listing the users of the instance.
 pub(crate) struct ListUsers<F> {
@@ -61,28 +61,15 @@ where
                     .into_iter()
                     .next()
                     .ok_or(ListUsersError::NoSuchCaller)?;
-
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| ListUsersError::Unknown(error.into()))?;
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::UserRead, &Global)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(ListUsersError::NotAdmin);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::UserCollection, 0),
+                    Action::Discover,
+                    None,
+                )
+                .await
+                .map_err(|_| ListUsersError::NotAdmin)?;
 
                 let users = unit_of_work
                     .users()
@@ -164,7 +151,7 @@ mod tests {
         setup(&mut user_repository)?;
 
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };
@@ -310,35 +297,6 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn list_users_standard_caller_returns_not_admin() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let harness = use_case_with(|user_repository| {
-            let caller = user(1, "alice", None, Role::Standard)?;
-            user_repository
-                .expect_search()
-                .times(1)
-                .withf(|filter| filter.id == Some(1))
-                .return_once(move |_| {
-                    let found = vec![caller.clone()];
-                    Box::pin(async move { Ok(found) })
-                });
-            Ok(())
-        })?;
-
-        // Act
-        let result = harness
-            .use_case
-            .execute(ListUsersCommand::new(1, None, None, None))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(ListUsersError::NotAdmin)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn list_users_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange

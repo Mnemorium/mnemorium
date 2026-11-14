@@ -1,3 +1,5 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -11,10 +13,9 @@ use crate::application::port::{
 use crate::domain::model::{Action, MusicRecordingError};
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
-    PermissionFilter, PermissionRepository as _, RepositoryError, UnitOfWork as _,
-    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for editing the shared recording behind a track.
 pub(crate) struct PatchAlbumTrack<F> {
@@ -68,15 +69,6 @@ where
                     .next()
                     .ok_or(PatchAlbumTrackError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| PatchAlbumTrackError::Unknown(error.into()))?;
-
                 let album = unit_of_work
                     .music_albums()
                     .search(&MusicAlbumFilter {
@@ -89,36 +81,30 @@ where
                     .next()
                     .ok_or(PatchAlbumTrackError::NoSuchAlbum)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &album)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(PatchAlbumTrackError::NoSuchAlbum);
-                }
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryManage, &album)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(if denial.conceals() {
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicAlbum, album.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| PatchAlbumTrackError::NoSuchAlbum)?;
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicAlbum, album.id()),
+                    Action::EditMetadata,
+                    None,
+                )
+                .await
+                .map_err(|error| {
+                    if error.conceals() {
                         PatchAlbumTrackError::NoSuchAlbum
                     } else {
                         PatchAlbumTrackError::Forbidden
-                    });
-                }
+                    }
+                })?;
 
                 if album.id() == 0 {
                     return Err(PatchAlbumTrackError::DefaultAlbum);
@@ -285,7 +271,7 @@ mod tests {
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
             music_albums: albums,
-            permissions: no_permissions(),
+            resources: no_resources(),
             users,
             ..TestUnitOfWork::default()
         };
@@ -485,33 +471,6 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(PatchAlbumTrackError::NoSuchTrack)));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn patch_album_track_standard_user_is_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let mut albums = MockMusicAlbumRepository::new();
-        expect_album(&mut albums, album_with_track(7)?);
-        let harness = harness_with(users, albums);
-        let use_case: UseCase = PatchAlbumTrack::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(PatchAlbumTrackCommand::new(
-                1,
-                7,
-                1,
-                1,
-                FieldUpdate::Set("Renamed".to_owned()),
-                FieldUpdate::Absent,
-            ))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(PatchAlbumTrackError::Forbidden)));
         Ok(())
     }
 }

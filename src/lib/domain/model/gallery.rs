@@ -1,7 +1,6 @@
 use chrono::NaiveDateTime;
 
 use crate::domain::NumericID;
-use crate::domain::model::{Protected, ResourceKind, ResourceRef};
 
 /// Identifier of the seeded, undeletable default gallery.
 const DEFAULT_GALLERY_ID: NumericID = 0;
@@ -17,7 +16,7 @@ pub(crate) struct Gallery {
     created_at: NaiveDateTime,
     /// Unique identifier of the gallery.
     gallery_id: NumericID,
-    /// Whether any authenticated user may read and moderate the gallery.
+    /// Whether any authenticated user may read the gallery.
     is_public: bool,
     /// Date and time of the last modification of the gallery.
     last_modified_at: NaiveDateTime,
@@ -50,8 +49,7 @@ impl Gallery {
         self.user_id == Some(user_id)
     }
 
-    /// Return whether any authenticated user may read and moderate the
-    /// gallery.
+    /// Return whether any authenticated user may read the gallery.
     #[must_use]
     pub(crate) fn is_public(&self) -> bool {
         self.is_public
@@ -122,23 +120,5 @@ impl Gallery {
     #[must_use]
     pub(crate) fn user_id(&self) -> Option<NumericID> {
         self.user_id
-    }
-}
-
-impl Protected for Gallery {
-    fn is_privileged_account(&self) -> bool {
-        false
-    }
-
-    fn is_publicly_visible(&self) -> bool {
-        self.is_public()
-    }
-
-    fn owner_id(&self) -> Option<NumericID> {
-        self.user_id
-    }
-
-    fn resource_ref(&self) -> Option<ResourceRef> {
-        Some(ResourceRef::new(ResourceKind::Gallery, self.gallery_id))
     }
 }

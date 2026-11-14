@@ -1,8 +1,8 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     ApplyMusicAlbumCommand, ApplyMusicAlbumError, ApplyMusicAlbumResponse, ApplyMusicAlbumUseCase,
@@ -13,11 +13,9 @@ use crate::domain::model::{
 };
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
-    MusicMetadataProvider, MusicRecordingFilter, PermissionFilter, PermissionRepository as _,
-    RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
-    UserUnitOfWork,
+    MusicMetadataProvider, MusicRecordingFilter, RepositoryError, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// The genre an applied album carries when the provider reports none.
 const DEFAULT_GENRE: &str = "UNKNOWN";
@@ -82,15 +80,6 @@ where
                     .next()
                     .ok_or(ApplyMusicAlbumError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| ApplyMusicAlbumError::Unknown(error.into()))?;
-
                 let album = unit_of_work
                     .music_albums()
                     .search(&MusicAlbumFilter {
@@ -103,36 +92,30 @@ where
                     .next()
                     .ok_or(ApplyMusicAlbumError::NoSuchAlbum)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &album)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(ApplyMusicAlbumError::NoSuchAlbum);
-                }
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryManage, &album)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(if denial.conceals() {
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicAlbum, album.id()),
+                    Action::ViewMetadata,
+                    None,
+                )
+                .await
+                .map_err(|_| ApplyMusicAlbumError::NoSuchAlbum)?;
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicAlbum, album.id()),
+                    Action::EditMetadata,
+                    None,
+                )
+                .await
+                .map_err(|error| {
+                    if error.conceals() {
                         ApplyMusicAlbumError::NoSuchAlbum
                     } else {
                         ApplyMusicAlbumError::Forbidden
-                    });
-                }
+                    }
+                })?;
 
                 if album.id() == 0 {
                     return Err(ApplyMusicAlbumError::DefaultAlbum);
@@ -295,17 +278,18 @@ where
 mod tests {
     use super::*;
     use crate::application::port::AlbumPlacement;
+    use allure_cargotest::allure_test;
 
     use crate::domain::NumericID;
 
     use crate::domain::model::{
         ExternalRef, MediumFormat, MediumSummary, MusicMedium, MusicRecording, ProductionType,
-        ProviderId, Role, TrackIndex, User,
+        ProviderId, Resource, ResourceAccess, ResourceKind, Role, TrackIndex, User, Visibility,
     };
 
     use crate::domain::port::{
         ExternalServiceError, MockMusicAlbumRepository, MockMusicMetadataProvider,
-        MockUserRepository,
+        MockResourceRepository, MockUserRepository,
     };
 
     use crate::test_helpers::*;
@@ -336,14 +320,23 @@ mod tests {
         Ok(())
     }
 
-    /// Build a Library test harness around the given repository.
+    /// Build a Library test harness around the given repositories.
     fn harness_with(
         users: MockUserRepository,
         albums: MockMusicAlbumRepository,
     ) -> GalleryFactoryHarness {
+        harness_with_resources(users, albums, no_resources())
+    }
+
+    /// Build a Library test harness whose resource load is the given double.
+    fn harness_with_resources(
+        users: MockUserRepository,
+        albums: MockMusicAlbumRepository,
+        resources: MockResourceRepository,
+    ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
             music_albums: albums,
-            permissions: no_permissions(),
+            resources,
             users,
             ..TestUnitOfWork::default()
         };
@@ -394,9 +387,16 @@ mod tests {
         });
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_music_album_without_placements_writes_the_structure()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.feature("REQ-METADATA-ENRICHMENT-028");
+        allure.story("SCN-METADATA-ENRICHMENT-024-A");
+        allure.story("SCN-METADATA-ENRICHMENT-028-A");
+        allure.story("SCN-METADATA-ENRICHMENT-028-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -435,9 +435,15 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_music_album_with_placements_moves_the_recordings() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.feature("REQ-METADATA-ENRICHMENT-028");
+        allure.story("SCN-METADATA-ENRICHMENT-024-A");
+        allure.story("SCN-METADATA-ENRICHMENT-028-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -490,8 +496,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_music_album_multi_cd_release_becomes_cd_mediums() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-028");
+        allure.story("SCN-METADATA-ENRICHMENT-028-C");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -535,8 +545,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_music_album_provider_failure_writes_nothing() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.story("SCN-METADATA-ENRICHMENT-024-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -566,8 +580,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_music_album_rejects_the_default_album() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-028");
+        allure.story("SCN-METADATA-ENRICHMENT-028-F");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -589,8 +607,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_music_album_without_a_provider_is_unavailable() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.story("SCN-METADATA-ENRICHMENT-024-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -612,8 +634,129 @@ mod tests {
         Ok(())
     }
 
+    /// Return a resource repository whose album is owned by another user.
+    fn foreign_album(visibility: Visibility) -> MockResourceRepository {
+        let mut resources = MockResourceRepository::new();
+        resources.expect_search().returning(move |_, _| {
+            let resource =
+                Resource::from_stored(1, ResourceKind::MusicAlbum, 7, Some(2), None, visibility);
+            Box::pin(async move {
+                Ok(vec![ResourceAccess::new(
+                    resource,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                )])
+            })
+        });
+        resources
+    }
+
+    #[allure_test]
+    #[tokio::test]
+    async fn apply_music_album_rejects_a_placement_naming_a_medium_it_does_not_create()
+    -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-028");
+        allure.story("SCN-METADATA-ENRICHMENT-028-G");
+        // Arrange: a single-CD release materialises one digital medium, so a
+        // placement at medium 2 names a medium the apply never creates.
+        let mut users = MockUserRepository::new();
+        expect_admin(&mut users, 1)?;
+        let mut albums = MockMusicAlbumRepository::new();
+        expect_album(&mut albums, sample_album(7, Vec::new())?);
+        albums.expect_save().times(0);
+        albums.expect_save_medium().times(0);
+        let mut provider = MockMusicMetadataProvider::new();
+        expect_lookup(
+            &mut provider,
+            album_metadata(vec![MediumSummary::new(MediumFormat::Cd, 1, 5)]),
+        );
+        let harness = harness_with(users, albums);
+        let use_case: UseCase =
+            ApplyMusicAlbum::new(Arc::clone(&harness.factory), Some(Arc::new(provider)));
+
+        // Act
+        let result = use_case
+            .execute(ApplyMusicAlbumCommand::new(
+                1,
+                7,
+                reference(),
+                vec![AlbumPlacement::new(2, 1, 5)],
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(ApplyMusicAlbumError::InvalidPlacement)
+        ));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[allure_test]
+    #[tokio::test]
+    async fn apply_music_album_refuses_a_caller_without_edit_metadata() -> Result<(), Box<dyn Error>>
+    {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.feature("REQ-AUTHORIZATION-038");
+        allure.story("SCN-AUTHORIZATION-038-B");
+        // Arrange: the caller may view the public album but may not edit it.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut albums = MockMusicAlbumRepository::new();
+        expect_album(&mut albums, sample_album(7, Vec::new())?);
+        albums.expect_save().times(0);
+        let harness = harness_with_resources(users, albums, foreign_album(Visibility::Public));
+        let use_case: UseCase = ApplyMusicAlbum::new(Arc::clone(&harness.factory), None);
+
+        // Act
+        let result = use_case
+            .execute(ApplyMusicAlbumCommand::new(1, 7, reference(), Vec::new()))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(ApplyMusicAlbumError::Forbidden)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[allure_test]
+    #[tokio::test]
+    async fn apply_music_album_conceals_an_album_the_caller_cannot_view()
+    -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.feature("REQ-AUTHORIZATION-038");
+        allure.story("SCN-AUTHORIZATION-038-A");
+        // Arrange: a private album owned by another user is not the caller's to see.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut albums = MockMusicAlbumRepository::new();
+        expect_album(&mut albums, sample_album(7, Vec::new())?);
+        albums.expect_save().times(0);
+        let harness = harness_with_resources(users, albums, foreign_album(Visibility::Private));
+        let use_case: UseCase = ApplyMusicAlbum::new(Arc::clone(&harness.factory), None);
+
+        // Act
+        let result = use_case
+            .execute(ApplyMusicAlbumCommand::new(1, 7, reference(), Vec::new()))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(ApplyMusicAlbumError::NoSuchAlbum)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[allure_test]
     #[tokio::test]
     async fn apply_music_album_unknown_reference_is_not_found() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.story("SCN-METADATA-ENRICHMENT-024-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -641,29 +784,6 @@ mod tests {
             result,
             Err(ApplyMusicAlbumError::UnknownReference)
         ));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn apply_music_album_standard_user_is_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let mut albums = MockMusicAlbumRepository::new();
-        expect_album(&mut albums, sample_album(7, Vec::new())?);
-        let harness = harness_with(users, albums);
-        let use_case: UseCase = ApplyMusicAlbum::new(
-            Arc::clone(&harness.factory),
-            Some(Arc::new(MockMusicMetadataProvider::new())),
-        );
-
-        // Act
-        let result = use_case
-            .execute(ApplyMusicAlbumCommand::new(1, 7, reference(), Vec::new()))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(ApplyMusicAlbumError::Forbidden)));
         Ok(())
     }
 }

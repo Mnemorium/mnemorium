@@ -1,0 +1,27 @@
+---
+# The upload body limit is never removed.
+#
+# The chunk route caps its body at `asset.upload.chunk_size_bytes`
+# (`asset.rs`), and the extractor-failure probe caps its own. Disabling the
+# limit, or raising it to `usize::MAX`, lets a client stream an unbounded body
+# into memory.
+rules:
+  - id: mnemorium.rust.availability.body-limit
+    languages: [rust]
+    severity: ERROR
+    message: >-
+      The request body limit is disabled or unbounded. Cap the route at the
+      configured chunk size instead (`DefaultBodyLimit::max(limit)`).
+    metadata:
+      category: security
+      subcategory:
+        - denial-of-service
+      cwe: "CWE-400: Uncontrolled Resource Consumption"
+      confidence: HIGH
+      references:
+        - https://docs.rs/axum/latest/axum/extract/struct.DefaultBodyLimit.html
+    patterns:
+      - pattern-either:
+          - pattern: 'DefaultBodyLimit::disable()'
+          - pattern: 'DefaultBodyLimit::max(usize::MAX)'
+          - pattern: 'DefaultBodyLimit::max(std::usize::MAX)'

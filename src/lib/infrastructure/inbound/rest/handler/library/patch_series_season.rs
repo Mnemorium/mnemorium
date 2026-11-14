@@ -32,7 +32,7 @@ pub(crate) struct PatchSeriesSeasonRequest {
 
 /// Update a show season partially.
 ///
-/// Only a caller whose `library.manage` scope covers the show may update it.
+/// Updating a season requires `View` and then `EditMetadata` on its show.
 #[utoipa::path(
     patch,
     operation_id = "patch_series_season",

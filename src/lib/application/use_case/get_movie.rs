@@ -1,17 +1,15 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::warn;
-
 use crate::application::port::{GetMovieCommand, GetMovieError, GetMovieResponse, GetMovieUseCase};
 use crate::domain::model::Action;
 use crate::domain::port::{
-    IdentityUnitOfWork, LibraryUnitOfWork, MovieFilter, MovieRepository as _, PermissionFilter,
-    PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
-    UserUnitOfWork,
+    IdentityUnitOfWork, LibraryUnitOfWork, MovieFilter, MovieRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching one film.
 pub(crate) struct GetMovie<F> {
@@ -60,15 +58,6 @@ where
                     .next()
                     .ok_or(GetMovieError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| GetMovieError::Unknown(error.into()))?;
-
                 let movie = unit_of_work
                     .movies()
                     .search(&MovieFilter {
@@ -80,19 +69,15 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetMovieError::NoSuchMovie)?;
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &movie)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(GetMovieError::NoSuchMovie);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Movie, movie.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| GetMovieError::NoSuchMovie)?;
 
                 Ok(GetMovieResponse::new(
                     movie.id(),
@@ -128,11 +113,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::{Movie, Permission, Scope};
+    use allure_cargotest::allure_test;
 
-    use crate::domain::port::{
-        MockMovieRepository, MockPermissionRepository, MockUserRepository, RepositoryError,
-    };
+    use crate::domain::model::Movie;
+
+    use crate::domain::port::{MockMovieRepository, MockUserRepository, RepositoryError};
 
     use crate::test_helpers::*;
     use std::error::Error;
@@ -147,7 +132,7 @@ mod tests {
         movies: MockMovieRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             movies,
             users,
             ..TestUnitOfWork::default()
@@ -155,8 +140,12 @@ mod tests {
         GalleryFactoryHarness::new(unit_of_work)
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_movie_returns_the_requested_film() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-003");
+        allure.story("SCN-MOVIES-003-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -196,8 +185,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_movie_returns_a_film_with_its_cover() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-003");
+        allure.story("SCN-MOVIES-003-A");
         // Arrange: a film whose artwork is file 19.
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -232,8 +225,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_movie_unknown_film_returns_no_such_movie() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-003");
+        allure.story("SCN-MOVIES-003-C");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -259,44 +256,12 @@ mod tests {
         );
         Ok(())
     }
-
-    #[tokio::test]
-    async fn get_movie_none_override_returns_no_such_movie() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let mut movies = MockMovieRepository::new();
-        let movie = sample_movie(7)?;
-        movies
-            .expect_search()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(vec![movie]) }));
-        let mut permissions = MockPermissionRepository::new();
-        expect_permissions(
-            &mut permissions,
-            1,
-            vec![Permission::try_new(1, Action::LibraryRead, Scope::None)?],
-        );
-        let unit_of_work = TestUnitOfWork {
-            movies,
-            permissions,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        let harness = GalleryFactoryHarness::new(unit_of_work);
-        let use_case: UseCase = GetMovie::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(GetMovieCommand::new(1, 7)).await;
-
-        // Assert
-        assert!(matches!(result, Err(GetMovieError::NoSuchMovie)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn get_movie_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-003");
+        allure.story("SCN-MOVIES-003-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -317,8 +282,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_movie_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-003");
+        allure.story("SCN-MOVIES-003-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;

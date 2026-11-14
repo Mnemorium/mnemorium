@@ -6,13 +6,17 @@ use chrono::Utc;
 
 use tracing::warn;
 
+use crate::application::authorization::authorize;
 use crate::application::port::{
     CreatePlaylistCommand, CreatePlaylistError, CreatePlaylistResponse, CreatePlaylistUseCase,
 };
-use crate::domain::model::MusicPlaylist;
+use crate::domain::model::{
+    Action, ChildKind, MusicPlaylist, ResourceKind, ResourceRef, Visibility,
+};
 use crate::domain::port::{
-    LibraryUnitOfWork, MusicPlaylistFilter, MusicPlaylistRepository as _, RepositoryError,
-    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, LibraryUnitOfWork, MusicPlaylistFilter, MusicPlaylistRepository as _,
+    NewResource, RepositoryError, ResourceRepository as _, UnitOfWork as _, UnitOfWorkFactory,
+    UserFilter, UserRepository as _, UserUnitOfWork,
 };
 use crate::domain::service::{NamePolicy, NamePolicyError};
 
@@ -35,7 +39,7 @@ impl<F: UnitOfWorkFactory> CreatePlaylist<F> {
 impl<F> CreatePlaylistUseCase for CreatePlaylist<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
     #[expect(
         clippy::wildcard_enum_match_arm,
@@ -60,7 +64,7 @@ where
                 .map_err(|error| CreatePlaylistError::Unknown(error.into()))?;
 
             let result = async {
-                let _caller = unit_of_work
+                let caller = unit_of_work
                     .users()
                     .search(&UserFilter {
                         id: Some(command.caller_id()),
@@ -71,6 +75,16 @@ where
                     .into_iter()
                     .next()
                     .ok_or(CreatePlaylistError::NoSuchCaller)?;
+
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::PlaylistCollection, 0),
+                    Action::CreateChild,
+                    Some(ChildKind::MusicPlaylist),
+                )
+                .await
+                .map_err(|_| CreatePlaylistError::Forbidden)?;
 
                 let name =
                     NamePolicy::validate(command.name().to_owned()).map_err(
@@ -105,7 +119,7 @@ where
                     now,
                     command.caller_id(),
                     command.is_public(),
-                    None,
+                    command.cover_image_id(),
                     Vec::new(),
                 );
 
@@ -130,8 +144,27 @@ where
                         // A concurrent insert won the race for the per-owner
                         // unique name (`STY-RUST-015`).
                         RepositoryError::AlreadyExist => CreatePlaylistError::NameAlreadyExists,
+                        RepositoryError::Conflict | RepositoryError::DataIntegrityViolation => {
+                            CreatePlaylistError::InvalidCover
+                        }
                         other => CreatePlaylistError::Unknown(other.into()),
                     })?;
+
+                unit_of_work
+                    .resources()
+                    .create(NewResource {
+                        kind: ResourceKind::MusicPlaylist,
+                        entity_id: created.id(),
+                        owner_id: Some(command.caller_id()),
+                        auth_parent: Some(ResourceRef::new(ResourceKind::Library, 0)),
+                        visibility: if created.is_public() {
+                            Visibility::Public
+                        } else {
+                            Visibility::Private
+                        },
+                    })
+                    .await
+                    .map_err(|error| CreatePlaylistError::Unknown(error.into()))?;
 
                 Ok(CreatePlaylistResponse::new(created))
             }
@@ -240,7 +273,7 @@ mod tests {
 
         // Act
         let response = use_case
-            .execute(CreatePlaylistCommand::new(1, "Mix".to_owned(), false))
+            .execute(CreatePlaylistCommand::new(1, "Mix".to_owned(), false, None))
             .await?;
 
         // Assert
@@ -276,7 +309,12 @@ mod tests {
 
         // Act
         let response = use_case
-            .execute(CreatePlaylistCommand::new(1, "  Mix  ".to_owned(), false))
+            .execute(CreatePlaylistCommand::new(
+                1,
+                "  Mix  ".to_owned(),
+                false,
+                None,
+            ))
             .await?;
 
         // Assert
@@ -305,7 +343,7 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(CreatePlaylistCommand::new(1, "Mix".to_owned(), false))
+            .execute(CreatePlaylistCommand::new(1, "Mix".to_owned(), false, None))
             .await;
 
         // Assert
@@ -334,7 +372,7 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(CreatePlaylistCommand::new(1, "Mix".to_owned(), false))
+            .execute(CreatePlaylistCommand::new(1, "Mix".to_owned(), false, None))
             .await;
 
         // Assert
@@ -357,7 +395,7 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(CreatePlaylistCommand::new(1, "   ".to_owned(), false))
+            .execute(CreatePlaylistCommand::new(1, "   ".to_owned(), false, None))
             .await;
 
         // Assert
@@ -379,7 +417,7 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(CreatePlaylistCommand::new(1, name, false))
+            .execute(CreatePlaylistCommand::new(1, name, false, None))
             .await;
 
         // Assert
@@ -400,7 +438,12 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(CreatePlaylistCommand::new(999, "Mix".to_owned(), false))
+            .execute(CreatePlaylistCommand::new(
+                999,
+                "Mix".to_owned(),
+                false,
+                None,
+            ))
             .await;
 
         // Assert
@@ -425,7 +468,7 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(CreatePlaylistCommand::new(1, "Mix".to_owned(), false))
+            .execute(CreatePlaylistCommand::new(1, "Mix".to_owned(), false, None))
             .await;
 
         // Assert
@@ -452,7 +495,7 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(CreatePlaylistCommand::new(1, "Mix".to_owned(), false))
+            .execute(CreatePlaylistCommand::new(1, "Mix".to_owned(), false, None))
             .await;
 
         // Assert

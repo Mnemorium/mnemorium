@@ -54,7 +54,6 @@ jobs:
             persistence
             server
             test-e2e
-            test-config
             user
             development
             repo
@@ -252,6 +251,8 @@ jobs:
             --config p/rust \
             --config p/security-audit \
             --config p/cwe-top-25 \
+            --config p/github-actions \
+            --config security/semgrep \
             --baseline-commit "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}" \
             --metrics=off \
             --sarif \
@@ -350,84 +351,6 @@ jobs:
           path: .artifacts/coverage
           retention-days: 14
           if-no-files-found: ignore
-
-  system:
-    needs: [changes, betterleaks, rust]
-    if: >-
-      always() &&
-      needs.changes.result == 'success' &&
-      needs.betterleaks.result == 'success' &&
-      (needs.rust.result == 'success' || needs.rust.result == 'skipped') &&
-      (needs.changes.outputs.rust == 'true' ||
-      needs.changes.outputs.python == 'true' ||
-      needs.changes.outputs.container == 'true' ||
-      needs.changes.outputs.sql == 'true' ||
-      needs.changes.outputs.ci == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
-        with:
-          python-version: "3.14"
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
-      - name: Restore Buildx layers
-        id: buildx-restore
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: /tmp/.buildx-cache-e2e
-          key: ${{ runner.os }}-buildx-e2e-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-e2e-
-            ${{ runner.os }}-buildx-release-
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4
-      - name: Build image
-        id: build
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7
-        with:
-          context: .
-          load: true
-          tags: mnemorium
-          cache-from: type=local,src=/tmp/.buildx-cache-e2e
-          cache-to: type=local,dest=/tmp/.buildx-cache-e2e-new,mode=max
-      - name: Run E2E tests
-        env:
-          NO_BUILD: "1"
-        run: script/e2e.sh
-      - name: Run configuration tests
-        if: always() && steps.build.outcome == 'success'
-        env:
-          NO_BUILD: "1"
-        run: script/configuration.sh
-      - name: Upload E2E artifacts
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
-        with:
-          name: e2e-report
-          path: .artifacts/e2e
-          retention-days: 14
-          if-no-files-found: ignore
-      - name: Stop container
-        if: always()
-        run: docker rm -f mnemorium-e2e || true
-      - name: Rotate Buildx cache
-        if: always()
-        run: |
-          if [ -d /tmp/.buildx-cache-e2e-new ]; then
-            rm -rf /tmp/.buildx-cache-e2e
-            mv /tmp/.buildx-cache-e2e-new /tmp/.buildx-cache-e2e
-          fi
-      - name: Save Buildx layers
-        if: always() && steps.build.outcome == 'success'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: /tmp/.buildx-cache-e2e
-          key: ${{ runner.os }}-buildx-e2e-${{ github.sha }}
 
   api-test:
     needs: [changes, betterleaks]

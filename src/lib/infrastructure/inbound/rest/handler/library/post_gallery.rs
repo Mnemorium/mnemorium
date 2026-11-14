@@ -14,7 +14,10 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct PostGalleryRequest {
-    /// Whether any authenticated user may read and moderate the gallery.
+    /// Whether any authenticated user may read the gallery.
+    ///
+    /// A public gallery grants the viewer actions; it grants no edit, delete or
+    /// share, which still need a grant.
     #[serde(default)]
     pub is_public: bool,
     /// Name of the gallery.
@@ -30,6 +33,7 @@ impl From<CreateGalleryError> for ApiError {
                 Self::UnprocessableEntity(err.to_string())
             }
             CreateGalleryError::NameAlreadyExists => Self::Conflict(err.to_string()),
+            CreateGalleryError::Forbidden => Self::Forbidden(err.to_string()),
             CreateGalleryError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             CreateGalleryError::Unknown(_) => Self::InternalServerError,
         }
@@ -38,8 +42,10 @@ impl From<CreateGalleryError> for ApiError {
 
 /// Create a gallery owned by the caller.
 ///
-/// Any authenticated caller may create a gallery. The name is required, trimmed
-/// and at most 100 characters long; `is_public` defaults to `false`.
+/// A caller the `CreateChild` action on `GALLERY_COLLECTION` admits creates a
+/// gallery. The name is required, trimmed and at most 100 characters long;
+/// `is_public` defaults to `false` and selects a public or private gallery.
+/// Public grants the viewer actions only, never moderation.
 #[utoipa::path(
     post,
     operation_id = "post_gallery",
@@ -79,6 +85,12 @@ impl From<CreateGalleryError> for ApiError {
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "The request body is not application/json"
+        ),
+        (
+            status = FORBIDDEN,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The caller may not create a gallery"
         ),
         (
             status = UNPROCESSABLE_ENTITY,

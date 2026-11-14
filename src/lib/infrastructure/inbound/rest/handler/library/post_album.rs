@@ -41,8 +41,8 @@ pub(crate) struct PostAlbumRequest {
 
 /// Create a music album.
 ///
-/// Only a caller whose `library.manage` scope covers the whole catalogue may
-/// create an album. The write is an upsert by `(name, group)`: an album whose
+/// Creating an album requires `CreateChild` for a music album on the
+/// **Catalogue**. The write is an upsert by `(name, group)`: an album whose
 /// identity already exists is returned unchanged with `200 OK`.
 #[utoipa::path(
     post,

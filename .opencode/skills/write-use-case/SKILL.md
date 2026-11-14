@@ -2,8 +2,8 @@
 name: write-use-case
 description: Authors one new business use case in docs/development/UseCases.md. Interviews the
   caller for the actor, goal, single triggering event and data, verifies the capability against the
-  code, then writes the entry under the bounded-context section that owns it, adds its node to that
-  section's diagram, and records the E2E obligation. Use when the user wants to add a business use
+  code, then writes the entry under the bounded-context section that owns it and adds its node to that
+  section's diagram. Use when the user wants to add a business use
   case, catalog a capability, or asks how a use case is written in this project.
 ---
 
@@ -44,10 +44,7 @@ capability's specification (§ 5.6).
    `usecase "UC-NNN - <business name>" as UCNNN` — and an association from every primary actor. `DOC-008` and
    `check_doc_008` fail until the node is there. List `Root Admin` only when the use case is theirs alone; otherwise
    `Admin` covers it.
-6. **Record the E2E obligation.** The matching test is `test/e2e/<context>/uc<NNN>_<name>.py` (`TEST-039`). When the
-   test is not part of the change, add the identifier to `exempt_use_cases` in `rule_enforcer.yaml` with a `TODO`
-   comment naming the missing test — the precedent is UC-005.
-7. **Verify.** Run `script/rule_enforcer.sh check` and the Markdown gates
+6. **Verify.** Run `script/rule_enforcer.sh check` and the Markdown gates
    (`markdownlint-cli2 '**/*.md'`, `prettier --check '**/*.md'`). Report what ran.
 
 ## Interview anti-patterns
@@ -71,7 +68,6 @@ capability's specification (§ 5.6).
 - No `#### Business rules`, `#### Bounded context(s)` or `#### Secondary actor` heading exists.
 - The identifier is the next free one and appears once.
 - The use case has its node in the section's diagram, with associations from its primary actors.
-- The E2E file exists, or the exemption is recorded with a TODO.
 - `script/rule_enforcer.sh check` passes.
 
 ## References

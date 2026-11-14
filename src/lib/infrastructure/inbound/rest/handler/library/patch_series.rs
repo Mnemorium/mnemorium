@@ -46,8 +46,8 @@ pub(crate) struct PatchSeriesRequest {
 
 /// Update a show partially.
 ///
-/// Only a caller whose `library.manage` scope covers the show may update it. An
-/// absent field keeps its value and a `null` clears an optional value.
+/// Updating a show requires `View` and then `EditMetadata` on it. An absent
+/// field keeps its value and a `null` clears an optional value.
 #[utoipa::path(
     patch,
     operation_id = "patch_series",

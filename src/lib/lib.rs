@@ -40,21 +40,23 @@ mod test_helpers {
     use crate::domain::{NonNegativeF64, NumericID, PositiveI64};
 
     use crate::domain::model::{
-        Configuration, DIGEST_HEX_LENGTH, Episode, EpisodeIndex, File, InstanceState,
-        IntegrityHash, Movie, MusicAlbum, MusicMedium, Orientation, Permission, ProbedAudio,
-        ProbedImage, ProbedVideo, Role, ScanType, Season, SeasonIndex, Series, User, Video,
+        ChildKind, Configuration, DIGEST_HEX_LENGTH, Episode, EpisodeIndex, File, Grant,
+        GrantEffect, InstanceState, IntegrityHash, Movie, MusicAlbum, MusicMedium, Orientation,
+        Principal, ProbedAudio, ProbedImage, ProbedVideo, Resource, ResourceAccess, ResourceKind,
+        ResourceRole, Role, ScanType, Season, SeasonIndex, Series, User, Video, Visibility,
     };
 
     use crate::domain::port::{
         AssetUnitOfWork, AudioRepository, CredentialRepository, FileRepository, GalleryRepository,
-        IdentityUnitOfWork, ImageRepository, LibraryUnitOfWork, MimeTypeRepository,
-        MockAudioRepository, MockCredentialRepository, MockFileRepository, MockGalleryRepository,
-        MockImageRepository, MockMimeTypeRepository, MockMovieRepository, MockMusicAlbumRepository,
-        MockMusicGroupRepository, MockMusicPlaylistRepository, MockPermissionRepository,
-        MockSeriesRepository, MockUploadRepository, MockUserRepository, MockVideoRepository,
-        MovieRepository, MusicAlbumRepository, MusicGroupRepository, MusicPlaylistRepository,
-        PermissionRepository, SeriesRepository, UnitOfWork, UnitOfWorkError, UnitOfWorkFactory,
-        UploadRepository, UserRepository, UserUnitOfWork, VideoRepository,
+        GrantRepository, IdentityUnitOfWork, ImageRepository, LibraryUnitOfWork,
+        MimeTypeRepository, MockAudioRepository, MockCredentialRepository, MockFileRepository,
+        MockGalleryRepository, MockGrantRepository, MockImageRepository, MockMimeTypeRepository,
+        MockMovieRepository, MockMusicAlbumRepository, MockMusicGroupRepository,
+        MockMusicPlaylistRepository, MockResourceRepository, MockSeriesRepository,
+        MockUploadRepository, MockUserRepository, MockVideoRepository, MovieRepository,
+        MusicAlbumRepository, MusicGroupRepository, MusicPlaylistRepository, ResourceRepository,
+        SeriesRepository, UnitOfWork, UnitOfWorkError, UnitOfWorkFactory, UploadRepository,
+        UserRepository, UserUnitOfWork, VideoRepository,
     };
 
     use crate::infrastructure::inbound::rest::{ApiErrorMessage, AppState};
@@ -108,6 +110,8 @@ mod test_helpers {
         pub files: MockFileRepository,
         /// Gallery repository.
         pub galleries: MockGalleryRepository,
+        /// Grant repository.
+        pub grants: MockGrantRepository,
         /// Image repository.
         pub images: MockImageRepository,
         /// Mime type repository.
@@ -120,8 +124,8 @@ mod test_helpers {
         pub music_groups: MockMusicGroupRepository,
         /// Music playlist repository.
         pub music_playlists: MockMusicPlaylistRepository,
-        /// Permission repository.
-        pub permissions: MockPermissionRepository,
+        /// Resource repository.
+        pub resources: MockResourceRepository,
         /// Set when `rollback` is called.
         pub rolled_back: Arc<AtomicBool>,
         /// Series repository.
@@ -144,13 +148,14 @@ mod test_helpers {
                 credentials: MockCredentialRepository::new(),
                 files: MockFileRepository::new(),
                 galleries: MockGalleryRepository::new(),
+                grants: no_grants(),
                 images: MockImageRepository::new(),
                 mime_types: MockMimeTypeRepository::new(),
                 movies: MockMovieRepository::new(),
                 music_albums: MockMusicAlbumRepository::new(),
                 music_groups: MockMusicGroupRepository::new(),
                 music_playlists: MockMusicPlaylistRepository::new(),
-                permissions: MockPermissionRepository::new(),
+                resources: no_resources(),
                 rolled_back: Arc::new(AtomicBool::new(false)),
                 series: MockSeriesRepository::new(),
                 uploads: MockUploadRepository::new(),
@@ -165,8 +170,12 @@ mod test_helpers {
             &mut self.credentials
         }
 
-        fn permissions(&mut self) -> impl PermissionRepository + '_ {
-            &mut self.permissions
+        fn grants(&mut self) -> impl GrantRepository + '_ {
+            &mut self.grants
+        }
+
+        fn resources(&mut self) -> impl ResourceRepository + '_ {
+            &mut self.resources
         }
     }
 
@@ -572,17 +581,88 @@ mod test_helpers {
         Ok(())
     }
 
-    /// Expect the permission load to find `overrides` for `caller_id`.
-    pub(crate) fn expect_permissions(
-        permissions: &mut MockPermissionRepository,
-        caller_id: NumericID,
-        overrides: Vec<Permission>,
-    ) {
-        permissions
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.user_id == Some(caller_id) && filter.action.is_none())
-            .return_once(move |_| Box::pin(async move { Ok(overrides) }));
+    /// Return a resource repository that makes the caller the owner.
+    ///
+    /// A use case whose test does not exercise authorization stubs the load
+    /// with this repository: the addressed resource is private, owned by the
+    /// caller and carries no grant, so the implicit `Owner` bundle allows.
+    #[must_use]
+    pub(crate) fn caller_owned_resources() -> MockResourceRepository {
+        let mut resources = MockResourceRepository::new();
+        resources.expect_search().returning(|filter, caller| {
+            let user_id = caller.id();
+            let resource = Resource::from_stored(
+                1,
+                filter.kind.unwrap_or(ResourceKind::Library),
+                filter.entity_id.unwrap_or_default(),
+                Some(user_id),
+                None,
+                Visibility::Private,
+            );
+            let grant = Grant::from_stored(
+                1,
+                Principal::User(user_id),
+                1,
+                ResourceRole::Downloader,
+                ChildKind::All,
+                GrantEffect::Allow,
+            );
+            Box::pin(async move {
+                Ok(vec![ResourceAccess::new(
+                    resource,
+                    Vec::new(),
+                    vec![grant],
+                    Vec::new(),
+                )])
+            })
+        });
+        resources.expect_create().returning(|new_resource| {
+            let resource = Resource::from_stored(
+                1,
+                new_resource.kind,
+                new_resource.entity_id,
+                new_resource.owner_id,
+                None,
+                new_resource.visibility,
+            );
+            Box::pin(async move { Ok(resource) })
+        });
+        resources
+    }
+
+    /// Return the caller-owned resource double with a tolerated delete.
+    #[must_use]
+    pub(crate) fn no_resources() -> MockResourceRepository {
+        let mut resources = caller_owned_resources();
+        resources
+            .expect_delete()
+            .returning(|_| Box::pin(async { Ok(true) }));
+        resources
+    }
+
+    /// Return a grant repository storing every grant it is handed.
+    #[must_use]
+    pub(crate) fn no_grants() -> MockGrantRepository {
+        let mut grants = MockGrantRepository::new();
+        grants
+            .expect_save_grant()
+            .returning(|grant| Box::pin(async move { Ok(grant) }));
+        grants
+            .expect_delete()
+            .returning(|_, _| Box::pin(async { Ok(true) }));
+        grants.expect_search().returning(|filter| {
+            let resource_id = filter.resource_id.unwrap_or_default();
+            let grant = Grant::from_stored(
+                1,
+                Principal::User(1),
+                resource_id,
+                ResourceRole::Viewer,
+                ChildKind::All,
+                GrantEffect::Allow,
+            );
+            Box::pin(async move { Ok(vec![grant]) })
+        });
+        grants
     }
 
     /// Return a user repository resolving any requested identifier.
@@ -601,19 +681,6 @@ mod test_helpers {
             Box::pin(async move { Ok(found.into_iter().collect()) })
         });
         users
-    }
-
-    /// Return a permission repository that finds no override, for any caller.
-    ///
-    /// A use case whose test does not exercise a permission stubs the load
-    /// with this repository instead of repeating the expectation.
-    #[must_use]
-    pub(crate) fn no_permissions() -> MockPermissionRepository {
-        let mut permissions = MockPermissionRepository::new();
-        permissions
-            .expect_search()
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        permissions
     }
 
     /// Split `response` into its status and decoded JSON body.

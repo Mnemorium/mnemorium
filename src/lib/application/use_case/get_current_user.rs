@@ -1,18 +1,19 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::application::port::{
     GetCurrentUserCommand, GetCurrentUserError, GetCurrentUserResponse, GetCurrentUserUseCase,
 };
 use crate::domain::model::Action;
 use crate::domain::port::{
-    IdentityUnitOfWork, PermissionFilter, PermissionRepository as _, UnitOfWork as _,
-    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching the current user.
 pub(crate) struct GetCurrentUser<F> {
@@ -65,28 +66,15 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetCurrentUserError::NoSuchUser)?;
-
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(user.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| GetCurrentUserError::Unknown(error.into()))?;
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&user, &permissions, Action::UserRead, &user)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = user.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(GetCurrentUserError::NoSuchUser);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &user,
+                    ResourceRef::new(ResourceKind::User, user.id()),
+                    Action::ViewMetadata,
+                    None,
+                )
+                .await
+                .map_err(|_| GetCurrentUserError::NoSuchUser)?;
 
                 Ok(GetCurrentUserResponse::new(
                     user.id(),
@@ -152,7 +140,7 @@ mod tests {
         setup(&mut user_repository)?;
 
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };

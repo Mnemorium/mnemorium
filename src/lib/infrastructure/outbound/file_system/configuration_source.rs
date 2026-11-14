@@ -168,6 +168,7 @@ mod tests {
     use super::*;
     use crate::domain::model::{Configuration, PartialAsset, Rotation};
 
+    use allure_cargotest::allure_test;
     use std::error::Error;
     use std::fs;
     use tempfile::tempdir;
@@ -477,6 +478,43 @@ mod tests {
                 Err(ConfigurationSourceError::InvalidConfiguration(_))
             ),
             "a value of the wrong type must fail, got: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[allure_test]
+    #[test]
+    fn configuration_source_unreadable_path_is_rejected() -> Result<(), Box<dyn Error>> {
+        allure.epic("Configuration");
+        allure.feature("REQ-CONFIGURATION-004");
+        allure.story("SCN-CONFIGURATION-004-D");
+
+        // Arrange: a directory stands in for `config.yaml`, so the path exists but holds no readable document.
+        let directory = tempdir()?;
+        let path = directory.path().join("config.yaml");
+        fs::create_dir_all(&path)?;
+        let resolver = resolver(&path);
+
+        // Act
+        let result = resolver.resolve();
+
+        // Assert
+        assert!(
+            matches!(result, Err(ConfigurationSourceError::Unknown(_))),
+            "a file that cannot be read must fail startup, got: {result:?}"
+        );
+        let message = result
+            .as_ref()
+            .err()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        assert!(
+            message.contains(&path.display().to_string()),
+            "the refusal must name the path it could not read, got: {message:?}"
+        );
+        assert!(
+            !message.contains("the configuration is invalid"),
+            "an unreadable file must not be reported as an invalid document, got: {message:?}"
         );
         Ok(())
     }

@@ -1,0 +1,39 @@
+---
+# SQL is never assembled by string interpolation.
+#
+# The repository layer passes constant statements and keeps every identifier a
+# `&'static str` (`query_filter.rs`); values travel through `push_bind`. A
+# `format!` reaching sqlx means a value or identifier entered the SQL text,
+# which no placeholder can neutralize.
+rules:
+  - id: mnemorium.rust.injection.sql-interpolation
+    languages: [rust]
+    severity: ERROR
+    message: >-
+      `format!` output reaches sqlx. Keep the statement constant and bind every
+      value: `push_bind` for QueryBuilder, placeholders for a statement. An
+      interpolated statement is CWE-89.
+    metadata:
+      category: security
+      subcategory:
+        - injection
+      cwe: >-
+        CWE-89: Improper Neutralization of Special Elements used in an SQL
+        Command ('SQL Injection')
+      confidence: HIGH
+      references:
+        - https://docs.rs/sqlx/latest/sqlx/struct.QueryBuilder.html
+    patterns:
+      - pattern-either:
+          - pattern: 'sqlx::query(format!(...))'
+          - pattern: 'sqlx::query(&format!(...))'
+          - pattern: 'sqlx::query_as::<$T>(format!(...))'
+          - pattern: 'sqlx::query_as::<$T>(&format!(...))'
+          - pattern: 'sqlx::query_as::<$A, $T>(format!(...))'
+          - pattern: 'sqlx::query_as::<$A, $T>(&format!(...))'
+          - pattern: 'sqlx::query_scalar::<$T>(format!(...))'
+          - pattern: 'sqlx::query_scalar::<$T>(&format!(...))'
+          - pattern: 'sqlx::query_scalar::<$A, $T>(format!(...))'
+          - pattern: 'sqlx::query_scalar::<$A, $T>(&format!(...))'
+          - pattern: '$BUILDER.push(format!(...))'
+          - pattern: '$BUILDER.push(&format!(...))'

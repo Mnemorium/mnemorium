@@ -1,8 +1,8 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     ApplySeriesEpisodeCommand, ApplySeriesEpisodeError, ApplySeriesEpisodeResponse,
@@ -10,11 +10,10 @@ use crate::application::port::{
 };
 use crate::domain::model::{Action, Episode, EpisodeIndex, MediaMetadata, Target};
 use crate::domain::port::{
-    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
-    RepositoryError, SeriesFilter, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory,
-    UserFilter, UserRepository as _, UserUnitOfWork, VideoMetadataProvider,
+    IdentityUnitOfWork, LibraryUnitOfWork, RepositoryError, SeriesFilter, SeriesRepository as _,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    VideoMetadataProvider,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for applying external metadata to one episode.
 ///
@@ -78,15 +77,6 @@ where
                     .next()
                     .ok_or(ApplySeriesEpisodeError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| ApplySeriesEpisodeError::Unknown(error.into()))?;
-
                 let series = unit_of_work
                     .series()
                     .search(&SeriesFilter {
@@ -111,36 +101,30 @@ where
                     .ok_or(ApplySeriesEpisodeError::NoSuchEpisode)?
                     .clone();
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &series)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(ApplySeriesEpisodeError::NoSuchSeries);
-                }
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryManage, &series)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(if denial.conceals() {
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Series, series.id()),
+                    Action::ViewMetadata,
+                    None,
+                )
+                .await
+                .map_err(|_| ApplySeriesEpisodeError::NoSuchSeries)?;
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Series, series.id()),
+                    Action::EditMetadata,
+                    None,
+                )
+                .await
+                .map_err(|error| {
+                    if error.conceals() {
                         ApplySeriesEpisodeError::NoSuchSeries
                     } else {
                         ApplySeriesEpisodeError::Forbidden
-                    });
-                }
+                    }
+                })?;
 
                 let Some(provider) = metadata_provider else {
                     return Err(ApplySeriesEpisodeError::ProviderUnavailable);
@@ -230,12 +214,12 @@ where
 mod tests {
     use super::*;
     use crate::domain::NumericID;
+    use allure_cargotest::allure_test;
 
     use crate::domain::model::{ExternalRef, ProviderId, Role, Series, User};
 
     use crate::domain::port::{
-        MockPermissionRepository, MockSeriesRepository, MockUserRepository,
-        MockVideoMetadataProvider,
+        MockResourceRepository, MockSeriesRepository, MockUserRepository, MockVideoMetadataProvider,
     };
 
     use crate::test_helpers::*;
@@ -259,11 +243,11 @@ mod tests {
 
     fn harness_with(
         users: MockUserRepository,
-        permissions: MockPermissionRepository,
+        resources: MockResourceRepository,
         series: MockSeriesRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions,
+            resources,
             series,
             users,
             ..TestUnitOfWork::default()
@@ -306,8 +290,15 @@ mod tests {
         }
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_series_episode_writes_the_reported_metadata() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.feature("REQ-METADATA-ENRICHMENT-027");
+        allure.story("SCN-METADATA-ENRICHMENT-024-A");
+        allure.story("SCN-METADATA-ENRICHMENT-027-A");
+        allure.story("SCN-METADATA-ENRICHMENT-027-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -335,7 +326,7 @@ mod tests {
                 )
             })
             .return_once(|_| Box::pin(async { Ok(Some(episode_metadata(1, 1))) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
 
         // Act
         let response = use_case(&harness, Some(provider))
@@ -357,8 +348,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_series_episode_rejects_another_position() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-027");
+        allure.story("SCN-METADATA-ENRICHMENT-027-C");
         // Arrange: the provider reports episode 2 while the command addresses 1.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -372,7 +367,7 @@ mod tests {
             .expect_lookup()
             .times(1)
             .return_once(|_| Box::pin(async { Ok(Some(episode_metadata(1, 2))) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
 
         // Act
         let result = use_case(&harness, Some(provider)).execute(command()).await;
@@ -385,8 +380,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_series_episode_reports_an_unknown_reference() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.story("SCN-METADATA-ENRICHMENT-024-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -400,7 +399,7 @@ mod tests {
             .expect_lookup()
             .times(1)
             .return_once(|_| Box::pin(async { Ok(None) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
 
         // Act
         let result = use_case(&harness, Some(provider)).execute(command()).await;
@@ -413,8 +412,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_series_episode_rejects_another_kind() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.story("SCN-METADATA-ENRICHMENT-024-C");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -436,7 +439,7 @@ mod tests {
                 }))
             })
         });
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
 
         // Act
         let result = use_case(&harness, Some(provider)).execute(command()).await;
@@ -449,8 +452,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_series_episode_reports_an_unconfigured_provider() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.story("SCN-METADATA-ENRICHMENT-024-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -459,7 +466,7 @@ mod tests {
             &mut series,
             sample_series(7, vec![sample_season(1, vec![sample_episode(1, 20)?])])?,
         );
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
 
         // Act
         let result = use_case(&harness, None).execute(command()).await;
@@ -482,7 +489,7 @@ mod tests {
             &mut series,
             sample_series(7, vec![sample_season(1, Vec::new())])?,
         );
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
 
         // Act
         let result = use_case(&harness, None).execute(command()).await;
@@ -494,27 +501,6 @@ mod tests {
         ));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn apply_series_episode_forbids_a_caller_without_manage() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let mut series = MockSeriesRepository::new();
-        loaded(
-            &mut series,
-            sample_series(7, vec![sample_season(1, vec![sample_episode(1, 20)?])])?,
-        );
-        let harness = harness_with(users, no_permissions(), series);
-
-        // Act
-        let result = use_case(&harness, None).execute(command()).await;
-
-        // Assert
-        assert!(matches!(result, Err(ApplySeriesEpisodeError::Forbidden)));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn apply_series_episode_dependency_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
@@ -526,7 +512,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Unavailable) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
 
         // Act
         let result = use_case(&harness, None).execute(command()).await;

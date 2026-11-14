@@ -1,8 +1,8 @@
 use std::ffi::{OsStr, OsString};
-use std::fs::{File, OpenOptions, Permissions, rename};
+use std::fs::{File, Metadata, OpenOptions, Permissions, metadata, rename};
 use std::future::{Future, ready};
 use std::io::{Error, ErrorKind, Read as _, Write as _};
-use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 
 use tracing::{error, warn};
@@ -40,6 +40,17 @@ pub(crate) struct FileInstanceStateStore {
     path: PathBuf,
 }
 
+/// How a persisted identity's privacy is judged before it is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Privacy {
+    /// The file is regular, owned by the server account and owner-only.
+    Private,
+    /// The file is not a regular file, or another account owns it.
+    Refuse,
+    /// The file is regular and owned by the server account, but its mode is wider.
+    Repair,
+}
+
 impl FileInstanceStateStore {
     /// Return the directory holding the identity file.
     ///
@@ -50,6 +61,55 @@ impl FileInstanceStateStore {
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
             .unwrap_or_else(|| Path::new("."))
+    }
+
+    /// Require the opened identity file to be private to the account that owns
+    /// the working directory, tightening a wider mode to `0600` before reading.
+    ///
+    /// The check runs on the opened descriptor, so a symlink or a file swap
+    /// between the check and the read cannot bypass it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InstanceStateStoreError::Insecure`] when the file is not a
+    /// regular file, is owned by another account, or its mode cannot be changed.
+    fn ensure_private(&self, file: &File) -> Result<(), InstanceStateStoreError> {
+        self.ensure_private_with(file, |opened| {
+            opened.set_permissions(Permissions::from_mode(STATE_FILE_MODE))
+        })
+    }
+
+    /// Apply the privacy rule, delegating the mode repair to `repair`.
+    ///
+    /// The seam lets the adapter test prove that a mode the server cannot
+    /// repair fails startup, without a file system the test cannot create.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InstanceStateStoreError::Insecure`] when the file is not a
+    /// regular file, is owned by another account, or `repair` fails.
+    fn ensure_private_with<R>(&self, file: &File, repair: R) -> Result<(), InstanceStateStoreError>
+    where
+        R: FnOnce(&File) -> Result<(), Error>,
+    {
+        let directory_owner = metadata(self.directory())
+            .map_err(|failure| Self::map_io_error(failure, "load_instance_state"))?
+            .uid();
+        let metadata = file
+            .metadata()
+            .map_err(|failure| Self::map_io_error(failure, "load_instance_state"))?;
+
+        match assess_privacy(&metadata, directory_owner) {
+            Privacy::Private => Ok(()),
+            Privacy::Repair => repair(file).map_err(|_failure| {
+                Self::warn_insecure();
+                InstanceStateStoreError::Insecure
+            }),
+            Privacy::Refuse => {
+                Self::warn_insecure();
+                Err(InstanceStateStoreError::Insecure)
+            }
+        }
     }
 
     /// Map an I/O failure onto the port error, logging the catalogued
@@ -77,13 +137,15 @@ impl FileInstanceStateStore {
     ///
     /// # Errors
     ///
-    /// Returns an error when the file cannot be read or exceeds the cap.
+    /// Returns an error when the file cannot be read or exceeds the cap, and
+    /// when the opened file is not private to the server account.
     fn read(&self) -> Result<Option<String>, InstanceStateStoreError> {
         let file = match File::open(&self.path) {
             Ok(file) => file,
             Err(failure) if failure.kind() == ErrorKind::NotFound => return Ok(None),
             Err(failure) => return Err(Self::map_io_error(failure, "load_instance_state")),
         };
+        self.ensure_private(&file)?;
 
         let mut bytes = Vec::new();
         file.take(READ_LIMIT_BYTES)
@@ -158,6 +220,18 @@ impl FileInstanceStateStore {
         self.path.with_file_name(name)
     }
 
+    /// Record the catalogued validation event for an identity that is not
+    /// private, naming the classification and never a secret (`OBS-002`,
+    /// `OBS-004`).
+    fn warn_insecure() {
+        warn!(
+            target: "security",
+            event = "output_validation_failed",
+            reason = "instance_identity_insecure",
+            "the persisted instance identity failed validation"
+        );
+    }
+
     /// Write `contents` to a sibling temp file, sync it, then rename it into
     /// place and sync the directory so a crash never leaves a partial document.
     ///
@@ -166,6 +240,27 @@ impl FileInstanceStateStore {
     /// Returns an error when the temp file cannot be written, synced or
     /// renamed.
     fn write_atomic(&self, contents: &str) -> Result<(), InstanceStateStoreError> {
+        self.write_atomic_with(contents, |from, to| rename(from, to))
+    }
+
+    /// Write `contents` atomically, delegating the final rename to
+    /// `rename_into_place`.
+    ///
+    /// The seam lets the adapter test prove that a failed rename leaves the
+    /// previous identity in place, without a static or a process-level race.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the temp file cannot be written or synced, when
+    /// `rename_into_place` fails, or when the directory cannot be synced.
+    fn write_atomic_with<R>(
+        &self,
+        contents: &str,
+        rename_into_place: R,
+    ) -> Result<(), InstanceStateStoreError>
+    where
+        R: FnOnce(&Path, &Path) -> Result<(), Error>,
+    {
         let temporary = self.sibling(".tmp");
         let mut file = OpenOptions::new()
             .write(true)
@@ -184,7 +279,7 @@ impl FileInstanceStateStore {
             .map_err(|failure| Self::map_io_error(failure, "save_instance_state"))?;
         drop(file);
 
-        rename(&temporary, &self.path)
+        rename_into_place(&temporary, &self.path)
             .map_err(|failure| Self::map_io_error(failure, "save_instance_state"))?;
 
         File::open(self.directory())
@@ -282,11 +377,30 @@ impl From<&InstanceState> for StateFile {
     }
 }
 
+/// Judge a persisted identity's privacy from its metadata and the working
+/// directory's owner.
+///
+/// The owner check compares the file with the directory the state is written
+/// into: the image chowns `/app` to the server account, so the working
+/// directory's owner is the server account.
+fn assess_privacy(metadata: &Metadata, directory_owner: u32) -> Privacy {
+    if !metadata.is_file() || metadata.uid() != directory_owner {
+        return Privacy::Refuse;
+    }
+    if metadata.mode() & 0o077 != 0 {
+        Privacy::Repair
+    } else {
+        Privacy::Private
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     use std::error::Error;
     use std::fs;
+    use std::io::Error as IoError;
     use std::iter::repeat_n;
     use tempfile::tempdir;
 
@@ -356,29 +470,36 @@ mod tests {
         Ok(())
     }
 
+    #[rstest]
+    #[case::version_zero(0u32)]
+    #[case::version_two(2u32)]
     #[tokio::test]
-    async fn file_instance_state_store_unsupported_version_is_named() -> Result<(), Box<dyn Error>>
-    {
+    async fn file_instance_state_store_unsupported_version_is_named(
+        #[case] version: u32,
+    ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let directory = tempdir()?;
         let path = directory.path().join("state.yaml");
-        write_document(
-            &path,
-            &format!(
-                "version: 2\ncreated_at: 1\npepper: \"{}\"\njwt_secret: \"{}\"\n",
-                hex64('a'),
-                hex64('b')
-            ),
-        )?;
         let store = FileInstanceStateStore::new(path.clone());
+        let document = format!(
+            "version: {version}\ncreated_at: 1\npepper: \"{}\"\njwt_secret: \"{}\"\n",
+            hex64('a'),
+            hex64('b')
+        );
+        write_document(&path, &document)?;
 
         // Act
         let result = store.load().await;
 
         // Assert
         assert!(
-            matches!(result, Err(InstanceStateStoreError::UnsupportedVersion(2))),
-            "an unknown format version must be named, got: {result:?}"
+            matches!(result, Err(InstanceStateStoreError::UnsupportedVersion(declared)) if declared == version),
+            "an unsupported format version must be named, got: {result:?}"
+        );
+        assert_eq!(
+            fs::read_to_string(&path)?,
+            document,
+            "the document must be left unchanged"
         );
         Ok(())
     }
@@ -388,14 +509,12 @@ mod tests {
         // Arrange
         let directory = tempdir()?;
         let path = directory.path().join("state.yaml");
-        write_document(
-            &path,
-            &format!(
-                "version: 1\ncreated_at: 1\npepper: \"{}\"\njwt_secret: \"{}\"\ninstance_id: 7\n",
-                hex64('a'),
-                hex64('b')
-            ),
-        )?;
+        let document = format!(
+            "version: 1\ncreated_at: 1\npepper: \"{}\"\njwt_secret: \"{}\"\ninstance_id: 7\n",
+            hex64('a'),
+            hex64('b')
+        );
+        write_document(&path, &document)?;
         let store = FileInstanceStateStore::new(path.clone());
 
         // Act
@@ -405,6 +524,11 @@ mod tests {
         assert!(
             matches!(result, Err(InstanceStateStoreError::Corrupt(_))),
             "an unknown field must fail instead of being ignored, got: {result:?}"
+        );
+        assert_eq!(
+            fs::read_to_string(&path)?,
+            document,
+            "the document must be left unchanged"
         );
         Ok(())
     }
@@ -437,7 +561,8 @@ mod tests {
         // Arrange
         let directory = tempdir()?;
         let path = directory.path().join("state.yaml");
-        write_document(&path, "version: 1\ncreated_at: 1\npepper: \"aaaa")?;
+        let document = "version: 1\ncreated_at: 1\npepper: \"aaaa";
+        write_document(&path, document)?;
         let store = FileInstanceStateStore::new(path.clone());
 
         // Act
@@ -448,6 +573,11 @@ mod tests {
             matches!(result, Err(InstanceStateStoreError::Corrupt(_))),
             "a truncated document must fail instead of being treated as absent, got: {result:?}"
         );
+        assert_eq!(
+            fs::read_to_string(&path)?,
+            document,
+            "the document must be left unchanged"
+        );
         Ok(())
     }
 
@@ -457,7 +587,8 @@ mod tests {
         // Arrange
         let directory = tempdir()?;
         let path = directory.path().join("state.yaml");
-        write_document(&path, &"a".repeat(5000))?;
+        let document = "a".repeat(5000);
+        write_document(&path, &document)?;
         let store = FileInstanceStateStore::new(path.clone());
 
         // Act
@@ -467,6 +598,11 @@ mod tests {
         assert!(
             matches!(result, Err(InstanceStateStoreError::Corrupt(_))),
             "an oversized document must be rejected before decoding, got: {result:?}"
+        );
+        assert_eq!(
+            fs::read_to_string(&path)?,
+            document,
+            "the document must be left unchanged"
         );
         Ok(())
     }
@@ -486,6 +622,124 @@ mod tests {
         assert_eq!(
             mode, 0o600,
             "only the server account may read or write the identity"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn file_instance_state_store_privacy_predicate_classifies_each_case()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let directory = tempdir()?;
+        let private_path = directory.path().join("private.yaml");
+        fs::write(&private_path, "x")?;
+        fs::set_permissions(&private_path, Permissions::from_mode(0o600))?;
+        let wide_path = directory.path().join("wide.yaml");
+        fs::write(&wide_path, "x")?;
+        fs::set_permissions(&wide_path, Permissions::from_mode(0o644))?;
+        let owner = fs::metadata(directory.path())?.uid();
+
+        // Act
+        let private = assess_privacy(&fs::metadata(&private_path)?, owner);
+        let wide = assess_privacy(&fs::metadata(&wide_path)?, owner);
+        let non_regular = assess_privacy(&fs::metadata(directory.path())?, owner);
+        let foreign = assess_privacy(
+            &fs::metadata(directory.path().join("private.yaml"))?,
+            owner + 1,
+        );
+
+        // Assert
+        assert_eq!(
+            private,
+            Privacy::Private,
+            "an owner-only mode needs no repair"
+        );
+        assert_eq!(
+            wide,
+            Privacy::Repair,
+            "a wider mode is tightened before reading"
+        );
+        assert_eq!(
+            non_regular,
+            Privacy::Refuse,
+            "a state path that is not a regular file is refused"
+        );
+        assert_eq!(
+            foreign,
+            Privacy::Refuse,
+            "a file another account owns is refused, never repaired"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn file_instance_state_store_non_regular_file_is_insecure() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let directory = tempdir()?;
+        let path = directory.path().join("state.yaml");
+        fs::create_dir_all(&path)?;
+        let store = FileInstanceStateStore::new(path);
+
+        // Act
+        let result = store.load().await;
+
+        // Assert
+        assert!(
+            matches!(result, Err(InstanceStateStoreError::Insecure)),
+            "a state path that is not a regular file must fail startup, got: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn file_instance_state_store_unrepairable_mode_is_insecure() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let directory = tempdir()?;
+        let path = directory.path().join("state.yaml");
+        fs::write(&path, "x")?;
+        fs::set_permissions(&path, Permissions::from_mode(0o644))?;
+        let store = FileInstanceStateStore::new(path.clone());
+        let file = File::open(&path)?;
+
+        // Act
+        let result = store.ensure_private_with(&file, |_| {
+            Err(IoError::new(ErrorKind::PermissionDenied, "cannot chmod"))
+        });
+
+        // Assert
+        assert!(
+            matches!(result, Err(InstanceStateStoreError::Insecure)),
+            "a mode the server cannot repair must fail startup, got: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn file_instance_state_store_failed_rename_leaves_the_previous_state()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let directory = tempdir()?;
+        let store = FileInstanceStateStore::new(directory.path().join("state.yaml"));
+        store.save(&state()?).await?;
+        let previous = store.load().await?;
+        let replacement = InstanceState::try_new(2, hex64('c'), hex64('d'))?;
+        let document = yaml_serde::to_string(&StateFile::from(&replacement))?;
+
+        // Act
+        let result =
+            store.write_atomic_with(&document, |_, _| Err(IoError::other("rename failed")));
+
+        // Assert
+        assert!(
+            matches!(result, Err(InstanceStateStoreError::OperationFailed(_))),
+            "a failed rename must be reported, got: {result:?}"
+        );
+        assert_eq!(
+            store.load().await?,
+            previous,
+            "the previous identity must stay loadable"
         );
         Ok(())
     }

@@ -31,8 +31,16 @@ impl Debug for Credential {
 mod tests {
     use super::*;
 
+    use allure_cargotest::allure_test;
+
+    #[allure_test]
     #[test]
     fn credential_debug_redacts_the_password_hash_but_keeps_the_id() {
+        allure.epic("Authentication");
+        allure.feature("REQ-AUTHENTICATION-006");
+        allure.story("SCN-AUTHENTICATION-006-B");
+        allure.parameter("subject", "Credential row");
+
         // Arrange: a `credential` row whose stored hash is a unique sentinel.
         let row = Credential {
             credential_id: 7,

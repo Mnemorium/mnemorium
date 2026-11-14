@@ -1,13 +1,16 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
-use axum::Json;
 use axum::extract::State;
+use axum::http::{HeaderValue, header};
+use axum::response::{IntoResponse as _, Response};
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 use utoipa::ToSchema;
 
-use crate::application::port::{LoginUserCommand, LoginUserError, LoginUserResponse};
+use crate::application::port::{LoginUserCommand, LoginUserError};
+use crate::domain::port::IssuedToken;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLinks, hal_json};
 
 /// Payload to authenticate a user.
 #[derive(Deserialize, ToSchema)]
@@ -32,7 +35,7 @@ impl Debug for LoginRequest {
     }
 }
 
-/// Token issued by a successful authentication.
+/// Token issued by a successful authentication or regeneration.
 #[derive(Serialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct LoginResponse {
@@ -40,6 +43,9 @@ pub(crate) struct LoginResponse {
     pub access_token: String,
     /// Lifetime of the token, in seconds.
     pub expires_in: u64,
+    /// Links to the login operation.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
     /// Token type, always `bearer`.
     pub token_type: String,
 }
@@ -56,12 +62,13 @@ impl Debug for LoginResponse {
     }
 }
 
-/// Map the login-user response onto its HTTP representation.
-impl From<LoginUserResponse> for LoginResponse {
-    fn from(response: LoginUserResponse) -> Self {
+/// Map the issued token onto its HTTP representation.
+impl From<IssuedToken> for LoginResponse {
+    fn from(response: IssuedToken) -> Self {
         Self {
-            access_token: response.access_token().to_owned(),
+            access_token: response.value().to_owned(),
             expires_in: response.expires_in(),
+            links: SelfLinks::new("/api/v1/identity/login"),
             token_type: "bearer".to_owned(),
         }
     }
@@ -74,6 +81,10 @@ impl From<LoginUserError> for ApiError {
             LoginUserError::InvalidPassword | LoginUserError::InvalidUsername => {
                 Self::Unauthorized("invalid credentials".to_owned())
             }
+            LoginUserError::RateLimited(wait) => Self::TooManyRequests(format!(
+                "too many authentication attempts; retry in {} seconds",
+                wait.as_secs().max(1)
+            )),
             LoginUserError::Unknown(_) => Self::InternalServerError,
         }
     }
@@ -94,7 +105,7 @@ impl From<LoginUserError> for ApiError {
         (
             status = OK,
             body = LoginResponse,
-            content_type = "application/json",
+            content_type = "application/hal+json",
             description = "User authenticated",
         ),
         (
@@ -149,12 +160,30 @@ impl From<LoginUserError> for ApiError {
 pub(crate) async fn post_login(
     State(state): State<AppState>,
     payload: JsonObject<LoginRequest>,
-) -> Result<Json<LoginResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     let JsonObject(request) = payload;
-    let response = state
+    match state
         .identity_use_case_factory()
         .login_user()
         .execute(LoginUserCommand::new(request.username, request.password))
-        .await?;
-    Ok(Json(LoginResponse::from(response)))
+        .await
+    {
+        Ok(response) => Ok(hal_json(LoginResponse::from(response))),
+        Err(LoginUserError::RateLimited(wait)) => {
+            warn!(
+                target: "security",
+                event = "rate_limit_exceeded",
+                route = "identity.login",
+                reason = "quota_exceeded",
+                "rejected a rate-limited login attempt"
+            );
+            let mut response =
+                ApiError::TooManyRequests("too many requests".to_owned()).into_response();
+            if let Ok(value) = HeaderValue::from_str(&wait.as_secs().max(1).to_string()) {
+                response.headers_mut().insert(header::RETRY_AFTER, value);
+            }
+            Ok(response)
+        }
+        Err(error) => Err(error.into()),
+    }
 }

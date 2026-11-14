@@ -1,0 +1,42 @@
+schema: spec-driven
+
+context: |
+  Specifications are grouped into functional areas representing related externally
+  observable behavior.
+
+rules:
+  proposal:
+    - >-
+      Load the `glossary` skill before writing this proposal.
+  specs:
+    - >-
+      Give every requirement a stable `REQ-*` identifier, scoped to the capability
+      the spec defines rather than to its functional area: `authorization/spec.md`
+      yields `REQ-AUTHORIZATION-001`.
+    - >-
+      Give every scenario a stable `SCN-*` identifier, scoped to the same capability
+      and lettered within its requirement: `SCN-AUTHORIZATION-001-A`,
+      `SCN-AUTHORIZATION-001-B`.
+  tasks:
+    - >-
+      Work test-first (TDD): write the failing test before the implementation it
+      proves, see it fail for the expected reason, then implement until it passes
+      and refactor with the test still green. A bug fix starts with a test that
+      reproduces the defect.
+    - >-
+      Put that test at the lowest level that can observe the behaviour — an
+      application test, the adapter's integration test, or the system suite — and
+      never re-assert at a higher level what a lower one already owns.
+    - >-
+      Mark every test it writes with the three Allure labels: `epic` for the
+      functional or specification area (`Authorization`), `feature` for the
+      requirement (`REQ-AUTHORIZATION-001`), and `story` for the scenario
+      (`SCN-AUTHORIZATION-001-A`).
+
+operations:
+  apply:
+    guidance:
+      - >-
+        Work test-first: write the failing test before the code it proves, see it
+        fail for the expected reason, then implement until it passes and refactor
+        with it green.

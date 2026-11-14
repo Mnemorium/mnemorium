@@ -5,15 +5,17 @@ use axum::response::Response;
 use crate::application::port::AssetTarget;
 use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::asset::{
-    ContentAccess, asset_content_response, content_command, parse_asset_id,
+    asset_content_response, content_command, parse_asset_id,
 };
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
 
 /// Read the bytes of a typed image.
 ///
-/// The image is authorized through the resource that owns it before any byte is
-/// read, or the request is authorized by a playback credential scoped to its
-/// backing file. An unreadable image answers `404 Not Found`.
+/// The request is authenticated and the backing file's `View` action is decided
+/// before any byte is read. An asset the caller cannot discover answers `404
+/// Not Found`; a discoverable one whose action refuses answers `403 Forbidden`;
+/// neither reads content.
 #[utoipa::path(
     get,
     operation_id = "get_image_content",
@@ -52,22 +54,22 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
             description = "The content matches the presented validator"
         ),
         (
-            status = BAD_REQUEST,
-            body = ErrorBody,
-            content_type = "application/hal+json",
-            description = "Invalid image identifier or ambiguous credential"
-        ),
-        (
             status = UNAUTHORIZED,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Missing, invalid or expired credential"
+            description = "Missing, invalid or expired session token"
+        ),
+        (
+            status = FORBIDDEN,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The caller can discover the image but may not view it"
         ),
         (
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown or unreadable image"
+            description = "Unknown or undiscoverable image"
         ),
         (
             status = SERVICE_UNAVAILABLE,
@@ -92,10 +94,15 @@ pub(crate) async fn get_image_content(
     State(state): State<AppState>,
     method: Method,
     headers: HeaderMap,
-    access: ContentAccess,
+    caller: AuthenticatedUser,
 ) -> Result<Response, ApiError> {
     let image_id = parse_asset_id(&image_id_value, "image_id", "invalid image identifier")?;
-    let command = content_command(access, AssetTarget::Image(image_id), &headers, &method);
+    let command = content_command(
+        caller.user_id(),
+        AssetTarget::Image(image_id),
+        &headers,
+        &method,
+    );
     let response = state
         .asset_use_case_factory()
         .get_asset_content()

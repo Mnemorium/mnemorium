@@ -1,313 +1,318 @@
 # Permissions
 
-This guide describes how Mnemorium decides whether a caller may perform an action. It covers the two axes of authority,
-the action catalog, the five scopes, how a decision is resolved, derived actions such as `file.read`, the Root Admin and
-upload rules, what a denial looks like, and how the Root Admin administers another user's permissions over the API.
+This guide explains how Mnemorium decides whether a caller may perform an action. It describes the
+**resource-and-grant** engine: every authorizable thing is a resource, every share is a grant, and every denial has a
+reason. The normative contract is the `authorization` capability (`openspec/specs/authorization/spec.md`); this guide is
+the human explanation and carries the canonical tree diagram.
 
-## The two axes
+The old scope model (`ALL`, `PUBLIC_OR_OWNED`, `OWNED`, `LISTED`, `NONE`) is gone. There is no per-action scope and no
+per-user permission override: a grant names a **principal**, a **resource** and a **resource role**.
 
-Authority has two independent axes, and a change usually touches only one of them.
+## Resource tree
 
-| Axis           | Decided by                                      | Example                                                       |
-| -------------- | ----------------------------------------------- | ------------------------------------------------------------- |
-| Administration | The role preset, optionally overridden per user | Creating a user, changing a role, reading user accounts       |
-| Content        | Ownership and visibility, optionally overridden | Reading a gallery, moderating a playlist, reading the library |
+Every authorizable entity is a resource. Each resource has exactly one **authorization parent** (a solid arrow), which
+is the only edge that inherits a full resource role. `AlbumMember`, `PlaylistEntry` and `GroupMember` are **resource
+relations** (dashed arrows): they contain or reference content and lend read access, but they never become an
+authorization parent.
 
-The role (`Standard` or `Admin`) determines the administration axis and the default content scope. Visibility (`public`
-or `private`) and ownership refine the content axis. A permission only overrides the _scope_ of an action; it never
-changes the role.
+```plantuml
+@startuml
+skinparam linetype ortho
+skinparam componentStyle rectangle
+skinparam nodesep 30
+skinparam ranksep 45
 
-## Actions
+' Authorization parent: the single edge that inherits a full resource role.
+Instance --> Library
+Instance --> User
+Instance --> Upload
 
-Every authorizable operation has exactly one action name, and the catalog is fixed.
+Library --> Catalogue
+Library --> Gallery
+Library --> MusicPlaylist
 
-| Action              | Target                    | Standard          | Admin             | Root Admin | Configurable |
-| ------------------- | ------------------------- | ----------------- | ----------------- | ---------- | ------------ |
-| `library.read`      | Movie, Series, MusicAlbum | `ALL`             | `ALL`             | All        | yes          |
-| `library.manage`    | Movie, Series, MusicAlbum | `NONE`            | `ALL`             | All        | yes          |
-| `gallery.read`      | Gallery                   | `PUBLIC_OR_OWNED` | `PUBLIC_OR_OWNED` | All        | yes          |
-| `gallery.moderate`  | Gallery                   | `PUBLIC_OR_OWNED` | `PUBLIC_OR_OWNED` | All        | yes          |
-| `gallery.manage`    | Gallery                   | `OWNED`           | `OWNED`           | All        | yes          |
-| `playlist.read`     | MusicPlaylist             | `PUBLIC_OR_OWNED` | `PUBLIC_OR_OWNED` | All        | yes          |
-| `playlist.moderate` | MusicPlaylist             | `PUBLIC_OR_OWNED` | `PUBLIC_OR_OWNED` | All        | yes          |
-| `playlist.manage`   | MusicPlaylist             | `OWNED`           | `OWNED`           | All        | yes          |
-| `file.use`          | File                      | `OWNED`           | `ALL`             | All        | yes          |
-| `upload.read`       | Upload                    | `OWNED`           | `OWNED`           | `OWNED`    | no           |
-| `upload.write`      | Upload                    | `OWNED`           | `OWNED`           | `OWNED`    | no           |
-| `user.read`         | User, Global              | `NONE`            | `ALL`             | All        | yes          |
-| `user.update`       | User                      | `NONE`            | `ALL`             | All        | yes          |
-| `user.create`       | Global                    | `NONE`            | `ALL`             | All        | yes          |
-| `user.create_admin` | Global                    | `NONE`            | `NONE`            | All        | yes          |
-| `user.delete`       | User                      | `NONE`            | `ALL`             | All        | yes          |
-| `user.role_change`  | User                      | `NONE`            | `NONE`            | All        | yes          |
-| `credential.patch`  | Global                    | `NONE`            | `NONE`            | All        | yes          |
-| `permission.manage` | Global                    | `NONE`            | `NONE`            | All        | no           |
+Catalogue --> Movie
+Catalogue --> Series
+Catalogue --> MusicGroup
+Catalogue --> MusicAlbum
 
-The table is the default matrix. `Root Admin` is not a preset: it is a short-circuit, described below.
+Series --> Season
+Season --> Episode
 
-A `LISTED` scope names top-level resources only. A season, episode, medium or track is authorized through its series or
-album, so `library.read` and `library.manage` never name a season or a track.
+MusicAlbum --> MusicMedium
+MusicMedium --> MusicRecording
 
-## Derived actions
+Gallery --> GalleryItem
+GalleryItem --> Image
+GalleryItem --> Video
 
-`file.read` is derived: it has no scope, no role preset and no override, and it never appears in the configurable
-matrix. Reading an asset delegates to the read action of the resource that owns it:
+Movie --> Video
+Episode --> Video
+MusicRecording --> Audio
 
-| Asset                                     | Decided by      | Resource                               |
-| ----------------------------------------- | --------------- | -------------------------------------- |
-| Catalogue artwork (`LIBRARY` asset scope) | `library.read`  | Global                                 |
-| A gallery item (`USER` asset scope)       | `gallery.read`  | The gallery holding the item           |
-| A playlist cover (`USER` asset scope)     | `playlist.read` | The playlist holding the cover         |
-| A film's video                            | `library.read`  | The film                               |
-| An episode's video                        | `library.read`  | The series holding the episode         |
-| An album's audio                          | `library.read`  | The album                              |
-| An asset no resource references           | —               | Its file owner and the Root Admin only |
+Image --> File
+Video --> File
+Audio --> File
+Upload --> File
 
-The stored file carries the resource that owns it, so the read path takes one decision: the `Authorization` domain
-service receives the file and reads the owner from it, with no per-representation lookup and no separate path for the
-file, image, audio and video views.
+' Resource relations: read-lending only, never an authorization parent.
+MusicPlaylist ..> MusicRecording : PlaylistEntry
+MusicAlbum ..> MusicRecording : AlbumMember
+MusicGroup ..> MusicAlbum : GroupMember
 
-An asset scope is fixed by the first attachment and is not the permission `Scope`: the permission scope is the reach of
-an action over a resource family, defined under [Scopes](#scopes).
+note right of File
+  A File has exactly one parent:
+  Image, Video, Audio or Upload.
+end note
 
-Catalogue artwork is shared and public, so a `LISTED` library scope still reaches it while `NONE` or `OWNED` hides it. A
-`USER` asset is owned by exactly one referrer, so a caller that cannot read the gallery or playlist cannot read its
-artwork either, even by naming the identifier of the image directly: the read answers `404 Not Found`, indistinguishable
-from an unknown asset. Only the Root Admin short-circuits the delegation; an Admin sees an asset exactly where its
-`library.read`, `gallery.read` and `playlist.read` allow. An asset with no referrer is readable only by the caller who
-owns its file and by the Root Admin.
+note bottom of MusicRecording
+  Solid = authorization parent (full role inheritance).
+  Dashed = resource relation (Discover, ViewMetadata, View, Stream only).
+end note
+@enduml
+```
 
-Because `file.read` cannot be granted, an override naming it is refused with `422`. `file.use` remains the write action
-over stored files: `OWNED` for a Standard user and `ALL` for an Admin, so an Admin may reference, modify or delete
-another caller's file.
+A typed asset attaches to the resource it belongs to: a film's video and artwork to the film, an episode's video to the
+episode, an album's artwork to the album, a playlist's cover to the playlist, a recording's audio to the recording. The
+diagram shows the common cases; each resource still has exactly one solid parent.
 
-## Scopes
+### Creation surfaces
 
-A scope is the reach of an action over a resource family.
+Four resources exist only so a `CreateChild` grant has something to attach to. They hold no content child and never
+parent one:
 
-| Scope             | Covers                                     | Example                                                 |
-| ----------------- | ------------------------------------------ | ------------------------------------------------------- |
-| `ALL`             | Every resource the action targets          | Read every gallery, including other users' private ones |
-| `PUBLIC_OR_OWNED` | Public resources and the caller's own      | The default for reading and moderating galleries        |
-| `OWNED`           | Only the caller's own resources            | The default for renaming a playlist                     |
-| `LISTED`          | Exactly the resources the permission names | Share one private playlist with one user                |
-| `NONE`            | No resource                                | Hide the library from one user                          |
+| Surface              | Admits                                |
+| -------------------- | ------------------------------------- |
+| `GalleryCollection`  | A gallery under the library           |
+| `PlaylistCollection` | A playlist under the library          |
+| `UploadCollection`   | An upload under the instance          |
+| `UserCollection`     | A Standard account under the instance |
 
-`LISTED` names resources by kind and identifier and must name at least one, without duplicates, of a kind the action
-targets. `ALL`, `PUBLIC_OR_OWNED`, `OWNED` and `NONE` are supported by the content actions; `library.manage` supports
-`ALL`, `LISTED` and `NONE` because a film, show or album has no owner; the administration actions support only `ALL` and
-`NONE`; the upload actions support only `OWNED`.
+The surface carries the `CreateChild` grant; the created child's authorization parent is the surface's parent. A surface
+therefore never appears in the resource tree above, and it never reaches the content it admits.
 
-## Resolution order
+### Relations lend read access
 
-For each action, the effective scope is resolved in this order:
+A relation lends `Discover`, `ViewMetadata`, `View` and `Stream` from its container to its target and the target's
+descendants along the authorization-parent chain when the caller holds that action on the container. It never lends
+`Download`, `CreateChild`, `EditMetadata`, `ReplaceMedia`, `Share`, `ManagePermissions` or `Delete`. A matching `Deny`
+still wins.
 
-1. **Root Admin short-circuit.** When the caller is the Root Admin and the action allows it, the decision is `Allow`
-   immediately. The Root Admin ignores any stored override and has none of its own.
-2. **Per-user override.** When the caller has an override for the action, its scope applies, whether it widens or
-   narrows the preset.
-3. **Role preset.** Otherwise the action's preset for the caller's role applies.
+In practice:
 
-Two rules run alongside the scope:
+- A caller who may view a playlist can listen to every recording in it, even when the recording's own album is not
+  shared with the caller.
+- The same caller cannot edit, delete or re-share those recordings through the playlist.
+- A caller who may view an album can read and stream its `AlbumMember` recordings.
+- A caller who may view a music group can read its `GroupMember` albums.
+- A deny on the recording itself still blocks the listen, whatever the playlist lends.
 
-- **Relation guard.** `user.update` refuses another Admin account unless the caller is the Root Admin, whatever the
-  scope says. This keeps a non-root Admin from editing a peer. `user.delete` refuses every Admin target unless the
-  caller is the Root Admin, including an Admin's own account: an Admin may delete only a Standard account. The Root
-  Admin's own account is never deleted by any caller.
-- **Fixed uploads.** `upload.read` and `upload.write` always resolve to `OWNED` for every caller, including the Root
-  Admin.
+## Principals and grants
 
-## Root Admin and uploads
+A **principal** is a user, a role (`Standard` or `Admin`), or the root. A **grant** carries a principal, a resource, a
+resource role, a child kind and an effect:
 
-The Root Admin is a universal allow: it reads every gallery and playlist, manages another user's playlist or gallery,
-writes the library, reads, creates and deletes user accounts, and administers permissions. The one exception is uploads:
-an upload session is readable, writable and completable only by its owner. Deleting an Admin account is the one
-administration operation the role presets grant to the Root Admin alone; a non-root Admin deletes Standard accounts
-only.
+```text
+Grant {
+  principal:     User(id) | Role(Standard | Admin) | Root
+  resource:      Resource
+  role:          Viewer | Downloader | Contributor | Editor | Manager | Owner
+  child_kind:    All | Gallery | MusicPlaylist | Upload | Movie | Series | Season | Episode |
+                 MusicAlbum | MusicMedium | MusicRecording | MusicGroup | GalleryItem | Image |
+                 Video | Audio | File | User | Admin
+  effect:        Allow | Deny
+}
+```
 
-The Root Admin has no overrides, and none can be given to it: the API refuses the Root Admin as a target, and any
-override recorded for it is ignored.
+Grants are not time-limited in this version. A role grant is seeded by the migration and cannot be edited through HTTP;
+the permission API edits user and per-resource grants. A user grant may not name `Owner` or `ManagePermissions`; a
+seeded role grant may carry `Owner`. The root is implicit and never stored, and a grant naming the root is refused.
 
-Two rules sit outside permissions and refuse on their own: the Root Admin's own account cannot be modified or deleted,
-and the default gallery cannot be deleted. The Root Admin may _attempt_ either; the request is refused.
+## Actions and resource roles
+
+| Action              | What it allows                                            |
+| ------------------- | --------------------------------------------------------- |
+| `Discover`          | Know that the resource exists and include it in a listing |
+| `ViewMetadata`      | Read its metadata without its content                     |
+| `View`              | Read its rendered content                                 |
+| `Stream`            | Play its audio or video                                   |
+| `Download`          | Retrieve its original bytes                               |
+| `CreateChild`       | Create a child of the named `ChildKind`                   |
+| `EditMetadata`      | Change its metadata (never visibility or ownership)       |
+| `ReplaceMedia`      | Replace its binary content                                |
+| `Share`             | Add or revoke `Viewer`/`Downloader` grants                |
+| `ManagePermissions` | Change visibility and replace the complete user grant set |
+| `Delete`            | Delete it                                                 |
+| `ChangeRole`        | Change a user's role (root only)                          |
+| `ReplaceCredential` | Replace a credential (root only)                          |
+
+A **resource role** is a bundle of actions:
+
+| Role          | Actions                                       |
+| ------------- | --------------------------------------------- |
+| `Viewer`      | `Discover`, `ViewMetadata`, `View`, `Stream`  |
+| `Downloader`  | `Viewer`, `Download`                          |
+| `Contributor` | `Viewer`, `CreateChild`                       |
+| `Editor`      | `Contributor`, `EditMetadata`, `ReplaceMedia` |
+| `Manager`     | `Editor`, `Share`, `Delete`                   |
+| `Owner`       | `Manager`, `ManagePermissions`                |
+
+`Owner` is implicit from ownership and is never a user grant; a seeded role grant may carry it. `ManagePermissions` is
+never grantable: it comes from ownership, the Admin role preset on the catalogue and user accounts, or the root.
+`ChildKind::Admin` is root-only and is never grantable.
+
+## Visibility
+
+Visibility is a coarse resource-level grant, not a second permission system.
+
+| Visibility   | What authenticated callers get                                      |
+| ------------ | ------------------------------------------------------------------- |
+| `Private`    | Nothing; the owner and explicit grants decide                       |
+| `Restricted` | `Discover` and `ViewMetadata`; content needs a grant                |
+| `Public`     | The `Viewer` actions; download, edit, share and delete need a grant |
+
+No visibility implies `Download`, `EditMetadata`, `Share` or `Delete`. Visibility is not inherited: a `Private`
+recording inside a `Public` album stays private unless a grant or a relation lends access. A `Deny` beats visibility.
+`Public` applies to authenticated callers until an anonymous route exists.
+
+## Ownership
+
+The **owner** is the nearest non-null `owner_id` on the resource or its authorization-parent chain. The owner holds the
+implicit `Owner` role, which reaches the resource and its descendants. A gallery owner therefore owns its gallery items;
+a playlist owner owns its tracks' placements.
+
+The catalogue (`Catalogue`, `Movie`, `Series`, `Season`, `Episode`, `MusicAlbum`, `MusicMedium`, `MusicRecording`,
+`MusicGroup`) has no owner. Its reach is decided by the seeded role grants, visibility and explicit grants. A Standard
+User cannot edit or privatise it by default; an Admin can, through `ManagePermissions` on the catalogue.
+
+## Root, uploads and accounts
+
+The **root** is user `0`. It is an implicit owner on every resource, bypasses every deny and has no stored grants. The
+one exception is an upload, which is owner-only for every caller, including the root.
+
+| Rule                                    | Who may do it                                                          |
+| --------------------------------------- | ---------------------------------------------------------------------- |
+| Create an Admin                         | Root only                                                              |
+| Change a role                           | Root only                                                              |
+| Replace a credential                    | Root only                                                              |
+| Create/update/delete a Standard account | Root, or an Admin                                                      |
+| Read/update/delete an Admin account     | Root only (a non-root Admin cannot touch another Admin)                |
+| Modify or delete the root account       | Nobody                                                                 |
+| Curate the catalogue                    | Root, or an Admin through `ManagePermissions` on `Catalogue`           |
+| Share an owned resource                 | Its owner, or a `Manager`/`ManagePermissions` holder                   |
+| Change visibility                       | Its owner through `ManagePermissions`; Root; an Admin on the catalogue |
+| Read its own account                    | Its owner, regardless of grants                                        |
+
+## How a decision is made
+
+For one action on one resource, in order:
+
+1. **Upload owner-only.** An upload is readable, writable and completable only by its owner. The root is not exempt.
+2. **Root.** The root is allowed every other action.
+3. **Own-account read.** A caller reads its own `User` resource regardless of grants.
+4. **Deny.** Any matching `Deny` wins, whether it is on the resource, an ancestor or a role.
+5. **Allow.** Any matching `Allow` wins: a grant, the implicit owner, the seeded role, the visibility, or a relation's
+   read lend.
+6. **Default deny.** No matching allow denies.
+
+The authorization-parent chain is single, acyclic and capped at 32 edges. The decision reads the resource, its chain and
+the matching grants in one transaction. A storage error or a malformed row denies.
+
+A decision returns an **explanation**: whether it allowed, the reason (root, owner, visibility, grant, relation, deny or
+default), the matching grants, the denying grant, the path and the visibility. Ordinary callers never see grant
+internals.
 
 ## Denials
 
-A denial is either concealed or revealed.
+| Situation                                    | Response           |
+| -------------------------------------------- | ------------------ |
+| The caller cannot discover the resource      | `404 Not Found`    |
+| The caller can read it but may not modify it | `403 Forbidden`    |
+| The caller lacks an administration action    | `403 Forbidden`    |
+| The token names a deleted account            | `401 Unauthorized` |
 
-| Situation                                              | Response           |
-| ------------------------------------------------------ | ------------------ |
-| The caller cannot read the addressed resource          | `404 Not Found`    |
-| The caller can read the resource but may not modify it | `403 Forbidden`    |
-| The token names a deleted account                      | `401 Unauthorized` |
-| The caller lacks an administration action              | `403 Forbidden`    |
+Every denial emits exactly one `authz_failed` security event naming the actor, the action and the target; the `logging`
+capability's security-event catalog (`openspec/specs/logging/spec.md`, `REQ-LOGGING-013` and `REQ-LOGGING-010`) declares
+those fields, the closed value vocabulary and the event's trigger. A listing that drops an item is not a denial and
+emits nothing.
 
-Read actions (`library.read`, `gallery.read`, `playlist.read`) and the upload actions always conceal. An asset read
-conceals through the action that delegates it (`file.read` is derived and never names a configurable scope).
-`library.manage`, `gallery.moderate`, `gallery.manage`, `playlist.moderate` and `playlist.manage` conceal exactly when
-the caller cannot read the resource, so an invisible album answers `404` and a readable one it may not rewrite answers
-`403`. Administration actions and `file.use` reveal.
+## Permission API
 
-Every denial is logged once at warning level, naming the caller, the action and its target. Filtering a list is not a
-denial, so an item quietly dropped from a listing logs nothing.
+Every permission endpoint lives under `/api/v1/identity`. Nothing permission-related lives under `/user`, `/library` or
+`/asset`.
 
-## Stored overrides
+| Method   | Route                                                        | Who may call it                                |
+| -------- | ------------------------------------------------------------ | ---------------------------------------------- |
+| `GET`    | `/identity/permission[?user_id={id}]`                        | Self, or `ManagePermissions` on that `User`    |
+| `GET`    | `/identity/permission/resource/{kind}/{id}`                  | `Share` or `ManagePermissions` on the resource |
+| `PUT`    | `/identity/permission/resource/{kind}/{id}`                  | `ManagePermissions` on the resource            |
+| `POST`   | `/identity/permission/resource/{kind}/{id}/share`            | `Share` or `ManagePermissions` on the resource |
+| `DELETE` | `/identity/permission/resource/{kind}/{id}/share/{grant_id}` | `Share` or `ManagePermissions` on the resource |
 
-Only overrides are stored; the role presets are built in. An override replaces one action's scope for one user, and a
-`LISTED` override also names the resources it covers. A user with no override for an action gets the role preset.
+The user summary returns the effective permissions. Omit `user_id` to describe the caller. Add `resource_kind`,
+`resource_id` and `action` together to receive the explanation for one decision; the full explanation is returned only
+to a caller holding `ManagePermissions`. `resource_kind` and `action` take their values from the closed vocabulary the
+specification publishes.
 
-`PUT` replaces every override for a user atomically, and a replacement carrying no override removes them all. A role
-change leaves them in place — a demoted user keeps an explicit grant until the Root Admin resets it. A `LISTED` override
-whose resource is deleted later simply stops matching.
+`PUT` replaces the visibility and the complete **user** grant set atomically. Seeded role grants are never edited here.
+`POST /share` accepts only `Viewer` and `Downloader` `Allow` grants; it cannot escalate or deny.
 
-## Administration API
+### Examples
 
-The Root Admin reads and replaces a non-root user's overrides under `/api/v1/user/{user_id}/permission`.
-
-| Method | Meaning                                                                  |
-| ------ | ------------------------------------------------------------------------ |
-| `GET`  | The role defaults and the stored overrides, separately                   |
-| `PUT`  | Replace every override for the user atomically; an empty set resets them |
-
-A non-root caller is refused with `403`, the Root Admin as a target is refused with `403`, and an unknown user is `404`.
-An action outside the catalog, an unsupported scope, an empty or mismatched `LISTED`, a repeated action, a
-non-configurable action, or an invalid representation is `422` and stores nothing.
-
-### Read a user's permissions
-
-`GET /api/v1/user/{user_id}/permission` returns the role defaults and the stored overrides separately. `defaults` holds
-one entry per configurable action; `overrides` holds only the actions the user has customized. An action absent from
-`overrides` uses its default.
+Share a playlist with one user as a viewer:
 
 ```http
-GET /api/v1/user/5/permission
-Authorization: Bearer <root-admin-token>
-```
-
-```json
-{
-  "user_id": 5,
-  "role": "STANDARD",
-  "defaults": [
-    { "action": "library.read", "scope": "ALL", "resources": [] },
-    { "action": "gallery.read", "scope": "PUBLIC_OR_OWNED", "resources": [] }
-  ],
-  "overrides": [{ "action": "gallery.read", "scope": "OWNED", "resources": [] }],
-  "_links": { "self": { "href": "/api/v1/user/5/permission" } }
-}
-```
-
-### Replace a user's permissions
-
-`PUT /api/v1/user/{user_id}/permission` sends the complete override set the user must end with. An action omitted from
-the body falls back to its role preset; an empty list resets every action. The replacement is atomic: a request that is
-rejected stores nothing.
-
-```http
-PUT /api/v1/user/5/permission
-Authorization: Bearer <root-admin-token>
+POST /api/v1/identity/permission/resource/MUSIC_PLAYLIST/12/share
+Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "permissions": [
-    {
-      "action": "playlist.read",
-      "scope": "LISTED",
-      "resources": [{ "kind": "MUSIC_PLAYLIST", "id": 12 }]
-    }
+  "principal": { "kind": "USER", "id": 5 },
+  "role": "VIEWER"
+}
+```
+
+The user can now discover, read and stream the playlist and, through the `PlaylistEntry` relation, listen to its
+recordings. They cannot edit, download, re-share or delete them.
+
+Protect one recording from everybody but its owner:
+
+```http
+PUT /api/v1/identity/permission/resource/MUSIC_RECORDING/42
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "visibility": "PRIVATE",
+  "grants": [
+    { "principal": { "kind": "USER", "id": 5 }, "role": "VIEWER", "effect": "ALLOW" }
   ]
 }
 ```
 
-The response carries the resulting defaults and overrides, in the same shape as the read. Replacing with an empty set
-deletes every override, so the role presets apply again on the next request.
+Make a gallery public:
 
-```json
-{ "permissions": [] }
+```http
+PUT /api/v1/identity/permission/resource/GALLERY/9
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "visibility": "PUBLIC", "grants": [] }
 ```
 
-### Recipes
+Ask why a user cannot read an album:
 
-Set the content actions to the named scope; an action a recipe does not name keeps its role preset.
-
-**All content.** Read any gallery, playlist and library item, public or private:
-
-```json
-{
-  "permissions": [
-    { "action": "library.read", "scope": "ALL", "resources": [] },
-    { "action": "gallery.read", "scope": "ALL", "resources": [] },
-    { "action": "playlist.read", "scope": "ALL", "resources": [] }
-  ]
-}
+```http
+GET /api/v1/identity/permission?user_id=5&resource_kind=MUSIC_ALBUM&resource_id=21&action=view
+Authorization: Bearer <root-or-manager-token>
 ```
 
-**Owned only.** Read only what the user owns, even for public content:
+The response carries the decision and its explanation. An ordinary caller reading its own summary receives the effective
+permissions, not the grant internals.
 
-```json
-{
-  "permissions": [
-    { "action": "library.read", "scope": "OWNED", "resources": [] },
-    { "action": "gallery.read", "scope": "OWNED", "resources": [] },
-    { "action": "playlist.read", "scope": "OWNED", "resources": [] }
-  ]
-}
-```
+## Migration
 
-`library.read` has no owner, so `OWNED` hides the whole library; use `NONE` to state the same intent.
-
-**One shared playlist.** Share exactly one private playlist with one user:
-
-```json
-{
-  "permissions": [
-    {
-      "action": "playlist.read",
-      "scope": "LISTED",
-      "resources": [{ "kind": "MUSIC_PLAYLIST", "id": 12 }]
-    }
-  ]
-}
-```
-
-A `LISTED` scope names at least one resource and no duplicates; a season, episode, medium or track authorizes through
-its series or album, so it is never named.
-
-**No library.** Hide films, shows and albums from one user:
-
-```json
-{
-  "permissions": [{ "action": "library.read", "scope": "NONE", "resources": [] }]
-}
-```
-
-**Catalogue curation.** Let one user write every film, show and album:
-
-```json
-{
-  "permissions": [{ "action": "library.manage", "scope": "ALL", "resources": [] }]
-}
-```
-
-**One album.** Let one user write exactly one album:
-
-```json
-{
-  "permissions": [
-    {
-      "action": "library.manage",
-      "scope": "LISTED",
-      "resources": [{ "kind": "MUSIC_ALBUM", "id": 21 }]
-    }
-  ]
-}
-```
-
-`library.manage` accepts `ALL`, `LISTED` and `NONE` only: a film, show or album has no owner, so `OWNED` and
-`PUBLIC_OR_OWNED` are rejected with `422`.
-
-**Reset.** Replace the overrides with an empty set so the role presets apply again:
-
-```json
-{ "permissions": [] }
-```
+The old `permission` and `permission_resource` tables are dropped. The migration creates `resource`, `resource_relation`
+and `grant`, backfills one resource row per existing entity, seeds the `Standard` and `Admin` role grants, and discards
+every old scope override. There is no translation: a `gallery.read: ALL` override has no faithful grant equivalent, and
+the project is pre-release.

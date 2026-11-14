@@ -9,7 +9,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
 
 /// Fetch one show by its identifier.
 ///
-/// Any authenticated caller may read a show; the show is not owned and carries
+/// A caller that may `View` a show reads it; the show is not owned and carries
 /// no visibility flag. The representation carries the show's genres and its
 /// season summaries, so a client can navigate to each season.
 #[utoipa::path(

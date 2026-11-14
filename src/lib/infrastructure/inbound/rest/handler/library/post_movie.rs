@@ -41,8 +41,8 @@ pub(crate) struct PostMovieRequest {
 
 /// Create a film from a video.
 ///
-/// Only a caller whose `library.manage` scope covers the whole catalogue may
-/// create a film. The write is an upsert by `video_id`: a film already backed
+/// Creating a film requires the `CreateChild` action on the catalogue with the
+/// film child kind. The write is an upsert by `video_id`: a film already backed
 /// by the video is returned unchanged with `200 OK`.
 #[utoipa::path(
     post,

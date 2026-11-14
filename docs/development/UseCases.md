@@ -166,9 +166,10 @@ changed.
 
 #### Description
 
-Allow the Root Admin to shape what one user may do beyond the default authority its role grants: inspect the effective
-authority and replace the per-user overrides; a replacement that names no override resets them so the role defaults
-apply again.
+Allow an Admin to read and change what the resource-and-grant engine allows: the permission summary reports one caller's
+role, grants and decision explanation; the resource permission reports a resource's visibility and stored grants; a
+replacement stores a new visibility and a complete user grant set; and a share adds or revokes one viewer grant. There
+is no per-user permission override — a user's authority is the grants stored on the resources it may reach.
 
 #### Primary actor
 
@@ -176,44 +177,51 @@ apply again.
 
 #### Parameters
 
-- user — the account whose authority is administered; required.
-- overrides — the complete set of action scopes the user must hold instead of the role defaults; required for a
-  replacement, and absent for an inspection. An empty set resets the user to the role defaults.
+- user — the account whose summary is read; required for a summary.
+- resource — the resource whose permission is read, replaced or shared; required for the resource operations.
+- grants — the complete user grant set stored on the resource; required for a replacement, where an empty set removes
+  every user grant.
+- share — the one user grant a share adds or revokes; required for a share.
 
 #### Pre condition(s)
 
 - The caller is authenticated.
-- The caller is the Root Admin.
-- The target user exists and is not the Root Admin.
+- The caller reads its own summary, or holds ManagePermissions on the addressed user resource to read another caller's
+  summary.
+- The caller holds Share or ManagePermissions on the addressed resource to read its permission, ManagePermissions to
+  replace it, and Share or ManagePermissions to share it.
 
 #### Trigger
 
-- The Root Admin submits a permission request for one user.
+- The Admin submits a permission request for one user or one resource.
 
 #### Happy path
 
-1. The Root Admin submits a permission request for one user.
-2. The system verifies the caller may administer permissions.
-3. The system verifies the target user exists and is not the Root Admin.
-4. The system applies the request: it reports the role defaults and the stored overrides, or replaces every override
-   with the requested set, an empty set resetting the user to the role defaults.
-5. The system confirms the resulting effective authority.
+1. The Admin submits a permission request for one user or one resource.
+2. The system resolves the caller, the target user and the addressed resource from stored state.
+3. The system decides the request through the resource-and-grant order: the root, the own-account read, a deny, an allow
+   and the default deny.
+4. The system applies the request: it reports the user's role and grants with the decision explanation, reports the
+   resource's visibility and stored grants, replaces the visibility and the complete user grant set atomically, or adds
+   or revokes one share.
+5. The system returns the resulting representation.
 
 #### Alternative flow
 
-- 2a. The caller may not administer permissions; the system rejects the request and stores nothing.
-- 3a. No user exists for the requested account; the system rejects the request.
-- 3b. The target user is the Root Admin; the system rejects the request and stores nothing.
-- 4a. The requested override set names an action that cannot be overridden, a scope the action does not support, no
-  aggregate for a listed scope, a duplicate aggregate, or the same action twice; the system rejects the request and
-  leaves the previous overrides in place.
+- 2a. The target user or the addressed resource does not exist; the system reports it as not found and stores nothing.
+- 3a. The caller cannot discover the resource; the system reports it as not found and stores nothing.
+- 3b. The caller can read the resource but may not change it; the system rejects the request and stores nothing.
+- 4a. The submitted set names the Owner role, a role principal, an unknown user, a duplicate grant or an Admin child
+  kind; the system rejects the request and leaves the previous set in place.
+- 4b. The share names a role beyond Viewer or Downloader, or a grant that cannot be shared; the system rejects the
+  request and stores nothing.
 
 #### Post condition(s)
 
-- The target user's overrides are exactly the requested set, or are removed when the replacement is empty; the role
-  defaults always describe the authority of an action without an override.
-- Every action without an override follows the role default.
-- The Root Admin never holds an override.
+- A replacement stores exactly the submitted user grant set and visibility, or removes every user grant when the set is
+  empty; the seeded role grants are never edited through the API.
+- A share adds or revokes exactly one grant and leaves every other grant in place.
+- The Root Admin never holds a stored grant.
 
 ## User
 
@@ -516,8 +524,8 @@ Allow an authenticated user to append an image to a gallery they may contribute 
   gallery.
 - 2b. No gallery matches the requested identifier; the system reports it as not found.
 - 3a. No image matches the requested identifier; the system rejects the request.
-- 4a. The caller may not use the backing file; the system rejects the request. A Standard User uses only the files it
-  owns, while an Admin and the Root Admin use every file.
+- 4a. The caller may not use the backing file; the system rejects the request. A Standard User and an Admin use only the
+  files they own, while the Root Admin uses every file.
 - 5a. The image already belongs to a gallery; the system rejects the request.
 
 ##### Post condition(s)
@@ -531,8 +539,8 @@ Allow an authenticated user to append an image to a gallery they may contribute 
 
 ##### Description
 
-Allow an authenticated user to remove an image from a gallery, permanently deleting the item, its medium, and — when the
-caller may use the file — the backing file.
+Allow an authenticated user to remove an image from a gallery, permanently deleting the item and its medium, and — when
+the caller may use the file — the backing file's record; the stored content is never deleted.
 
 ##### Primary actor
 
@@ -557,7 +565,7 @@ caller may use the file — the backing file.
 1. The caller submits a removal request.
 2. The system verifies the caller may remove items of the gallery.
 3. The system locates the image's item within the gallery.
-4. The system deletes the item and its image record, and the backing file when the caller may use it.
+4. The system deletes the item and its image record, and the backing file's record when the caller may use it.
 5. The system confirms the removal.
 
 ##### Alternative flow
@@ -570,7 +578,7 @@ caller may use the file — the backing file.
 ##### Post condition(s)
 
 - The item and its image record no longer exist.
-- The backing file's record and stored content no longer exist when the caller may use the file.
+- The backing file's record no longer exists when the caller may use the file; the stored content never does.
 
 ---
 
@@ -659,8 +667,8 @@ Allow an authenticated user to append a video to a gallery they may contribute t
   gallery.
 - 2b. No gallery matches the requested identifier; the system reports it as not found.
 - 3a. No video matches the requested identifier; the system rejects the request.
-- 4a. The caller may not use the backing file; the system rejects the request. A Standard User uses only the files it
-  owns, while an Admin and the Root Admin use every file.
+- 4a. The caller may not use the backing file; the system rejects the request. A Standard User and an Admin use only the
+  files they own, while the Root Admin uses every file.
 - 5a. The video already belongs to a gallery; the system rejects the request.
 
 ##### Post condition(s)
@@ -674,8 +682,8 @@ Allow an authenticated user to append a video to a gallery they may contribute t
 
 ##### Description
 
-Allow an authenticated user to remove a video from a gallery, permanently deleting the item, its medium, and — when the
-caller may use the file — the backing file.
+Allow an authenticated user to remove a video from a gallery, permanently deleting the item and its medium, and — when
+the caller may use the file — the backing file's record; the stored content is never deleted.
 
 ##### Primary actor
 
@@ -700,7 +708,7 @@ caller may use the file — the backing file.
 1. The caller submits a removal request.
 2. The system verifies the caller may remove items of the gallery.
 3. The system locates the video's item within the gallery.
-4. The system deletes the item and its video record, and the backing file when the caller may use it.
+4. The system deletes the item and its video record, and the backing file's record when the caller may use it.
 5. The system confirms the removal.
 
 ##### Alternative flow
@@ -713,7 +721,7 @@ caller may use the file — the backing file.
 ##### Post condition(s)
 
 - The item and its video record no longer exist.
-- The backing file's record and stored content no longer exist when the caller may use the file.
+- The backing file's record no longer exists when the caller may use the file; the stored content never does.
 
 ### Music
 
@@ -1339,8 +1347,8 @@ receive the provider's candidates or the provider-independent metadata document.
 1. The caller asks to identify a film or a show by name, or to resolve a provider reference under the film or show
    route.
 2. The system verifies the caller's account still exists and the caller may read the library.
-3. The system interprets the name into kind-scoped queries, or builds the target from the reference and the optional
-   position, and asks only the configured video metadata provider.
+3. The system interprets the name into queries for each media kind, or builds the target from the reference and the
+   optional position, and asks only the configured video metadata provider.
 4. The system returns the provider's candidates of the first query that yields any, or the provider-independent metadata
    document of the resolved work.
 
@@ -1789,8 +1797,9 @@ is authoritative: the system confirms the content belongs to it and never reclas
 #### Description
 
 Allow a caller to read the content of one stored item. The caller may address the stored item directly or one of its
-typed views, and may ask for the whole content or one portion of it. The playback link a representation carries is
-itself sufficient authority to read that one item, so the asset can be played without a session.
+typed views, and may ask for the whole content or one portion of it. Every request authenticates with the caller's
+session token and is decided afresh; the route's action is View for an image, Stream for an audio or a video, and
+Download for a file.
 
 #### Primary actor
 
@@ -1804,7 +1813,7 @@ itself sufficient authority to read that one item, so the asset can be played wi
 
 #### Pre condition(s)
 
-- The caller is authenticated, or holds a valid playback link for the addressed item.
+- The caller is authenticated.
 - The media library is available.
 
 #### Trigger
@@ -1814,8 +1823,7 @@ itself sufficient authority to read that one item, so the asset can be played wi
 #### Happy path
 
 1. The caller requests the content of an asset, optionally naming a portion and a version it already holds.
-2. The system authorizes the read through the resource that owns the asset, or accepts the playback link scoped to that
-   item.
+2. The system authorizes the read through the resource that owns the asset, deciding the route's action.
 3. The system reads the stored content in bounded pieces without holding it whole.
 4. The system returns the whole content, or the requested portion.
 5. The system reports the stored media kind, its length and the version details the item carries.
@@ -1826,10 +1834,10 @@ itself sufficient authority to read that one item, so the asset can be played wi
 - 1a. The caller names the version it already holds; the system reports the content unchanged and returns no content.
 - 1b. The caller names a portion conditioned on a different version; the system returns the whole content instead of the
   portion.
-- 2a. The asset does not exist, or the caller may not read it; the system reports it as unavailable and reads no
+- 2a. The asset does not exist, or the caller cannot discover it; the system reports it as unavailable and reads no
   content.
-- 2b. The playback link names another item, has been altered, or has expired; the system refuses the read.
-- 2c. The request presents both a session and a playback link; the system refuses the ambiguous request.
+- 2b. The caller can discover the asset but the route's action refuses; the system reports the refusal and reads no
+  content.
 - 3a. The media library is absent; the system reports the storage as unavailable without an authorization read.
 - 3b. The record exists but its content is absent while the library is present; the system reports an internal failure
   and the next reconciliation removes the record.

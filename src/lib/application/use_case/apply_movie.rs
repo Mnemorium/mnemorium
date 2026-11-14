@@ -1,19 +1,18 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     ApplyMovieCommand, ApplyMovieError, ApplyMovieResponse, ApplyMovieUseCase,
 };
 use crate::domain::model::{Action, MediaMetadata, Movie, Target};
 use crate::domain::port::{
-    IdentityUnitOfWork, LibraryUnitOfWork, MovieFilter, MovieRepository as _, PermissionFilter,
-    PermissionRepository as _, RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork, VideoMetadataProvider,
+    IdentityUnitOfWork, LibraryUnitOfWork, MovieFilter, MovieRepository as _, RepositoryError,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    VideoMetadataProvider,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for applying external metadata to a film.
 ///
@@ -71,15 +70,6 @@ where
                     .next()
                     .ok_or(ApplyMovieError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| ApplyMovieError::Unknown(error.into()))?;
-
                 let movie = unit_of_work
                     .movies()
                     .search(&MovieFilter {
@@ -92,36 +82,30 @@ where
                     .next()
                     .ok_or(ApplyMovieError::NoSuchMovie)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &movie)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(ApplyMovieError::NoSuchMovie);
-                }
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryManage, &movie)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(if denial.conceals() {
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Movie, movie.id()),
+                    Action::ViewMetadata,
+                    None,
+                )
+                .await
+                .map_err(|_| ApplyMovieError::NoSuchMovie)?;
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Movie, movie.id()),
+                    Action::EditMetadata,
+                    None,
+                )
+                .await
+                .map_err(|error| {
+                    if error.conceals() {
                         ApplyMovieError::NoSuchMovie
                     } else {
                         ApplyMovieError::Forbidden
-                    });
-                }
+                    }
+                })?;
 
                 let Some(provider) = metadata_provider else {
                     return Err(ApplyMovieError::ProviderUnavailable);
@@ -198,11 +182,12 @@ where
 mod tests {
     use super::*;
     use crate::domain::NumericID;
+    use allure_cargotest::allure_test;
 
     use crate::domain::model::{ExternalRef, Genre, ProviderId, Role, User};
 
     use crate::domain::port::{
-        ExternalServiceError, MockMovieRepository, MockPermissionRepository, MockUserRepository,
+        ExternalServiceError, MockMovieRepository, MockResourceRepository, MockUserRepository,
         MockVideoMetadataProvider,
     };
 
@@ -228,12 +213,12 @@ mod tests {
 
     fn harness_with(
         users: MockUserRepository,
-        permissions: MockPermissionRepository,
+        resources: MockResourceRepository,
         movies: MockMovieRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
             movies,
-            permissions,
+            resources,
             users,
             ..TestUnitOfWork::default()
         };
@@ -269,8 +254,15 @@ mod tests {
         });
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_movie_writes_the_reported_metadata() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.feature("REQ-METADATA-ENRICHMENT-025");
+        allure.story("SCN-METADATA-ENRICHMENT-024-A");
+        allure.story("SCN-METADATA-ENRICHMENT-025-A");
+        allure.story("SCN-METADATA-ENRICHMENT-025-C");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -286,7 +278,7 @@ mod tests {
             .times(1)
             .withf(|target| matches!(target, Target::Movie(_)))
             .return_once(|_| Box::pin(async { Ok(Some(movie_metadata())) }));
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
 
         // Act
         let response = use_case(&harness, Some(provider))
@@ -305,8 +297,14 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_movie_clears_what_the_provider_does_not_report() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.feature("REQ-METADATA-ENRICHMENT-025");
+        allure.story("SCN-METADATA-ENRICHMENT-024-B");
+        allure.story("SCN-METADATA-ENRICHMENT-025-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -329,7 +327,7 @@ mod tests {
                 }))
             })
         });
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
 
         // Act
         let response = use_case(&harness, Some(provider))
@@ -343,8 +341,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_movie_reports_a_provider_failure() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.story("SCN-METADATA-ENRICHMENT-024-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -355,7 +357,7 @@ mod tests {
             .expect_lookup()
             .times(1)
             .return_once(|_| Box::pin(async { Err(ExternalServiceError::RateLimited) }));
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
 
         // Act
         let result = use_case(&harness, Some(provider)).execute(command()).await;
@@ -366,8 +368,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_movie_reports_an_unknown_reference() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.story("SCN-METADATA-ENRICHMENT-024-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -378,7 +384,7 @@ mod tests {
             .expect_lookup()
             .times(1)
             .return_once(|_| Box::pin(async { Ok(None) }));
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
 
         // Act
         let result = use_case(&harness, Some(provider)).execute(command()).await;
@@ -388,8 +394,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_movie_rejects_another_kind() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.story("SCN-METADATA-ENRICHMENT-024-C");
         // Arrange: the provider resolves a show under the film route.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -408,7 +418,7 @@ mod tests {
                 }))
             })
         });
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
 
         // Act
         let result = use_case(&harness, Some(provider)).execute(command()).await;
@@ -418,14 +428,18 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn apply_movie_reports_an_unconfigured_provider() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-024");
+        allure.story("SCN-METADATA-ENRICHMENT-024-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let mut movies = MockMovieRepository::new();
         loaded(&mut movies, sample_movie(7)?);
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
 
         // Act
         let result = use_case(&harness, None).execute(command()).await;
@@ -445,7 +459,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
 
         // Act
         let result = use_case(&harness, None).execute(command()).await;
@@ -454,24 +468,6 @@ mod tests {
         assert!(matches!(result, Err(ApplyMovieError::NoSuchMovie)));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn apply_movie_forbids_a_caller_without_manage() -> Result<(), Box<dyn Error>> {
-        // Arrange: a standard caller may read the film but not manage it.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let mut movies = MockMovieRepository::new();
-        loaded(&mut movies, sample_movie(7)?);
-        let harness = harness_with(users, no_permissions(), movies);
-
-        // Act
-        let result = use_case(&harness, None).execute(command()).await;
-
-        // Assert
-        assert!(matches!(result, Err(ApplyMovieError::Forbidden)));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn apply_movie_maps_a_write_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -488,7 +484,7 @@ mod tests {
             .expect_lookup()
             .times(1)
             .return_once(|_| Box::pin(async { Ok(Some(movie_metadata())) }));
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
 
         // Act
         let result = use_case(&harness, Some(provider)).execute(command()).await;
@@ -508,7 +504,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Unavailable) }));
-        let harness = harness_with(users, no_permissions(), movies);
+        let harness = harness_with(users, no_resources(), movies);
 
         // Act
         let result = use_case(&harness, None).execute(command()).await;

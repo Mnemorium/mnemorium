@@ -24,9 +24,9 @@ impl From<GetGalleryItemError> for ApiError {
 
 /// Fetch one item of a gallery by its identifiers.
 ///
-/// An authenticated caller reads an item of a gallery its `gallery.read`
-/// permission covers; an item of a gallery the caller cannot read answers
-/// `404 Not Found`. The item is scoped to the gallery named in the path.
+/// A caller who may `View` the gallery reads one of its items; an item of a
+/// gallery the caller cannot read answers `404 Not Found`. The item is scoped
+/// to the gallery named in the path.
 #[utoipa::path(
     get,
     operation_id = "get_gallery_item",

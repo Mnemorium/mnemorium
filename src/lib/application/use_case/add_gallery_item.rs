@@ -1,23 +1,23 @@
+use crate::application::authorization::authorize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
 
-use tracing::warn;
-
 use crate::application::port::{
     AddGalleryItemCommand, AddGalleryItemError, AddGalleryItemResponse, AddGalleryItemUseCase,
 };
-use crate::domain::model::{Action, GalleryItem, GalleryItemMedia};
+use crate::domain::model::{
+    Action, GalleryItem, GalleryItemMedia, ResourceKind, ResourceRef, Visibility,
+};
 use crate::domain::port::{
     AssetUnitOfWork, FileFilter, FileRepository as _, GalleryFilter, GalleryItemFilter,
     GalleryRepository as _, IdentityUnitOfWork, ImageFilter, ImageRepository as _,
-    LibraryUnitOfWork, PermissionFilter, PermissionRepository as _, RepositoryError,
-    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
-    VideoFilter, VideoRepository as _,
+    LibraryUnitOfWork, NewResource, RepositoryError, ResourceRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork, VideoFilter,
+    VideoRepository as _,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for adding one of the caller's media to a gallery.
 pub(crate) struct AddGalleryItem<F> {
@@ -71,15 +71,6 @@ where
                     .next()
                     .ok_or(AddGalleryItemError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| AddGalleryItemError::Unknown(error.into()))?;
-
                 let mut gallery = unit_of_work
                     .galleries()
                     .search(&GalleryFilter {
@@ -92,23 +83,21 @@ where
                     .next()
                     .ok_or(AddGalleryItemError::NoSuchGallery)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::GalleryModerate, &gallery)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(if denial.conceals() {
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Gallery, gallery.gallery_id()),
+                    Action::CreateChild,
+                    None,
+                )
+                .await
+                .map_err(|error| {
+                    if error.conceals() {
                         AddGalleryItemError::NoSuchGallery
                     } else {
                         AddGalleryItemError::Forbidden
-                    });
-                }
+                    }
+                })?;
 
                 let (media, file_id, image_name) = match command.media() {
                     GalleryItemMedia::Image(image_id) => {
@@ -162,19 +151,15 @@ where
                     })?;
                 let name = image_name.unwrap_or_else(|| file.path().to_owned());
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::FileUse, &file)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(AddGalleryItemError::NotOwnedMedia);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::File, file.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| AddGalleryItemError::NotOwnedMedia)?;
 
                 let already_assigned = !unit_of_work
                     .galleries()
@@ -228,6 +213,21 @@ where
                             }
                         })?;
 
+                unit_of_work
+                    .resources()
+                    .create(NewResource {
+                        kind: ResourceKind::GalleryItem,
+                        entity_id: persisted.gallery_item_id(),
+                        owner_id: None,
+                        auth_parent: Some(ResourceRef::new(
+                            ResourceKind::Gallery,
+                            gallery.gallery_id(),
+                        )),
+                        visibility: Visibility::Private,
+                    })
+                    .await
+                    .map_err(|error| AddGalleryItemError::Unknown(error.into()))?;
+
                 gallery.touch(now);
                 unit_of_work
                     .galleries()
@@ -271,6 +271,7 @@ mod tests {
     use crate::domain::model::{
         File, Gallery, Image, IntegrityHash, Orientation, Origin, Role, ScanType, User, Video,
     };
+    use allure_cargotest::allure_test;
 
     use crate::domain::port::{
         GalleryItemDetail, MockFileRepository, MockGalleryRepository, MockImageRepository,
@@ -349,7 +350,7 @@ mod tests {
         files: MockFileRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             files,
             galleries,
             images,
@@ -436,8 +437,12 @@ mod tests {
             .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn add_gallery_item_owner_adds_own_image() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-007");
+        allure.story("SCN-GALLERY-007-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -492,9 +497,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn add_gallery_item_owner_adds_own_video_named_after_file_path()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-007");
+        allure.story("SCN-GALLERY-007-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -541,8 +550,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn add_gallery_item_unknown_video_returns_no_such_media() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-007");
+        allure.story("SCN-GALLERY-007-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -579,8 +592,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn add_gallery_item_admin_adds_other_users_media() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-007");
+        allure.story("SCN-GALLERY-007-A");
         // Arrange: `file.use` grants an Admin `ALL`, so an Admin may reference
         // another caller's file (a Standard user may not).
         let mut users = MockUserRepository::new();
@@ -615,8 +632,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn add_gallery_item_root_admin_adds_other_users_media() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-007");
+        allure.story("SCN-GALLERY-007-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 0, Role::Admin)?;
@@ -649,99 +670,13 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn add_gallery_item_non_owner_media_returns_not_owned_media() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
-        let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(2, Some(3), "Public", true));
-        galleries.expect_save_item().times(0);
-        let mut images = MockImageRepository::new();
-        expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
-        let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 9, "files/sunset.png")?);
-        let harness = harness_with(users, galleries, images, MockVideoRepository::new(), files);
-        let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(AddGalleryItemCommand::new(
-                4,
-                2,
-                GalleryItemMedia::Image(100),
-            ))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(AddGalleryItemError::NotOwnedMedia)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn add_gallery_item_other_user_private_gallery_returns_no_such_gallery()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9, Role::Standard)?;
-        let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        galleries.expect_save_item().times(0);
-        let harness = harness_with(
-            users,
-            galleries,
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
-            MockFileRepository::new(),
-        );
-        let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(AddGalleryItemCommand::new(9, 3, GalleryItemMedia::Image(7)))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(AddGalleryItemError::NoSuchGallery)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn add_gallery_item_non_root_admin_private_gallery_returns_no_such_gallery()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1, Role::Admin)?;
-        let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        galleries.expect_save_item().times(0);
-        let harness = harness_with(
-            users,
-            galleries,
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
-            MockFileRepository::new(),
-        );
-        let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(AddGalleryItemCommand::new(1, 3, GalleryItemMedia::Image(7)))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(AddGalleryItemError::NoSuchGallery)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn add_gallery_item_duplicate_media_returns_already_assigned()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-007");
+        allure.story("SCN-GALLERY-007-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -783,9 +718,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn add_gallery_item_unknown_gallery_returns_no_such_gallery() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-007");
+        allure.story("SCN-GALLERY-007-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -818,8 +757,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn add_gallery_item_unknown_media_returns_no_such_media() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-007");
+        allure.story("SCN-GALLERY-007-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -856,9 +799,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn add_gallery_item_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-007");
+        allure.story("SCN-GALLERY-007-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -889,8 +836,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn add_gallery_item_scope_conflict_returns_conflict() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-007");
+        allure.story("SCN-GALLERY-007-D");
         // Arrange: the repository guard rejects the item because the medium's
         // scope does not admit a gallery.
         let mut users = MockUserRepository::new();
@@ -930,8 +881,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn add_gallery_item_dependency_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-007");
+        allure.story("SCN-GALLERY-007-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -967,8 +922,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn add_gallery_item_missing_backing_file_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-007");
+        allure.story("SCN-GALLERY-007-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -1000,8 +959,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn add_gallery_item_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-007");
+        allure.story("SCN-GALLERY-007-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;

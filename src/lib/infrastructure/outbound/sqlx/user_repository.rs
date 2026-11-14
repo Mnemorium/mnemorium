@@ -167,6 +167,7 @@ mod tests {
     use crate::domain::model::UserError;
 
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
+    use rstest::rstest;
     use std::error::Error;
 
     fn user(
@@ -326,6 +327,121 @@ mod tests {
         // Assert
         assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn save_and_search_compare_email_ignoring_case() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_credential(&mut transaction, 1).await?;
+        seed_credential(&mut transaction, 2).await?;
+        let mut repository = SqlxUserRepository::new(&mut transaction);
+        let stored = repository
+            .save(user(
+                1,
+                "carol",
+                Some("Alice@example.com"),
+                1,
+                Role::Standard,
+            )?)
+            .await?;
+
+        // Act
+        let duplicate = repository
+            .save(user(
+                2,
+                "david",
+                Some("alice@EXAMPLE.com"),
+                2,
+                Role::Standard,
+            )?)
+            .await;
+        let found = repository
+            .search(&UserFilter {
+                email: Some("ALICE@example.COM".to_owned()),
+                ..UserFilter::default()
+            })
+            .await?;
+
+        // Assert
+        assert!(matches!(duplicate, Err(RepositoryError::AlreadyExist)));
+        assert_eq!(stored.email(), Some("Alice@example.com"));
+        assert_eq!(found.first(), Some(&stored));
+        Ok(())
+    }
+
+    /// Insert `email` for a fresh account and require the datastore to reject it.
+    async fn email_is_rejected(email: &str) -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_credential(&mut transaction, 1).await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO user (user_id, credential_id, email, role, username)
+             VALUES (1, 1, ?1, 'STANDARD', 'erin')",
+        )
+        .bind(email)
+        .execute(&mut *transaction)
+        .await;
+
+        // Assert
+        let mapped = result.map_err(RepositoryError::from);
+        assert!(
+            matches!(mapped, Err(RepositoryError::DataIntegrityViolation)),
+            "{email:?} was stored"
+        );
+        Ok(())
+    }
+
+    /// Insert `email` for a fresh account and require the datastore to accept it.
+    async fn email_is_accepted(email: &str) -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_credential(&mut transaction, 1).await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO user (user_id, credential_id, email, role, username)
+             VALUES (1, 1, ?1, 'STANDARD', 'erin')",
+        )
+        .bind(email)
+        .execute(&mut *transaction)
+        .await;
+
+        // Assert
+        assert!(result.is_ok(), "{email:?} was rejected: {result:?}");
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::empty("")]
+    #[case::blank(" ")]
+    #[case::padded_both_sides(" alice@example.com ")]
+    #[case::leading_space(" alice@example.com")]
+    #[case::trailing_space("alice@example.com ")]
+    #[case::missing_domain("alice@")]
+    #[case::missing_local_part("@example.com")]
+    #[case::missing_at_sign("alice")]
+    #[tokio::test]
+    async fn datastore_email_check_rejects_malformed_values(
+        #[case] email: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        // Act & Assert
+        email_is_rejected(email).await
+    }
+
+    #[rstest]
+    #[case::domain_without_dot("admin@mailserver1")]
+    #[case::quoted_space_local_part("\" \"@example.org")]
+    #[case::quoted_consecutive_dots("\"john..doe\"@example.org")]
+    #[case::percent_in_local_part("user%example.com@example.org")]
+    #[tokio::test]
+    async fn datastore_email_check_accepts_parser_addresses(
+        #[case] email: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        // Act & Assert
+        email_is_accepted(email).await
     }
 
     #[tokio::test]

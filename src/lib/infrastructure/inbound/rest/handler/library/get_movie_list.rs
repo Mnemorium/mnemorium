@@ -8,7 +8,7 @@ use utoipa::IntoParams;
 use super::{DEFAULT_LIMIT, MAX_LIMIT};
 use crate::application::port::ListMoviesCommand;
 use crate::infrastructure::inbound::rest::handler::library::{
-    MovieListLinks, MovieListResponse, MovieResponse,
+    MovieEmbedded, MovieListLinks, MovieListResponse, MovieSummary,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
@@ -31,12 +31,11 @@ pub(crate) struct ListMoviesQuery {
     pub offset: Option<usize>,
 }
 
-/// List the films the caller may see.
+/// List the films the caller may discover.
 ///
-/// Any authenticated caller may list films: a film is not owned and carries no
-/// visibility flag, so the collection is the same for every caller. It is
-/// paginated and filterable, and returned as a HAL collection with navigation
-/// and search links.
+/// The collection holds the films the caller may `Discover`; a film is not
+/// owned and carries no visibility flag. It is paginated and filterable, and
+/// returned as a HAL collection with navigation and search links.
 #[utoipa::path(
     get,
     operation_id = "list_movies",
@@ -114,7 +113,9 @@ pub(crate) async fn get_movie_list(
     let returned = response.movies().len();
     let total = response.total();
     let body = MovieListResponse {
-        items: response.movies().iter().map(MovieResponse::from).collect(),
+        embedded: MovieEmbedded {
+            items: response.movies().iter().map(MovieSummary::from).collect(),
+        },
         links: MovieListLinks::for_page(&query, limit, offset, returned, total),
     };
     Ok(hal_json(body))

@@ -11,8 +11,8 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLi
 
 /// List the episodes of one season of a show.
 ///
-/// Any authenticated caller may read a season's episodes; the show is not owned
-/// and carries no visibility flag. The collection is returned in ascending
+/// The collection holds the episodes of a season the caller may `View`; the show
+/// is not owned and carries no visibility flag. It is returned in ascending
 /// episode index order.
 #[utoipa::path(
     get,

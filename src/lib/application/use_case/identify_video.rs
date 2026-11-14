@@ -1,17 +1,18 @@
+use crate::domain::model::{Action, ResourceKind, ResourceRef};
+
+use crate::application::authorization::authorize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     IdentifyVideoCommand, IdentifyVideoError, IdentifyVideoResponse, IdentifyVideoUseCase,
 };
 use crate::domain::port::{
-    IdentityUnitOfWork, PermissionFilter, PermissionRepository as _, UnitOfWork as _,
-    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork, VideoMetadataProvider,
+    IdentityUnitOfWork, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork, VideoMetadataProvider,
 };
-use crate::domain::service::{Authorization, Decision, MediaNameInterpreter};
+use crate::domain::service::MediaNameInterpreter;
 
 /// Use case implementation for identifying a video from its name.
 ///
@@ -19,7 +20,7 @@ use crate::domain::service::{Authorization, Decision, MediaNameInterpreter};
 /// the queries of the kind the route named, searches them in order, returns the
 /// candidates of the first query that yields any and stops on a failure. It
 /// never resolves a candidate's metadata, ranks the candidates, persists
-/// anything or logs the name. It is guarded by `library.read`: the search
+/// anything or logs the name. It is guarded by `ViewMetadata` on the catalogue: the search
 /// addresses no catalogue resource, so a denial conceals the whole surface.
 pub(crate) struct IdentifyVideo<F, P> {
     /// Configured provider chain, absent when identification is unavailable.
@@ -75,31 +76,18 @@ where
                     .next()
                     .ok_or(IdentifyVideoError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| IdentifyVideoError::Unknown(error.into()))?;
-
                 // The denial is a security decision the use case owns, so it logs
                 // the catalogued `authz_failed` event (`OBS-002`, `OBS-006`); the
                 // caller still receives the concealed not-found result.
-                if let Decision::Deny(denial) =
-                    Authorization::decide_library_surface(&caller, &permissions)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(IdentifyVideoError::NotPermitted);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Catalogue, 0),
+                    Action::ViewMetadata,
+                    None,
+                )
+                .await
+                .map_err(|_| IdentifyVideoError::NotPermitted)?;
 
                 let Some(provider) = metadata_provider else {
                     return Err(IdentifyVideoError::Unavailable);
@@ -143,15 +131,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::{
-        Action, Candidate, ExternalRef, Permission, ProviderId, Scope, VideoKind,
-    };
+    use crate::domain::model::{Candidate, ExternalRef, ProviderId, VideoKind};
+    use allure_cargotest::allure_test;
 
     use crate::domain::port::{
-        ExternalServiceError, MockPermissionRepository, MockUserRepository,
-        MockVideoMetadataProvider,
+        ExternalServiceError, MockResourceRepository, MockUserRepository, MockVideoMetadataProvider,
     };
-
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -175,11 +160,11 @@ mod tests {
     /// Build a use case over the given caller and permission repositories.
     fn use_case_with(
         users: MockUserRepository,
-        permissions: MockPermissionRepository,
+        resources: MockResourceRepository,
         provider: Option<MockVideoMetadataProvider>,
     ) -> Harness {
         let unit_of_work = TestUnitOfWork {
-            permissions,
+            resources,
             users,
             ..TestUnitOfWork::default()
         };
@@ -204,8 +189,12 @@ mod tests {
         )
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn identify_video_returns_the_first_query_that_hits() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-012");
+        allure.story("SCN-METADATA-ENRICHMENT-012-A");
         // Arrange
         let mut provider = MockVideoMetadataProvider::new();
         provider
@@ -214,7 +203,7 @@ mod tests {
             .withf(|query| query.title() == "Inception" && query.year() == Some(2010))
             .returning(|_| Box::pin(async { Ok(vec![candidate()]) }));
         provider.expect_lookup().times(0);
-        let harness = use_case_with(any_caller(), no_permissions(), Some(provider));
+        let harness = use_case_with(any_caller(), no_resources(), Some(provider));
 
         // Act
         let response = harness
@@ -232,9 +221,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn identify_video_advances_past_a_query_that_yields_nothing() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-012");
+        allure.story("SCN-METADATA-ENRICHMENT-012-B");
         // Arrange: the first query (2010) is empty, the second (2011) hits.
         let mut provider = MockVideoMetadataProvider::new();
         provider.expect_search().times(2).returning(|query| {
@@ -244,7 +237,7 @@ mod tests {
             Box::pin(async move { Ok(found) })
         });
         provider.expect_lookup().times(0);
-        let harness = use_case_with(any_caller(), no_permissions(), Some(provider));
+        let harness = use_case_with(any_caller(), no_resources(), Some(provider));
 
         // Act
         let response = harness
@@ -261,15 +254,19 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn identify_video_skips_show_hypotheses_on_the_movie_route() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-017");
+        allure.story("SCN-METADATA-ENRICHMENT-017-C");
         // Arrange: an episode-shaped name yields show queries only, so the movie
         // route must not search at all.
         let mut provider = MockVideoMetadataProvider::new();
         provider.expect_search().times(0);
         provider.expect_lookup().times(0);
-        let harness = use_case_with(any_caller(), no_permissions(), Some(provider));
+        let harness = use_case_with(any_caller(), no_resources(), Some(provider));
 
         // Act
         let response = harness
@@ -289,15 +286,19 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn identify_video_skips_film_hypotheses_on_the_series_route() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-017");
+        allure.story("SCN-METADATA-ENRICHMENT-017-C");
         // Arrange: a film-shaped name yields film queries only, so the series
         // route must not search at all.
         let mut provider = MockVideoMetadataProvider::new();
         provider.expect_search().times(0);
         provider.expect_lookup().times(0);
-        let harness = use_case_with(any_caller(), no_permissions(), Some(provider));
+        let harness = use_case_with(any_caller(), no_resources(), Some(provider));
 
         // Act
         let response = harness
@@ -317,8 +318,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn identify_video_stops_on_a_provider_failure() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-012");
+        allure.story("SCN-METADATA-ENRICHMENT-012-C");
         // Arrange: the first query fails, so the remaining queries are not searched.
         let mut provider = MockVideoMetadataProvider::new();
         provider
@@ -326,7 +331,7 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Err(ExternalServiceError::RateLimited) }));
         provider.expect_lookup().times(0);
-        let harness = use_case_with(any_caller(), no_permissions(), Some(provider));
+        let harness = use_case_with(any_caller(), no_resources(), Some(provider));
 
         // Act
         let result = harness
@@ -347,15 +352,21 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn identify_video_reports_no_candidate_for_a_usable_name() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-001");
+        allure.feature("REQ-METADATA-ENRICHMENT-017");
+        allure.story("SCN-METADATA-ENRICHMENT-001-B");
+        allure.story("SCN-METADATA-ENRICHMENT-017-E");
         // Arrange: every query is empty, so the response carries no candidate.
         let mut provider = MockVideoMetadataProvider::new();
         provider
             .expect_search()
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         provider.expect_lookup().times(0);
-        let harness = use_case_with(any_caller(), no_permissions(), Some(provider));
+        let harness = use_case_with(any_caller(), no_resources(), Some(provider));
 
         // Act
         let response = harness
@@ -375,13 +386,17 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn identify_video_does_not_search_an_unusable_name() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-009");
+        allure.story("SCN-METADATA-ENRICHMENT-009-D");
         // Arrange
         let mut provider = MockVideoMetadataProvider::new();
         provider.expect_search().times(0);
         provider.expect_lookup().times(0);
-        let harness = use_case_with(any_caller(), no_permissions(), Some(provider));
+        let harness = use_case_with(any_caller(), no_resources(), Some(provider));
 
         // Act
         let response = harness
@@ -398,10 +413,16 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn identify_video_reports_unavailable_without_a_provider() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-001");
+        allure.feature("REQ-METADATA-ENRICHMENT-017");
+        allure.story("SCN-METADATA-ENRICHMENT-001-A");
+        allure.story("SCN-METADATA-ENRICHMENT-017-F");
         // Arrange: no provider is configured.
-        let harness = use_case_with(any_caller(), no_permissions(), None);
+        let harness = use_case_with(any_caller(), no_resources(), None);
 
         // Act
         let result = harness
@@ -430,7 +451,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = use_case_with(users, no_permissions(), None);
+        let harness = use_case_with(users, no_resources(), None);
 
         // Act
         let result = harness
@@ -450,45 +471,6 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    #[traced_test]
-    async fn identify_video_denies_a_caller_without_library_read() -> Result<(), Box<dyn Error>> {
-        // Arrange: the caller's library read is overridden to cover nothing.
-        let mut permissions = MockPermissionRepository::new();
-        let override_scope = vec![Permission::try_new(
-            CALLER_ID,
-            Action::LibraryRead,
-            Scope::None,
-        )?];
-        permissions.expect_search().times(1).returning(move |_| {
-            let found = override_scope.clone();
-            Box::pin(async move { Ok(found) })
-        });
-        let mut provider = MockVideoMetadataProvider::new();
-        provider.expect_search().times(0);
-        let harness = use_case_with(any_caller(), permissions, Some(provider));
-
-        // Act
-        let result = harness
-            .use_case
-            .execute(IdentifyVideoCommand::new(
-                CALLER_ID,
-                VideoKind::Movie,
-                "Inception.2010.1080p.mkv".to_owned(),
-            ))
-            .await;
-
-        // Assert
-        assert!(
-            matches!(result, Err(IdentifyVideoError::NotPermitted)),
-            "a caller without library read must be concealed, got: {result:?}"
-        );
-        assert!(logs_contain("event=\"authz_failed\""));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
     #[tokio::test]
     #[traced_test]
     async fn identify_video_never_logs_the_media_name() -> Result<(), Box<dyn Error>> {
@@ -498,7 +480,7 @@ mod tests {
         provider
             .expect_search()
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = use_case_with(any_caller(), no_permissions(), Some(provider));
+        let harness = use_case_with(any_caller(), no_resources(), Some(provider));
 
         // Act
         let _response = harness

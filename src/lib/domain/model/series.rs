@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 
 use crate::domain::NumericID;
-use crate::domain::model::{Protected, ResourceKind, ResourceRef, Season};
+use crate::domain::model::Season;
 
 /// Error returned when initialising a `Series`.
 #[derive(Debug, thiserror::Error)]
@@ -128,23 +128,5 @@ impl Series {
             plot,
             seasons,
         })
-    }
-}
-
-impl Protected for Series {
-    fn is_privileged_account(&self) -> bool {
-        false
-    }
-
-    fn is_publicly_visible(&self) -> bool {
-        true
-    }
-
-    fn owner_id(&self) -> Option<NumericID> {
-        None
-    }
-
-    fn resource_ref(&self) -> Option<ResourceRef> {
-        Some(ResourceRef::new(ResourceKind::Series, self.id))
     }
 }

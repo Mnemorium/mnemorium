@@ -17,9 +17,9 @@ pub(crate) enum IntegrityHashError {
         /// Required length of the hash, in characters.
         expected: usize,
     },
-    /// The value contains a character that is not an ASCII hexadecimal digit.
-    #[error("the integrity hash must be a hexadecimal string")]
-    NonHexadecimal,
+    /// The value contains a character that is not a lowercase hexadecimal digit.
+    #[error("the integrity hash must be a lowercase hexadecimal string")]
+    NonLowercaseHexadecimal,
 }
 
 /// A content-integrity digest.
@@ -40,22 +40,24 @@ impl<const LENGTH: usize> IntegrityHash<LENGTH> {
         &self.value
     }
 
-    /// Initialise a hash, validating its length and hexadecimal alphabet.
+    /// Initialise a hash, validating its length and lowercase hexadecimal alphabet.
     ///
     /// # Errors
     ///
     /// Returns [`IntegrityHashError::InvalidLength`] when `value` is not exactly
-    /// `LENGTH` bytes long, and [`IntegrityHashError::NonHexadecimal`] when it
-    /// contains a character that is not an ASCII hexadecimal digit. A
-    /// hexadecimal value is lowercased on success.
-    pub(crate) fn try_new(mut value: String) -> Result<Self, IntegrityHashError> {
+    /// `LENGTH` bytes long, and
+    /// [`IntegrityHashError::NonLowercaseHexadecimal`] when it contains a
+    /// character that is not a lowercase hexadecimal digit.
+    pub(crate) fn try_new(value: String) -> Result<Self, IntegrityHashError> {
         if value.len() != LENGTH {
             return Err(IntegrityHashError::InvalidLength { expected: LENGTH });
         }
-        if !value.chars().all(|character| character.is_ascii_hexdigit()) {
-            return Err(IntegrityHashError::NonHexadecimal);
+        if !value
+            .chars()
+            .all(|character| character.is_ascii_digit() || ('a'..='f').contains(&character))
+        {
+            return Err(IntegrityHashError::NonLowercaseHexadecimal);
         }
-        value.make_ascii_lowercase();
         Ok(Self { value })
     }
 }

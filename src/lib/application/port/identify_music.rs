@@ -81,7 +81,7 @@ pub(crate) enum IdentifyMusicError {
 /// Use case turning a music query into the candidates of a configured provider.
 ///
 /// It searches once, returns the provider's candidates in the provider's order
-/// and never ranks, persists or logs them. It is guarded by `library.read`.
+/// and never ranks, persists or logs them. It is guarded by `ViewMetadata` on the catalogue.
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait IdentifyMusicUseCase: Send + Sync {
     /// Search the configured provider for the command's query and return its

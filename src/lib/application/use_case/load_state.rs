@@ -1,17 +1,18 @@
 use std::fmt::Write as _;
 use std::future::Future;
-use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
 
 use crate::application::port::{
-    DATABASE_PATH, JWT_SECRET_VARIABLE, LoadStateError, LoadStateResponse, LoadStateUseCase,
-    PEPPER_VARIABLE, SECRET_LENGTH, StateSeedSource,
+    JWT_SECRET_VARIABLE, LoadStateError, LoadStateResponse, LoadStateUseCase, PEPPER_VARIABLE,
+    SECRET_LENGTH, StateSeedSource,
 };
 use crate::domain::model::{InstanceState, SECRET_HEX_LENGTH};
-use crate::domain::port::{InstanceStateStore, InstanceStateStoreError, SecretGenerator};
+use crate::domain::port::{
+    DatastorePresence, InstanceStateStore, InstanceStateStoreError, SecretGenerator,
+};
 
 /// Use case implementation for loading or creating the instance state.
 ///
@@ -19,7 +20,9 @@ use crate::domain::port::{InstanceStateStore, InstanceStateStoreError, SecretGen
 /// and the composing logic in `execute`. The environment layer's rule is the
 /// state's own — it verifies a persisted state instead of overriding it, and an
 /// absent file is either creation or a hard failure, never "defaults".
-pub(crate) struct LoadState<S, G, D> {
+pub(crate) struct LoadState<S, G, D, P> {
+    /// Probe deciding whether the datastore already exists.
+    datastore_presence: Arc<P>,
     /// Store holding the persisted state.
     instance_state_store: Arc<S>,
     /// Generator producing random secrets when no seed is supplied.
@@ -28,11 +31,12 @@ pub(crate) struct LoadState<S, G, D> {
     seed_source: Arc<D>,
 }
 
-impl<S, G, D> LoadState<S, G, D>
+impl<S, G, D, P> LoadState<S, G, D, P>
 where
     S: InstanceStateStore,
     G: SecretGenerator,
     D: StateSeedSource,
+    P: DatastorePresence,
 {
     /// Create and persist the state for a genuinely new instance.
     ///
@@ -62,8 +66,10 @@ where
         instance_state_store: Arc<S>,
         secret_generator: Arc<G>,
         seed_source: Arc<D>,
+        datastore_presence: Arc<P>,
     ) -> Self {
         Self {
+            datastore_presence,
             instance_state_store,
             secret_generator,
             seed_source,
@@ -113,11 +119,12 @@ where
     }
 }
 
-impl<S, G, D> LoadStateUseCase for LoadState<S, G, D>
+impl<S, G, D, P> LoadStateUseCase for LoadState<S, G, D, P>
 where
     S: InstanceStateStore,
     G: SecretGenerator,
     D: StateSeedSource,
+    P: DatastorePresence,
 {
     fn execute<'future>(
         &'future self,
@@ -126,13 +133,11 @@ where
         Box::pin(async move {
             // The check runs first: a failure to tell whether the datastore
             // exists must never reach creation, or a lost state file would be
-            // replaced beside a live datastore. `try_exists`, not `exists`, so
-            // an unreadable datastore fails startup instead of reading as a
+            // replaced beside a live datastore. The port reports an unreadable
+            // path as an error, so it fails startup instead of reading as a
             // fresh instance.
-            let datastore_exists = Path::new(DATABASE_PATH).try_exists().map_err(|failure| {
-                LoadStateError::DatastoreUnreadable(anyhow::anyhow!(
-                    "cannot inspect {DATABASE_PATH}: {failure}"
-                ))
+            let datastore_exists = self.datastore_presence.exists().map_err(|failure| {
+                LoadStateError::DatastoreUnreadable(anyhow::Error::new(failure))
             })?;
             let seeds = self
                 .seed_source
@@ -187,6 +192,7 @@ fn map_store_error(error: InstanceStateStoreError) -> LoadStateError {
             LoadStateError::StoreFailed(anyhow::Error::new(error))
         }
         InstanceStateStoreError::Corrupt(source) => LoadStateError::StateCorrupt(source),
+        InstanceStateStoreError::Insecure => LoadStateError::StateInsecure,
         InstanceStateStoreError::UnsupportedVersion(version) => {
             LoadStateError::UnsupportedVersion(version)
         }
@@ -219,15 +225,22 @@ mod tests {
     use crate::domain::model::InstanceStateError;
 
     use crate::domain::port::{
-        MockInstanceStateStore, MockSecretGenerator, SecretGeneratorError, StateSeedSourceError,
+        DatastorePresenceError, MockDatastorePresence, MockInstanceStateStore, MockSecretGenerator,
+        SecretGeneratorError, StateSeedSourceError,
     };
 
     use std::error::Error;
     use std::future::ready;
+    use std::io::{Error as IoError, ErrorKind};
     use std::iter::repeat_n;
     use std::sync::{Mutex, PoisonError};
 
-    type UseCase = LoadState<MockInstanceStateStore, MockSecretGenerator, TestSeedSource>;
+    type UseCase = LoadState<
+        MockInstanceStateStore,
+        MockSecretGenerator,
+        TestSeedSource,
+        MockDatastorePresence,
+    >;
 
     /// Record what the use case hands to `save`.
     type Saved = Arc<Mutex<Option<InstanceState>>>;
@@ -288,6 +301,8 @@ mod tests {
         let mut store = MockInstanceStateStore::new();
         let mut generator = MockSecretGenerator::new();
         setup(&mut store, &mut generator);
+        let mut presence = MockDatastorePresence::new();
+        presence.expect_exists().times(0..).returning(|| Ok(false));
         LoadState::new(
             Arc::new(store),
             Arc::new(generator),
@@ -295,6 +310,7 @@ mod tests {
                 failure: false,
                 seeds,
             }),
+            Arc::new(presence),
         )
     }
 
@@ -560,12 +576,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn load_state_datastore_probe_failure_is_reported() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut store = MockInstanceStateStore::new();
+        store.expect_load().times(0);
+        let mut generator = MockSecretGenerator::new();
+        generator.expect_generate().times(0);
+        let mut presence = MockDatastorePresence::new();
+        presence.expect_exists().times(1).returning(|| {
+            Err(DatastorePresenceError::Unreadable(IoError::new(
+                ErrorKind::PermissionDenied,
+                "denied",
+            )))
+        });
+        let use_case = LoadState::new(
+            Arc::new(store),
+            Arc::new(generator),
+            Arc::new(TestSeedSource {
+                failure: false,
+                seeds: TestSeeds::default(),
+            }),
+            Arc::new(presence),
+        );
+
+        // Act
+        let result = use_case.execute().await;
+
+        // Assert
+        assert!(
+            matches!(result, Err(LoadStateError::DatastoreUnreadable(_))),
+            "an undecidable datastore presence must fail closed, got: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn load_state_seed_source_failure_is_reported() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut store = MockInstanceStateStore::new();
         store.expect_load().times(0);
         let mut generator = MockSecretGenerator::new();
         generator.expect_generate().times(0);
+        let mut presence = MockDatastorePresence::new();
+        presence.expect_exists().times(0..).returning(|| Ok(false));
         let use_case = LoadState::new(
             Arc::new(store),
             Arc::new(generator),
@@ -573,6 +626,7 @@ mod tests {
                 failure: true,
                 seeds: TestSeeds::default(),
             }),
+            Arc::new(presence),
         );
 
         // Act

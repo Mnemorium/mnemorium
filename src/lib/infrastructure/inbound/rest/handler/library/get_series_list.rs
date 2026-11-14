@@ -8,7 +8,7 @@ use utoipa::IntoParams;
 use super::{DEFAULT_LIMIT, MAX_LIMIT};
 use crate::application::port::ListSeriesCommand;
 use crate::infrastructure::inbound::rest::handler::library::{
-    SeriesListLinks, SeriesListResponse, SeriesSummaryResponse,
+    SeriesEmbedded, SeriesListLinks, SeriesListResponse, SeriesSummaryResponse,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
@@ -31,12 +31,12 @@ pub(crate) struct ListSeriesQuery {
     pub offset: Option<usize>,
 }
 
-/// List the shows the caller may see.
+/// List the shows the caller may discover.
 ///
-/// Any authenticated caller may list shows: a show is not owned and carries no
-/// visibility flag, so the collection is the same for every caller. It is
-/// paginated and filterable, and each item carries only the show's identifier
-/// and name as a navigation index.
+/// The collection holds the shows the caller may `Discover`; a show is not
+/// owned and carries no visibility flag. It is paginated and filterable, and
+/// each item carries only the show's identifier, name and cover as a navigation
+/// index.
 #[utoipa::path(
     get,
     operation_id = "list_series",
@@ -114,11 +114,13 @@ pub(crate) async fn get_series_list(
     let returned = response.series().len();
     let total = response.total();
     let body = SeriesListResponse {
-        items: response
-            .series()
-            .iter()
-            .map(SeriesSummaryResponse::from)
-            .collect(),
+        embedded: SeriesEmbedded {
+            items: response
+                .series()
+                .iter()
+                .map(SeriesSummaryResponse::from)
+                .collect(),
+        },
         links: SeriesListLinks::for_page(&query, limit, offset, returned, total),
     };
     Ok(hal_json(body))

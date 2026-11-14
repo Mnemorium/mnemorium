@@ -29,8 +29,10 @@ impl<'transaction> SqlxMusicPlaylistRepository<'transaction> {
 impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
     async fn create(&mut self, playlist: MusicPlaylist) -> Result<MusicPlaylist, RepositoryError> {
         let row = sqlx::query_as::<_, MusicPlaylistRow>(
-            "INSERT INTO music_playlist (name, created_at, last_modified_at, user_id, is_public)
-             VALUES (?1, ?2, ?3, ?4, ?5)
+            "INSERT INTO music_playlist (
+                name, created_at, last_modified_at, user_id, is_public, cover_image_id
+             )
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              RETURNING
                 music_playlist_id,
                 name,
@@ -51,6 +53,7 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
         .bind(playlist.last_modified_at())
         .bind(playlist.user_id())
         .bind(playlist.is_public())
+        .bind(playlist.cover_image_id())
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -105,15 +108,17 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
     async fn save(&mut self, playlist: MusicPlaylist) -> Result<MusicPlaylist, RepositoryError> {
         sqlx::query(
             "INSERT INTO music_playlist (
-                music_playlist_id, name, created_at, last_modified_at, user_id, is_public
+                music_playlist_id, name, created_at, last_modified_at, user_id, is_public,
+                cover_image_id
              )
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT (music_playlist_id) DO UPDATE SET
                 name = excluded.name,
                 created_at = excluded.created_at,
                 last_modified_at = excluded.last_modified_at,
                 user_id = excluded.user_id,
-                is_public = excluded.is_public",
+                is_public = excluded.is_public,
+                cover_image_id = excluded.cover_image_id",
         )
         .bind(playlist.id())
         .bind(playlist.name())
@@ -121,6 +126,7 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
         .bind(playlist.last_modified_at())
         .bind(playlist.user_id())
         .bind(playlist.is_public())
+        .bind(playlist.cover_image_id())
         .execute(&mut **self.transaction)
         .await?;
 
@@ -469,6 +475,44 @@ mod tests {
         Ok(())
     }
 
+    /// Seed a catalogue group whose cover is `cover_image_id`.
+    async fn seed_covered_group(
+        transaction: &mut Transaction<'static, Sqlite>,
+        cover_image_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("INSERT INTO music_group (stage_name, cover_image_id) VALUES ('The Band', ?1)")
+            .bind(cover_image_id)
+            .execute(&mut **transaction)
+            .await?;
+        Ok(())
+    }
+
+    /// Seed a gallery whose only item is `image_id`, so the image is USER media.
+    async fn seed_gallery_media(
+        transaction: &mut Transaction<'static, Sqlite>,
+        gallery_id: i64,
+        gallery_item_id: i64,
+        image_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO gallery (gallery_id, name, created_at, last_modified_at, is_public, user_id)
+             VALUES (?1, 'Holiday', '2026-10-06 00:00:00', '2026-10-06 00:00:00', 1, 1)",
+        )
+        .bind(gallery_id)
+        .execute(&mut **transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO gallery_item (gallery_item_id, gallery_id, image_id, item_index)
+             VALUES (?1, ?2, ?3, 0)",
+        )
+        .bind(gallery_item_id)
+        .bind(gallery_id)
+        .bind(image_id)
+        .execute(&mut **transaction)
+        .await?;
+        Ok(())
+    }
+
     /// Seed a playlist placement directly, bypassing the repository guards.
     async fn seed_placement(
         transaction: &mut Transaction<'static, Sqlite>,
@@ -706,6 +750,72 @@ mod tests {
         assert_eq!(playlists.len(), 1);
         assert_eq!(found.id(), 7);
         assert_eq!(found.cover_image_id(), Some(12));
+        Ok(())
+    }
+
+    /// Build a playlist carrying `cover_image_id` and no track.
+    fn covered_playlist(name: &str, user_id: i64, cover_image_id: i64) -> MusicPlaylist {
+        MusicPlaylist::new(
+            0,
+            name.to_owned(),
+            NaiveDateTime::default(),
+            NaiveDateTime::default(),
+            user_id,
+            false,
+            Some(cover_image_id),
+            Vec::new(),
+        )
+    }
+
+    #[tokio::test]
+    async fn create_rejects_a_library_cover() -> Result<(), Box<dyn Error>> {
+        // Arrange: the image already backs a catalogue group, so it is `LIBRARY`.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_image(&mut transaction, 12, 1).await?;
+        seed_covered_group(&mut transaction, 12).await?;
+        let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
+
+        // Act: `tg_music_playlist_cover_scope_insert` refuses a library image.
+        let result = repository.create(covered_playlist("Mix", 1, 12)).await;
+
+        // Assert: the refusal is the conflict the API answers with `409`.
+        assert!(matches!(result, Err(RepositoryError::Conflict)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_rejects_an_image_already_used_as_gallery_media() -> Result<(), Box<dyn Error>> {
+        // Arrange: the image is gallery media, so a USER image already has a referrer.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_image(&mut transaction, 13, 1).await?;
+        seed_gallery_media(&mut transaction, 3, 1, 13).await?;
+        let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
+
+        // Act: the image has exactly one referrer, and it is the gallery item.
+        let result = repository.create(covered_playlist("Mix", 1, 13)).await;
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::Conflict)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_rejects_an_unknown_cover_image() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
+
+        // Act: the reference violates `fk_music_playlist_cover_image`.
+        let result = repository.create(covered_playlist("Mix", 1, 999)).await;
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
         Ok(())
     }
 
@@ -994,6 +1104,31 @@ mod tests {
                 .and_then(|track| track.name().map(str::to_owned)),
             Some("Second".to_owned())
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn save_persists_the_cover() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_image(&mut transaction, 14, 1).await?;
+        seed_image(&mut transaction, 15, 1).await?;
+        let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
+        let created = repository.create(playlist("Mix", 1, false)).await?;
+
+        // Act: attach one image, then replace it with another.
+        let mut attached_aggregate = load(&mut repository, created.id()).await?;
+        attached_aggregate.set_cover_image_id(Some(14));
+        let attached = repository.save(attached_aggregate).await?;
+        let mut replaced_aggregate = load(&mut repository, created.id()).await?;
+        replaced_aggregate.set_cover_image_id(Some(15));
+        let replaced = repository.save(replaced_aggregate).await?;
+
+        // Assert
+        assert_eq!(created.cover_image_id(), None);
+        assert_eq!(attached.cover_image_id(), Some(14));
+        assert_eq!(replaced.cover_image_id(), Some(15));
         Ok(())
     }
 

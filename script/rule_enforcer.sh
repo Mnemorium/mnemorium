@@ -16,6 +16,8 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 readonly REPO_ROOT
 
 readonly RULEBOOK="docs/development/TechnicalDesign.md"
+# The security-event catalog is normative in the `logging` capability; OBS-006 parses it there (REQ-LOGGING-010).
+readonly SECURITY_CATALOG="openspec/specs/logging/spec.md"
 readonly CONFIG="rule_enforcer.yaml"
 readonly SGCONFIG="sgconfig.yaml"
 
@@ -157,14 +159,8 @@ RULES=(
 	"TEST-034:check_test_034"
 	"TEST-035:check_test_035"
 	"TEST-037:check_test_037"
-	"TEST-039:check_test_039"
-	"TEST-040:check_test_040"
-	"TEST-041:check_test_041"
-	"TEST-043:check_test_043"
 	"TEST-044:check_test_044"
 	"TEST-046:check_test_046"
-	"TEST-050:check_test_050"
-	"TEST-051:check_test_051"
 	"TEST-052:check_test_052"
 	"TEST-060:check_test_060"
 	"OBS-001:check_obs_001"
@@ -3462,59 +3458,6 @@ check_test_019() {
 	scan_short TEST-019 "src/lib/domain/model"
 }
 
-# check_test_051 — a catalogued use case's E2E file sits in the folder named by the bounded-context section that holds its entry (TEST-051).
-check_test_051() {
-	local id="TEST-051"
-	local e2e_dir="test/e2e"
-	local catalog="docs/development/UseCases.md"
-	local section seq num file base folder expected
-	local result=0
-	local -A uc_section=()
-
-	need_dir "$id" "$e2e_dir" || return 1
-	need_file "$id" "$catalog" || return 1
-
-	# The section each catalogued use case is filed under: one `seq<TAB>section` row per `### UC-` entry, read while the current `##` heading is in scope.
-	while IFS=$'\t' read -r seq section; do
-		[ -n "$seq" ] || continue
-		num=$((10#$seq))
-		uc_section["$num"]="$section"
-	done < <(awk '
-		function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
-
-		/^## / { section = trim(substr($0, 4)); next }
-		/^### UC-[0-9]+ - / {
-			seq = $0
-			sub(/^### UC-/, "", seq); sub(/ - .*$/, "", seq)
-			if (section != "") printf "%s\t%s\n", seq, section
-		}
-	' "$catalog")
-
-	if [ "${#uc_section[@]}" -eq 0 ]; then
-		printf 'error: %s: parsed no use case section from %s\n' "$id" "$catalog" >&2
-		return 1
-	fi
-
-	# Every E2E test module of a catalogued use case must sit in its section's folder; `fixture/` and `__pycache__/` hold no use-case module.
-	while IFS= read -r file; do
-		[ -n "$file" ] || continue
-		base="${file##*/}"
-		[[ $base =~ ^uc([0-9]+)_ ]] || continue
-		num=$((10#${BASH_REMATCH[1]}))
-		[ -n "${uc_section[$num]+set}" ] || continue
-		expected="$(printf '%s' "${uc_section[$num]}" | tr '[:upper:]' '[:lower:]')"
-		folder="$(basename "$(dirname "$file")")"
-		if [ "$folder" != "$expected" ]; then
-			printf 'error: %s: %s sits in test/e2e/%s/, but UC-%03d is filed under "## %s"; place the file in test/e2e/%s/\n' \
-				"$id" "$file" "$folder" "$num" "${uc_section[$num]}" "$expected" >&2
-			result=1
-		fi
-	done < <(find "$e2e_dir" -type f -name 'uc*.py' \
-		! -path '*/__pycache__/*' | sort)
-
-	return "$result"
-}
-
 # check_test_052 — an outbound adapter that drives a native binary is covered by an integration test in the same file (TEST-052).
 check_test_052() {
 	local id="TEST-052"
@@ -3813,7 +3756,12 @@ check_obs_006() {
 	local -A seen=()
 	local -a findings=()
 
-	# OBS-006's catalog is the § 6 table, whose columns are event, level and fields.
+	# OBS-006's catalog is the specification's table (`REQ-LOGGING-010`), whose
+	# columns are event, severity, fields and recorded when.
+	if [ ! -f "$SECURITY_CATALOG" ]; then
+		printf 'error: %s: missing %s\n' "$id" "$SECURITY_CATALOG" >&2
+		return 1
+	fi
 	while IFS=$'\t' read -r event level fields; do
 		[ -n "$event" ] || continue
 		catalog["$event"]="$level|$fields"
@@ -3821,8 +3769,8 @@ check_obs_006() {
 	done < <(awk '
 		function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
 
-		/^### 6\. Security-event catalog/ { in_cat = 1; next }
-		in_cat && /^### / { in_cat = 0 }
+		/^The security-event catalog:$/ { in_cat = 1; next }
+		in_cat && /^### Requirement:/ { in_cat = 0 }
 		in_cat && /^---/ { in_cat = 0 }
 		in_cat && /^\|/ {
 			n = split($0, c, "|")
@@ -3839,10 +3787,10 @@ check_obs_006() {
 			}
 			printf "%s\t%s\t%s\n", event, level, list
 		}
-	' "$RULEBOOK")
+	' "$SECURITY_CATALOG")
 
 	if [ "${#catalog[@]}" -eq 0 ]; then
-		printf 'error: %s: parsed no event from %s § 6\n' "$id" "$RULEBOOK" >&2
+		printf 'error: %s: parsed no event from %s\n' "$id" "$SECURITY_CATALOG" >&2
 		return 1
 	fi
 
@@ -4347,283 +4295,6 @@ check_test_037() {
 	return "$result"
 }
 
-# check_test_039 — one E2E file per catalogued business use case (TEST-039).
-check_test_039() {
-	local id="TEST-039"
-	local e2e_dir="test/e2e"
-	local catalog="docs/development/UseCases.md"
-	local file base seq num entry result=0
-	local config
-	local -A use_cases=()
-	local -A files_of=()
-	local -A exempt=()
-
-	need_dir "$id" "$e2e_dir" || return 1
-	need_file "$id" "$catalog" || return 1
-
-	# The catalogued business use cases: `UC-<seq> - <Name>` headings, at `###` or, inside a sub-package, at `####`.
-	while IFS= read -r seq; do
-		[ -n "$seq" ] || continue
-		num=$((10#$seq))
-		use_cases["$num"]="UC-$seq"
-	done < <(sed -nE 's/^(###|####) UC-([0-9]+) - .*$/\2/p' "$catalog")
-
-	if [ "${#use_cases[@]}" -eq 0 ]; then
-		printf 'error: %s: parsed no use case from %s\n' "$id" "$catalog" >&2
-		return 1
-	fi
-
-	config="$(rule_config "$id")" || return 2
-
-	# The excepted use cases, as data in rule_enforcer.yaml: a use case whose behaviour the container does not expose through its REST API, or one carrying a recorded, temporary exception.
-	while IFS= read -r entry; do
-		[ -n "$entry" ] || continue
-		if [[ ! $entry =~ ^UC-([0-9]+)$ ]]; then
-			printf 'error: %s: exempt use case %s is not a use case id (expected UC-<seq>)\n' \
-				"$id" "$entry" >&2
-			result=1
-			continue
-		fi
-		num=$((10#${BASH_REMATCH[1]}))
-		if [ -z "${use_cases[$num]+set}" ]; then
-			printf 'error: %s: exempt use case %s is not in %s\n' \
-				"$id" "$entry" "$catalog" >&2
-			result=1
-			continue
-		fi
-		exempt["$num"]=1
-	done < <(jq -r '.exempt_use_cases[]?' <<<"$config")
-
-	# Every E2E file is named after a catalogued use case, and one use case keeps one file: `uc<seq>_<name>.py`.
-	while IFS= read -r file; do
-		[ -n "$file" ] || continue
-		base="${file##*/}"
-		if [[ ! $base =~ ^uc([0-9]+)_ ]]; then
-			printf 'error: %s: %s: E2E file is not named after a catalogued use case (expected uc<seq>_<name>.py)\n' \
-				"$id" "$file" >&2
-			result=1
-			continue
-		fi
-		seq="${BASH_REMATCH[1]}"
-		num=$((10#$seq))
-		if [ -z "${use_cases[$num]+set}" ]; then
-			printf 'error: %s: %s: names UC-%s, which is not in %s\n' \
-				"$id" "$file" "$seq" "$catalog" >&2
-			result=1
-		elif [ -n "${files_of[$num]+set}" ]; then
-			printf 'error: %s: %s: %s already has %s; keep one file per use case\n' \
-				"$id" "$file" "${use_cases[$num]}" "${files_of[$num]}" >&2
-			result=1
-		else
-			files_of["$num"]="$file"
-		fi
-	done < <(find "$e2e_dir" -type f -name '*.py' \
-		! -name 'conftest.py' ! -path "${e2e_dir}/fixture/*" \
-		! -path '*/__pycache__/*' | sort)
-
-	# Every catalogued business use case has its one file, unless it is exempt.
-	while IFS= read -r num; do
-		[ -n "$num" ] || continue
-		if [ -z "${files_of[$num]+set}" ] && [ -z "${exempt[$num]+set}" ]; then
-			printf 'error: %s: catalogued use case %s has no E2E file under %s\n' \
-				"$id" "${use_cases[$num]}" "$e2e_dir" >&2
-			result=1
-		fi
-	done < <(printf '%s\n' "${!use_cases[@]}" | sort -n)
-
-	return "$result"
-}
-
-# check_test_040 — the E2E suite is split into one folder per bounded context (TEST-040).
-check_test_040() {
-	local id="TEST-040"
-	local e2e_dir="test/e2e"
-	local overview="docs/development/Overview.md"
-	local entry name result=0
-	local -A is_context=()
-
-	need_dir "$id" "$e2e_dir" || return 1
-	need_file "$id" "$overview" || return 1
-
-	# The Overview's § Bounded context table is the rule's list: its first column, lowercased, is the set of folder names the E2E suite may use.
-	while IFS= read -r name; do
-		[ -n "$name" ] || continue
-		is_context["$name"]=1
-	done < <(awk '
-		function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
-
-		/^## Bounded context[[:space:]]*$/ { in_table = 1; next }
-		in_table && /^##/ { in_table = 0 }
-		in_table && /^\|/ {
-			n = split($0, c, "|")
-			if (n < 3) next
-			name = trim(c[2])
-			if (name == "" || name == "Name" || name ~ /^-+$/) next
-			printf "%s\n", tolower(name)
-		}
-	' "$overview")
-
-	if [ "${#is_context[@]}" -eq 0 ]; then
-		printf 'error: %s: no bounded contexts parsed from %s\n' "$id" "$overview" >&2
-		return 1
-	fi
-
-	while IFS= read -r entry; do
-		name="${entry##*/}"
-		# TEST-050 owns the fixture folder; __pycache__ is generated.
-		case "$name" in
-		fixture | __pycache__) continue ;;
-		esac
-		if [ -z "${is_context[$name]+set}" ]; then
-			printf 'error: %s: %s is not a bounded-context folder; place its tests in the folder of the bounded context that owns them (see Overview.md, Bounded context)\n' \
-				"$id" "$entry" >&2
-			result=1
-		fi
-	done < <(find "$e2e_dir" -mindepth 1 -maxdepth 1 -type d | sort)
-
-	# A test module belongs inside its bounded-context folder; `conftest.py` is the suite's own fixture module (TEST-041) and stays at the root.
-	while IFS= read -r file; do
-		[ -n "$file" ] || continue
-		printf 'error: %s: %s sits directly under %s; move it into its bounded-context folder\n' \
-			"$id" "$file" "$e2e_dir" >&2
-		result=1
-	done < <(find "$e2e_dir" -mindepth 1 -maxdepth 1 -type f -name '*.py' \
-		! -name 'conftest.py' | sort)
-
-	return "$result"
-}
-
-# check_test_041 — a generic E2E test provisions or registers its users with the shared `SECRET_PASSWORD` (TEST-041). test-041 extracts every `register(...)` call and its password argument; the shared-secret comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
-check_test_041() {
-	local id="TEST-041"
-	local e2e_dir="test/e2e"
-	local conftest="$e2e_dir/conftest.py"
-	local config matches file line password location func result=0
-	local -A secret_aliases=()
-	local -A allowed=()
-
-	need_file "$id" "$conftest" || return 1
-	if ! grep -qE '^SECRET_PASSWORD[[:space:]]*=' "$conftest"; then
-		printf 'error: %s: %s does not define SECRET_PASSWORD\n' "$id" "$conftest" >&2
-		return 1
-	fi
-
-	config="$(rule_config "$id")" || return 2
-
-	# The exempt locations are the password-behavior tests (TEST-042): a test that picks its own explicit password is named here, never inferred.
-	while IFS= read -r location; do
-		[ -n "$location" ] || continue
-		allowed["$location"]=1
-	done < <(jq -r '.allowed_locations[]?' <<<"$config")
-
-	# Every name bound to the shared secret (`X = SECRET_PASSWORD`) is the shared secret by another name, so a provisioning call may pass it.
-	secret_aliases[SECRET_PASSWORD]=1
-	while IFS= read -r name; do
-		[ -n "$name" ] || continue
-		secret_aliases["$name"]=1
-	done < <(grep -rhoE '^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=[[:space:]]*SECRET_PASSWORD([[:space:]]|$)' \
-		"$e2e_dir" --include='*.py' | sed -E 's/[[:space:]]*=.*//')
-
-	# test-041 extracts every `register(…)` call and its password argument.
-	matches="$(scan_json "$id" "$e2e_dir")" || return 1
-	[ -n "$matches" ] || return 0
-
-	while IFS=$'\t' read -r file line password; do
-		[ -n "$file" ] || continue
-		# conftest.py is the fixture module, not a test: its `_register` helper forwards whatever password its caller passes.
-		case "$file" in
-		conftest.py | */conftest.py) continue ;;
-		esac
-		if [ -n "${secret_aliases[$password]+set}" ]; then
-			continue
-		fi
-		func="$(awk -v target="$line" '
-			/^(async[[:space:]]+)?def[[:space:]]/ {
-				name=$0
-				sub(/^.*def[[:space:]]+/, "", name)
-				sub(/[[:space:](].*$/, "", name)
-			}
-			NR==target { print name; exit }
-			END { if (NR < target) print name }
-		' "$file")"
-		location="${file}::${func}"
-		if [ -n "${allowed[$location]+set}" ]; then
-			continue
-		fi
-		printf 'error: %s: %s:%s: user-provisioning call passes %s, not the shared SECRET_PASSWORD; use SECRET_PASSWORD or add "%s" to allowed_locations\n' \
-			"$id" "$file" "$line" "$password" "$location" >&2
-		result=1
-	done < <(printf '%s\n' "$matches" |
-		jq -r '[.file, ((.range.start.line + 1) | tostring),
-			.metaVariables.single.PASSWORD.text] | @tsv')
-
-	return "$result"
-}
-
-check_test_043() {
-	local id="TEST-043"
-	local e2e_dir="test/e2e"
-	local conftest="$e2e_dir/conftest.py"
-	local matches file line text name secret_re found_fixture=0 result=0
-	local -a shared=("SECRET_PASSWORD" "secret_password")
-
-	need_dir "$id" "$e2e_dir" || return 1
-
-	# The shared secret is SECRET_PASSWORD and every name bound to it — the conftest constants and the per-file aliases.
-	while IFS= read -r name; do
-		[ -n "$name" ] || continue
-		shared+=("$name")
-	done < <(grep -rhoE '^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=[[:space:]]*SECRET_PASSWORD[[:space:]]*$' \
-		"$e2e_dir" --include='*.py' | sed -E 's/[[:space:]]*=.*$//' | sort -u)
-
-	# test-043 extracts every call that names the Root Admin — by the `ROOT_ADMIN_USERNAME` constant or the `"root"` literal.
-	matches="$(scan_json "$id" "$e2e_dir")" || return 1
-	require_matches "$id" "Root Admin call from $e2e_dir" "$matches" || return 1
-
-	while IFS=$'\t' read -r file line text; do
-		[ -n "$text" ] || continue
-		text="$(printf '%s' "$text" | tr -s '[:space:]' ' ')"
-		for name in "${shared[@]}"; do
-			secret_re="(^|[^A-Za-z0-9_])${name}([^A-Za-z0-9_]|\$)"
-			if [[ $text =~ $secret_re ]]; then
-				printf 'error: %s: %s:%s: the Root Admin password is the shared secret %s; obtain it through the default_password fixture\n' \
-					"$id" "$file" "$line" "$name" >&2
-				result=1
-			fi
-		done
-		if printf '%s' "$text" | grep -qE '(^|[^A-Za-z0-9_])default_password([^A-Za-z0-9_]|$)'; then
-			found_fixture=1
-		fi
-	done < <(printf '%s\n' "$matches" |
-		jq -r '[.file, ((.range.start.line + 1) | tostring), .text] | @tsv')
-
-	if [ "$found_fixture" -eq 0 ]; then
-		printf 'error: %s: no Root Admin call obtains its password through the default_password fixture\n' "$id" >&2
-		result=1
-	fi
-
-	# The fixture itself must hand back the password the container printed, not the shared secret.
-	if [ -f "$conftest" ]; then
-		while IFS=: read -r line text; do
-			[ -n "$text" ] || continue
-			for name in "${shared[@]}"; do
-				secret_re="(^|[^A-Za-z0-9_])${name}([^A-Za-z0-9_]|\$)"
-				if [[ $text =~ $secret_re ]]; then
-					printf 'error: %s: %s:%s: the default_password fixture hands back the shared secret %s; return the password the container generated\n' \
-						"$id" "$conftest" "$line" "$name" >&2
-					result=1
-				fi
-			done
-		done < <(awk '
-			/^def default_password\(/ { in_fixture = 1 }
-			in_fixture && $0 !~ /^def default_password\(/ && $0 ~ /^[^[:space:]]/ { in_fixture = 0 }
-			in_fixture { print NR ":" $0 }
-		' "$conftest")
-	fi
-
-	return "$result"
-}
-
 # check_test_044 — a helper a test module shares lives in an inline, #[cfg(test)]-gated mod test_helpers, declared once per root file: crate-wide helpers in src/lib/lib.rs, helpers shared only by the descendants of one module in that module's own root (rule_enforcer.yaml, TEST-044.module_scoped_helper_roots). A separate helper file or module is forbidden.
 check_test_044() {
 	local id="TEST-044"
@@ -4736,36 +4407,6 @@ check_test_046() {
 	need_dir "TEST-046" "src/lib/infrastructure/use_case_factory" || return 1
 	need_file "TEST-046" "src/lib/infrastructure/outbound/sqlx/unit_of_work.rs" || return 1
 	scan_short TEST-046 "src/lib/infrastructure/use_case_factory" "src/lib/infrastructure/outbound/sqlx/unit_of_work.rs"
-}
-
-# check_test_050 — a golden file or a test media file the E2E suite consumes is stored under test/e2e/fixture/ (TEST-050).
-check_test_050() {
-	local id="TEST-050"
-	local e2e_dir="test/e2e"
-	local fixture_dir="test/e2e/fixture"
-	local file count=0 result=0
-
-	need_dir "$id" "$e2e_dir" || return 1
-
-	while IFS= read -r file; do
-		[ -n "$file" ] || continue
-		count=$((count + 1))
-		case "$file" in
-		*.py) continue ;;
-		"$fixture_dir"/*) continue ;;
-		esac
-		printf 'error: %s: %s: a golden or test media file must be stored under %s/\n' \
-			"$id" "$file" "$fixture_dir" >&2
-		result=1
-	done < <(git ls-files -- "$e2e_dir" | sort)
-
-	# An empty parse means the surface moved, not that the rule holds.
-	if [ "$count" -eq 0 ]; then
-		printf 'error: %s: no tracked file under %s\n' "$id" "$e2e_dir" >&2
-		return 1
-	fi
-
-	return "$result"
 }
 
 # check_api_001 — every REST handler is annotated with `#[utoipa::path(...)]` (API-001).

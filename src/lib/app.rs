@@ -12,14 +12,16 @@ use tracing::{error, info, warn};
 
 use crate::application::port::{
     AssetUseCaseFactory, DATABASE_PATH, EnsureStorageDirectoriesCommand,
-    EnsureStorageDirectoriesUseCase as _, InitializeRootAdminUseCase as _, LibraryUseCaseFactory,
-    LoadConfigurationUseCase as _, LoadStateUseCase as _, STATE_PATH,
+    EnsureStorageDirectoriesUseCase as _, InitializeRootAdminCommand,
+    InitializeRootAdminUseCase as _, LibraryUseCaseFactory, LoadConfigurationUseCase as _,
+    LoadStateUseCase as _, STATE_PATH,
 };
 #[cfg(feature = "test-seed")]
 use crate::application::use_case::media_root;
 use crate::application::use_case::{
     EnsureStorageDirectories, InitializeRootAdmin, LoadConfiguration, LoadState, MEDIA_ROOT,
 };
+use crate::infrastructure::LoginAttemptLimit;
 #[cfg(feature = "test-seed")]
 use crate::infrastructure::apply;
 use crate::infrastructure::inbound::rest::middleware::LoginRateLimiter;
@@ -29,7 +31,7 @@ use crate::infrastructure::outbound::LocalMediaProbe;
 use crate::infrastructure::outbound::argon2::Argon2PasswordHasher;
 use crate::infrastructure::outbound::envy::{EnvConfigurationSource, EnvStateSeedSource};
 use crate::infrastructure::outbound::file_system::{
-    FileConfigurationSource, FileInstanceStateStore, FileSystemStorage,
+    FileConfigurationSource, FileDatastorePresence, FileInstanceStateStore, FileSystemStorage,
 };
 use crate::infrastructure::outbound::random::{ChaChaSecretGenerator, RandomPasswordGenerator};
 use crate::infrastructure::outbound::sqlx::{SqlxUnitOfWorkFactory, init_db};
@@ -52,6 +54,7 @@ pub async fn run() -> anyhow::Result<()> {
         Arc::new(FileInstanceStateStore::new(PathBuf::from(STATE_PATH))),
         Arc::new(ChaChaSecretGenerator::new()),
         Arc::new(EnvStateSeedSource::new()),
+        Arc::new(FileDatastorePresence::new(PathBuf::from(DATABASE_PATH))),
     )
     .execute()
     .await?;
@@ -132,28 +135,40 @@ pub async fn run() -> anyhow::Result<()> {
         Arc::new(RandomPasswordGenerator::new()),
     ));
 
+    let reveal_password = configuration.security().log_root_admin_password();
+
     #[expect(
         clippy::print_stdout,
         reason = "the root admin default password is a sensitive one-time credential; it must be printed to stdout only and never written to the file-based logs"
     )]
-    match initialize_root_admin.execute().await {
-        Ok(Some(response)) => {
-            if configuration.security().log_root_admin_password() {
-                println!(
-                    "Root admin initialized; use the default password to authenticate and change it: '{}'",
-                    response.default_password()
-                );
+    match initialize_root_admin
+        .execute(InitializeRootAdminCommand::new(reveal_password))
+        .await
+    {
+        Ok(Some(response)) => println!(
+            "Root admin initialized; use the default password to authenticate and change it: '{}'",
+            response.default_password()
+        ),
+        Ok(None) => {
+            if reveal_password {
+                info!("Root admin already initialized");
             } else {
                 info!("Root admin initialized; the default password logging is disabled");
             }
         }
-        Ok(None) => info!("Root admin already initialized"),
         Err(error) => return Err(error.into()),
     }
+
+    let rate_limit = configuration.security().rate_limit();
+    let (rate_limiter, mut rate_limit_cleanup) = LoginRateLimiter::new(rate_limit);
+    let login_attempt_limit = Arc::new(LoginAttemptLimit::new(rate_limit));
+    rate_limit_cleanup.merge(login_attempt_limit.cleanup());
+    let login_rate_limiter = Arc::new(rate_limiter);
 
     let identity_use_case_factory = Arc::new(RuntimeIdentityUseCaseFactory::new(
         Arc::clone(&configuration),
         Arc::clone(&instance_state),
+        login_attempt_limit,
         Arc::clone(&unit_of_work_factory),
     ));
     let user_use_case_factory = Arc::new(RuntimeUserUseCaseFactory::new(Arc::clone(
@@ -187,12 +202,9 @@ pub async fn run() -> anyhow::Result<()> {
 
     let asset_use_case_factory = Arc::new(RuntimeAssetUseCaseFactory::new(
         Arc::clone(&configuration),
-        Arc::clone(&instance_state),
         Arc::clone(&unit_of_work_factory),
         Arc::clone(&probe_permits),
     ));
-
-    let login_rate_limiter = Arc::new(LoginRateLimiter::new(configuration.security().rate_limit()));
 
     // The reaper reads its interval once, at startup (`STY-RUST-076`), and the
     // factory each tick for the live batch size.
@@ -232,7 +244,7 @@ pub async fn run() -> anyhow::Result<()> {
     tokio::spawn(async move {
         loop {
             sleep(rate_limit_cleanup_interval).await;
-            login_rate_limiter.prune();
+            rate_limit_cleanup.prune();
         }
     });
 

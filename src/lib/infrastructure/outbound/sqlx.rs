@@ -7,6 +7,8 @@ mod error_mapping;
 mod file_repository;
 /// The gallery repository adapter.
 mod gallery_repository;
+/// The grant repository adapter.
+mod grant_repository;
 /// The image repository adapter.
 mod image_repository;
 /// The mime type repository adapter.
@@ -21,10 +23,10 @@ mod music_album_repository;
 mod music_group_repository;
 /// The music playlist repository adapter.
 mod music_playlist_repository;
-/// The permission repository adapter.
-mod permission_repository;
 /// The shared SQL filter and sort clause builders.
 mod query_filter;
+/// The resource repository adapter.
+mod resource_repository;
 /// The series repository adapter.
 mod series_repository;
 /// The `SQLite` unit of work and its factory.
@@ -40,13 +42,14 @@ pub(crate) use self::audio_repository::SqlxAudioRepository;
 pub(crate) use self::credential_repository::SqlxCredentialRepository;
 pub(crate) use self::file_repository::SqlxFileRepository;
 pub(crate) use self::gallery_repository::SqlxGalleryRepository;
+pub(crate) use self::grant_repository::SqlxGrantRepository;
 pub(crate) use self::image_repository::SqlxImageRepository;
 pub(crate) use self::mime_type_repository::SqlxMimeTypeRepository;
 pub(crate) use self::movie_repository::SqlxMovieRepository;
 pub(crate) use self::music_album_repository::SqlxMusicAlbumRepository;
 pub(crate) use self::music_group_repository::SqlxMusicGroupRepository;
 pub(crate) use self::music_playlist_repository::SqlxMusicPlaylistRepository;
-pub(crate) use self::permission_repository::SqlxPermissionRepository;
+pub(crate) use self::resource_repository::SqlxResourceRepository;
 pub(crate) use self::series_repository::SqlxSeriesRepository;
 pub(crate) use self::unit_of_work::SqlxUnitOfWorkFactory;
 pub(crate) use self::upload_repository::SqlxUploadRepository;
@@ -167,6 +170,77 @@ mod tests {
 
     /// How many units of work contend for the single `SQLite` writer.
     const WRITERS: usize = 8;
+
+    #[tokio::test]
+    async fn the_authorization_migration_backfills_every_entity() -> Result<(), Box<dyn Error>> {
+        // Arrange: a database from before the resource graph, holding one account,
+        // one public gallery and one private playlist.
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await?;
+        let migrator = sqlx::migrate!("./migrations");
+        migrator.run_to(20_261_105_090_000, &pool).await?;
+        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (5, 'hash-5')")
+            .execute(&pool)
+            .await?;
+        sqlx::query(
+            "INSERT INTO user (user_id, role, username, email, credential_id)
+             VALUES (5, 'STANDARD', 'user5', NULL, 5)",
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO gallery (gallery_id, name, created_at, last_modified_at, is_public, user_id)
+             VALUES (10, 'holiday', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, 5)",
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO music_playlist (music_playlist_id, name, user_id, is_public)
+             VALUES (12, 'mix', 5, 0)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        migrator.run(&pool).await?;
+
+        // Assert
+        let gallery: (Option<i64>, String) = sqlx::query_as(
+            "SELECT owner_id, visibility FROM resource WHERE kind = 'GALLERY' AND entity_id = 10",
+        )
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(gallery, (Some(5), "PUBLIC".to_owned()));
+
+        let playlist: (Option<i64>, String) = sqlx::query_as(
+            "SELECT owner_id, visibility FROM resource
+             WHERE kind = 'MUSIC_PLAYLIST' AND entity_id = 12",
+        )
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(playlist, (Some(5), "PRIVATE".to_owned()));
+
+        let user: (Option<i64>, String, i64) = sqlx::query_as(
+            "SELECT owner_id, visibility, auth_parent_id FROM resource
+             WHERE kind = 'USER' AND entity_id = 5",
+        )
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(user, (None, "PRIVATE".to_owned(), 1));
+
+        let (grants,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM grant")
+            .fetch_one(&pool)
+            .await?;
+        assert!(
+            grants >= 9,
+            "the seeded role grants must be stored, got {grants}"
+        );
+
+        pool.close().await;
+        Ok(())
+    }
 
     #[tokio::test]
     async fn init_db_missing_file_creates_file() -> Result<(), Box<dyn Error>> {

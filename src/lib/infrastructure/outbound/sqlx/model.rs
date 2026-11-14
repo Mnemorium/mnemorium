@@ -25,8 +25,8 @@ mod music_album;
 mod music_group;
 /// The music playlist SQL model.
 mod music_playlist;
-/// The permission SQL model.
-mod permission;
+/// The resource SQL model.
+mod resource;
 /// The series SQL model.
 mod series;
 /// The upload SQL model.
@@ -47,7 +47,7 @@ pub(crate) use self::movie::MovieRow;
 pub(crate) use self::music_album::MusicAlbumRow;
 pub(crate) use self::music_group::MusicGroupRow;
 pub(crate) use self::music_playlist::MusicPlaylistRow;
-pub(crate) use self::permission::{PermissionResourceRow, PermissionRow};
+pub(crate) use self::resource::{GrantRow, RelationRow, ResourceRow};
 pub(crate) use self::series::SeriesRow;
 pub(crate) use self::upload::Upload;
 pub(crate) use self::user::{Role, User};

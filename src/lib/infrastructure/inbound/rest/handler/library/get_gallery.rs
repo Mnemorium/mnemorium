@@ -20,10 +20,9 @@ impl From<GetGalleryError> for ApiError {
 
 /// Fetch a gallery and its items by its identifier.
 ///
-/// An authenticated caller reads a gallery its `gallery.read` permission
-/// covers. A gallery the caller cannot read answers `404 Not Found`,
-/// indistinguishable from a missing one. The representation carries the
-/// gallery and its items, ordered by position.
+/// A caller who may `View` a gallery reads it. A gallery the caller cannot
+/// read answers `404 Not Found`, indistinguishable from a missing one. The
+/// representation carries the gallery and its items, ordered by position.
 #[utoipa::path(
     get,
     operation_id = "get_gallery",

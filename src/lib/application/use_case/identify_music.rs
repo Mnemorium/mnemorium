@@ -1,17 +1,17 @@
+use crate::domain::model::{Action, ResourceKind, ResourceRef};
+
+use crate::application::authorization::authorize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     IdentifyMusicCommand, IdentifyMusicError, IdentifyMusicResponse, IdentifyMusicUseCase,
 };
 use crate::domain::port::{
-    IdentityUnitOfWork, MusicMetadataProvider, PermissionFilter, PermissionRepository as _,
-    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, MusicMetadataProvider, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for identifying music from a query.
 ///
@@ -19,7 +19,7 @@ use crate::domain::service::{Authorization, Decision};
 /// reports [`IdentifyMusicError::Unavailable`], which is distinct from a search
 /// that ran and found no candidate. It searches once, returns the provider's
 /// candidates in the provider's order and never ranks, persists or logs them.
-/// It is guarded by `library.read`: the search addresses no catalogue resource,
+/// It is guarded by `ViewMetadata` on the catalogue: the search addresses no catalogue resource,
 /// so a denial conceals the whole surface rather than one album.
 pub(crate) struct IdentifyMusic<F, P> {
     /// Configured provider, absent when music identification is unavailable.
@@ -75,31 +75,18 @@ where
                     .next()
                     .ok_or(IdentifyMusicError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| IdentifyMusicError::Unknown(error.into()))?;
-
                 // The denial is a security decision the use case owns, so it logs
                 // the catalogued `authz_failed` event (`OBS-002`, `OBS-006`); the
                 // caller still receives the concealed not-found result.
-                if let Decision::Deny(denial) =
-                    Authorization::decide_library_surface(&caller, &permissions)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(IdentifyMusicError::NotPermitted);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Catalogue, 0),
+                    Action::ViewMetadata,
+                    None,
+                )
+                .await
+                .map_err(|_| IdentifyMusicError::NotPermitted)?;
 
                 let Some(provider) = metadata_provider else {
                     return Err(IdentifyMusicError::Unavailable);
@@ -135,19 +122,16 @@ where
 mod tests {
     use super::*;
     use crate::domain::model::{
-        Action, ExternalRef, MusicCandidate, MusicKind, MusicQuery, MusicQueryError, Permission,
-        ProviderId, Scope,
+        ExternalRef, MusicCandidate, MusicKind, MusicQuery, MusicQueryError, ProviderId,
     };
+    use allure_cargotest::allure_test;
 
     use crate::domain::port::{
-        ExternalServiceError, MockMusicMetadataProvider, MockPermissionRepository,
-        MockUserRepository,
+        ExternalServiceError, MockMusicMetadataProvider, MockResourceRepository, MockUserRepository,
     };
-
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use tracing_test::traced_test;
 
     /// The caller every test searches for.
     const CALLER_ID: i64 = 1;
@@ -167,11 +151,11 @@ mod tests {
     /// Build a use case over the given caller and permission repositories.
     fn use_case_with(
         users: MockUserRepository,
-        permissions: MockPermissionRepository,
+        resources: MockResourceRepository,
         provider: Option<MockMusicMetadataProvider>,
     ) -> Harness {
         let unit_of_work = TestUnitOfWork {
-            permissions,
+            resources,
             users,
             ..TestUnitOfWork::default()
         };
@@ -211,8 +195,12 @@ mod tests {
         )?)
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn identify_music_rejects_a_query_without_a_title() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-018");
+        allure.story("SCN-METADATA-ENRICHMENT-018-D");
         // Act: the model refuses the query before the use case ever sees it.
         let result = MusicQuery::try_new(MusicKind::Album, String::new(), None, None);
 
@@ -223,10 +211,16 @@ mod tests {
         );
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn identify_music_reports_unavailable_without_a_provider() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-001");
+        allure.feature("REQ-METADATA-ENRICHMENT-023");
+        allure.story("SCN-METADATA-ENRICHMENT-001-A");
+        allure.story("SCN-METADATA-ENRICHMENT-023-D");
         // Arrange: no music provider is configured.
-        let harness = use_case_with(any_caller(), no_permissions(), None);
+        let harness = use_case_with(any_caller(), no_resources(), None);
 
         // Act
         let result = harness
@@ -251,7 +245,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = use_case_with(users, no_permissions(), None);
+        let harness = use_case_with(users, no_resources(), None);
 
         // Act
         let result = harness
@@ -267,52 +261,13 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    #[traced_test]
-    async fn identify_music_denies_a_caller_without_library_read() -> Result<(), Box<dyn Error>> {
-        // Arrange: the caller's library read is overridden to cover nothing.
-        let mut permissions = MockPermissionRepository::new();
-        let override_scope = vec![Permission::try_new(
-            CALLER_ID,
-            Action::LibraryRead,
-            Scope::None,
-        )?];
-        permissions
-            .expect_search()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(override_scope) }));
-        let mut provider = MockMusicMetadataProvider::new();
-        provider.expect_search().times(0);
-        let harness = use_case_with(any_caller(), permissions, Some(provider));
-
-        // Act
-        let result = harness
-            .use_case
-            .execute(IdentifyMusicCommand::new(CALLER_ID, query()?))
-            .await;
-
-        // Assert
-        assert!(
-            matches!(result, Err(IdentifyMusicError::NotPermitted)),
-            "a caller without library.read must be denied, got: {result:?}"
-        );
-        logs_assert(|lines| {
-            let count = lines
-                .iter()
-                .filter(|line| line.contains("event=\"authz_failed\""))
-                .count();
-            (count == 1)
-                .then_some(())
-                .ok_or_else(|| format!("a denial must log one authz_failed (found {count})"))
-        });
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn identify_music_reports_no_candidate_when_the_search_is_empty()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-001");
+        allure.story("SCN-METADATA-ENRICHMENT-001-B");
         // Arrange: a configured provider answers with nothing.
         let mut provider = MockMusicMetadataProvider::new();
         provider
@@ -320,7 +275,7 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         provider.expect_lookup().times(0);
-        let harness = use_case_with(any_caller(), no_permissions(), Some(provider));
+        let harness = use_case_with(any_caller(), no_resources(), Some(provider));
 
         // Act
         let response = harness
@@ -337,9 +292,15 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn identify_music_returns_the_providers_candidates_in_its_order()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-002");
+        allure.feature("REQ-METADATA-ENRICHMENT-023");
+        allure.story("SCN-METADATA-ENRICHMENT-002-B");
+        allure.story("SCN-METADATA-ENRICHMENT-023-A");
         // Arrange: the provider reports two candidates in its own order.
         let mut provider = MockMusicMetadataProvider::new();
         provider
@@ -348,7 +309,7 @@ mod tests {
             .withf(|query| query.title() == "Kind of Blue" && query.group() == Some("Miles Davis"))
             .returning(|_| Box::pin(async { Ok(vec![candidate("first"), candidate("second")]) }));
         provider.expect_lookup().times(0);
-        let harness = use_case_with(any_caller(), no_permissions(), Some(provider));
+        let harness = use_case_with(any_caller(), no_resources(), Some(provider));
 
         // Act
         let response = harness
@@ -382,7 +343,7 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Err(ExternalServiceError::RateLimited) }));
         provider.expect_lookup().times(0);
-        let harness = use_case_with(any_caller(), no_permissions(), Some(provider));
+        let harness = use_case_with(any_caller(), no_resources(), Some(provider));
 
         // Act
         let result = harness

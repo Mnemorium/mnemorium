@@ -47,7 +47,7 @@ pub(crate) struct PatchAlbumRequest {
 
 /// Update a music album partially.
 ///
-/// Only a caller whose `library.manage` scope covers the album may update it.
+/// Updating an album requires `View` and then `EditMetadata` on it.
 /// An absent field keeps its value and a `null` clears an optional value.
 #[utoipa::path(
     patch,
