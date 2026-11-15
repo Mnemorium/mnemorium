@@ -1,0 +1,79 @@
+---
+name: Mnemorium System
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**/*.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'migrations/**/*.sql'
+      - 'pytest.ini'
+      - 'requirements.txt'
+      - 'script/system.sh'
+      - 'test/seed/**'
+      - 'test/system/**'
+      - 'test/util/**'
+      - 'devenv.nix'
+      - '.github/workflows/system.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  system:
+    name: System tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install the suite's dependencies
+        run: pip install -r requirements.txt
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4
+      - name: Restore the build cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: /tmp/.buildx-system
+          key: ${{ runner.os }}-buildx-system-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-system-
+      - name: Run the system suite
+        env:
+          PYTEST_WORKERS: "4"
+          JUNIT_XML: .artifacts/system/junit.xml
+          ALLURE_RESULTS_DIR: .artifacts/system/allure-results
+          BUILDX_CACHE_DIR: /tmp/.buildx-system
+        run: |
+          mkdir -p .artifacts/system
+          script/system.sh
+      - name: Rotate the build cache
+        if: always()
+        run: |
+          rm -rf /tmp/.buildx-system
+          if [ -d /tmp/.buildx-system-new ]; then
+            mv /tmp/.buildx-system-new /tmp/.buildx-system
+          fi
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: system-results
+          path: .artifacts/system
+          retention-days: 14
+          if-no-files-found: warn

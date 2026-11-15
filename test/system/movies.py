@@ -17,9 +17,19 @@ never fabricates a typed identifier.
 import time
 
 import allure
-from conftest import add_to_gallery, create_gallery, provision
+import pytest
+from conftest import (
+    add_to_gallery,
+    create_gallery,
+    provision,
+    start_instance,
+)
 from gallery import image_file
-from harness import Sut, link_of
+from harness import (
+    ROOT_ADMIN_USERNAME,
+    Sut,
+    link_of,
+)
 from video import assert_summary, create_episode, typed_video, upload_video
 
 # The film resource kind the resource-policy route addresses.
@@ -117,8 +127,11 @@ def deny_viewer(server: Sut, token: str, user_id: int, movie_id: int) -> None:
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-004")
 @allure.story("SCN-MOVIES-004-A")
-def test_a_new_film_is_created_from_a_free_video(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_new_film_is_created_from_a_free_video(sut: Sut) -> None:
     """An unused video creates the film and answers 201 with a Location."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _file, video = film_video(server, root_token)
 
     response = post_movie(
@@ -153,8 +166,11 @@ def test_a_new_film_is_created_from_a_free_video(server: Sut, root_token: str) -
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-004")
 @allure.story("SCN-MOVIES-004-B")
-def test_a_repeated_creation_returns_the_existing_film(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_repeated_creation_returns_the_existing_film(sut: Sut) -> None:
     """The same video answers 200 with the film it already backs and applies no change."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _file, video = film_video(server, root_token)
     created = create_film(server, root_token, video["id"], name="The Original")
 
@@ -175,8 +191,11 @@ def test_a_repeated_creation_returns_the_existing_film(server: Sut, root_token: 
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-004")
 @allure.story("SCN-MOVIES-004-C")
-def test_a_video_attached_to_an_episode_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_video_attached_to_an_episode_is_refused(sut: Sut) -> None:
     """A video an episode already takes answers 409 and creates no film."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _file, video = film_video(server, root_token)
     create_episode(server, root_token, video["id"])
 
@@ -206,8 +225,11 @@ def test_an_unknown_genre_is_stored_and_linked(server: Sut, root_token: str) -> 
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-004")
 @allure.story("SCN-MOVIES-004-E")
-def test_unusable_creation_input_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_unusable_creation_input_is_refused(sut: Sut) -> None:
     """An unknown video, empty name or genre, malformed date or country answers 422 and stores nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _file, video = film_video(server, root_token)
     unknown_video = video["id"] + 1_000_000
 
@@ -230,8 +252,11 @@ def test_unusable_creation_input_is_refused(server: Sut, root_token: str) -> Non
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-004")
 @allure.story("SCN-MOVIES-004-F")
-def test_a_cover_that_is_not_library_artwork_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
     """An image already used as gallery media answers 409 and creates no film."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     attached = gallery_image(server, alice)
     _file, video = film_video(server, root_token)
@@ -247,8 +272,11 @@ def test_a_cover_that_is_not_library_artwork_is_refused(server: Sut, root_token:
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-004")
 @allure.story("SCN-MOVIES-004-G")
-def test_a_standard_user_cannot_create_a_film(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_standard_user_cannot_create_a_film(sut: Sut) -> None:
     """A Standard user's creation answers 403 and stores nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     _file, video = film_video(server, root_token)
 
@@ -266,8 +294,11 @@ def test_a_standard_user_cannot_create_a_film(server: Sut, root_token: str) -> N
 @allure.story("SCN-MOVIES-001-D")
 @allure.feature("REQ-MOVIES-002")
 @allure.story("SCN-MOVIES-002-A")
-def test_the_collection_lists_partial_films_in_identifier_order(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_collection_lists_partial_films_in_identifier_order(sut: Sut) -> None:
     """Two films list as partial items by ascending identifier, with their cover links."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
     _first_file, first_video = film_video(server, root_token, "first.mp4")
     _second_file, second_video = film_video(server, root_token, "second.mp4")
@@ -300,8 +331,11 @@ def test_the_collection_lists_partial_films_in_identifier_order(server: Sut, roo
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-001")
 @allure.story("SCN-MOVIES-001-B")
-def test_the_name_filter_and_page_are_applied(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_name_filter_and_page_are_applied(sut: Sut) -> None:
     """The name filter narrows the collection and limit/offset select one page."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     names = ["Alpha", "Beta", "Gamma"]
     ids = []
     for index, name in enumerate(names):
@@ -320,8 +354,11 @@ def test_the_name_filter_and_page_are_applied(server: Sut, root_token: str) -> N
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-001")
 @allure.story("SCN-MOVIES-001-C")
-def test_a_caller_that_discovers_no_film_lists_an_empty_collection(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_caller_that_discovers_no_film_lists_an_empty_collection(sut: Sut) -> None:
     """A caller denied the only film discovers none and receives an empty collection."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     _file, video = film_video(server, root_token)
     film = create_film(server, root_token, video["id"])
@@ -350,8 +387,11 @@ def test_an_out_of_range_limit_and_a_malformed_query_are_refused(server: Sut, ro
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-003")
 @allure.story("SCN-MOVIES-003-A")
-def test_the_detail_read_carries_the_film_metadata(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_detail_read_carries_the_film_metadata(sut: Sut) -> None:
     """The read carries the metadata, ordered genres, video summary and cover."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
     file, video = film_video(server, root_token)
     created = create_film(
@@ -401,8 +441,11 @@ def test_a_film_without_a_date_or_country_reports_null(server: Sut, root_token: 
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-003")
 @allure.story("SCN-MOVIES-003-C")
-def test_an_unknown_or_unviewable_film_is_not_found(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_unknown_or_unviewable_film_is_not_found(sut: Sut) -> None:
     """An unknown film and one the caller may not view both answer 404."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     _file, video = film_video(server, root_token)
     film = create_film(server, root_token, video["id"])
@@ -429,8 +472,11 @@ def test_a_malformed_film_identifier_is_refused(server: Sut, root_token: str) ->
 @allure.feature("REQ-MOVIES-005")
 @allure.story("SCN-MOVIES-005-A")
 @allure.story("SCN-MOVIES-005-C")
-def test_the_metadata_is_updated_partially(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_metadata_is_updated_partially(sut: Sut) -> None:
     """A patch stores each submitted field and leaves the backing video unchanged."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
     _file, video = film_video(server, root_token)
     created = create_film(
@@ -476,8 +522,11 @@ def test_the_metadata_is_updated_partially(server: Sut, root_token: str) -> None
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-005")
 @allure.story("SCN-MOVIES-005-B")
-def test_null_clears_an_optional_value(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_null_clears_an_optional_value(sut: Sut) -> None:
     """A null clears the release date, country and cover and the read reports each as null."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
     _file, video = film_video(server, root_token)
     created = create_film(
@@ -512,8 +561,11 @@ def test_null_clears_an_optional_value(server: Sut, root_token: str) -> None:
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-005")
 @allure.story("SCN-MOVIES-005-D")
-def test_a_standard_user_may_read_but_not_edit(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_standard_user_may_read_but_not_edit(sut: Sut) -> None:
     """A Standard user reads the film but its patch answers 403 and stores nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     _file, video = film_video(server, root_token)
     created = create_film(server, root_token, video["id"], name="Untouched")
@@ -529,8 +581,11 @@ def test_a_standard_user_may_read_but_not_edit(server: Sut, root_token: str) -> 
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-005")
 @allure.story("SCN-MOVIES-005-E")
-def test_an_unknown_or_unviewable_film_cannot_be_patched(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_unknown_or_unviewable_film_cannot_be_patched(sut: Sut) -> None:
     """An unknown film and one the caller may not view both answer 404 and apply nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     _file, video = film_video(server, root_token)
     created = create_film(server, root_token, video["id"], name="Untouched")

@@ -26,6 +26,9 @@ from harness import (
     register,
 )
 
+# State owns its instances: every case pre-places `state.yaml`, restarts the container or observes a refused start.
+pytestmark = pytest.mark.own_instance(reason="global_filesystem")
+
 PEPPER_ENV = "MNEMORIUM_PEPPER"
 JWT_SECRET_ENV = "MNEMORIUM_JWT_SECRET"
 

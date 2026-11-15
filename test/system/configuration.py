@@ -12,6 +12,7 @@ and the container is the only observer an operator has. Every case starts its ow
 import os
 
 import allure
+import pytest
 import yaml
 from harness import (
     CONFIG_PATH,
@@ -20,6 +21,9 @@ from harness import (
     WRONG_PASSWORD,
     Sut,
 )
+
+# Configuration owns its instances: every case writes or observes `config.yaml`, the environment and a restart.
+pytestmark = pytest.mark.own_instance(reason="global_filesystem")
 
 _DEFAULT_TTL_S = 3600
 

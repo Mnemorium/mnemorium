@@ -19,9 +19,17 @@ unchanged.
 """
 
 import allure
+import pytest
 import requests
-from conftest import start_instance
-from harness import HEALTH_PATH, Sut, link_of
+from conftest import (
+    start_instance,
+)
+from harness import (
+    HEALTH_PATH,
+    ROOT_ADMIN_USERNAME,
+    Sut,
+    link_of,
+)
 
 NO_PROVIDER = "no provider is configured, so the capability is unavailable"
 
@@ -293,8 +301,11 @@ def _create_album(server: Sut, token: str, name: str) -> dict:
 @allure.epic("Metadata enrichment")
 @allure.feature("REQ-METADATA-ENRICHMENT-024")
 @allure.story("SCN-METADATA-ENRICHMENT-024-E")
-def test_an_apply_without_a_provider_reports_the_failure_and_stores_nothing(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_apply_without_a_provider_reports_the_failure_and_stores_nothing(sut: Sut) -> None:
     """An apply that finds no configured provider fails and leaves the addressed album unchanged."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     album = _create_album(server, root_token, "Kind of Blue")
     self_href = link_of(album, "self")
 
@@ -319,6 +330,7 @@ def test_an_apply_without_a_provider_reports_the_failure_and_stores_nothing(serv
 @allure.epic("Metadata enrichment")
 @allure.feature("REQ-METADATA-ENRICHMENT-001")
 @allure.story("SCN-METADATA-ENRICHMENT-001-A")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_an_empty_provider_list_starts_with_enrichment_unavailable(sut: Sut) -> None:
     """An empty provider list is a valid configuration: the server starts with enrichment unavailable."""
     server = start_instance(sut, config=EMPTY_PROVIDERS)
@@ -329,6 +341,7 @@ def test_an_empty_provider_list_starts_with_enrichment_unavailable(sut: Sut) -> 
 @allure.epic("Metadata enrichment")
 @allure.feature("REQ-METADATA-ENRICHMENT-029")
 @allure.story("SCN-METADATA-ENRICHMENT-029-A")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_a_configured_provider_list_starts_without_contacting_a_provider(sut: Sut) -> None:
     """Two configured providers are accepted at startup; no request leaves before a read needs one."""
     server = start_instance(sut, config=CONFIGURED_PROVIDERS)
@@ -339,6 +352,7 @@ def test_a_configured_provider_list_starts_without_contacting_a_provider(sut: Su
 @allure.epic("Metadata enrichment")
 @allure.feature("REQ-METADATA-ENRICHMENT-016")
 @allure.story("SCN-METADATA-ENRICHMENT-016-D")
+@pytest.mark.own_instance(reason="log_sink")
 def test_the_configured_key_never_reaches_a_log_sink(sut: Sut) -> None:
     """A clean start with a configured key writes it to neither stdout nor the log files."""
     server = start_instance(sut, config=CONFIGURED_PROVIDERS)

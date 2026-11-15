@@ -23,8 +23,18 @@ from datetime import UTC, datetime
 from itertools import count
 
 import allure
-from conftest import FIXTURE_DIRECTORY, linked_id, upload
-from harness import Sut, link_of
+import pytest
+from conftest import (
+    FIXTURE_DIRECTORY,
+    linked_id,
+    start_instance,
+    upload,
+)
+from harness import (
+    ROOT_ADMIN_USERNAME,
+    Sut,
+    link_of,
+)
 
 # A WAV's declared content type: the intake takes the declared family as authoritative and the bytes confirm it.
 AUDIO_CONTENT_TYPE = "audio/vnd.wave"
@@ -90,8 +100,11 @@ def unknown_audio(server: Sut, token: str, audio: dict):
 @allure.epic("Audio")
 @allure.feature("REQ-AUDIO-001")
 @allure.story("SCN-AUDIO-001-A")
-def test_an_audio_file_creates_one_audio(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="process_state")
+def test_an_audio_file_creates_one_audio(sut: Sut) -> None:
     """An audio upload leaves exactly one audio backing the uploaded file."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     file = upload_audio(server, root_token, "track.wav", wav(16, ONE_SECOND))
 
     audio = typed_audio(server, root_token, file)
@@ -104,8 +117,11 @@ def test_an_audio_file_creates_one_audio(server: Sut, root_token: str) -> None:
 @allure.epic("Audio")
 @allure.feature("REQ-AUDIO-001")
 @allure.story("SCN-AUDIO-001-B")
-def test_a_file_backs_one_audio(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="process_state")
+def test_a_file_backs_one_audio(sut: Sut) -> None:
     """Registering the same stored file again creates no second audio for it."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     data = wav(16, ONE_SECOND)
     first = upload_audio(server, root_token, "track.wav", data)
     before = typed_audio(server, root_token, first)
@@ -213,8 +229,11 @@ def test_an_audio_carries_its_representation(server: Sut, root_token: str) -> No
 @allure.epic("Audio")
 @allure.feature("REQ-AUDIO-003")
 @allure.story("SCN-AUDIO-003-B")
-def test_an_unknown_audio_is_not_found(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="process_state")
+def test_an_unknown_audio_is_not_found(sut: Sut) -> None:
     """An audio the instance never created answers `404`, like one the caller may not read."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     audio = typed_audio(
         server,
         root_token,

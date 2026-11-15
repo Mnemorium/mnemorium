@@ -18,8 +18,18 @@ from datetime import UTC, datetime
 from itertools import count
 
 import allure
-from conftest import FIXTURE_DIRECTORY, linked_id, upload
-from harness import Sut, link_of
+import pytest
+from conftest import (
+    FIXTURE_DIRECTORY,
+    linked_id,
+    start_instance,
+    upload,
+)
+from harness import (
+    ROOT_ADMIN_USERNAME,
+    Sut,
+    link_of,
+)
 
 # The three dimensions that classify an image, each distinct so its bytes are distinct too: the upload flow
 # deduplicates by integrity hash, so a repeated byte string would reuse the file and its image.
@@ -80,8 +90,11 @@ def unknown_image(server: Sut, token: str, image: dict):
 @allure.epic("Image")
 @allure.feature("REQ-IMAGE-001")
 @allure.story("SCN-IMAGE-001-A")
-def test_an_image_file_creates_one_image(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="process_state")
+def test_an_image_file_creates_one_image(sut: Sut) -> None:
     """An image upload leaves exactly one image backing the uploaded file."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     file = upload_image(server, root_token, "screen.png", SQUARE)
 
     image = typed_image(server, root_token, file)
@@ -94,8 +107,11 @@ def test_an_image_file_creates_one_image(server: Sut, root_token: str) -> None:
 @allure.epic("Image")
 @allure.feature("REQ-IMAGE-001")
 @allure.story("SCN-IMAGE-001-B")
-def test_a_file_backs_one_image(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="process_state")
+def test_a_file_backs_one_image(sut: Sut) -> None:
     """Registering the same stored file again creates no second image for it."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     data = png(*SQUARE)
     first = upload(server, root_token, "screen.png", data, "image/png")
     before = typed_image(server, root_token, first)
@@ -198,8 +214,11 @@ def test_an_image_carries_its_representation(server: Sut, root_token: str) -> No
 @allure.epic("Image")
 @allure.feature("REQ-IMAGE-003")
 @allure.story("SCN-IMAGE-003-B")
-def test_an_unknown_image_is_not_found(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="process_state")
+def test_an_unknown_image_is_not_found(sut: Sut) -> None:
     """An image the instance never created answers `404`, like one the caller may not read."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     image = typed_image(server, root_token, upload_image(server, root_token, "gone.png", SQUARE))
 
     response = unknown_image(server, root_token, image)

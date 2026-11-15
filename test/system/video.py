@@ -19,8 +19,18 @@ from datetime import UTC, datetime
 from itertools import count
 
 import allure
-from conftest import FIXTURE_DIRECTORY, linked_id, upload
-from harness import Sut, link_of
+import pytest
+from conftest import (
+    FIXTURE_DIRECTORY,
+    linked_id,
+    start_instance,
+    upload,
+)
+from harness import (
+    ROOT_ADMIN_USERNAME,
+    Sut,
+    link_of,
+)
 
 VIDEO_CONTENT_TYPE = "video/mp4"
 AUDIO_CONTENT_TYPE = "audio/flac"
@@ -136,8 +146,11 @@ def assert_summary(representation: dict, file: dict, video: dict) -> None:
 @allure.epic("Video")
 @allure.feature("REQ-VIDEO-001")
 @allure.story("SCN-VIDEO-001-A")
-def test_a_video_file_creates_one_video(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="process_state")
+def test_a_video_file_creates_one_video(sut: Sut) -> None:
     """A video upload leaves exactly one video backing the uploaded file."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     file = upload_video(server, root_token, "clip.mp4")
 
     video = typed_video(server, root_token, file)
@@ -150,8 +163,11 @@ def test_a_video_file_creates_one_video(server: Sut, root_token: str) -> None:
 @allure.epic("Video")
 @allure.feature("REQ-VIDEO-001")
 @allure.story("SCN-VIDEO-001-B")
-def test_a_file_backs_one_video(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="process_state")
+def test_a_file_backs_one_video(sut: Sut) -> None:
     """Registering the same stored file again creates no second video for it."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     data = video_bytes()
     first = upload(server, root_token, "clip.mp4", data, VIDEO_CONTENT_TYPE)
     before = typed_video(server, root_token, first)
@@ -242,8 +258,11 @@ def test_a_video_carries_its_representation(server: Sut, root_token: str) -> Non
 @allure.epic("Video")
 @allure.feature("REQ-VIDEO-003")
 @allure.story("SCN-VIDEO-003-B")
-def test_an_unknown_video_is_not_found(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="process_state")
+def test_an_unknown_video_is_not_found(sut: Sut) -> None:
     """A video the instance never created answers `404`, like one the caller may not read."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     video = typed_video(server, root_token, upload_video(server, root_token, "clip.mp4"))
 
     response = unknown_video(server, root_token, video)

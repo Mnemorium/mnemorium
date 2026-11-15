@@ -28,7 +28,6 @@ from conftest import (
     limiter_config,
     mint_token,
     provision,
-    security_events,
     start_instance,
 )
 from harness import (
@@ -46,6 +45,16 @@ from harness import (
     put_chunk,
     register,
 )
+
+# Every case here asserts on the log sink the shared instance would carry across cases.
+pytestmark = pytest.mark.own_instance(reason="log_sink")
+
+
+def security_events(server: Sut, name: str) -> list[str]:
+    """Return the log lines carrying the security event `name`."""
+    marker = f'event="{name}"'
+    return [line for line in server.logs().splitlines() if marker in line]
+
 
 _LEVEL_ENV = "MNEMORIUM_LOGGING_LEVEL"
 _ROTATION_NEVER_FILE = "mnemorium.log"

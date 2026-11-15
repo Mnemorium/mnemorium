@@ -8,8 +8,22 @@ and that following a representation's links reaches the resource it names.
 """
 
 import allure
-from conftest import FIXTURE_DIRECTORY, linked_id, provision, upload
-from harness import API_PREFIX, SECRET_PASSWORD, Sut, expand_template, link_of
+import pytest
+from conftest import (
+    FIXTURE_DIRECTORY,
+    linked_id,
+    provision,
+    start_instance,
+    upload,
+)
+from harness import (
+    API_PREFIX,
+    ROOT_ADMIN_USERNAME,
+    SECRET_PASSWORD,
+    Sut,
+    expand_template,
+    link_of,
+)
 
 VIDEO_FIXTURES = ("clip.mp4", "episode.mp4")
 
@@ -84,8 +98,11 @@ def test_a_protected_index_link_answers_the_401_envelope(server: Sut) -> None:
 @allure.epic("API")
 @allure.feature("REQ-API-015")
 @allure.story("SCN-API-015-D")
-def test_the_index_is_identical_for_two_callers(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_index_is_identical_for_two_callers(sut: Sut) -> None:
     """The Root Admin and a Standard User read the same public document."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     provision(server, root_token, "alice")
     alice_token = server.login("alice", SECRET_PASSWORD)
 
@@ -111,8 +128,11 @@ def test_the_current_user_reports_the_canonical_self(server: Sut, root_token: st
 @allure.epic("API")
 @allure.feature("REQ-API-016")
 @allure.story("SCN-API-016-D")
-def test_an_embedded_catalog_item_reaches_its_detail(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_embedded_catalog_item_reaches_its_detail(sut: Sut) -> None:
     """The partial item's self link reaches the full film representation."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     created = create_movie(server, root_token, "Arrival")
     page = server.request("GET", server.href("movie"), token=root_token)
 
@@ -131,8 +151,11 @@ def test_an_embedded_catalog_item_reaches_its_detail(server: Sut, root_token: st
 @allure.epic("API")
 @allure.feature("REQ-API-007")
 @allure.story("SCN-API-007-B")
-def test_a_collection_page_keeps_its_filter_and_page(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_collection_page_keeps_its_filter_and_page(sut: Sut) -> None:
     """`self`, `next` and `search` describe the filtered page the caller requested."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     create_movie(server, root_token, "Arrival", VIDEO_FIXTURES[0])
     create_movie(server, root_token, "Arrival", VIDEO_FIXTURES[1], variant=1)
     collection = server.href("movie")
