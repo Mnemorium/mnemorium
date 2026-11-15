@@ -11,7 +11,7 @@ use crate::domain::port::{
 };
 
 use super::error_mapping::stored_data_invalid;
-use super::model::MusicAlbumRow;
+use super::model::{MusicAlbumRow, MusicAlbumSummaryRow, MusicMediumTrackCountRow};
 
 use super::query_filter::push_filter;
 
@@ -110,6 +110,48 @@ impl SqlxMusicAlbumRepository<'_> {
 }
 
 impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
+    async fn count_tracks_by_album(
+        &mut self,
+        album_ids: &[NumericID],
+    ) -> Result<Vec<(NumericID, MediumIndex, u64)>, RepositoryError> {
+        // A page of albums is a handful of identifiers; an empty page is not
+        // worth a statement, and `IN ()` is not valid `SQLite`.
+        if album_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut builder = QueryBuilder::<Sqlite>::new(
+            "SELECT music_medium.music_album_id,
+                    music_medium.medium_index,
+                    music_medium.type AS medium_type,
+                    COUNT(music_track.music_track_id) AS tracks
+             FROM music_medium
+             LEFT JOIN music_track
+                 ON music_track.music_medium_id = music_medium.music_medium_id
+             WHERE music_medium.music_album_id IN (",
+        );
+        let mut separated = builder.separated(", ");
+        for album_id in album_ids {
+            separated.push_bind(album_id);
+        }
+        separated.push_unseparated(
+            ") GROUP BY music_medium.music_medium_id
+               ORDER BY music_medium.music_album_id, music_medium.medium_index",
+        );
+        let rows = builder
+            .build_query_as::<MusicMediumTrackCountRow>()
+            .fetch_all(&mut **self.transaction)
+            .await?;
+        rows.iter()
+            .map(|row| {
+                let index = u8::try_from(row.medium_index)
+                    .map_err(|_| stored_data_invalid("medium_index_out_of_range"))?;
+                let medium_index = MediumIndex::from_wire(&row.medium_type, index)
+                    .ok_or_else(|| stored_data_invalid("unknown_medium_type"))?;
+                Ok((row.music_album_id, medium_index, row.tracks))
+            })
+            .collect()
+    }
+
     async fn create(&mut self, album: MusicAlbum) -> Result<MusicAlbum, RepositoryError> {
         let album_id = sqlx::query_scalar::<_, NumericID>(
             "INSERT INTO music_album (
@@ -613,6 +655,82 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
             })
             .collect()
     }
+
+    async fn search_summaries(
+        &mut self,
+        filter: &MusicAlbumFilter,
+    ) -> Result<Vec<MusicAlbum>, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new(
+            "SELECT
+                music_album.music_album_id,
+                music_album.name,
+                music_album.release_date,
+                music_album.production_type,
+                music_album.cover_image_id,
+                music_album.music_group_id,
+                COALESCE((
+                    SELECT GROUP_CONCAT(genre_id, ',')
+                    FROM (
+                        SELECT genre_id
+                        FROM music_album_genre
+                        WHERE music_album_genre.music_album_id = music_album.music_album_id
+                        ORDER BY genre_id
+                    )
+                ), '') AS genres
+            FROM music_album",
+        );
+        let mut first = true;
+
+        if let Some(id) = filter.id {
+            push_filter(
+                &mut first,
+                &mut builder,
+                "music_album.music_album_id = ",
+                id,
+            );
+        }
+        if let Some(music_group_id) = filter.music_group_id {
+            push_filter(
+                &mut first,
+                &mut builder,
+                "music_album.music_group_id = ",
+                music_group_id,
+            );
+        }
+        if let Some(name) = filter.name.as_deref() {
+            push_filter(&mut first, &mut builder, "music_album.name = ", name);
+        }
+        if let Some(audio_id) = filter.audio_id {
+            // The join constraint the hydrated read applies, expressed as a
+            // predicate so this projection stays medium-free.
+            if first {
+                builder.push(" WHERE ");
+            } else {
+                builder.push(" AND ");
+            }
+            builder.push(
+                "EXISTS (
+                    SELECT 1
+                    FROM music_medium
+                    JOIN music_track
+                        ON music_track.music_medium_id = music_medium.music_medium_id
+                    JOIN music_recording
+                        ON music_recording.music_recording_id = music_track.music_recording_id
+                    WHERE music_medium.music_album_id = music_album.music_album_id
+                      AND music_recording.audio_id = ",
+            );
+            builder.push_bind(audio_id);
+            builder.push(")");
+        }
+        builder.push(" ORDER BY music_album.music_album_id");
+
+        let rows = builder
+            .build_query_as::<MusicAlbumSummaryRow>()
+            .fetch_all(&mut **self.transaction)
+            .await?;
+
+        rows.iter().map(summary_album).collect()
+    }
 }
 
 /// One recording together with the medium placement it holds, when it holds
@@ -633,10 +751,36 @@ struct RecordingSearchRow {
     track_index: Option<i64>,
 }
 
+/// Convert a stored summary row into the domain album, with no medium hydrated.
+///
+/// The album's own fields are validated exactly as the hydrated read validates
+/// them; the medium list stays empty until the caller counts the page.
+fn summary_album(row: &MusicAlbumSummaryRow) -> Result<MusicAlbum, RepositoryError> {
+    MusicAlbum::try_new(
+        row.music_album_id,
+        row.name.clone(),
+        row.release_date,
+        row.production_type
+            .as_deref()
+            .and_then(ProductionType::from_wire),
+        row.genres
+            .split(',')
+            .filter(|genre| !genre.is_empty())
+            .map(str::to_owned)
+            .collect(),
+        row.music_group_id,
+        None,
+        row.cover_image_id,
+        Vec::new(),
+    )
+    .map_err(|_| stored_data_invalid("invalid_album"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
+    use rstest::rstest;
     use std::error::Error;
     use tracing_test::traced_test;
 
@@ -1017,6 +1161,114 @@ mod tests {
             "an album without a medium must report no medium"
         );
         assert!(second.genre_ids().is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_summaries_returns_the_albums_without_their_mediums()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
+        seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
+        seed_album(&mut transaction, 1, "Kind of Blue", Some("STUDIO")).await?;
+        seed_album(&mut transaction, 2, "Sketches", None).await?;
+        seed_genre(&mut transaction, "JAZZ").await?;
+        seed_album_genre(&mut transaction, 1, "JAZZ").await?;
+        seed_medium(&mut transaction, 40, 1, 1).await?;
+        seed_track(&mut transaction, 50, 40, 30, 1).await?;
+        let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+
+        // Act
+        let albums: Vec<_> = repository
+            .search_summaries(&MusicAlbumFilter::default())
+            .await?
+            .into_iter()
+            .filter(|album| album.id() != 0)
+            .collect();
+
+        // Assert
+        assert_eq!(albums.len(), 2, "every album must be returned");
+        let first = albums.first().ok_or("the first album must be found")?;
+        assert_eq!(first.id(), 1);
+        assert_eq!(first.name(), "Kind of Blue");
+        assert_eq!(first.production_type(), Some(ProductionType::Studio));
+        assert_eq!(first.genre_ids(), ["JAZZ"]);
+        assert!(
+            first.mediums().is_empty(),
+            "a summary carries no medium: the caller counts the page"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_summaries_forwards_the_name_filter() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
+        seed_album(&mut transaction, 2, "Sketches", None).await?;
+        let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+
+        // Act
+        let albums = repository
+            .search_summaries(&MusicAlbumFilter {
+                name: Some("Sketches".to_owned()),
+                ..MusicAlbumFilter::default()
+            })
+            .await?;
+
+        // Assert
+        assert_eq!(
+            albums.iter().map(MusicAlbum::id).collect::<Vec<_>>(),
+            vec![2],
+            "only the named album may be returned"
+        );
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::every_requested_row(&[1, 2, 3], &[(1, MediumIndex::Cd(1), 2), (1, MediumIndex::Cd(2), 0), (2, MediumIndex::Cd(1), 1)])]
+    #[case::album_without_medium(&[3], &[])]
+    #[case::unknown_album(&[999], &[])]
+    #[case::empty_page(&[], &[])]
+    #[tokio::test]
+    async fn count_tracks_by_album_counts_only_the_requested_rows(
+        #[case] album_ids: &[NumericID],
+        #[case] expected: &[(NumericID, MediumIndex, u64)],
+    ) -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file(&mut transaction, 11, 1, "b.mp3").await?;
+        seed_file(&mut transaction, 12, 1, "c.mp3").await?;
+        seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
+        seed_audio(&mut transaction, 21, 11, "b.mp3").await?;
+        seed_audio(&mut transaction, 22, 12, "c.mp3").await?;
+        seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
+        seed_recording(&mut transaction, 31, Some("Blue in Green"), 21).await?;
+        seed_recording(&mut transaction, 32, Some("Flamenco Sketches"), 22).await?;
+        seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
+        seed_album(&mut transaction, 2, "Sketches", None).await?;
+        seed_album(&mut transaction, 3, "Silent", None).await?;
+        seed_medium(&mut transaction, 40, 1, 2).await?;
+        seed_medium(&mut transaction, 41, 1, 1).await?;
+        seed_medium(&mut transaction, 42, 2, 1).await?;
+        seed_track(&mut transaction, 50, 41, 30, 1).await?;
+        seed_track(&mut transaction, 51, 41, 31, 2).await?;
+        seed_track(&mut transaction, 52, 42, 32, 1).await?;
+        let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+
+        // Act
+        let counts = repository.count_tracks_by_album(album_ids).await?;
+
+        // Assert
+        assert_eq!(
+            counts, expected,
+            "each medium counts its own tracks, and an unrequested album is absent"
+        );
         Ok(())
     }
 

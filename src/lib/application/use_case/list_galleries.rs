@@ -1,4 +1,4 @@
-use crate::application::authorization::allows;
+use crate::application::authorization::allows_many;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -8,11 +8,11 @@ use crate::application::port::{
     ListGalleriesCommand, ListGalleriesError, ListGalleriesItem, ListGalleriesResponse,
     ListGalleriesUseCase,
 };
-use crate::domain::model::{Action, ResourceKind, ResourceRef};
+use crate::domain::NumericID;
+use crate::domain::model::{Action, Gallery, ResourceKind, ResourceRef};
 use crate::domain::port::{
-    GalleryFilter, GalleryItemFilter, GalleryRepository as _, IdentityUnitOfWork,
-    LibraryUnitOfWork, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
-    UserUnitOfWork,
+    GalleryFilter, GalleryRepository as _, IdentityUnitOfWork, LibraryUnitOfWork, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
 
 /// Use case implementation for listing the galleries the caller may see.
@@ -75,39 +75,52 @@ where
                     })
                     .await
                     .map_err(|error| ListGalleriesError::Unknown(error.into()))?;
+                // One batched read decides the whole collection: resolving a
+                // row at a time made the decision cost scale with the library.
+                let addresses: Vec<ResourceRef> = galleries
+                    .iter()
+                    .map(|gallery| ResourceRef::new(ResourceKind::Gallery, gallery.gallery_id()))
+                    .collect();
+                let discoverable = allows_many(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    &addresses,
+                    Action::Discover,
+                    None,
+                )
+                .await;
                 let mut visible = Vec::with_capacity(galleries.len());
-                for gallery in galleries {
-                    if allows(
-                        &mut unit_of_work.resources(),
-                        &caller,
-                        ResourceRef::new(ResourceKind::Gallery, gallery.gallery_id()),
-                        Action::Discover,
-                        None,
-                    )
-                    .await
-                    {
+                for (gallery, allowed) in galleries.drain(..).zip(discoverable) {
+                    if allowed {
                         visible.push(gallery);
                     }
                 }
                 galleries = visible;
 
-                let mut item_counts: HashMap<i64, usize> = HashMap::new();
-                for detail in unit_of_work
-                    .galleries()
-                    .search_items(&GalleryItemFilter::default())
-                    .await
-                    .map_err(|error| ListGalleriesError::Unknown(error.into()))?
-                {
-                    let count = item_counts.entry(detail.item().gallery_id()).or_default();
-                    *count = count.saturating_add(1);
-                }
-
                 let total = galleries.len();
                 let offset = command.offset().unwrap_or(0);
-                let page = galleries
+                let visible_page: Vec<_> = galleries
                     .into_iter()
                     .skip(offset)
                     .take(command.limit().unwrap_or(usize::MAX))
+                    .collect();
+                // Count items for the page only: loading every gallery's items
+                // to count them is what made a 20-row page cost a join over the
+                // whole library.
+                let page_ids: Vec<NumericID> =
+                    visible_page.iter().map(Gallery::gallery_id).collect();
+                let item_counts: HashMap<NumericID, usize> = unit_of_work
+                    .galleries()
+                    .count_items_by_gallery(&page_ids)
+                    .await
+                    .map_err(|error| ListGalleriesError::Unknown(error.into()))?
+                    .into_iter()
+                    .map(|(gallery_id, count)| {
+                        (gallery_id, usize::try_from(count).unwrap_or(usize::MAX))
+                    })
+                    .collect();
+                let items = visible_page
+                    .into_iter()
                     .map(|gallery| {
                         ListGalleriesItem::new(
                             gallery.gallery_id(),
@@ -121,7 +134,7 @@ where
                     })
                     .collect();
 
-                Ok(ListGalleriesResponse::new(page, total))
+                Ok(ListGalleriesResponse::new(items, total))
             }
             .await;
 
@@ -146,12 +159,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::{Gallery, GalleryItem, Role, User};
+    use crate::domain::model::{Gallery, Role, User};
     use allure_cargotest::allure_test;
 
-    use crate::domain::port::{
-        GalleryItemDetail, MockGalleryRepository, MockUserRepository, RepositoryError,
-    };
+    use crate::domain::port::{MockGalleryRepository, MockUserRepository, RepositoryError};
 
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
@@ -163,25 +174,6 @@ mod tests {
     fn gallery(gallery_id: i64, user_id: Option<i64>, name: &str, is_public: bool) -> Gallery {
         let now = NaiveDateTime::default();
         Gallery::new(gallery_id, user_id, name.to_owned(), is_public, now, now)
-    }
-
-    fn item_detail(
-        gallery_item_id: i64,
-        gallery_id: i64,
-        image_id: i64,
-    ) -> Result<GalleryItemDetail, Box<dyn Error>> {
-        Ok(GalleryItemDetail::new(
-            GalleryItem::try_new(
-                gallery_item_id,
-                gallery_id,
-                Some(image_id),
-                None,
-                gallery_item_id,
-                NaiveDateTime::default(),
-            )?,
-            100i64.saturating_add(image_id),
-            format!("item{gallery_item_id}"),
-        ))
     }
 
     fn harness_with(
@@ -232,18 +224,11 @@ mod tests {
                 let found = vec![public.clone(), private.clone()];
                 Box::pin(async move { Ok(found) })
             });
-        let details = vec![
-            item_detail(1, 2, 7)?,
-            item_detail(2, 2, 8)?,
-            item_detail(3, 3, 9)?,
-        ];
         galleries
-            .expect_search_items()
+            .expect_count_items_by_gallery()
             .times(1)
-            .return_once(move |_| {
-                let found = details.clone();
-                Box::pin(async move { Ok(found) })
-            });
+            .withf(|gallery_ids| gallery_ids == [2, 3].as_slice())
+            .return_once(|_| Box::pin(async { Ok(vec![(2, 2), (3, 1)]) }));
         let harness = harness_with(users, galleries);
         let use_case: UseCase = ListGalleries::new(Arc::clone(&harness.factory));
 
@@ -306,8 +291,9 @@ mod tests {
                 Box::pin(async move { Ok(found) })
             });
         galleries
-            .expect_search_items()
+            .expect_count_items_by_gallery()
             .times(1)
+            .withf(|gallery_ids| gallery_ids == [2].as_slice())
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(users, galleries);
         let use_case: UseCase = ListGalleries::new(Arc::clone(&harness.factory));
@@ -405,7 +391,7 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         galleries
-            .expect_search_items()
+            .expect_count_items_by_gallery()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(users, galleries);

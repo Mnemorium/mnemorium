@@ -76,6 +76,19 @@ pub(crate) trait ResourceRepository: Send + Sync {
         filter: &ResourceFilter,
         caller: &User,
     ) -> impl Future<Output = Result<Vec<ResourceAccess>, RepositoryError>> + Send;
+
+    /// Resolve the resources addressed by `addresses`, each with the same chain,
+    /// grants and relation containers [`search`](Self::search) reports.
+    ///
+    /// Results follow the order of `addresses` and omit an address with no
+    /// stored row. One listing decides a whole collection this way; resolving
+    /// one row per call makes a decision cost scale with the collection rather
+    /// than the page it answers.
+    fn search_many(
+        &mut self,
+        addresses: &[ResourceRef],
+        caller: &User,
+    ) -> impl Future<Output = Result<Vec<ResourceAccess>, RepositoryError>> + Send;
 }
 
 /// A resource to create together with its authorization parent.
@@ -132,5 +145,13 @@ impl<T: ResourceRepository + ?Sized> ResourceRepository for &mut T {
         caller: &User,
     ) -> impl Future<Output = Result<Vec<ResourceAccess>, RepositoryError>> + Send {
         (**self).search(filter, caller)
+    }
+
+    fn search_many(
+        &mut self,
+        addresses: &[ResourceRef],
+        caller: &User,
+    ) -> impl Future<Output = Result<Vec<ResourceAccess>, RepositoryError>> + Send {
+        (**self).search_many(addresses, caller)
     }
 }

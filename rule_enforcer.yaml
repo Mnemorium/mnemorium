@@ -31,7 +31,12 @@ rules:
     # runs before the seed migrator and `seed_perf_links` after it, so each has
     # exactly one call site by design and inlining either would merge two
     # different failure points into one function.
-    max_single_call_functions: 84
+    # Raised to 87 for the read-path work: `push_resource_predicate` has one
+    # production caller and is extracted so its query-plan test asserts the exact
+    # predicate production runs; `relation_sources_from` keeps the batched
+    # resolution in `search_many` readable; `summary_album` is the album row
+    # mapper that sits beside the hydrated one.
+    max_single_call_functions: 87
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset

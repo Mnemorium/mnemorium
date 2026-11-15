@@ -28,6 +28,30 @@ impl<'transaction> SqlxGalleryRepository<'transaction> {
 }
 
 impl GalleryRepository for SqlxGalleryRepository<'_> {
+    async fn count_items_by_gallery(
+        &mut self,
+        gallery_ids: &[NumericID],
+    ) -> Result<Vec<(NumericID, u64)>, RepositoryError> {
+        // A page of galleries is a handful of identifiers; an empty page is not
+        // worth a statement, and `IN ()` is not valid `SQLite`.
+        if gallery_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut builder = QueryBuilder::<Sqlite>::new(
+            "SELECT gallery_id, COUNT(*) FROM gallery_item WHERE gallery_id IN (",
+        );
+        let mut separated = builder.separated(", ");
+        for gallery_id in gallery_ids {
+            separated.push_bind(gallery_id);
+        }
+        separated.push_unseparated(") GROUP BY gallery_id");
+        let rows = builder
+            .build_query_as::<(NumericID, u64)>()
+            .fetch_all(&mut **self.transaction)
+            .await?;
+        Ok(rows)
+    }
+
     async fn create(&mut self, gallery: Gallery) -> Result<Gallery, RepositoryError> {
         let row = sqlx::query_as::<_, SqlxGallery>(
             "INSERT INTO gallery (name, created_at, last_modified_at, is_public, user_id)
@@ -357,6 +381,7 @@ fn domain_item(
 mod tests {
     use super::*;
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
+    use rstest::rstest;
     use std::error::Error;
 
     /// Open a migrated in-memory database and begin one transaction.
@@ -1177,6 +1202,54 @@ mod tests {
 
         // Assert
         assert!(details.is_empty());
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::counts_each_requested_row(&[1, 2, 3], &[(1, 2), (2, 1)])]
+    #[case::omits_a_gallery_without_items(&[1, 3], &[(1, 2)])]
+    #[case::omits_an_unknown_gallery(&[999], &[])]
+    #[case::counts_nothing_for_an_empty_page(&[], &[])]
+    #[tokio::test]
+    async fn count_items_by_gallery_counts_only_the_requested_rows(
+        #[case] gallery_ids: &[NumericID],
+        #[case] expected: &[(NumericID, u64)],
+    ) -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 10, 1, "files/10.png", "image/png").await?;
+        seed_file(&mut transaction, 11, 1, "files/11.png", "image/png").await?;
+        seed_file(&mut transaction, 12, 1, "files/12.png", "image/png").await?;
+        seed_image(&mut transaction, 5, 10, "10.png").await?;
+        seed_image(&mut transaction, 6, 11, "11.png").await?;
+        seed_image(&mut transaction, 7, 12, "12.png").await?;
+        let mut repository = SqlxGalleryRepository::new(&mut transaction);
+        repository
+            .save(gallery(1, Some(1), "Counted", false))
+            .await?;
+        repository
+            .save(gallery(2, Some(1), "Single", false))
+            .await?;
+        repository.save(gallery(3, Some(1), "Empty", false)).await?;
+        repository
+            .save_item(item(0, 1, GalleryItemMedia::Image(5), 0)?)
+            .await?;
+        repository
+            .save_item(item(0, 1, GalleryItemMedia::Image(6), 1)?)
+            .await?;
+        repository
+            .save_item(item(0, 2, GalleryItemMedia::Image(7), 0)?)
+            .await?;
+
+        // Act
+        let counts = repository.count_items_by_gallery(gallery_ids).await?;
+
+        // Assert
+        assert_eq!(
+            counts, expected,
+            "each gallery counts its own items, and a gallery with none is absent"
+        );
         Ok(())
     }
 

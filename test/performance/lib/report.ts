@@ -4,7 +4,17 @@
 // baseline gets PASS/FAIL, and a flow without one is reported with `n/a`, as
 // the threshold policy requires.
 
-import { BASELINE, ENV, POLICY, selectedFlows, selectedScenario, type Flow, type Scenario } from "../config.ts";
+import {
+  BASELINE,
+  ENV,
+  ENDPOINT_CATALOG,
+  POLICY,
+  selectedFlows,
+  selectedScenario,
+  type Endpoint,
+  type Flow,
+  type Scenario,
+} from "../config.ts";
 
 /** One k6 metric in the summary tree. */
 type SummaryMetric = {
@@ -105,6 +115,23 @@ function rowFor(data: SummaryData, flow: Flow): Row {
   };
 }
 
+/**
+ * One row of the per-endpoint table.
+ *
+ * Diagnosis only: the reader uses it to name the slow call, and no verdict
+ * reads it. A request whose flow forgot its tag leaves the row's values absent,
+ * which prints as an em dash rather than dropping the row.
+ */
+function endpointLine(data: SummaryData, flow: Flow, endpoint: Endpoint): string {
+  const duration = `http_req_duration{endpoint:${endpoint}}`;
+  const requestsPerSecond = rate(data, `http_reqs{endpoint:${endpoint}}`);
+  return (
+    `| ${flow} | ${endpoint} | ${number(requestsPerSecond, 2)} | ` +
+    `${number(trend(data, duration, "med"), 2)} | ${number(trend(data, duration, "p(95)"), 2)} | ` +
+    `${number(trend(data, duration, "p(99)"), 2)} |`
+  );
+}
+
 /** The verdict for one flow under the promoted-baseline policy. */
 function verdictFor(
   flow: Flow,
@@ -192,6 +219,19 @@ export function render(data: SummaryData, scenario?: Scenario): string {
         `${number(row.p50Ms, 2)} | ${number(row.p95Ms, 2)} | ${number(row.p99Ms, 2)} | ` +
         `${percent(row.httpErrorRate)} | ${percent(row.checkErrorRate)} | ${row.verdict} |`,
     );
+  }
+
+  lines.push(
+    "",
+    "## Endpoints",
+    "",
+    "| flow | endpoint | req/s | p50 ms | p95 ms | p99 ms |",
+    "| --- | --- | ---: | ---: | ---: | ---: |",
+  );
+  for (const flow of selectedFlows()) {
+    for (const endpoint of ENDPOINT_CATALOG[flow]) {
+      lines.push(endpointLine(data, flow, endpoint));
+    }
   }
 
   lines.push(

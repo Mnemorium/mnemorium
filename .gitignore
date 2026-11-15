@@ -41,7 +41,8 @@ events.ndjson
 .artifacts/
 
 # Performance suite toolchain and generated client
-node_modules/
+# `node_modules` carries no trailing slash so a locally linked one is ignored too.
+node_modules
 test/performance/generated/
 
 # Schemathesis local storage

@@ -4,6 +4,7 @@
 // hardlink bases in `src/lib/infrastructure/seed.rs`. A drift shows up in the
 // dataset gate before k6 starts, not as latencies measured on 404s.
 
+import type { Params } from "k6/http";
 import type { Options, Scenario as ScenarioDefinition } from "k6/options";
 
 /** One of the environments a baseline may be recorded for. */
@@ -86,6 +87,73 @@ export const CATALOG: Record<Flow, { profile: Profile; useCases: readonly string
   "create-gallery": { profile: "write", useCases: ["UC-007", "UC-009"] },
   "curate-playlist": { profile: "write", useCases: ["UC-013", "UC-016", "UC-018"] },
 };
+
+/**
+ * One measured request, named once.
+ *
+ * An endpoint name belongs to exactly one flow. The per-endpoint submetric key
+ * is single-tag (`http_req_duration{endpoint:list-galleries}`), so a name two
+ * flows share would silently merge their traffic into one row and neither flow
+ * would read as itself. Four routes are driven by two flows each, and the
+ * second driver carries a qualified name: `create-gallery` pages galleries by
+ * name (`list-galleries-by-name`) and reads its own row back
+ * (`get-created-gallery`), `curate-playlist` reads back what it built
+ * (`get-curated-playlist`), and `upload-asset` reads the file it just completed
+ * (`get-uploaded-file`).
+ */
+export type Endpoint =
+  | "post-login"
+  | "get-me"
+  | "list-galleries"
+  | "get-gallery"
+  | "get-gallery-items"
+  | "list-albums"
+  | "get-album-tracks"
+  | "list-playlists"
+  | "get-playlist"
+  | "list-movies"
+  | "get-movie"
+  | "list-series"
+  | "list-series-episodes"
+  | "get-file"
+  | "get-file-content"
+  | "get-image-content"
+  | "post-upload"
+  | "put-upload-chunk"
+  | "post-upload-complete"
+  | "get-uploaded-file"
+  | "list-galleries-by-name"
+  | "post-gallery"
+  | "post-gallery-item"
+  | "get-created-gallery"
+  | "post-playlist"
+  | "patch-playlist"
+  | "put-playlist-track"
+  | "get-curated-playlist";
+
+/** The endpoints each flow drives, in call order. */
+export const ENDPOINT_CATALOG: Record<Flow, readonly Endpoint[]> = {
+  login: ["post-login", "get-me"],
+  "browse-galleries": ["list-galleries", "get-gallery", "get-gallery-items"],
+  "browse-music": ["list-albums", "get-album-tracks", "list-playlists", "get-playlist"],
+  "browse-video": ["list-movies", "get-movie", "list-series", "list-series-episodes"],
+  "read-asset": ["get-image-content", "get-file-content", "get-file"],
+  "upload-asset": ["post-upload", "put-upload-chunk", "post-upload-complete", "get-uploaded-file"],
+  "create-gallery": ["list-galleries-by-name", "post-gallery", "post-gallery-item", "get-created-gallery"],
+  "curate-playlist": ["post-playlist", "patch-playlist", "put-playlist-track", "get-curated-playlist"],
+};
+
+/**
+ * Attach the endpoint tag to one generated-client call.
+ *
+ * The generated client merges `k6Params.tags` over the client's common tags, so
+ * the flow tag survives. `params` carries whatever else the call needs (a
+ * binary response, an explicit header); its own tags are replaced, because an
+ * endpoint name is what the tag means.
+ */
+export function endpointTag(endpoint: Endpoint, params: Omit<Params, "tags"> = {}): { k6Params: Params } {
+  return { k6Params: { ...params, tags: { endpoint } } };
+}
 
 /** The read mix, in the order a stress or soak iteration rotates through it. */
 export const READ_FLOWS: readonly Flow[] = ["login", "browse-galleries", "browse-music", "browse-video", "read-asset"];
@@ -227,6 +295,13 @@ export function thresholdsFor(flows: readonly Flow[]): Options["thresholds"] {
         thresholds[`iterations{scenario:${flow}}`] = [`rate>=${round(baseline.itersPerSecond * POLICY.itersFloor)}`];
       }
     }
+  }
+  // The endpoint submetrics are diagnosis, never a budget: the p95 here is a
+  // hang guard, and no verdict reads it. They must exist so handleSummary can
+  // print the per-endpoint table.
+  for (const endpoint of new Set(flows.flatMap((flow) => ENDPOINT_CATALOG[flow]))) {
+    thresholds[`http_req_duration{endpoint:${endpoint}}`] = ["p(95)<60000"];
+    thresholds[`http_reqs{endpoint:${endpoint}}`] = ["rate>=0"];
   }
   return thresholds;
 }

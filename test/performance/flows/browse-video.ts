@@ -1,12 +1,15 @@
 // UC-022, UC-023: read a film and page a show's season twice.
 
-import { DATASET } from "../config.ts";
+import { DATASET, endpointTag } from "../config.ts";
 import { assertion, atLeast, fields, idempotentReplay, isStatus, link } from "../lib/checks.ts";
 
 import type { FlowFn } from "./types.ts";
 
 export const browseVideo: FlowFn = async ({ client, flow }) => {
-  const movies = await client.listMovies({ query: { limit: DATASET.pageSize } });
+  const movies = await client.listMovies({
+    query: { limit: DATASET.pageSize },
+    ...endpointTag("list-movies"),
+  });
   if (!isStatus(movies, flow, 200)) {
     return;
   }
@@ -28,7 +31,7 @@ export const browseVideo: FlowFn = async ({ client, flow }) => {
   }
   link(movie._links.self, flow, "movie self");
 
-  const detail = await client.getMovie(movie.id);
+  const detail = await client.getMovie(movie.id, endpointTag("get-movie"));
   if (!isStatus(detail, flow, 200)) {
     return;
   }
@@ -40,7 +43,10 @@ export const browseVideo: FlowFn = async ({ client, flow }) => {
   }
   atLeast(detail.data.video.file_id, DATASET.videoFileBase, flow, "movie video file_id");
 
-  const shows = await client.listSeries({ query: { limit: DATASET.pageSize } });
+  const shows = await client.listSeries({
+    query: { limit: DATASET.pageSize },
+    ...endpointTag("list-series"),
+  });
   if (!isStatus(shows, flow, 200)) {
     return;
   }
@@ -57,7 +63,7 @@ export const browseVideo: FlowFn = async ({ client, flow }) => {
   }
   assertion(flow, "series in seeded range", show.id >= DATASET.seriesBase);
 
-  const first = await client.listSeriesEpisodes(show.id, 1);
+  const first = await client.listSeriesEpisodes(show.id, 1, endpointTag("list-series-episodes"));
   if (!isStatus(first, flow, 200)) {
     return;
   }
@@ -71,7 +77,7 @@ export const browseVideo: FlowFn = async ({ client, flow }) => {
     atLeast(episode.video.file_id, DATASET.videoFileBase, flow, `episode ${episode.id} file_id`);
   }
 
-  const second = await client.listSeriesEpisodes(show.id, 1);
+  const second = await client.listSeriesEpisodes(show.id, 1, endpointTag("list-series-episodes"));
   if (!isStatus(second, flow, 200)) {
     return;
   }
