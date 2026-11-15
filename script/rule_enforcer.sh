@@ -162,6 +162,7 @@ RULES=(
 	"TEST-044:check_test_044"
 	"TEST-046:check_test_046"
 	"TEST-052:check_test_052"
+	"TEST-058:check_test_058"
 	"TEST-060:check_test_060"
 	"OBS-001:check_obs_001"
 	"OBS-003:check_obs_003"
@@ -3548,6 +3549,114 @@ check_test_052() {
 	fi
 
 	return "$result"
+}
+
+# check_test_058 — the own-instance marker, the container a case starts, and its reason (TEST-058).
+check_test_058() {
+	local id="TEST-058"
+
+	# The audit reads the AST, never the text: a container call can hide behind any
+	# name, and a reason is a marker keyword rather than a word in the source. An
+	# own-instance test is always allowed to start its container; the escape from
+	# clause (a) is the marker itself.
+	python3 - "$id" <<'PY'
+import ast
+import pathlib
+import sys
+
+rule = sys.argv[1]
+root = pathlib.Path("test/system")
+reasons = {"first_boot", "restart", "global_filesystem", "log_sink", "exact_collection", "process_state"}
+lifecycle = {"start", "stop", "restart", "start_expecting_failure", "start_instance"}
+fixtures = {"server", "sut", "root_token", "image", "_shared_server"}
+problems = []
+
+
+def call_reason(node):
+    """The line and reason of an `own_instance` decorator, or `(None, None)`."""
+    for decorator in node.decorator_list:
+        if isinstance(decorator, ast.Call) and getattr(decorator.func, "attr", None) == "own_instance":
+            reason = next(
+                (
+                    keyword.value.value
+                    for keyword in decorator.keywords
+                    if keyword.arg == "reason" and isinstance(keyword.value, ast.Constant)
+                ),
+                None,
+            )
+            return decorator.lineno, reason
+    return None, None
+
+
+def module_marker(tree):
+    """The line and reason of a module-level `pytestmark`, or `(None, None)`."""
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(getattr(target, "id", None) == "pytestmark" for target in node.targets):
+            continue
+        value = node.value
+        if isinstance(value, ast.Call) and getattr(value.func, "attr", None) == "own_instance":
+            reason = next(
+                (
+                    keyword.value.value
+                    for keyword in value.keywords
+                    if keyword.arg == "reason" and isinstance(keyword.value, ast.Constant)
+                ),
+                None,
+            )
+            return node.lineno, reason
+    return None, None
+
+
+def called(node):
+    """Every function name the node calls, by attribute or bare name."""
+    names = set()
+    for child in ast.walk(node):
+        if isinstance(child, ast.Call):
+            func = child.func
+            names.add(func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", ""))
+    return names
+
+
+for path in sorted(root.glob("*.py")):
+    if path.name == "conftest.py":
+        continue
+    text = path.read_text(encoding="utf-8")
+    tree = ast.parse(text, filename=str(path))
+    module_line, module_reason = module_marker(tree)
+
+    for number, line in enumerate(text.splitlines(), 1):
+        for needle in ("docker run", "docker stop", "docker rm"):
+            if needle in line:
+                problems.append(f"{path}:{number}: drives {needle!r} directly; the harness owns container lifecycle")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "conftest":
+            for alias in node.names:
+                if alias.name in fixtures:
+                    problems.append(f"{path}:{node.lineno}: imports the {alias.name!r} fixture; request it instead")
+
+    if module_line is not None and module_reason not in reasons:
+        problems.append(f"{path}:{module_line}: module reason {module_reason!r} is outside the closed set")
+
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("test_"):
+            continue
+        line, reason = call_reason(node)
+        parameters = {argument.arg for argument in node.args.args}
+        own = "sut" in parameters or bool(called(node) & lifecycle)
+        if own and module_line is None and line is None:
+            problems.append(f"{path}:{node.lineno}: starts its own container without own_instance(reason=...)")
+        if not own and line is not None:
+            problems.append(f"{path}:{line}: marked own_instance but starts no own container")
+        if line is not None and reason not in reasons:
+            problems.append(f"{path}:{line}: reason {reason!r} is outside the closed set")
+
+for problem in problems:
+    print(f"error: {rule}: {problem}", file=sys.stderr)
+sys.exit(1 if problems else 0)
+PY
 }
 
 # check_test_060 — a logging test uses #[traced_test] and installs no subscriber of its own (TEST-060).
