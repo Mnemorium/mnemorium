@@ -139,7 +139,9 @@ memory:
 - `docs/development/Glossary.md` — the shared domain and actor vocabulary.
 - `src/lib/lib.rs` and the module roots `rule_enforcer.yaml` lists under `TEST-044`
   — the shared `#[cfg(test)] mod test_helpers` fixtures.
-- `test/system/conftest.py` — the system suite's fixtures and collection hook.
+- `test/system/conftest.py` — the system suite's shared instance, its own-instance marker, the collection hook and the
+  failure evidence; `test/util/harness.py` — the container harness (`Sut`), its `sut` fixture and the suite's operator
+  prose.
 - The CI coverage artifact, when a review supplies it: the `coverage` job in
   `.github/workflows/rust.yml` uploads `cargo llvm-cov --lib` results as
   `.artifacts/coverage/summary.txt` (totals and per-file table) and
@@ -156,7 +158,10 @@ own reasoning. Re-read the section that governs the layer you are working on.
   Rust integration (SQLite repository, external service), and system.
 - Rust unit and integration tests live inside the file under test
   (`#[cfg(test)] mod tests`); system tests live under `test/system/`, one module
-  per feature area.
+  per feature area. A system case shares its worker's container unless it marks
+  itself `@pytest.mark.own_instance(reason=...)` from the closed set
+  (`first_boot`, `restart`, `global_filesystem`, `log_sink`, `exact_collection`,
+  `process_state`) and drives the `sut` fixture instead (`TEST-058`).
 - Other agents implement production code; you own the tests for it.
 - Shared test helpers in `src/lib/lib.rs` are approval-gated: never add or change
   a shared helper on your own. See **Escalation**.
@@ -282,8 +287,10 @@ missing, report it rather than working around it.
 1. `cargo test`
 2. `cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80`
 3. `ruff check .` and `ruff format --check .` when Python tests changed
-4. `pytest -p no:cacheprovider test/system` when system tests changed — the
-   image `mnemorium:latest` must already exist (`docker build -t mnemorium:latest .`)
+4. `script/system.sh` when system tests changed — the image `mnemorium:latest`
+   must already exist (`docker build -t mnemorium:latest .`), so run it with
+   `NO_BUILD=1`; `PYTEST_WORKERS=4` runs four workers, each with one shared
+   container plus the own-instance containers its cases draw.
 
 Report every result, including the measured coverage.
 

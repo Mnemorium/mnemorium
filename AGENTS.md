@@ -28,6 +28,7 @@ first.
 | Run       | `cargo run --bin server` (listens on `:4080`; health `GET /health`)                                                                  |
 | Seeded run | `cargo run --features test-seed --bin server` (creates `media/` when absent; seeds dev/fixture data, prints demo credentials)     |
 | Test      | `cargo test` (unit + integration)                                                                                                    |
+| System    | `script/system.sh` (builds the image; `NO_BUILD=1` reuses it, `PYTEST_WORKERS=4` parallelises, `IMAGE=...` picks the tag)           |
 | Coverage  | `cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80` (gate ≥ 80%; the REST handler tree is covered by the system suite and Schemathesis instead) |
 | Lint      | `cargo clippy --all-targets --all-features -- -D warnings` and `cargo clippy --all-targets -- -D warnings`; `cargo fmt --all -- --check` |
 | All rules | `script/rule_enforcer.sh check` (every registered rule; CI and the pre-commit hook run this)                                         |
