@@ -2791,7 +2791,7 @@ the flows the system suite covers come from the critical exception paths in [Use
 | `TEST-054` | System test        | Every system test carries the three Allure labels: `epic` for the capability, `feature` for the requirement and `story` for each scenario it proves. The suite keeps no separate scenario map or meta-test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ System test](#system-test)                   |
 | `TEST-056` | System test        | A test sleeps at most 3 s on purpose. A longer-horizon observation is reached by pre-seeding the directory the component reads at startup, never by waiting for it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ System test](#system-test)                   |
 | `TEST-057` | System test        | An operator message is matched through the suite's single constants module, never inline. A structured `event=` / `component=` field is matched where the server emits one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ System test](#system-test)                   |
-| `TEST-058` | System test        | Each test starts its own container with its own writable working directory, published on a random loopback port; no test touches another test's container or the repository working tree.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | [§ System test](#system-test)                   |
+| `TEST-058` | System test        | A test runs against its worker's shared instance — booted once, one writable working directory, a random loopback port, the suite's fixed identity and a raised login quota — or, when marked `@pytest.mark.own_instance(reason=...)` with a reason from the closed set (`first_boot`, `restart`, `global_filesystem`, `log_sink`, `exact_collection`, `process_state`), against its own container with its own working directory. A shared-instance test never asserts on global state another test can extend, and never starts, stops or restarts a container; no test touches another test's container or the repository working tree.                                                                          | [§ System test](#system-test)                   |
 | `TEST-059` | System test        | A refusal case asserts the refusal effect: the persisted file is byte-identical, no replacement identity is written, no `config.yaml` or datastore is created, and the secret value never reaches stdout or a log file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | [§ System test](#system-test)                   |
 | `TEST-060` | Logging test       | A test that asserts on emitted log output is annotated `#[traced_test]` from `tracing-test` and matches through `logs_contain`/`logs_assert`; it installs no subscriber of its own — no `tracing::subscriber::set_default`, no `MakeWriter`/capture writer and no `capture_logs`/`captured_logs` helper.                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Logging test](#logging-test)                 |
 
@@ -2895,17 +2895,24 @@ while the job result gates the pull request.
 
 ### System test
 
-System tests prove a capability's specification scenarios black box. They drive the containerised image as a black box,
-and each test starts **its own** container with its own writable working directory, published on a random loopback port
-(`TEST-058`). The image is named by `MNEMORIUM_IMAGE`, default `mnemorium:latest`; a test never builds it. One module
-per feature area sits directly under `test/system/` — `api.py`, `audio.py`, `authentication.py`, `authorization.py`,
-`configuration.py`, `cover_art.py`, `download.py`, `file.py`, `gallery.py`, `image.py`, `logging_events.py`,
-`media_ingest.py`, `metadata_enrichment.py`, `movies.py`, `music.py`, `series.py`, `state.py`, `upload.py`, `user.py`
-and `video.py`; `hal_test.py` holds the suite's HAL helper unit cases. `test/system/conftest.py` collects those
-unprefixed names because the global `python_files` patterns match none of them. Each case asserts only what an operator
-can observe: the HTTP response, standard output, the log sink and the working directory. `authorization.py` is the
-primary proof of the authorization capability and groups its scenarios by fixture; one container may serve every
-scenario in a group that shares a fixture, and a scenario that needs a different fixture starts its own.
+System tests prove a capability's specification scenarios black box. They drive the containerised image as a black box:
+every case of a pytest worker shares the one instance that worker booted — one writable working directory, a random
+loopback port, the suite's fixed identity and a raised login quota — and a case that cannot share marks itself
+`@pytest.mark.own_instance(reason=...)` and starts its own container instead (`TEST-058`). The reason comes from the
+closed set `first_boot`, `restart`, `global_filesystem`, `log_sink`, `exact_collection` and `process_state`; a
+collection hook keeps the marker and the `sut` fixture in agreement, and `script/rule_enforcer.sh check TEST-058` audits
+every module. The shared instance is booted lazily by the first case that requests `server`, is probed once before each
+such case (an unhealthy instance fails that case with its evidence attached and stops the session), and hands out the
+cached Root Admin token, re-obtained after a `401`. A shared case never asserts on global state another case can extend
+and never starts, stops or restarts a container. The image is named by `MNEMORIUM_IMAGE`, default `mnemorium:latest`; a
+test never builds it. One module per feature area sits directly under `test/system/` — `api.py`, `audio.py`,
+`authentication.py`, `authorization.py`, `configuration.py`, `cover_art.py`, `download.py`, `file.py`, `gallery.py`,
+`image.py`, `logging_events.py`, `media_ingest.py`, `metadata_enrichment.py`, `movies.py`, `music.py`, `series.py`,
+`state.py`, `upload.py`, `user.py` and `video.py`; `hal_test.py` holds the suite's HAL helper unit cases.
+`test/system/conftest.py` collects those unprefixed names because the global `python_files` patterns match none of them.
+Each case asserts only what an operator can observe: the HTTP response, standard output, the log sink and the working
+directory. `authorization.py` is the primary proof of the authorization capability and groups its scenarios by fixture;
+its cases need fixed principals and exact grant lists, so almost every one carries `own_instance`.
 
 Configuration has no suite of its own: resolution is proved here on cheap probes rather than on every setting, so
 `configuration.py` proves the layer order and the file's lifecycle, and `upload.py` proves the `asset.upload.*` effects,
@@ -2914,9 +2921,10 @@ not system-test subjects: a wrong type, an unknown key, a malformed environment 
 fail startup in [§ 10 (Configuration)](#10-configuration); those cases are covered by the Rust application and
 integration tests that own the loader and the domain constructors. The suite asserts the effect of a **valid** value.
 
-`state.py` starts, stops or restarts its own container in every case, so it uses the `sut` fixture directly rather than
-the shared `server` fixture. Each case carries the three Allure labels (`epic`, `feature`, `story`) so the report groups
-the proof by requirement and scenario; the suite keeps no separate scenario map or meta-test.
+`state.py` starts, stops or restarts its own container in every case, so it marks the whole module `own_instance` with
+the `global_filesystem` reason and uses the `sut` fixture directly rather than the shared `server` fixture. Each case
+carries the three Allure labels (`epic`, `feature`, `story`) so the report groups the proof by requirement and scenario;
+the suite keeps no separate scenario map or meta-test.
 
 The suite holds `/api/v1` as its only base literal, and only `harness.Sut.index` writes it. Every other route is
 resolved from the index (`Sut.href`), from a representation's named link (`link_of`, `Sut.follow`) or — when a case
