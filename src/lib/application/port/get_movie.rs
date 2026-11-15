@@ -94,10 +94,6 @@ impl GetMovieResponse {
 
     /// Create a new fetch-film response.
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the response's fields one-to-one"
-    )]
     pub(crate) fn new(
         id: NumericID,
         name: String,

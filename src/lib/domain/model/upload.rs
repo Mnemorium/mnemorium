@@ -343,10 +343,6 @@ impl Upload {
     /// [`UploadError::InvalidFileSize`] when `file_size` is zero,
     /// [`UploadError::InvalidChunkSize`] when `chunk_size` is zero, and
     /// [`UploadError::IntegrityHash`] when `integrity_hash` is malformed.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "a persisted aggregate needs every column; the constructor mirrors the row"
-    )]
     pub(crate) fn try_new(
         upload_id: NumericID,
         user_id: NumericID,

@@ -155,10 +155,6 @@ impl GetSeriesResponse {
 
     /// Create a new fetch-show response.
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the response's fields one-to-one"
-    )]
     pub(crate) fn new(
         id: NumericID,
         name: String,

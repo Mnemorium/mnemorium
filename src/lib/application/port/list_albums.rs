@@ -167,10 +167,6 @@ impl ListAlbumsItem {
 
     /// Create a new listed album.
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the item's fields one-to-one"
-    )]
     pub(crate) fn new(
         album_id: NumericID,
         music_group_id: NumericID,

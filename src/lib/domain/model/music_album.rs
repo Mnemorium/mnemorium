@@ -170,10 +170,6 @@ impl MusicAlbum {
     ///
     /// Returns [`MusicAlbumError::InvalidName`] when `name` is empty, and
     /// [`MusicAlbumError::InvalidGenre`] when a genre identifier is empty.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the album's fields one-to-one"
-    )]
     pub(crate) fn try_new(
         id: NumericID,
         name: String,

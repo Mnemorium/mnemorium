@@ -73,10 +73,6 @@ impl UpdateSeriesCommand {
 
     /// Create a new update-show command.
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the show's write fields one-to-one"
-    )]
     pub(crate) fn new(
         caller_id: NumericID,
         series_id: NumericID,

@@ -166,10 +166,6 @@ impl MusicPlaylist {
     /// The caller validates the name with the domain name policy before
     /// invoking this constructor (`ARCH-005`).
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the playlist's fields one-to-one"
-    )]
     pub(crate) fn new(
         id: NumericID,
         name: String,

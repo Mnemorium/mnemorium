@@ -61,10 +61,6 @@ impl CreateMovieCommand {
 
     /// Create a new create-film command.
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the film's write fields one-to-one"
-    )]
     pub(crate) fn new(
         caller_id: NumericID,
         video_id: NumericID,

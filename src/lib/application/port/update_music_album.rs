@@ -72,10 +72,6 @@ impl UpdateMusicAlbumCommand {
 
     /// Create a new update-album command.
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the album's write fields one-to-one"
-    )]
     pub(crate) fn new(
         caller_id: NumericID,
         album_id: NumericID,

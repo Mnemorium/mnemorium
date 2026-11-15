@@ -55,10 +55,6 @@ impl PutSeriesEpisodeCommand {
 
     /// Create a new put-episode command.
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the episode's write fields one-to-one"
-    )]
     pub(crate) fn new(
         caller_id: NumericID,
         series_id: NumericID,

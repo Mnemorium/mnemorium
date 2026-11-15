@@ -158,10 +158,6 @@ impl Video {
     /// `frame_count` is not positive, [`VideoError::InvalidWidth`] when `width`
     /// is not positive, and [`VideoError::InvalidHeight`] when `height` is not
     /// positive.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "try_new mirrors every video column"
-    )]
     pub(crate) fn try_new(
         id: NumericID,
         duration_ms: f64,

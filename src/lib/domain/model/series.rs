@@ -98,10 +98,6 @@ impl Series {
     ///
     /// Returns [`SeriesError::InvalidName`] when `name` is empty, and
     /// [`SeriesError::InvalidGenre`] when a genre identifier is empty.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the show's fields one-to-one"
-    )]
     pub(crate) fn try_new(
         id: NumericID,
         name: String,

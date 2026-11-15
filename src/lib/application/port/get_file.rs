@@ -105,10 +105,6 @@ impl GetFileResponse {
 
     /// Create a new fetch-file response.
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the response's fields one-to-one"
-    )]
     pub(crate) fn new(
         id: NumericID,
         path: String,

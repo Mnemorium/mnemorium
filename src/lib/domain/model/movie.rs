@@ -92,10 +92,6 @@ impl Movie {
     ///
     /// Returns [`MovieError::InvalidName`] when `name` is empty, and
     /// [`MovieError::InvalidGenre`] when a genre identifier is empty.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the film's fields one-to-one"
-    )]
     pub(crate) fn try_new(
         id: NumericID,
         name: String,

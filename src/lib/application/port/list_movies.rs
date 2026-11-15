@@ -117,10 +117,6 @@ impl ListMoviesItem {
 
     /// Create a new listed film.
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the item's fields one-to-one"
-    )]
     pub(crate) fn new(
         id: NumericID,
         name: String,

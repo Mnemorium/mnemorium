@@ -191,10 +191,6 @@ impl File {
     ///
     /// Returns [`FileError::PathEmpty`] when `path` is empty, and
     /// [`FileError::InvalidSizeBytes`] when `size_bytes` is negative.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "try_new mirrors all file columns"
-    )]
     pub(crate) fn try_new(
         id: NumericID,
         path: String,

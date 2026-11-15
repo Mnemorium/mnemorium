@@ -165,10 +165,6 @@ impl Audio {
     /// negative, [`AudioError::InvalidSampleRateHz`] when a present
     /// `sample_rate_hz` is negative, and [`AudioError::InvalidBitDepth`] or
     /// [`AudioError::InvalidBlockSize`] when a present value is not positive.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "try_new mirrors all audio columns"
-    )]
     pub(crate) fn try_new(
         id: NumericID,
         name: String,

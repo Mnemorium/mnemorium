@@ -140,10 +140,6 @@ impl Image {
     /// Returns [`ImageError::InvalidName`] when `name` is empty,
     /// [`ImageError::InvalidWidthPx`] when `width_px` is not positive, and
     /// [`ImageError::InvalidHeightPx`] when `height_px` is not positive.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "try_new mirrors every image column"
-    )]
     pub(crate) fn try_new(
         image_id: NumericID,
         name: String,

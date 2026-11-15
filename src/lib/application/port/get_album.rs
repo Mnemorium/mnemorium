@@ -144,10 +144,6 @@ impl GetAlbumResponse {
 
     /// Create a new fetch-album response.
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the response's fields one-to-one"
-    )]
     pub(crate) fn new(
         album_id: NumericID,
         music_group_id: NumericID,
