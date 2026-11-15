@@ -20,11 +20,11 @@ COPY . .
 RUN cargo build --release --bin server ${CARGO_FEATURES:+--features "$CARGO_FEATURES"}
 
 
-FROM alpine:3.21 AS runtime
+FROM alpine:3.24 AS runtime
 
-RUN apk add --no-cache ffmpeg=6.1.2-r1 \
-    && addgroup -S mnemorium \
-    && adduser -S -D -H -G mnemorium mnemorium \
+RUN apk add --no-cache ffmpeg=8.1.3-r0 \
+    && addgroup -S -g 10001 mnemorium \
+    && adduser -S -D -H -G mnemorium -u 10001 mnemorium \
     && mkdir -p /app \
     && chown mnemorium:mnemorium /app
 
@@ -34,9 +34,11 @@ COPY LICENSE THIRD_PARTY_NOTICES.txt /licenses/
 
 EXPOSE 4080
 
+# Exec form, with the shell kept for the explicit failure path.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:4080/health >/dev/null || exit 1
+  CMD ["sh", "-c", "wget -qO- http://127.0.0.1:4080/health >/dev/null || exit 1"]
 
-USER mnemorium
+# Numeric ids, so no name lookup is needed at runtime.
+USER 10001:10001
 
 CMD ["/usr/local/bin/server"]

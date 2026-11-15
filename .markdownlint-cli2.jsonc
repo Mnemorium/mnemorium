@@ -33,6 +33,9 @@
         ".pytest_cache/",
         ".agents/",
         ".opencode/",
+        "node_modules/",
+        "test/performance/node_modules/",
+        "test/performance/generated/",
         "AGENTS.md",
         "CHANGELOG.md",
         "openspec/"

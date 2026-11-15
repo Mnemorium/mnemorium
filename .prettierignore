@@ -7,3 +7,5 @@ site/
 .opencode/
 AGENTS.md
 CHANGELOG.md
+node_modules/
+test/performance/generated/

@@ -576,6 +576,8 @@ pub struct User {
 
 #### 5. Testing
 
+The black-box performance suite, its dataset and its baseline are documented in [Test](Test.md).
+
 Arrange–Act–Assert example:
 
 ```rust
@@ -2880,12 +2882,14 @@ Handing the staged, caller-supplied bytes to `ffprobe` is a security event gover
 
 ### API fuzz test
 
-The `api-test` job in `.github/workflows/ci.yml` runs `script/api_fuzz.sh`, which boots a disposable server built with
-the `api-docs` and `test-seed` features, seeds the demo library, completes one upload, and fuzzes the served OpenAPI
-document with Schemathesis. It triggers on Rust sources, SQL, the fuzz configuration and hooks, the harness, the
-development environment, and the workflow itself. Its JUnit report is uploaded as the `schemathesis-results` artifact
-(`junit.xml`) whether the run passes or fails; the report is an untrusted review input, while the job result gates the
-pull request.
+The `schemathesis` job in `.github/workflows/api.yml` starts a disposable server through `script/api_fuzz.sh --start`,
+which builds it with the `api-docs` and `test-seed` features, seeds the demo library, completes one upload, and
+publishes the schema URL, the generated configuration and the Root Admin credentials to the following steps. The
+[Schemathesis action](https://github.com/schemathesis/action) then fuzzes the served OpenAPI document against that
+server, and `script/api_fuzz.sh --stop` tears it down. It triggers on Rust sources, SQL, the fuzz configuration and
+hooks, the harness, the development environment, and the workflow itself. Its JUnit report is uploaded as the
+`schemathesis-results` artifact (`junit.xml`) whether the run passes or fails; the report is an untrusted review input,
+while the job result gates the pull request.
 
 ---
 
@@ -2944,10 +2948,11 @@ mechanism the container cannot observe.
 
 ### Seed data
 
-`test/seed/sql` holds the SQL scripts and `test/seed/media` the media bytes the `test-seed` Cargo feature applies to a
-developer or fixture datastore. The feature is off by default and is the only switch: a build without it neither
-compiles the seed module nor runs the scripts, so the shipped image is unaffected (`ARG CARGO_FEATURES=""` in the
-`Dockerfile`).
+`test/seed/api` holds the demo fixture, `test/seed/perf` the volume library, and `test/seed/media` the media bytes the
+`test-seed` Cargo feature applies to a developer or fixture datastore. The feature is off by default and is the switch
+that compiles the seed module; which fixture it applies is `MNEMORIUM_SEED_PROFILE`, whose default is the small demo
+library. A build without the feature neither compiles the seed module nor runs the scripts, so the shipped image is
+unaffected (`ARG CARGO_FEATURES=""` in the `Dockerfile`).
 
 The scripts mirror the migration mechanism: they are embedded at compile time and applied once through a second `sqlx`
 migrator whose history table is `_sqlx_seeds`. They are one-way -- no `.down.sql` -- because seeded data is disposable.
@@ -3138,8 +3143,8 @@ A job whose validity depends on the lockfile must re-run when the inputs move, s
 last so the gate is exercised when its own definition changes.
 
 The rule binds only the tools a job resolves through `devenv.lock`. Jobs that install tools from another source — the
-`security` job's hand-restated `cargo-deny`/`cargo-about` pins and the `taiki-e/install-action` tool installs — are a
-documented residual of this parity, recorded rather than implied pinned, exactly as `DEPS-003` records its own.
+`supply-chain` job's hand-restated `cargo-deny`/`cargo-about` pins and the `taiki-e/install-action` tool installs — are
+a documented residual of this parity, recorded rather than implied pinned, exactly as `DEPS-003` records its own.
 
 ---
 
@@ -3215,6 +3220,7 @@ Source: `devenv.nix`.
 | [cargo-machete](https://github.com/bnjbvr/cargo-machete)          | Reports direct dependencies no source file uses; pre-commit and CI.                                                   | 0.9.2   | MIT        |
 | [ffmpeg-headless](https://ffmpeg.org/)                            | Headless FFmpeg build providing the `ffprobe` binary.                                                                 | 6.1.2   | TODO       |
 | [git](https://git-scm.com/)                                       | Version control.                                                                                                      | 2.55.0  | TODO       |
+| [hadolint](https://github.com/hadolint/hadolint)                  | Dockerfile linter; the pre-commit hook and the Docker workflow.                                                       | 2.13.1  | GPL-3.0    |
 | [llvm](https://llvm.org/)                                         | LLVM tools used by coverage (`llvm-cov`, `llvm-profdata`).                                                            | 21.1.8  | TODO       |
 | [ls-lint](https://ls-lint.org/)                                   | File and directory naming linter.                                                                                     | 2.3.1   | TODO       |
 | [nixfmt](https://github.com/NixOS/nixfmt)                         | Nix code formatter.                                                                                                   | 1.4.0   | TODO       |
@@ -3275,6 +3281,7 @@ Source: `.github/workflows/*`.
 | [actions/setup-python](https://github.com/actions/setup-python)                                                        | TODO                                                     | v7.0.0  | TODO       |
 | [actions/upload-artifact](https://github.com/actions/upload-artifact)                                                  | TODO                                                     | v7      | TODO       |
 | [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request)                          | TODO                                                     | v6      | TODO       |
+| [astral-sh/ruff-action](https://github.com/astral-sh/ruff-action)                                                      | Runs `ruff` in the Python workflow.                      | v3.6.1  | Apache-2.0 |
 | [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO                                                     | v31     | TODO       |
 | [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO                                                     | 9.3.1   | TODO       |
 | [DavidAnson/markdownlint-cli2-action](https://github.com/DavidAnson/markdownlint-cli2-action)                          | TODO                                                     | v24     | TODO       |
@@ -3283,11 +3290,13 @@ Source: `.github/workflows/*`.
 | [docker/setup-buildx-action](https://github.com/docker/setup-buildx-action)                                            | BuildKit builder setup for cached image builds.          | v4      | Apache-2.0 |
 | [dortort/betterleaks-action](https://github.com/dortort/betterleaks-action)                                            | TODO                                                     | v0.1.0  | TODO       |
 | [dtolnay/rust-toolchain](https://github.com/dtolnay/rust-toolchain)                                                    | TODO                                                     | 1.98.0  | TODO       |
+| [hadolint/hadolint-action](https://github.com/hadolint/hadolint-action)                                                | Lints `Dockerfile` in the Docker workflow.               | v3.5.0  | MIT        |
+| [ibiqlik/action-yamllint](https://github.com/ibiqlik/action-yamllint)                                                  | Lints YAML in the YAML workflow.                         | v3.1.1  | MIT        |
 | [ls-lint/action](https://github.com/ls-lint/action)                                                                    | TODO                                                     | v2      | TODO       |
 | [semantic-release](https://www.npmjs.com/package/semantic-release)                                                     | TODO                                                     | 25.0.9  | TODO       |
+| [semgrep/semgrep](https://hub.docker.com/r/semgrep/semgrep)                                                            | Image the Docker workflow's scan runs.                   | 1.172.0 | TODO       |
 | [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache)                                                          | TODO                                                     | v2      | TODO       |
 | [taiki-e/install-action](https://github.com/taiki-e/install-action)                                                    | TODO                                                     | v2      | TODO       |
-| [tj-actions/changed-files](https://github.com/tj-actions/changed-files)                                                | TODO                                                     | v47.0.6 | TODO       |
 
 `@opencode/cli` is installed by the triage workflow at the exact version `2.0.22` on `actions/setup-node` (`v7.0.0`,
 Node `24.19.0`). Its transitive dependency tree resolves fresh from the npm registry, and its postinstall script
@@ -3295,6 +3304,11 @@ downloads a platform-native `opencode` binary; neither is lockfile-pinned. The n
 documented `DEPS-003` residuals; the `setup-node` install of the dev environment's Node is a documented `DEPS-004`
 residual, because the workflow restates the toolchain rather than resolving it through `devenv.lock`. The other
 workflows provision Python and Node with `actions/setup-python` and `actions/setup-node`.
+
+The `yaml` workflow does not provision a Python toolchain: `ibiqlik/action-yamllint` shells out to the `yamllint` the
+`ubuntu-latest` image ships (1.38.0), which the workflow selects by pinning the action's commit rather than the linter's
+version. The dev environment resolves yamllint from the locked nixpkgs input instead, so a new yamllint release reaches
+CI before it reaches the pre-commit hook — a `DEPS-004` residual.
 
 ---
 
@@ -3304,9 +3318,9 @@ Source: `Dockerfile`.
 
 | Name                                                       | Description                                       | Version         | License |
 | ---------------------------------------------------------- | ------------------------------------------------- | --------------- | ------- |
-| [alpine](https://hub.docker.com/_/alpine)                  | Alpine Linux base image (runtime stage).          | 3.21            | TODO    |
+| [alpine](https://hub.docker.com/_/alpine)                  | Alpine Linux base image (runtime stage).          | 3.24            | TODO    |
 | [cargo-chef](https://github.com/LukeMathWalker/cargo-chef) | Caches Rust dependency builds for Docker layers.  | 0.1.78          | TODO    |
-| [ffmpeg](https://ffmpeg.org/)                              | Runtime media tooling; ships `ffprobe` on `PATH`. | 6.1.2-r1        | TODO    |
+| [ffmpeg](https://ffmpeg.org/)                              | Runtime media tooling; ships `ffprobe` on `PATH`. | 8.1.3-r0        | TODO    |
 | [rust](https://hub.docker.com/_/rust)                      | Rust build image (build stage).                   | 1.98-alpine3.21 | TODO    |
 
 ---
@@ -3317,10 +3331,10 @@ Source: the runtime stage of `Dockerfile`.
 
 | Name                                       | Description                                                                                  | Provided by                                                              | License |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------- |
-| [ffprobe](https://ffmpeg.org/ffprobe.html) | Video metadata probe resolved from `PATH` by `media_probe.rs` on every `video/*` completion. | The `ffmpeg` package (`ffmpeg=6.1.2-r1`) installed by the runtime stage. | TODO    |
+| [ffprobe](https://ffmpeg.org/ffprobe.html) | Video metadata probe resolved from `PATH` by `media_probe.rs` on every `video/*` completion. | The `ffmpeg` package (`ffmpeg=8.1.3-r0`) installed by the runtime stage. | TODO    |
 
 A binary a shipped container resolves from `PATH` at run time is a runtime dependency, not a build one: the runtime
-stage image must provide it. `ffprobe` ships with `ffmpeg`; the runtime stage installs `ffmpeg=6.1.2-r1`.
+stage image must provide it. `ffprobe` ships with `ffmpeg`; the runtime stage installs `ffmpeg=8.1.3-r0`.
 
 ---
 
@@ -3344,7 +3358,7 @@ changelog, which groups entries by scope. A scope is not a bounded context — t
 
 The set is **closed and exhaustive** over the tracked paths: every path is owned by exactly one scope, resolved by
 longest-prefix match, and every scope owns at least one path. Adding or removing a scope edits this table and the
-`scopes:` block of `.github/workflows/ci.yml` in the same change.
+`scopes:` block of `.github/workflows/pull-request.yml` in the same change.
 
 | Group   | Scope            | Path                                      | Description                     |
 | ------- | ---------------- | ----------------------------------------- | ------------------------------- |
@@ -3383,6 +3397,7 @@ longest-prefix match, and every scope owns at least one path. Adding or removing
 | Tooling | `config`         | `.prettierignore`                         | Prettier ignore rules           |
 | Tooling | `config`         | `.releaserc.json`                         | semantic-release configuration  |
 | Tooling | `config`         | `.sqlfluff`                               | SQL linter configuration        |
+| Tooling | `config`         | `.sqlfluffignore`                         | SQL linter ignore rules         |
 | Tooling | `config`         | `.taplo.toml`                             | TOML linter configuration       |
 | Tooling | `config`         | `.yamllint`                               | YAML linter configuration       |
 | Tooling | `config`         | `clippy.toml`                             | Clippy configuration            |
@@ -3418,8 +3433,8 @@ process artifacts rather than a repository area. An entry that matches no tracke
 rot silently.
 
 `script/check_scopes.sh` is the enforcement: it parses the table above, asserts it matches the `scopes:` list in
-`.github/workflows/ci.yml`, and verifies every tracked path not exempted above maps to exactly one scope. It runs in
-pre-commit and in the CI `scopes` job; a failure cites `GOV-001`.
+`.github/workflows/pull-request.yml`, and verifies every tracked path not exempted above maps to exactly one scope. It
+runs in pre-commit and in the CI `scopes` job; a failure cites `GOV-001`.
 
 ---
 

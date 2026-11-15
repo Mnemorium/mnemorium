@@ -20,6 +20,9 @@
   <a href="https://github.com/Mnemorium/mnemorium/actions/workflows/ci.yml">
     <img src="https://github.com/Mnemorium/mnemorium/actions/workflows/ci.yml/badge.svg" alt="Continuous integration" />
   </a>
+  <a href="https://github.com/Mnemorium/mnemorium/actions/workflows/docs.yml">
+    <img src="https://github.com/Mnemorium/mnemorium/actions/workflows/docs.yml/badge.svg" alt="Documentation" />
+  </a>
   <a href="https://github.com/Mnemorium/mnemorium/releases">
     <img src="https://img.shields.io/github/v/release/Mnemorium/mnemorium" alt="Latest release" />
   </a>

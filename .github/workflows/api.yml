@@ -1,0 +1,75 @@
+---
+name: Mnemorium API
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**/*.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'test/seed/**'
+      - 'migrations/**/*.sql'
+      - 'schemathesis.toml'
+      - 'test/api/**'
+      - 'script/api_fuzz.sh'
+      - 'devenv.nix'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  schemathesis:
+    name: Schemathesis
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8  # v1
+        with:
+          toolchain: "1.98.0"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2
+        with:
+          shared-key: api
+          cache-on-failure: true
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.14"
+      # Builds the seeded server, starts it, and hands the schema URL, the
+      # generated config and the Root Admin credentials to the next step. The
+      # server stays up until `--stop` (always), so the fuzz runs against it.
+      - name: Start the disposable server
+        id: start
+        run: |
+          mkdir -p .artifacts/schemathesis
+          script/api_fuzz.sh --start
+      - name: Fuzz the served document
+        uses: schemathesis/action@b0cacf86f25caaa79ac110cc2077afd70fdd67ff  # v3
+        with:
+          schema: ${{ steps.start.outputs.schema }}
+          config-file: ${{ steps.start.outputs.config }}
+          version: "4.33.1"
+          coverage: false
+          args: --report junit --report-junit-path .artifacts/schemathesis/junit.xml
+      - name: Stop the disposable server
+        if: always()
+        run: script/api_fuzz.sh --stop
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: schemathesis-results
+          path: .artifacts/schemathesis
+          retention-days: 14
+          if-no-files-found: warn

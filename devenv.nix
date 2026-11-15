@@ -7,6 +7,41 @@
   ...
 }:
 
+let
+  # k6 with the `xk6-subcommand-openapi` extension, pinned to the release tag.
+  # The project publishes no checksum asset, so "verified" means the tag is
+  # pinned here and `script/performance.sh` records `k6 version` in the run
+  # fingerprint.
+  k6Platform =
+    {
+      x86_64-linux = "linux_amd64";
+      aarch64-linux = "linux_arm64";
+      x86_64-darwin = "darwin_amd64";
+      aarch64-darwin = "darwin_arm64";
+    }
+    .${pkgs.stdenv.hostPlatform.system}
+      or (throw "no k6 release for ${pkgs.stdenv.hostPlatform.system}");
+
+  k6Hashes = {
+    linux_amd64 = "sha256-MJpu0IIqavrfmim1LFdN297ZC3TdhfVYUhpxPhoYFSE=";
+    linux_arm64 = "sha256-/NuTjklxWrOLL5nQajEgo6wFeuVI/o/ZLPE/pkzeaPg=";
+    darwin_amd64 = "sha256-Rz9/xUd07H4FXfDotGCq1SsFRaMWZNqcGJWt2kn8kPE=";
+    darwin_arm64 = "sha256-ZeBoeIrDB+CsyKWlpbvA+WjudP9qGLr9NQMoEaMxzAs=";
+  };
+
+  k6 = pkgs.stdenv.mkDerivation {
+    pname = "k6-openapi";
+    version = "0.1.0";
+    src = pkgs.fetchurl {
+      url = "https://github.com/grafana/xk6-subcommand-openapi/releases/download/v0.1.0/xk6-subcommand-openapi_v0.1.0_${k6Platform}.tar.gz";
+      hash = k6Hashes.${k6Platform};
+    };
+    sourceRoot = "xk6-subcommand-openapi_v0.1.0_${k6Platform}";
+    installPhase = ''
+      install -Dm755 k6 $out/bin/k6
+    '';
+  };
+in
 {
   env = {
     NO_MKDOCS_2_WARNING = 1;
@@ -36,6 +71,8 @@
     pkgs.cargo-deny
     pkgs.cargo-about
     pkgs.cargo-machete
+    pkgs.cargo-flamegraph
+    k6
     pkgs.semgrep
     pkgs.xdg-utils
     pkgs.shfmt
@@ -271,6 +308,58 @@
     description = "Fuzz the API with Schemathesis against a disposable, seeded server";
   };
 
+  # Performance suite
+
+  tasks."setup:perf" = {
+    exec = "npm ci --prefix test/performance";
+    description = "Install the TypeScript toolchain for the performance suite";
+  };
+
+  tasks."perf:client" = {
+    exec = "script/performance.sh client";
+    description = "Build, boot and gate the SUT, then regenerate the typed client";
+  };
+
+  tasks."perf:smoke" = {
+    exec = "script/performance.sh run smoke --profile all";
+    description = "Run the 30 s smoke scenario for every flow";
+  };
+
+  tasks."perf:load" = {
+    exec = "script/performance.sh run load --profile all";
+    description = "Run the 2 min load scenario for every flow";
+  };
+
+  tasks."perf:stress" = {
+    exec = "script/performance.sh run stress --profile read";
+    description = "Run the 100-VU stress ladder with one upload worker";
+  };
+
+  tasks."perf:soak" = {
+    exec = "script/performance.sh run soak --profile read";
+    description = "Run the 15 min read soak";
+  };
+
+  tasks."perf:baseline" = {
+    exec = "script/performance.sh baseline";
+    description = "Run smoke and load for both profiles and write the baseline candidate";
+  };
+
+  tasks."perf:flamegraph" = {
+    exec = "script/performance.sh flamegraph --profile both";
+    description = "Capture the read and write local flamegraphs";
+  };
+
+  tasks."perf:clean" = {
+    exec = "script/performance.sh clean";
+    description = "Remove performance artifacts and the generated client";
+  };
+
+  tasks."lint:typescript" = {
+    exec = "npm --prefix test/performance run typecheck && npm --prefix test/performance run lint && npm --prefix test/performance run format:check";
+    description = "Type-check, lint and format-check the performance suite";
+  };
+
   # Tooling
 
   tasks."setup:allure" = {
@@ -284,7 +373,7 @@
   };
 
   tasks."setup:schemathesis" = {
-    exec = "uv tool install schemathesis==4.33.1";
+    exec = "uv tool install --force schemathesis==4.33.1";
     description = "Install the Schemathesis CLI as a uv tool";
   };
 

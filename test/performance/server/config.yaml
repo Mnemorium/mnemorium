@@ -1,0 +1,35 @@
+# The SUT configuration for a performance run.
+#
+# The defaults make a load run meaningless: the rate limiter answers 429 after
+# five requests in twelve seconds, and the debug log writes every request to
+# disk under the measurement. Both are turned off here, and the connection
+# pool is widened for the arrival rates the load scenario drives.
+#
+# The file is copied into the disposable working directory as `config.yaml`, so
+# it is the only configuration the container reads.
+
+asset:
+  upload:
+    chunk_size_bytes: 5242880
+    expiry_seconds: 86400
+    max_file_size_bytes: 107374182400
+logging:
+  ansi: false
+  level: "info"
+  max_files: 7
+  rotation: DAILY
+persistence:
+  sqlite3:
+    max_connections: 16
+security:
+  jwt:
+    ttl: 3600
+  # The disposable database needs the one-time Root Admin creation on its first
+  # start, and the flows authenticate as the seeded demo account. The printed
+  # password is scoped to a container that is removed after the run.
+  log_root_admin_password: true
+  rate_limit:
+    burst_size: 1000000
+    client_ip_header: x-forwarded-for
+    period_seconds: 1
+    trusted_proxies: ""
