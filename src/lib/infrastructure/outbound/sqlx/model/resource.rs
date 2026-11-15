@@ -46,3 +46,17 @@ pub(crate) struct RelationRow {
     /// Stored kind of the relation.
     pub kind: String,
 }
+
+/// Data model for one relation edge with the resource it points at.
+///
+/// A batched resolution loads the edges of every addressed resource at once, so
+/// the target has to travel with the row.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub(crate) struct RelationEdgeRow {
+    /// Identifier of the container resource.
+    pub from_resource_id: NumericID,
+    /// Stored kind of the relation.
+    pub kind: String,
+    /// Identifier of the addressed resource.
+    pub to_resource_id: NumericID,
+}

@@ -1,6 +1,6 @@
 // UC-008: page the gallery collection, then read one gallery and its items.
 
-import { DATASET } from "../config.ts";
+import { DATASET, endpointTag } from "../config.ts";
 import { assertion, atLeast, fields, isStatus, link, present } from "../lib/checks.ts";
 import { GALLERY_TOTAL, pickOffset } from "../lib/data.ts";
 
@@ -10,6 +10,7 @@ export const browseGalleries: FlowFn = async ({ client, flow, vu, iter }) => {
   const offset = pickOffset(GALLERY_TOTAL, vu, iter);
   const page = await client.listGalleries({
     query: { limit: DATASET.pageSize, offset },
+    ...endpointTag("list-galleries"),
   });
   if (!isStatus(page, flow, 200)) {
     return;
@@ -45,7 +46,7 @@ export const browseGalleries: FlowFn = async ({ client, flow, vu, iter }) => {
     }
   }
 
-  const detail = await client.getGallery(first.id);
+  const detail = await client.getGallery(first.id, endpointTag("get-gallery"));
   if (!isStatus(detail, flow, 200)) {
     return;
   }
@@ -67,7 +68,7 @@ export const browseGalleries: FlowFn = async ({ client, flow, vu, iter }) => {
 
   // The item route is a documented literal alias: the representation must be
   // byte-identical, not merely equivalent.
-  const alias = await client.getGalleryItemList(first.id);
+  const alias = await client.getGalleryItemList(first.id, endpointTag("get-gallery-items"));
   if (!isStatus(alias, flow, 200)) {
     return;
   }

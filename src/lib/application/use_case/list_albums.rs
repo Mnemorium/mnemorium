@@ -1,4 +1,5 @@
-use crate::application::authorization::allows;
+use crate::application::authorization::allows_many;
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -7,7 +8,8 @@ use crate::application::port::{
     ListAlbumsCommand, ListAlbumsError, ListAlbumsItem, ListAlbumsMediumItem, ListAlbumsResponse,
     ListAlbumsUseCase,
 };
-use crate::domain::model::{Action, ResourceKind, ResourceRef};
+use crate::domain::NumericID;
+use crate::domain::model::{Action, MediumIndex, MusicAlbum, ResourceKind, ResourceRef};
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
     UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
@@ -62,24 +64,30 @@ where
 
                 let mut albums = unit_of_work
                     .music_albums()
-                    .search(&MusicAlbumFilter {
+                    .search_summaries(&MusicAlbumFilter {
                         name: command.name().map(str::to_owned),
                         ..MusicAlbumFilter::default()
                     })
                     .await
                     .map_err(|error| ListAlbumsError::Unknown(error.into()))?;
 
+                // One batched read decides the whole collection: resolving a
+                // row at a time made the decision cost scale with the library.
+                let addresses: Vec<ResourceRef> = albums
+                    .iter()
+                    .map(|album| ResourceRef::new(ResourceKind::MusicAlbum, album.id()))
+                    .collect();
+                let discoverable = allows_many(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    &addresses,
+                    Action::Discover,
+                    None,
+                )
+                .await;
                 let mut visible = Vec::with_capacity(albums.len());
-                for album in albums {
-                    if allows(
-                        &mut unit_of_work.resources(),
-                        &caller,
-                        ResourceRef::new(ResourceKind::MusicAlbum, album.id()),
-                        Action::Discover,
-                        None,
-                    )
-                    .await
-                    {
+                for (album, allowed) in albums.drain(..).zip(discoverable) {
+                    if allowed {
                         visible.push(album);
                     }
                 }
@@ -87,19 +95,39 @@ where
 
                 let total = albums.len();
                 let offset = command.offset().unwrap_or(0);
-                let page = albums
+                let visible_page: Vec<_> = albums
                     .into_iter()
                     .skip(offset)
                     .take(command.limit().unwrap_or(usize::MAX))
+                    .collect();
+                // Count the tracks of the page's albums only: hydrating every
+                // album's mediums and recordings is what made a 20-row page cost
+                // five joins over the whole collection.
+                let page_ids: Vec<NumericID> = visible_page.iter().map(MusicAlbum::id).collect();
+                let mut medium_counts: HashMap<NumericID, Vec<(MediumIndex, u64)>> = HashMap::new();
+                for (album_id, index, tracks) in unit_of_work
+                    .music_albums()
+                    .count_tracks_by_album(&page_ids)
+                    .await
+                    .map_err(|error| ListAlbumsError::Unknown(error.into()))?
+                {
+                    medium_counts
+                        .entry(album_id)
+                        .or_default()
+                        .push((index, tracks));
+                }
+                let page = visible_page
+                    .into_iter()
                     .map(|album| {
-                        let mediums: Vec<_> = album
-                            .mediums()
-                            .iter()
-                            .map(|medium| {
+                        let mediums: Vec<_> = medium_counts
+                            .remove(&album.id())
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|(index, tracks)| {
                                 ListAlbumsMediumItem::new(
-                                    medium.index().index(),
-                                    medium.index().as_wire().to_owned(),
-                                    medium.tracks().len(),
+                                    index.index(),
+                                    index.as_wire().to_owned(),
+                                    usize::try_from(tracks).unwrap_or(usize::MAX),
                                 )
                             })
                             .collect();
@@ -144,10 +172,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::{
-        MediumIndex, MusicAlbum, MusicMedium, MusicRecording, ProductionType, Role, TrackIndex,
-        User,
-    };
+    use crate::domain::model::{MediumIndex, MusicAlbum, ProductionType, Role, User};
 
     use crate::domain::port::{MockMusicAlbumRepository, MockUserRepository, RepositoryError};
 
@@ -159,27 +184,8 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = ListAlbums<TestFactory>;
 
-    /// Build one `CD` medium sequencing one recording per index.
-    fn medium(medium_index: u8, track_count: u8) -> Result<MusicMedium, Box<dyn Error>> {
-        let tracks = (0..track_count)
-            .map(|index| {
-                Ok(MusicRecording::try_new(
-                    i64::from(index),
-                    Some(format!("Track {index}")),
-                    None,
-                    i64::from(index),
-                    i64::from(index),
-                    None,
-                    TrackIndex::MediumIndex(index),
-                )?)
-            })
-            .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
-        Ok(MusicMedium::new(MediumIndex::Cd(medium_index), tracks))
-    }
-
-    /// Build one album holding `track_count` tracks on one medium, named
-    /// `Album {album_id}`.
-    fn album(album_id: i64, track_count: u8) -> Result<MusicAlbum, Box<dyn Error>> {
+    /// Build the summary a listing reads first: `album` without its mediums.
+    fn summary_album(album_id: i64) -> Result<MusicAlbum, Box<dyn Error>> {
         Ok(MusicAlbum::try_new(
             album_id,
             format!("Album {album_id}"),
@@ -189,7 +195,7 @@ mod tests {
             0,
             None,
             None,
-            vec![medium(1, track_count)?],
+            Vec::new(),
         )?)
     }
 
@@ -244,15 +250,21 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
-        let first = album(1, 1)?;
-        let second = album(2, 2)?;
+        let summaries = vec![summary_album(1)?, summary_album(2)?];
         albums
-            .expect_search()
+            .expect_search_summaries()
             .times(1)
             .withf(|filter| filter.id.is_none() && filter.name.is_none())
             .return_once(move |_| {
-                let found = vec![first.clone(), second.clone()];
+                let found = summaries.clone();
                 Box::pin(async move { Ok(found) })
+            });
+        albums
+            .expect_count_tracks_by_album()
+            .times(1)
+            .withf(|album_ids| album_ids == [1, 2].as_slice())
+            .return_once(|_| {
+                Box::pin(async { Ok(vec![(1, MediumIndex::Cd(1), 1), (2, MediumIndex::Cd(1), 2)]) })
             });
         let harness = harness_with(users, albums);
         let use_case: UseCase = ListAlbums::new(Arc::clone(&harness.factory));
@@ -325,9 +337,13 @@ mod tests {
         );
         let mut albums = MockMusicAlbumRepository::new();
         albums
-            .expect_search()
+            .expect_search_summaries()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![covered, uncovered]) }));
+        albums
+            .expect_count_tracks_by_album()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(users, albums);
         let use_case: UseCase = ListAlbums::new(Arc::clone(&harness.factory));
 
@@ -364,10 +380,15 @@ mod tests {
         let third = empty_album(3, "Kind 3")?;
         let mut albums = MockMusicAlbumRepository::new();
         albums
-            .expect_search()
+            .expect_search_summaries()
             .times(1)
             .withf(|filter| filter.name.as_deref() == Some("Kind"))
             .return_once(move |_| Box::pin(async move { Ok(vec![first, second, third]) }));
+        albums
+            .expect_count_tracks_by_album()
+            .times(1)
+            .withf(|album_ids| album_ids == [2].as_slice())
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(users, albums);
         let use_case: UseCase = ListAlbums::new(Arc::clone(&harness.factory));
 
@@ -419,7 +440,7 @@ mod tests {
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
         albums
-            .expect_search()
+            .expect_search_summaries()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let harness = harness_with(users, albums);
@@ -443,7 +464,11 @@ mod tests {
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
         albums
-            .expect_search()
+            .expect_search_summaries()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        albums
+            .expect_count_tracks_by_album()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(users, albums);

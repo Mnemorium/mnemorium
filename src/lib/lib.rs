@@ -616,6 +616,34 @@ mod test_helpers {
                 )])
             })
         });
+        resources
+            .expect_search_many()
+            .returning(|addresses, caller| {
+                let user_id = caller.id();
+                let found = addresses
+                    .iter()
+                    .map(|address| {
+                        let resource = Resource::from_stored(
+                            1,
+                            address.kind(),
+                            address.id(),
+                            Some(user_id),
+                            None,
+                            Visibility::Private,
+                        );
+                        let grant = Grant::from_stored(
+                            1,
+                            Principal::User(user_id),
+                            1,
+                            ResourceRole::Downloader,
+                            ChildKind::All,
+                            GrantEffect::Allow,
+                        );
+                        ResourceAccess::new(resource, Vec::new(), vec![grant], Vec::new())
+                    })
+                    .collect::<Vec<_>>();
+                Box::pin(async move { Ok(found) })
+            });
         resources.expect_create().returning(|new_resource| {
             let resource = Resource::from_stored(
                 1,

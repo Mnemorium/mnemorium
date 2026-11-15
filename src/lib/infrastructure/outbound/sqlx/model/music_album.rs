@@ -2,6 +2,43 @@ use chrono::NaiveDate;
 
 use crate::domain::NumericID;
 
+/// Row for one music album without its mediums or tracks.
+///
+/// The projection a collection listing reads before it pages: `genres` is the
+/// comma-separated list of genre identifiers, and the medium columns a
+/// [`MusicAlbumRow`] carries are absent because the join is not run.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub(crate) struct MusicAlbumSummaryRow {
+    /// Identifier of the image holding the album's artwork, when set.
+    pub cover_image_id: Option<NumericID>,
+    /// Comma-separated genre identifiers of the album, ordered by identifier.
+    pub genres: String,
+    /// Unique identifier of the album.
+    #[sqlx(primary_key)]
+    pub music_album_id: NumericID,
+    /// Identifier of the music group the album belongs to.
+    pub music_group_id: NumericID,
+    /// Name of the album.
+    pub name: String,
+    /// Stored production type of the album, when set.
+    pub production_type: Option<String>,
+    /// Date of the release of the album, when the provider reports one.
+    pub release_date: Option<NaiveDate>,
+}
+
+/// Row counting the tracks one medium of one album sequences.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub(crate) struct MusicMediumTrackCountRow {
+    /// Index of the medium within its album.
+    pub medium_index: i64,
+    /// Stored type of the medium.
+    pub medium_type: String,
+    /// Identifier of the album the medium belongs to.
+    pub music_album_id: NumericID,
+    /// Number of tracks the medium sequences.
+    pub tracks: u64,
+}
+
 /// Row for a music album with one of its mediums and one recording the medium
 /// sequences, with the recording's backing file.
 ///

@@ -1,5 +1,6 @@
 // UC-002: authenticate and read the account back.
 
+import { endpointTag } from "../config.ts";
 import { ACCOUNT } from "../data/accounts.ts";
 import { assertion, fields, isStatus } from "../lib/checks.ts";
 import { tokenClient } from "../lib/auth.ts";
@@ -9,6 +10,7 @@ import type { FlowFn } from "./types.ts";
 export const login: FlowFn = async ({ client, ctx, flow }) => {
   const result = await client.postLogin({
     body: { password: ACCOUNT.password, username: ACCOUNT.username },
+    ...endpointTag("post-login"),
   });
   if (!isStatus(result, flow, 200)) {
     return;
@@ -19,7 +21,7 @@ export const login: FlowFn = async ({ client, ctx, flow }) => {
   assertion(flow, "token_type is bearer", result.data.token_type === "bearer");
 
   const authenticated = tokenClient(ctx.baseUrl, token, flow);
-  const me = await authenticated.getMe();
+  const me = await authenticated.getMe(endpointTag("get-me"));
   if (!isStatus(me, flow, 200)) {
     return;
   }

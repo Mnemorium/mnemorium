@@ -7,9 +7,11 @@
 //! the denial to a concealment decision. It is the only place under
 //! `src/lib/application` that logs `authz_failed`.
 
+use std::collections::HashMap;
+
 use tracing::warn;
 
-use crate::domain::model::{Action, ChildKind, ResourceRef, User};
+use crate::domain::model::{Action, ChildKind, ResourceAccess, ResourceRef, User};
 use crate::domain::port::{RepositoryError, ResourceFilter, ResourceRepository};
 use crate::domain::service::{AuthorizationEngine, EngineDecision};
 
@@ -120,6 +122,41 @@ pub(crate) async fn allows<R: ResourceRepository + ?Sized>(
         }),
         Err(_) => false,
     }
+}
+
+/// Decide which of `addresses` the caller may perform `action` on.
+///
+/// One batched read answers the whole collection, so a listing pays for a
+/// query set instead of a query per row. The contract matches [`allows`]: a
+/// missing resource, a storage error and a deny all answer `false`, which the
+/// caller treats as a filtered item.
+pub(crate) async fn allows_many<R: ResourceRepository + ?Sized>(
+    resources: &mut R,
+    caller: &User,
+    addresses: &[ResourceRef],
+    action: Action,
+    child_kind: Option<ChildKind>,
+) -> Vec<bool> {
+    let Ok(found) = resources.search_many(addresses, caller).await else {
+        return vec![false; addresses.len()];
+    };
+    let resolved: HashMap<ResourceRef, &ResourceAccess> = found
+        .iter()
+        .map(|access| {
+            (
+                ResourceRef::new(access.resource().kind(), access.resource().entity_id()),
+                access,
+            )
+        })
+        .collect();
+    addresses
+        .iter()
+        .map(|address| {
+            resolved.get(address).is_some_and(|access| {
+                AuthorizationEngine::authorize(caller, access, action, child_kind).is_allowed()
+            })
+        })
+        .collect()
 }
 
 /// Emit the one `authz_failed` event of a denial.

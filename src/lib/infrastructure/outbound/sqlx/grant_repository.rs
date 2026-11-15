@@ -1,10 +1,11 @@
-use sqlx::{Sqlite, Transaction};
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::NumericID;
 use crate::domain::model::{Grant, Principal};
 use crate::domain::port::{GrantFilter, GrantRepository, RepositoryError};
 
 use super::model::GrantRow;
+use super::query_filter::push_filter;
 use super::resource_repository::stored_grant;
 
 /// Upsert of a user grant, conflicting on its partial unique index.
@@ -84,30 +85,40 @@ impl GrantRepository for SqlxGrantRepository<'_> {
     }
 
     async fn search(&mut self, filter: &GrantFilter) -> Result<Vec<Grant>, RepositoryError> {
-        let (kind, user_id, role) = match filter.principal {
-            None => (None, None, None),
-            Some(Principal::Role(role)) => (Some("ROLE"), None, Some(role.as_wire())),
-            Some(Principal::Root) => (Some("ROOT"), None, None),
-            Some(Principal::User(id)) => (Some("USER"), Some(id), None),
-        };
-        let rows = sqlx::query_as::<_, GrantRow>(
+        let mut builder = QueryBuilder::<Sqlite>::new(
             "SELECT grant_id, principal_kind, principal_id, principal_role,
                     resource_id, role, child_kind, effect
-             FROM grant
-             WHERE (?1 IS NULL OR resource_id = ?1)
-               AND (
-                   ?2 IS NULL
-                   OR (?2 = 'USER' AND principal_kind = 'USER' AND principal_id = ?3)
-                   OR (?2 = 'ROLE' AND principal_kind = 'ROLE' AND principal_role = ?4)
-               )
-             ORDER BY grant_id",
-        )
-        .bind(filter.resource_id)
-        .bind(kind)
-        .bind(user_id)
-        .bind(role)
-        .fetch_all(&mut **self.transaction)
-        .await?;
+             FROM grant",
+        );
+        let mut first = true;
+        if let Some(resource_id) = filter.resource_id {
+            push_filter(&mut first, &mut builder, "resource_id = ", resource_id);
+        }
+        match filter.principal {
+            // `chk_grant_principal_kind` stores only `USER` and `ROLE` rows, so
+            // the Root Admin — who holds every action without a grant — matches
+            // none.
+            Some(Principal::Root) => return Ok(Vec::new()),
+            None => {}
+            Some(Principal::Role(role)) => {
+                push_filter(&mut first, &mut builder, "principal_kind = ", "ROLE");
+                push_filter(
+                    &mut first,
+                    &mut builder,
+                    "principal_role = ",
+                    role.as_wire(),
+                );
+            }
+            Some(Principal::User(user_id)) => {
+                push_filter(&mut first, &mut builder, "principal_kind = ", "USER");
+                push_filter(&mut first, &mut builder, "principal_id = ", user_id);
+            }
+        }
+        builder.push(" ORDER BY grant_id");
+        let rows = builder
+            .build_query_as::<GrantRow>()
+            .fetch_all(&mut **self.transaction)
+            .await?;
         rows.into_iter().map(stored_grant).collect()
     }
 }

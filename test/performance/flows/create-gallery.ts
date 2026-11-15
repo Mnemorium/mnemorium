@@ -1,6 +1,7 @@
 // UC-007, UC-009: create a gallery, attach one item, verify the row count, and
 // tear the gallery down.
 
+import { endpointTag } from "../config.ts";
 import { assertion, countDelta, fields, isStatus } from "../lib/checks.ts";
 import { spareImageFileId, uniqueName } from "../lib/data.ts";
 
@@ -8,13 +9,16 @@ import type { FlowFn } from "./types.ts";
 
 export const createGallery: FlowFn = async ({ client, flow, vu, iter }) => {
   const name = uniqueName("perf-gallery", vu, iter);
-  const before = await client.listGalleries({ query: { limit: 10, name } });
+  const before = await client.listGalleries({
+    query: { limit: 10, name },
+    ...endpointTag("list-galleries-by-name"),
+  });
   if (!isStatus(before, flow, 200)) {
     return;
   }
   assertion(flow, "created name is unique", before.data.items.length === 0);
 
-  const created = await client.postGallery({ body: { is_public: true, name } });
+  const created = await client.postGallery({ body: { is_public: true, name }, ...endpointTag("post-gallery") });
   if (!isStatus(created, flow, 201)) {
     return;
   }
@@ -28,7 +32,10 @@ export const createGallery: FlowFn = async ({ client, flow, vu, iter }) => {
     created.response.headers["Location"] === `/api/v1/library/gallery/${created.data.id}`,
   );
 
-  const after = await client.listGalleries({ query: { limit: 10, name } });
+  const after = await client.listGalleries({
+    query: { limit: 10, name },
+    ...endpointTag("list-galleries-by-name"),
+  });
   if (!isStatus(after, flow, 200)) {
     return;
   }
@@ -37,13 +44,14 @@ export const createGallery: FlowFn = async ({ client, flow, vu, iter }) => {
   const fileId = spareImageFileId(vu, iter);
   const item = await client.postGalleryItem(created.data.id, {
     body: { media_id: fileId, type: "image" },
+    ...endpointTag("post-gallery-item"),
   });
   if (!isStatus(item, flow, 201)) {
     return;
   }
   assertion(flow, "the attached item is the seeded file", item.data.file_id === fileId);
 
-  const detail = await client.getGallery(created.data.id);
+  const detail = await client.getGallery(created.data.id, endpointTag("get-created-gallery"));
   if (!isStatus(detail, flow, 200)) {
     return;
   }

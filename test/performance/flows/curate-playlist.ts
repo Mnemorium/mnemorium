@@ -1,6 +1,7 @@
 // UC-013, UC-016, UC-018: create a playlist, append a recording, reorder it,
 // and confirm the representation reports exactly one track.
 
+import { endpointTag } from "../config.ts";
 import { assertion, fields, isStatus, sideEffect } from "../lib/checks.ts";
 import { recordingId, uniqueName } from "../lib/data.ts";
 
@@ -9,6 +10,7 @@ import type { FlowFn } from "./types.ts";
 export const curatePlaylist: FlowFn = async ({ client, flow, vu, iter }) => {
   const created = await client.postPlaylist({
     body: { is_public: true, name: uniqueName("perf-playlist", vu, iter) },
+    ...endpointTag("post-playlist"),
   });
   if (!isStatus(created, flow, 201)) {
     return;
@@ -22,6 +24,7 @@ export const curatePlaylist: FlowFn = async ({ client, flow, vu, iter }) => {
 
   const appended = await client.patchPlaylist(playlistId, {
     body: { add_track: { recording_id: recording } },
+    ...endpointTag("patch-playlist"),
   });
   if (!isStatus(appended, flow, 200)) {
     return;
@@ -30,7 +33,10 @@ export const curatePlaylist: FlowFn = async ({ client, flow, vu, iter }) => {
   assertion(flow, "appended track has index 0", appended.data.tracks[0]?.id === 0);
   assertion(flow, "appended track places the recording", appended.data.tracks[0]?.recording_id === recording);
 
-  const reordered = await client.putPlaylistTrack(playlistId, { body: { order: [0] } });
+  const reordered = await client.putPlaylistTrack(playlistId, {
+    body: { order: [0] },
+    ...endpointTag("put-playlist-track"),
+  });
   if (!isStatus(reordered, flow, 200)) {
     return;
   }
@@ -40,7 +46,7 @@ export const curatePlaylist: FlowFn = async ({ client, flow, vu, iter }) => {
   assertion(flow, "reorder is a permutation", reordered.data.track_count === 1);
   assertion(flow, "reorder keeps index 0", reordered.data.tracks[0]?.id === 0);
 
-  const after = await client.getPlaylist(playlistId);
+  const after = await client.getPlaylist(playlistId, endpointTag("get-curated-playlist"));
   if (!isStatus(after, flow, 200)) {
     return;
   }

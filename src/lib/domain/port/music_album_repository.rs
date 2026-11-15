@@ -1,7 +1,7 @@
 use std::future::Future;
 
 use crate::domain::NumericID;
-use crate::domain::model::{MusicAlbum, MusicMedium, MusicRecording};
+use crate::domain::model::{MediumIndex, MusicAlbum, MusicMedium, MusicRecording};
 use crate::domain::port::RepositoryError;
 
 /// Search filters for [`MusicAlbumRepository::search`]. Every field is optional;
@@ -39,6 +39,17 @@ pub(crate) struct MusicRecordingFilter {
 /// sequence.
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait MusicAlbumRepository: Send + Sync {
+    /// Count the tracks each medium of each album in `album_ids` sequences.
+    ///
+    /// The result carries one entry per stored medium, ordered by album and then
+    /// by medium index; an album with no medium is absent. A listing counts the
+    /// page it answers this way instead of hydrating every album in the
+    /// collection.
+    fn count_tracks_by_album(
+        &mut self,
+        album_ids: &[NumericID],
+    ) -> impl Future<Output = Result<Vec<(NumericID, MediumIndex, u64)>, RepositoryError>> + Send;
+
     /// Insert a new `album` and its genre links, returning the stored album with
     /// the identifier it was assigned.
     ///
@@ -129,10 +140,30 @@ pub(crate) trait MusicAlbumRepository: Send + Sync {
         &mut self,
         filter: &MusicRecordingFilter,
     ) -> impl Future<Output = Result<Vec<MusicRecording>, RepositoryError>> + Send;
+
+    /// Search the albums matching `filter` as [`search`](Self::search) does,
+    /// without hydrating their mediums or the recordings those sequence.
+    ///
+    /// The albums carry an empty medium list: a listing counts the page it
+    /// answers with [`count_tracks_by_album`](Self::count_tracks_by_album)
+    /// instead of reading every album's tracks. Returns an empty list when no
+    /// album matches; a missing match is a valid outcome, not an error.
+    fn search_summaries(
+        &mut self,
+        filter: &MusicAlbumFilter,
+    ) -> impl Future<Output = Result<Vec<MusicAlbum>, RepositoryError>> + Send;
 }
 
 #[cfg(test)]
 impl<T: MusicAlbumRepository + ?Sized> MusicAlbumRepository for &mut T {
+    fn count_tracks_by_album(
+        &mut self,
+        album_ids: &[NumericID],
+    ) -> impl Future<Output = Result<Vec<(NumericID, MediumIndex, u64)>, RepositoryError>> + Send
+    {
+        (**self).count_tracks_by_album(album_ids)
+    }
+
     fn create(
         &mut self,
         album: MusicAlbum,
@@ -188,5 +219,12 @@ impl<T: MusicAlbumRepository + ?Sized> MusicAlbumRepository for &mut T {
         filter: &MusicRecordingFilter,
     ) -> impl Future<Output = Result<Vec<MusicRecording>, RepositoryError>> + Send {
         (**self).search_recordings(filter)
+    }
+
+    fn search_summaries(
+        &mut self,
+        filter: &MusicAlbumFilter,
+    ) -> impl Future<Output = Result<Vec<MusicAlbum>, RepositoryError>> + Send {
+        (**self).search_summaries(filter)
     }
 }

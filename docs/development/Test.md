@@ -70,6 +70,19 @@ header (`--profile`, `--flow`, `--repeat`, `--strict`, `--keep`).
 
 Teardown is not measured. Deletes are covered by the system suite; see [Known limitations](#known-limitations).
 
+### Endpoint tags
+
+Every measured request carries an `endpoint` tag, added by `endpointTag()` in `config.ts` and named in the closed
+`Endpoint` union beside it. An endpoint name belongs to exactly one flow: the per-endpoint submetric is single-tag
+(`http_req_duration{endpoint:list-galleries}`), so a name two flows shared would merge their traffic into one row. A
+flow that drives a route another flow already owns names its own call for what it does — `list-galleries-by-name`,
+`get-created-gallery`, `get-curated-playlist`, `get-uploaded-file`.
+
+`thresholdsFor` materialises one `http_req_duration` and one `http_reqs` submetric per selected endpoint, which lets
+`handleSummary` print the report's `## Endpoints` table: request rate, p50, p95 and p99 per flow and endpoint. The
+endpoint thresholds are a 60 s hang guard, never a budget: no verdict reads them, and a promoted baseline stays per
+flow. A request that went out untagged prints em dashes rather than dropping its row.
+
 ### Dataset
 
 The volume library lives in `test/seed/perf` and is applied only when `MNEMORIUM_SEED_PROFILE=perf`, which

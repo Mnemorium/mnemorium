@@ -35,6 +35,15 @@ pub(crate) struct GalleryItemFilter {
 /// Port for persisting and querying `Gallery` and its `GalleryItem`s.
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait GalleryRepository: Send + Sync {
+    /// Count the items of each gallery in `gallery_ids`.
+    ///
+    /// Galleries with no item are absent from the result. The count covers every
+    /// item of the gallery, not only the items the caller may discover.
+    fn count_items_by_gallery(
+        &mut self,
+        gallery_ids: &[NumericID],
+    ) -> impl Future<Output = Result<Vec<(NumericID, u64)>, RepositoryError>> + Send;
+
     /// Insert a new `gallery`, returning the persisted gallery with its final
     /// identifier.
     ///
@@ -146,6 +155,13 @@ impl GalleryItemDetail {
 
 #[cfg(test)]
 impl<T: GalleryRepository + ?Sized> GalleryRepository for &mut T {
+    fn count_items_by_gallery(
+        &mut self,
+        gallery_ids: &[NumericID],
+    ) -> impl Future<Output = Result<Vec<(NumericID, u64)>, RepositoryError>> + Send {
+        (**self).count_items_by_gallery(gallery_ids)
+    }
+
     fn create(
         &mut self,
         gallery: Gallery,

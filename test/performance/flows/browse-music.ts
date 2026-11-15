@@ -1,6 +1,6 @@
 // UC-012, UC-014: page albums and playlists, then read an album's tracks twice.
 
-import { DATASET } from "../config.ts";
+import { DATASET, endpointTag } from "../config.ts";
 import { assertion, atLeast, fields, idempotentReplay, isStatus, link } from "../lib/checks.ts";
 import { pickOffset } from "../lib/data.ts";
 
@@ -12,7 +12,10 @@ const ALBUM_COLLECTION_TOTAL = DATASET.albums + 1;
 
 export const browseMusic: FlowFn = async ({ client, flow, vu, iter }) => {
   const offset = pickOffset(ALBUM_COLLECTION_TOTAL, vu, iter);
-  const page = await client.listAlbums({ query: { limit: DATASET.pageSize, offset } });
+  const page = await client.listAlbums({
+    query: { limit: DATASET.pageSize, offset },
+    ...endpointTag("list-albums"),
+  });
   if (!isStatus(page, flow, 200)) {
     return;
   }
@@ -37,7 +40,7 @@ export const browseMusic: FlowFn = async ({ client, flow, vu, iter }) => {
   }
   link(album._links.self, flow, "album self");
 
-  const first = await client.getAlbumTrackList(album.id, 1);
+  const first = await client.getAlbumTrackList(album.id, 1, endpointTag("get-album-tracks"));
   if (!isStatus(first, flow, 200)) {
     return;
   }
@@ -51,7 +54,7 @@ export const browseMusic: FlowFn = async ({ client, flow, vu, iter }) => {
     assertion(flow, `track ${track.id} recording in range`, track.recording_id >= DATASET.recordingBase);
   }
 
-  const second = await client.getAlbumTrackList(album.id, 1);
+  const second = await client.getAlbumTrackList(album.id, 1, endpointTag("get-album-tracks"));
   if (!isStatus(second, flow, 200)) {
     return;
   }
@@ -62,7 +65,10 @@ export const browseMusic: FlowFn = async ({ client, flow, vu, iter }) => {
     "album track order",
   );
 
-  const playlists = await client.listPlaylists({ query: { limit: 10 } });
+  const playlists = await client.listPlaylists({
+    query: { limit: 10 },
+    ...endpointTag("list-playlists"),
+  });
   if (!isStatus(playlists, flow, 200)) {
     return;
   }
@@ -77,7 +83,7 @@ export const browseMusic: FlowFn = async ({ client, flow, vu, iter }) => {
   if (!fields(playlist, flow, "playlist", ["id", "name", "track_count", "_links"])) {
     return;
   }
-  const detail = await client.getPlaylist(playlist.id);
+  const detail = await client.getPlaylist(playlist.id, endpointTag("get-playlist"));
   if (!isStatus(detail, flow, 200)) {
     return;
   }

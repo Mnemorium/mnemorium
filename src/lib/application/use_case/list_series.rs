@@ -1,4 +1,4 @@
-use crate::application::authorization::allows;
+use crate::application::authorization::allows_many;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -68,17 +68,23 @@ where
                     .await
                     .map_err(|error| ListSeriesError::Unknown(error.into()))?;
 
+                // One batched read decides the whole collection: resolving a
+                // row at a time made the decision cost scale with the library.
+                let addresses: Vec<ResourceRef> = series
+                    .iter()
+                    .map(|shown| ResourceRef::new(ResourceKind::Series, shown.id()))
+                    .collect();
+                let discoverable = allows_many(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    &addresses,
+                    Action::Discover,
+                    None,
+                )
+                .await;
                 let mut visible = Vec::with_capacity(series.len());
-                for shown in series {
-                    if allows(
-                        &mut unit_of_work.resources(),
-                        &caller,
-                        ResourceRef::new(ResourceKind::Series, shown.id()),
-                        Action::Discover,
-                        None,
-                    )
-                    .await
-                    {
+                for (shown, allowed) in series.drain(..).zip(discoverable) {
+                    if allowed {
                         visible.push(shown);
                     }
                 }
