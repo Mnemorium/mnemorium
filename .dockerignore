@@ -29,6 +29,5 @@ AGENTS.md
 README.md
 devenv.lock
 devenv.nix
-pytest.ini
-ruff.toml
+pyproject.toml
 skill-lock.json

@@ -1,0 +1,55 @@
+# Python tool configuration. The file sits at the repository root because all three
+# tools below resolve the test tree from here: pytest adds `test/util` to `sys.path`,
+# ruff anchors its `extend-exclude` globs here, and pyright derives its search roots
+# from `extraPaths`.
+
+[tool.pytest.ini_options]
+# The patterns collect `test_*.py`, `*_test.py` and `*_*.py` modules. The system
+# suite names one module per feature area — `authentication.py` and `upload.py`
+# among them — so `test/system/conftest.py` collects those single-word modules
+# itself rather than relying on the patterns.
+python_files = ["test_*.py", "*_test.py", "*_*.py"]
+
+# The black-box system suite drives the containerised image. A bare `pytest`
+# collects exactly this folder; `script/system.sh` names it explicitly.
+testpaths = ["test/system"]
+
+# The shared harness is a plugin, not a conftest.py, so it stays a distinct
+# module in sys.modules beside `test/system/conftest.py`.
+pythonpath = ["test/util"]
+addopts = ["-p", "harness", "--strict-markers"]
+
+markers = [
+  "slow: a test that starts more than one server or waits on a race",
+  "own_instance(reason): the test starts its own container; reason is one of first_boot, restart, global_filesystem, log_sink, exact_collection, process_state",
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 120
+extend-exclude = ["docs", "site", "target", ".devenv"]
+
+[tool.ruff.lint]
+extend-select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # import sorting
+  "B",   # bugbear
+  "UP",  # pyupgrade
+  "SIM", # simplification
+]
+
+[tool.pyright]
+# The test tree imports its shared modules flat: `harness` lives in `test/util`,
+# while `conftest`, `music` and the other feature modules sit in `test/system`
+# beside the cases that import them. pytest supplies those roots at run time
+# (`pythonpath` above, plus its `prepend` import mode); the two `extraPaths`
+# below give the editor the same roots, so `from harness import ...` resolves
+# outside pytest too.
+#
+# The suite is not type-checked: `off` keeps the editor to import resolution,
+# the only Python diagnostic this repository acts on (ruff owns the rest), and
+# matches Pylance's default. Raising it is a deliberate change, not a fix.
+include = ["test"]
+extraPaths = ["test/util", "test/system"]
+typeCheckingMode = "off"

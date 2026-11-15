@@ -3,7 +3,7 @@
 The suite names one module per feature area — `authentication.py` and `upload.py` among them — but the three global
 `python_files` patterns (`test_*.py`, `*_test.py`, `*_*.py`) match none of those single-word names. This hook collects
 every module directly in this folder that those patterns leave out, so a feature area needs no prefix and no entry in
-`pytest.ini`.
+`pyproject.toml`.
 
 A case that does not mark itself own drives the one instance its worker booted and shares, so the session fixture, the
 shared configuration, the health probe and the cached Root Admin token live here rather than in each module. A case

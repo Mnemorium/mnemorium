@@ -12,7 +12,7 @@ on:
       - 'Dockerfile'
       - '.dockerignore'
       - 'migrations/**/*.sql'
-      - 'pytest.ini'
+      - 'pyproject.toml'
       - 'requirements.txt'
       - 'script/system.sh'
       - 'test/seed/**'

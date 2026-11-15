@@ -3410,9 +3410,8 @@ longest-prefix match, and every scope owns at least one path. Adding or removing
 | Tooling | `config`         | `.yamllint`                               | YAML linter configuration       |
 | Tooling | `config`         | `clippy.toml`                             | Clippy configuration            |
 | Tooling | `config`         | `deny.toml`                               | cargo-deny configuration        |
-| Tooling | `config`         | `pytest.ini`                              | pytest configuration            |
+| Tooling | `config`         | `pyproject.toml`                          | Python tool configuration       |
 | Tooling | `config`         | `requirements.txt`                        | Python dependencies             |
-| Tooling | `config`         | `ruff.toml`                               | Ruff configuration              |
 | Tooling | `config`         | `rule_enforcer.yaml`                      | Rule enforcer configuration     |
 | Tooling | `config`         | `rule/**`                                 | ast-grep rule definitions       |
 | Tooling | `config`         | `schemathesis.toml`                       | Schemathesis fuzz configuration |

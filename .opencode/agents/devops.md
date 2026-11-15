@@ -107,7 +107,7 @@ The surface is fixed; its contents are not. Read the files at run time.
   `performance.yml`, `typescript.yml`, `cd.yml`, `triage.yml`).
 - Repo hygiene — `.yamllint`, `.markdownlint-cli2.jsonc`, `.prettierrc`,
   `.prettierignore`, `.ls-lint.yml`, `.taplo.toml`, `.betterleaks.toml`,
-  `ruff.toml`, `pytest.ini`, `requirements.txt`, `.releaserc.json`,
+  `pyproject.toml`, `requirements.txt`, `.releaserc.json`,
   `.gitignore`, `script/*`.
 - Docs tooling — `mkdocs.yml` and the `docs` process.
 - Git conventions — branch and PR-title naming, Conventional Commits, scopes.

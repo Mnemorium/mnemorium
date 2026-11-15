@@ -7,7 +7,7 @@ on:
       - main
     paths:
       - '**/*.py'
-      - 'ruff.toml'
+      - 'pyproject.toml'
       - 'requirements.txt'
 
 permissions:
