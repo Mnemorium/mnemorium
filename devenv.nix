@@ -144,7 +144,7 @@ in
       entry = "script/rule_enforcer.sh check";
       language = "system";
       pass_filenames = false;
-      files = "(\\.rs$|\\.md$|^migrations/.*\\.sql$|^rule/.*|^rule_enforcer\\.yaml$|^script/rule_enforcer\\.sh$)";
+      files = "(\\.rs$|\\.md$|^migrations/.*\\.sql$|^rule/.*|^rule_enforcer\\.yaml$|^script/rule_enforcer\\.sh$|^test/system/.*\\.py$)";
       fail_fast = true;
     };
     # === repository governance (GOV-001)
