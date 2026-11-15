@@ -1610,7 +1610,7 @@ dependencies = [
 
 [[package]]
 name = "mnemorium"
-version = "0.39.0"
+version = "0.39.1"
 dependencies = [
  "allure-cargotest",
  "anyhow",

@@ -1,3 +1,9 @@
+## [0.39.1](https://github.com/Mnemorium/mnemorium/compare/v0.39.0...v0.39.1) (2026-11-15)
+
+### Performance Improvements
+
+* **persistence:** batch listing authorization and count the page, not the library ([#417](https://github.com/Mnemorium/mnemorium/issues/417)) ([bcc1391](https://github.com/Mnemorium/mnemorium/commit/bcc1391dbf59a6d452a654b0f667e28eeccf4825))
+
 ## [0.39.0](https://github.com/Mnemorium/mnemorium/compare/v0.38.0...v0.39.0) (2026-11-14)
 
 ### Features
