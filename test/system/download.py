@@ -15,8 +15,18 @@ import shutil
 import sqlite3
 
 import allure
-from conftest import FIXTURE_DIRECTORY, provision, upload
-from harness import Sut, link_of
+import pytest
+from conftest import (
+    FIXTURE_DIRECTORY,
+    provision,
+    start_instance,
+    upload,
+)
+from harness import (
+    ROOT_ADMIN_USERNAME,
+    Sut,
+    link_of,
+)
 
 IMAGE_CONTENT_TYPE = "image/png"
 AUDIO_CONTENT_TYPE = "audio/flac"
@@ -124,8 +134,11 @@ def test_a_query_value_is_not_a_credential(server: Sut, root_token: str) -> None
 @allure.epic("Download")
 @allure.feature("REQ-DOWNLOAD-002")
 @allure.story("SCN-DOWNLOAD-002-A")
-def test_image_content_decides_view(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_image_content_decides_view(sut: Sut) -> None:
     """A viewer grant reads image content."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _user_id, user = provision(server, root_token, "alice")
     file = image_file(server, root_token)
     share_viewer(server, root_token, file, _user_id)
@@ -139,8 +152,11 @@ def test_image_content_decides_view(server: Sut, root_token: str) -> None:
 @allure.epic("Download")
 @allure.feature("REQ-DOWNLOAD-002")
 @allure.story("SCN-DOWNLOAD-002-B")
-def test_audio_and_video_content_decide_stream(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_audio_and_video_content_decide_stream(sut: Sut) -> None:
     """A viewer grant read and stream audio and video content."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     user_id, user = provision(server, root_token, "alice")
     audio = audio_file(server, root_token)
     video = video_file(server, root_token)
@@ -159,8 +175,11 @@ def test_audio_and_video_content_decide_stream(server: Sut, root_token: str) -> 
 @allure.epic("Download")
 @allure.feature("REQ-DOWNLOAD-002")
 @allure.story("SCN-DOWNLOAD-002-C")
-def test_file_content_decides_download(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_file_content_decides_download(sut: Sut) -> None:
     """A viewer grant without `Download` cannot read file content."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     user_id, user = provision(server, root_token, "alice")
     file = image_file(server, root_token)
     share_viewer(server, root_token, file, user_id)
@@ -173,8 +192,11 @@ def test_file_content_decides_download(server: Sut, root_token: str) -> None:
 @allure.epic("Download")
 @allure.feature("REQ-DOWNLOAD-002")
 @allure.story("SCN-DOWNLOAD-002-D")
-def test_a_changed_decision_applies_to_the_next_request(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_changed_decision_applies_to_the_next_request(sut: Sut) -> None:
     """A replacement policy is consulted by the next content request."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     user_id, user = provision(server, root_token, "alice")
     file = image_file(server, root_token)
     image = typed(server, root_token, file, "image")
@@ -380,8 +402,11 @@ def test_a_stale_validator_answers_the_whole_content(server: Sut, root_token: st
 @allure.epic("Download")
 @allure.feature("REQ-DOWNLOAD-007")
 @allure.story("SCN-DOWNLOAD-007-A")
-def test_a_typed_file_keeps_its_original_name(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_typed_file_keeps_its_original_name(sut: Sut) -> None:
     """The file route names the typed media row's original name."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     file = image_file(server, root_token, "holiday.png")
 
     response = filed_content(server, root_token, file)
@@ -392,8 +417,11 @@ def test_a_typed_file_keeps_its_original_name(server: Sut, root_token: str) -> N
 @allure.epic("Download")
 @allure.feature("REQ-DOWNLOAD-007")
 @allure.story("SCN-DOWNLOAD-007-B")
-def test_a_bare_file_keeps_its_stored_name(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="global_filesystem")
+def test_a_bare_file_keeps_its_stored_name(sut: Sut) -> None:
     """A file with no typed row names the final segment of its stored path."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     file = image_file(server, root_token, "holiday.png")
     with sqlite3.connect(server.dir / "mnemorium.db") as connection:
         connection.execute("DELETE FROM image WHERE file_id = ?", (file["id"],))
@@ -422,8 +450,11 @@ def test_a_display_route_is_not_an_attachment(server: Sut, root_token: str) -> N
 @allure.epic("Download")
 @allure.feature("REQ-DOWNLOAD-008")
 @allure.story("SCN-DOWNLOAD-008-A")
-def test_an_undiscoverable_asset_answers_not_found(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_undiscoverable_asset_answers_not_found(sut: Sut) -> None:
     """An unknown asset and an undiscoverable one both answer 404."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     user_id, user = provision(server, root_token, "alice")
     file = image_file(server, root_token)
     image = typed(server, root_token, file, "image")
@@ -440,8 +471,11 @@ def test_an_undiscoverable_asset_answers_not_found(server: Sut, root_token: str)
 @allure.epic("Download")
 @allure.feature("REQ-DOWNLOAD-008")
 @allure.story("SCN-DOWNLOAD-008-B")
-def test_a_visible_asset_whose_action_refuses_answers_forbidden(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_visible_asset_whose_action_refuses_answers_forbidden(sut: Sut) -> None:
     """A discoverable file without `Download` answers 403."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     user_id, user = provision(server, root_token, "alice")
     file = image_file(server, root_token)
     share_viewer(server, root_token, file, user_id)
@@ -455,8 +489,11 @@ def test_a_visible_asset_whose_action_refuses_answers_forbidden(server: Sut, roo
 @allure.epic("Download")
 @allure.feature("REQ-DOWNLOAD-008")
 @allure.story("SCN-DOWNLOAD-008-C")
-def test_an_absent_library_root_answers_unavailable(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="restart")
+def test_an_absent_library_root_answers_unavailable(sut: Sut) -> None:
     """A content request while the library root is absent answers 503."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     image = typed(server, root_token, image_file(server, root_token), "image")
     server.stop()
     shutil.rmtree(server.dir / "media", ignore_errors=True)
@@ -470,8 +507,11 @@ def test_an_absent_library_root_answers_unavailable(server: Sut, root_token: str
 @allure.epic("Download")
 @allure.feature("REQ-DOWNLOAD-008")
 @allure.story("SCN-DOWNLOAD-008-D")
-def test_a_registered_file_without_bytes_answers_server_error(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="global_filesystem")
+def test_a_registered_file_without_bytes_answers_server_error(sut: Sut) -> None:
     """A registered file whose bytes are absent answers 500."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     file = image_file(server, root_token)
     (server.dir / "media" / file["path"]).unlink()
 

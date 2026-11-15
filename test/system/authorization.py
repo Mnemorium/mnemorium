@@ -14,8 +14,24 @@ owned by `openspec/specs/gallery/spec.md`. The split is deliberate, not drift.
 """
 
 import allure
-from conftest import FIXTURE_DIRECTORY, add_to_gallery, create_gallery, linked_id, provision, upload
-from harness import ROOT_ADMIN_USERNAME, SECRET_PASSWORD, Sut, begin_upload, link_of, register
+import pytest
+from conftest import (
+    FIXTURE_DIRECTORY,
+    add_to_gallery,
+    create_gallery,
+    linked_id,
+    provision,
+    start_instance,
+    upload,
+)
+from harness import (
+    ROOT_ADMIN_USERNAME,
+    SECRET_PASSWORD,
+    Sut,
+    begin_upload,
+    link_of,
+    register,
+)
 
 GALLERY = "GALLERY"
 VIEWER = "VIEWER"
@@ -29,8 +45,11 @@ PRIVATE = "PRIVATE"
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-031")
 @allure.story("SCN-AUTHORIZATION-031-A")
-def test_a_caller_reads_its_own_summary(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_caller_reads_its_own_summary(sut: Sut) -> None:
     """A Standard user reaches its own summary and receives no grant internals."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
 
     response = server.request("GET", f"{server.href('permission')}?user_id={alice_id}", token=alice)
@@ -45,8 +64,11 @@ def test_a_caller_reads_its_own_summary(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-031")
 @allure.story("SCN-AUTHORIZATION-031-B")
-def test_an_admin_reads_a_standard_users_summary(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_admin_reads_a_standard_users_summary(sut: Sut) -> None:
     """An Admin reaches a Standard user's summary."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     bob_id, _bob = provision(server, root_token, "bobby")
     admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
     assert admin_id > 0
@@ -59,8 +81,11 @@ def test_an_admin_reads_a_standard_users_summary(server: Sut, root_token: str) -
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-031")
 @allure.story("SCN-AUTHORIZATION-031-C")
-def test_another_users_summary_is_forbidden(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_another_users_summary_is_forbidden(sut: Sut) -> None:
     """A Standard user may not read another user's summary."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _bob_id, bob = provision(server, root_token, "bobby")
     carol_id, _carol = provision(server, root_token, "carol")
 
@@ -72,8 +97,11 @@ def test_another_users_summary_is_forbidden(server: Sut, root_token: str) -> Non
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-031")
 @allure.story("SCN-AUTHORIZATION-031-D")
-def test_the_explanation_is_returned_to_a_manager(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_explanation_is_returned_to_a_manager(sut: Sut) -> None:
     """The Root Admin receives the decision and its explanation."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, _alice = provision(server, root_token, "alice")
     gallery = create_gallery(server, root_token, "holiday")
     gallery_id = linked_id(gallery["_links"]["self"]["href"])
@@ -94,8 +122,11 @@ def test_the_explanation_is_returned_to_a_manager(server: Sut, root_token: str) 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-032")
 @allure.story("SCN-AUTHORIZATION-032-A")
-def test_an_owner_reads_the_resource_permission(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_owner_reads_the_resource_permission(sut: Sut) -> None:
     """The owner reads its gallery's visibility and grants."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     gallery = create_gallery(server, alice, "holiday")
     gallery_id = linked_id(gallery["_links"]["self"]["href"])
@@ -115,8 +146,11 @@ def test_an_owner_reads_the_resource_permission(server: Sut, root_token: str) ->
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-032")
 @allure.story("SCN-AUTHORIZATION-032-B")
-def test_an_owner_replaces_the_set(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_owner_replaces_the_set(sut: Sut) -> None:
     """A replacement stores exactly the submitted grant set."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     bob_id, bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "holiday")
@@ -146,8 +180,11 @@ def test_an_owner_replaces_the_set(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-032")
 @allure.story("SCN-AUTHORIZATION-032-C")
-def test_a_manager_cannot_replace(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_manager_cannot_replace(sut: Sut) -> None:
     """A caller holding Manager but not ManagePermissions may read but not replace."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     bob_id, bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "holiday")
@@ -176,8 +213,11 @@ def test_a_manager_cannot_replace(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-032")
 @allure.story("SCN-AUTHORIZATION-032-D")
-def test_a_rejected_replacement_leaves_the_previous_set(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_rejected_replacement_leaves_the_previous_set(sut: Sut) -> None:
     """A replacement naming the Owner role answers 422 and stores nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     bob_id, _bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "holiday")
@@ -202,8 +242,11 @@ def test_a_rejected_replacement_leaves_the_previous_set(server: Sut, root_token:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-033")
 @allure.story("SCN-AUTHORIZATION-033-A")
-def test_a_manager_shares_a_viewer(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_manager_shares_a_viewer(sut: Sut) -> None:
     """An owner shares Viewer and the recipient can read the gallery."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     bob_id, bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "holiday")
@@ -224,8 +267,11 @@ def test_a_manager_shares_a_viewer(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-033")
 @allure.story("SCN-AUTHORIZATION-033-B")
-def test_sharing_cannot_escalate(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_sharing_cannot_escalate(sut: Sut) -> None:
     """A share naming Editor answers 403 and stores nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     bob_id, bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "holiday")
@@ -246,8 +292,11 @@ def test_sharing_cannot_escalate(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-033")
 @allure.story("SCN-AUTHORIZATION-033-C")
-def test_a_share_is_revoked(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_share_is_revoked(sut: Sut) -> None:
     """A revoked share stops reaching the resource."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     bob_id, bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "holiday")
@@ -270,8 +319,11 @@ def test_a_share_is_revoked(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-034")
 @allure.story("SCN-AUTHORIZATION-034-A")
-def test_the_owner_role_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_owner_role_is_refused(sut: Sut) -> None:
     """A grant naming Owner answers 422."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     bob_id, _bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "holiday")
@@ -293,8 +345,11 @@ def test_the_owner_role_is_refused(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-034")
 @allure.story("SCN-AUTHORIZATION-034-B")
-def test_permission_administration_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_permission_administration_is_refused(sut: Sut) -> None:
     """A grant naming ManagePermissions answers 422."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     bob_id, _bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "holiday")
@@ -322,8 +377,11 @@ def test_permission_administration_is_refused(server: Sut, root_token: str) -> N
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-034")
 @allure.story("SCN-AUTHORIZATION-034-C")
-def test_a_duplicate_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_duplicate_is_refused(sut: Sut) -> None:
     """A set naming the same grant twice answers 422."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     bob_id, _bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "holiday")
@@ -343,8 +401,11 @@ def test_a_duplicate_is_refused(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-034")
 @allure.story("SCN-AUTHORIZATION-034-D")
-def test_an_unknown_principal_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_unknown_principal_is_refused(sut: Sut) -> None:
     """A grant naming a user that does not exist answers 422."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     gallery = create_gallery(server, alice, "holiday")
     gallery_id = linked_id(gallery["_links"]["self"]["href"])
@@ -365,8 +426,11 @@ def test_an_unknown_principal_is_refused(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-034")
 @allure.story("SCN-AUTHORIZATION-034-E")
-def test_admin_creation_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_admin_creation_is_refused(sut: Sut) -> None:
     """A CreateChild grant naming the Admin child kind answers 422."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     bob_id, _bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "holiday")
@@ -395,8 +459,11 @@ def test_admin_creation_is_refused(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-035")
 @allure.story("SCN-AUTHORIZATION-035-A")
-def test_a_role_grant_cannot_be_written(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_role_grant_cannot_be_written(sut: Sut) -> None:
     """A replacement naming a role principal answers 422."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     gallery = create_gallery(server, alice, "holiday")
     gallery_id = linked_id(gallery["_links"]["self"]["href"])
@@ -423,8 +490,11 @@ def test_a_role_grant_cannot_be_written(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-035")
 @allure.story("SCN-AUTHORIZATION-035-B")
-def test_the_seeded_role_applies(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_seeded_role_applies(sut: Sut) -> None:
     """A Standard user with no per-resource grant creates a gallery through its seeded role."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
 
     response = server.request(
@@ -440,8 +510,11 @@ def test_the_seeded_role_applies(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-016")
 @allure.story("SCN-AUTHORIZATION-016-A")
-def test_a_public_resource_is_readable_by_every_caller(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_public_resource_is_readable_by_every_caller(sut: Sut) -> None:
     """A public gallery is readable by a user with no grant."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     _bob_id, bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "holiday", is_public=True)
@@ -455,8 +528,11 @@ def test_a_public_resource_is_readable_by_every_caller(server: Sut, root_token: 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-014")
 @allure.story("SCN-AUTHORIZATION-014-A")
-def test_a_deny_wins_over_a_grant(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_deny_wins_over_a_grant(sut: Sut) -> None:
     """A deny stored on the resource defeats a viewer grant."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     bob_id, bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "holiday")
@@ -497,8 +573,11 @@ def test_a_deny_wins_over_a_grant(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-021")
 @allure.story("SCN-AUTHORIZATION-021-A")
-def test_a_caller_reads_its_own_account(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_caller_reads_its_own_account(sut: Sut) -> None:
     """A caller reads its own account without a grant."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
 
     response = server.request("GET", f"{server.href('user')}/{alice_id}", token=alice)
@@ -509,8 +588,11 @@ def test_a_caller_reads_its_own_account(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-018")
 @allure.story("SCN-AUTHORIZATION-018-A")
-def test_the_root_cannot_read_another_users_upload(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_root_cannot_read_another_users_upload(sut: Sut) -> None:
     """An upload is owner-only, even for the Root Admin."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     image = (FIXTURE_DIRECTORY / "cover.png").read_bytes()
     session = begin_upload(server, alice, "cover.png", image)
@@ -523,8 +605,11 @@ def test_the_root_cannot_read_another_users_upload(server: Sut, root_token: str)
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-022")
 @allure.story("SCN-AUTHORIZATION-022-B")
-def test_a_user_cannot_create_an_admin(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_user_cannot_create_an_admin(sut: Sut) -> None:
     """A Standard user may not register an Admin account."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
 
     response = server.request(
@@ -545,8 +630,11 @@ def test_a_user_cannot_create_an_admin(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-025")
 @allure.story("SCN-AUTHORIZATION-025-A")
-def test_an_asset_is_reachable_through_its_gallery(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_asset_is_reachable_through_its_gallery(sut: Sut) -> None:
     """A gallery item's image is readable by the gallery owner and concealed from others."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     _bob_id, bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "holiday")
@@ -564,8 +652,11 @@ def test_an_asset_is_reachable_through_its_gallery(server: Sut, root_token: str)
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-019")
 @allure.story("SCN-AUTHORIZATION-019-A")
-def test_an_admin_creates_a_standard_account(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_admin_creates_a_standard_account(sut: Sut) -> None:
     """An Admin creates a Standard account, which then authenticates."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
 
     created = register(server, admin, "alice", None, SECRET_PASSWORD)
@@ -578,8 +669,11 @@ def test_an_admin_creates_a_standard_account(server: Sut, root_token: str) -> No
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-019")
 @allure.story("SCN-AUTHORIZATION-019-B")
-def test_an_admin_cannot_create_an_admin(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_admin_cannot_create_an_admin(sut: Sut) -> None:
     """An Admin creating an Admin answers 403 and stores nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
 
     response = server.request(
@@ -603,8 +697,11 @@ def test_an_admin_cannot_create_an_admin(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-019")
 @allure.story("SCN-AUTHORIZATION-019-C")
-def test_an_admin_cannot_touch_an_admin(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_admin_cannot_touch_an_admin(sut: Sut) -> None:
     """An Admin deleting an Admin peer or itself answers 403 and applies nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
     peer_id, peer = provision(server, root_token, "adminb", role="ADMIN")
 
@@ -620,8 +717,11 @@ def test_an_admin_cannot_touch_an_admin(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-019")
 @allure.story("SCN-AUTHORIZATION-019-D")
-def test_the_root_admin_deletes_an_admin(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_root_admin_deletes_an_admin(sut: Sut) -> None:
     """The Root Admin deletes an Admin account and the account is gone."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
 
     deleted = server.request("DELETE", f"{server.href('user')}/{admin_id}", token=root_token)
@@ -654,8 +754,11 @@ def test_the_root_account_is_untouchable(server: Sut, root_token: str) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-020")
 @allure.story("SCN-AUTHORIZATION-020-A")
-def test_an_admin_replaces_a_standard_users_grants(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_admin_replaces_a_standard_users_grants(sut: Sut) -> None:
     """An Admin replaces the grant set naming a Standard user and reads the replacement back."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
     alice_id, alice = provision(server, root_token, "alice")
     gallery = create_gallery(server, admin, "holiday")
@@ -685,8 +788,11 @@ def test_an_admin_replaces_a_standard_users_grants(server: Sut, root_token: str)
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-017")
 @allure.story("SCN-AUTHORIZATION-017-A")
-def test_the_root_administers_another_callers_private_gallery(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_root_administers_another_callers_private_gallery(sut: Sut) -> None:
     """The Root Admin reads, appends media to and deletes another caller's private gallery."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     gallery = create_gallery(server, alice, "holiday")
     image = (FIXTURE_DIRECTORY / "cover.png").read_bytes()
@@ -711,8 +817,11 @@ def test_the_root_administers_another_callers_private_gallery(server: Sut, root_
 @allure.epic("Authorization")
 @allure.feature("REQ-GALLERY-006")
 @allure.story("SCN-GALLERY-006-C")
-def test_an_admin_cannot_delete_a_readable_public_gallery(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_admin_cannot_delete_a_readable_public_gallery(sut: Sut) -> None:
     """An Admin deleting a readable public gallery answers 403 and the gallery survives."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     _admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
     gallery = create_gallery(server, alice, "holiday", is_public=True)

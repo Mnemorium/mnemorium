@@ -25,10 +25,19 @@ import sqlite3
 import time
 
 import allure
+import pytest
 from audio import ONE_SECOND, typed_audio, upload_audio, wav
-from conftest import add_to_gallery, create_gallery, provision
+from conftest import (
+    add_to_gallery,
+    create_gallery,
+    provision,
+    start_instance,
+)
 from gallery import image_file
-from harness import Sut
+from harness import (
+    ROOT_ADMIN_USERNAME,
+    Sut,
+)
 
 # The music resource kinds the resource-policy route addresses.
 ALBUM = "MUSIC_ALBUM"
@@ -399,8 +408,11 @@ def group_ids(response) -> list[int]:
 @allure.feature("REQ-MUSIC-008")
 @allure.story("SCN-MUSIC-008-A")
 @allure.story("SCN-MUSIC-008-C")
-def test_a_new_album_is_created(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_new_album_is_created(sut: Sut) -> None:
     """An album is created from a name and group, stores the UNKNOWN genre and carries no medium yet."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     group = create_group(server, root_token)
 
     response = post_album(server, root_token, album_body(group["id"], name="Kind of Blue"))
@@ -420,8 +432,11 @@ def test_a_new_album_is_created(server: Sut, root_token: str) -> None:
 @allure.epic("Music")
 @allure.feature("REQ-MUSIC-008")
 @allure.story("SCN-MUSIC-008-B")
-def test_an_existing_album_is_returned_unchanged(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_existing_album_is_returned_unchanged(sut: Sut) -> None:
     """The same name and group answers 200 with the stored album, not a second album."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     group = create_group(server, root_token)
     first = create_album(server, root_token, group["id"], name="Blue Train")
 
@@ -436,8 +451,11 @@ def test_an_existing_album_is_returned_unchanged(server: Sut, root_token: str) -
 @allure.epic("Music")
 @allure.feature("REQ-MUSIC-008")
 @allure.story("SCN-MUSIC-008-D")
-def test_unusable_album_creation_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_unusable_album_creation_is_refused(sut: Sut) -> None:
     """An empty name, an unknown group and an empty genre are refused and store nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     group = create_group(server, root_token)
 
     empty_name = post_album(server, root_token, album_body(group["id"], name=""))
@@ -453,8 +471,11 @@ def test_unusable_album_creation_is_refused(server: Sut, root_token: str) -> Non
 @allure.epic("Music")
 @allure.feature("REQ-MUSIC-029")
 @allure.story("SCN-MUSIC-029-A")
-def test_album_metadata_is_updated_partially(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_album_metadata_is_updated_partially(sut: Sut) -> None:
     """A new release date and genre list are stored and the album representation is returned."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     group = create_group(server, root_token)
     album = create_album(server, root_token, group["id"], name="Kind of Blue")
 
@@ -473,8 +494,11 @@ def test_album_metadata_is_updated_partially(server: Sut, root_token: str) -> No
 @allure.epic("Music")
 @allure.feature("REQ-MUSIC-029")
 @allure.story("SCN-MUSIC-029-B")
-def test_an_optional_album_value_is_cleared(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_optional_album_value_is_cleared(sut: Sut) -> None:
     """A `null` release date stores none and the representation reports `null`."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     group = create_group(server, root_token)
     album = create_album(server, root_token, group["id"], release_date="1970-01-01")
 
@@ -488,8 +512,11 @@ def test_an_optional_album_value_is_cleared(server: Sut, root_token: str) -> Non
 @allure.epic("Music")
 @allure.feature("REQ-MUSIC-029")
 @allure.story("SCN-MUSIC-029-C")
-def test_a_group_change_that_collides_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_group_change_that_collides_is_refused(sut: Sut) -> None:
     """Moving an album onto another album's name and group answers `409` and applies nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     first = create_group(server, root_token, name=f"First {time.time_ns()}")
     second = create_group(server, root_token, name=f"Second {time.time_ns()}")
     title = f"Shared {time.time_ns()}"
@@ -506,8 +533,11 @@ def test_a_group_change_that_collides_is_refused(server: Sut, root_token: str) -
 @allure.epic("Music")
 @allure.feature("REQ-MUSIC-029")
 @allure.story("SCN-MUSIC-029-D")
-def test_an_absent_album_field_keeps_its_value(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_absent_album_field_keeps_its_value(sut: Sut) -> None:
     """A request that names no production type leaves the stored production type unchanged."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     group = create_group(server, root_token)
     album = create_album(server, root_token, group["id"], production_type="LIVE")
 
@@ -521,8 +551,11 @@ def test_an_absent_album_field_keeps_its_value(server: Sut, root_token: str) -> 
 @allure.epic("Music")
 @allure.feature("REQ-MUSIC-029")
 @allure.story("SCN-MUSIC-029-E")
-def test_an_invalid_album_value_applies_nothing(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_invalid_album_value_applies_nothing(sut: Sut) -> None:
     """An empty or over-long name, an empty genre and an unknown group all answer `422` and store nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     group = create_group(server, root_token)
     album = create_album(server, root_token, group["id"], name="Original")
 
@@ -551,8 +584,11 @@ def test_an_invalid_album_value_applies_nothing(server: Sut, root_token: str) ->
 @allure.story("SCN-MUSIC-002-B")
 @allure.story("SCN-MUSIC-002-C")
 @allure.story("SCN-MUSIC-002-D")
-def test_the_album_collection_is_partial_and_filtered(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_album_collection_is_partial_and_filtered(sut: Sut) -> None:
     """The collection carries partial albums, the name filter narrows it, and a detail read carries the medium."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     group = create_group(server, root_token)
     cover = library_image(server, root_token)
     first = create_album(server, root_token, group["id"], name="First", cover_image_id=cover)
@@ -595,8 +631,11 @@ def test_the_album_collection_is_partial_and_filtered(server: Sut, root_token: s
 @allure.feature("REQ-MUSIC-004")
 @allure.story("SCN-MUSIC-004-A")
 @allure.story("SCN-MUSIC-004-B")
-def test_a_medium_is_created_retyped_and_repeated(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_medium_is_created_retyped_and_repeated(sut: Sut) -> None:
     """A medium is created, retyped the same index, and a repeat of the stored type changes nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     group = create_group(server, root_token)
     album = create_album(server, root_token, group["id"])
 
@@ -626,8 +665,11 @@ def test_a_medium_is_created_retyped_and_repeated(server: Sut, root_token: str) 
 @allure.feature("REQ-MUSIC-016")
 @allure.story("SCN-MUSIC-016-A")
 @allure.story("SCN-MUSIC-016-C")
-def test_the_default_album_stays_readable_and_refuses_writes(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_default_album_stays_readable_and_refuses_writes(sut: Sut) -> None:
     """Album 0 is readable and refuses a medium write; an invalid medium type is refused on any album."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     group = create_group(server, root_token)
     album = create_album(server, root_token, group["id"])
 
@@ -656,8 +698,11 @@ def test_the_default_album_stays_readable_and_refuses_writes(server: Sut, root_t
 @allure.feature("REQ-MUSIC-007")
 @allure.story("SCN-MUSIC-007-A")
 @allure.story("SCN-MUSIC-007-B")
-def test_a_recording_is_placed_moved_and_edited(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_recording_is_placed_moved_and_edited(sut: Sut) -> None:
     """A recording is placed, moved, read without artwork beside its album, and renamed where a playlist sees it."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
     catalogue = placed_catalogue(server, root_token, album_cover=cover)
     album_id = catalogue["album"]["id"]
@@ -714,8 +759,11 @@ def test_a_recording_is_placed_moved_and_edited(server: Sut, root_token: str) ->
 @allure.feature("REQ-MUSIC-011")
 @allure.story("SCN-MUSIC-011-C")
 @allure.story("SCN-MUSIC-011-D")
-def test_the_recording_edit_refusals(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_recording_edit_refusals(sut: Sut) -> None:
     """A duplicate ISRC, a malformed ISRC, an unknown track and the default album are refused."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     catalogue = placed_catalogue(server, root_token)
     album_id = catalogue["album"]["id"]
     other = placed_catalogue(server, root_token)
@@ -757,8 +805,11 @@ def test_the_recording_edit_refusals(server: Sut, root_token: str) -> None:
 @allure.feature("REQ-MUSIC-017")
 @allure.story("SCN-MUSIC-017-A")
 @allure.story("SCN-MUSIC-017-B")
-def test_a_group_is_created_listed_and_read(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_group_is_created_listed_and_read(sut: Sut) -> None:
     """A group is created with artwork, listed by name and names the group of its album."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
     first = create_group(server, root_token, name="First Band", cover_image_id=cover)
     assert first["cover_image_id"] == cover
@@ -867,8 +918,11 @@ def test_the_default_group_is_protected(server: Sut, root_token: str) -> None:
 @allure.story("SCN-MUSIC-020-C")
 @allure.feature("REQ-MUSIC-021")
 @allure.story("SCN-MUSIC-021-A")
-def test_a_playlist_is_created_private_or_public(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_playlist_is_created_private_or_public(sut: Sut) -> None:
     """A playlist is created private by default, public on request, and its name is trimmed and unique per owner."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     _bob_id, bob = provision(server, root_token, "bobby")
 
@@ -901,8 +955,11 @@ def test_a_playlist_is_created_private_or_public(server: Sut, root_token: str) -
 @allure.epic("Music")
 @allure.feature("REQ-MUSIC-019")
 @allure.story("SCN-MUSIC-019-A")
-def test_a_denied_callers_playlist_creation_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_denied_callers_playlist_creation_is_refused(sut: Sut) -> None:
     """A caller whose CreateChild on the playlist collection is denied answers 403 and creates nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     deny_role(server, root_token, "PLAYLIST_COLLECTION", 0, alice_id, "CONTRIBUTOR")
 
@@ -917,8 +974,11 @@ def test_a_denied_callers_playlist_creation_is_refused(server: Sut, root_token: 
 @allure.story("SCN-MUSIC-018-A")
 @allure.story("SCN-MUSIC-018-B")
 @allure.story("SCN-MUSIC-018-C")
-def test_the_playlist_collection_lists_public_and_owned(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_playlist_collection_lists_public_and_owned(sut: Sut) -> None:
     """The collection carries the caller's own and the public playlists, and filters on every field."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     _bob_id, bob = provision(server, root_token, "bobby")
     mine = create_playlist(server, alice, "Mine")
@@ -946,8 +1006,11 @@ def test_the_playlist_collection_lists_public_and_owned(server: Sut, root_token:
 @allure.story("SCN-MUSIC-021-C")
 @allure.feature("REQ-MUSIC-022")
 @allure.story("SCN-MUSIC-022-B")
-def test_playlist_metadata_is_updated(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_playlist_metadata_is_updated(sut: Sut) -> None:
     """A metadata update replaces the name and visibility, an empty one changes nothing, and a collision is refused."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     playlist = create_playlist(server, alice, "Mine")
     create_playlist(server, alice, "Taken")
@@ -980,8 +1043,11 @@ def test_playlist_metadata_is_updated(server: Sut, root_token: str) -> None:
 @allure.story("SCN-MUSIC-023-B")
 @allure.feature("REQ-MUSIC-025")
 @allure.story("SCN-MUSIC-025-A")
-def test_a_recording_is_appended_and_read(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_recording_is_appended_and_read(sut: Sut) -> None:
     """Two recordings append at contiguous indices and the track representations carry their shared recordings."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     cover = library_image(server, root_token)
     catalogue = placed_catalogue(server, root_token, album_cover=cover)
@@ -1018,8 +1084,11 @@ def test_a_recording_is_appended_and_read(server: Sut, root_token: str) -> None:
 @allure.epic("Music")
 @allure.feature("REQ-MUSIC-025")
 @allure.story("SCN-MUSIC-025-B")
-def test_an_unreadable_recording_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_unreadable_recording_is_refused(sut: Sut) -> None:
     """A caller who may add to the playlist but may not read the recording answers 403 and appends nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     bob_id, bob = provision(server, root_token, "bobby")
     catalogue = placed_catalogue(server, root_token)
     playlist = create_playlist(server, root_token, is_public=True)
@@ -1037,8 +1106,11 @@ def test_an_unreadable_recording_is_refused(server: Sut, root_token: str) -> Non
 @allure.story("SCN-MUSIC-026-A")
 @allure.story("SCN-MUSIC-026-B")
 @allure.story("SCN-MUSIC-026-C")
-def test_a_track_is_removed_and_the_recording_survives(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_track_is_removed_and_the_recording_survives(sut: Sut) -> None:
     """A removed occurrence is gone while its recording stays readable through the album."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     catalogue = placed_catalogue(server, root_token)
     recording_id = catalogue["recording_id"]
     album_id = catalogue["album"]["id"]
@@ -1058,8 +1130,11 @@ def test_a_track_is_removed_and_the_recording_survives(server: Sut, root_token: 
 @allure.feature("REQ-MUSIC-027")
 @allure.story("SCN-MUSIC-027-A")
 @allure.story("SCN-MUSIC-027-B")
-def test_the_tracks_of_a_playlist_are_reordered(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_tracks_of_a_playlist_are_reordered(sut: Sut) -> None:
     """A complete permutation reindexes the tracks and an incomplete one is refused."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     playlist = create_playlist(server, root_token)
     recordings = [create_recording(server, root_token, name=f"Song {index}") for index in range(3)]
     for recording_id in recordings:
@@ -1086,8 +1161,11 @@ def test_the_tracks_of_a_playlist_are_reordered(server: Sut, root_token: str) ->
 @allure.story("SCN-MUSIC-028-A")
 @allure.story("SCN-MUSIC-028-B")
 @allure.story("SCN-MUSIC-028-C")
-def test_a_playlist_is_deleted_and_recordings_survive(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_playlist_is_deleted_and_recordings_survive(sut: Sut) -> None:
     """A deleted playlist takes its placements and keeps the recordings, audio and files it referenced."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     catalogue = placed_catalogue(server, root_token)
     playlist = create_playlist(server, root_token)
     patch_playlist(server, root_token, playlist["id"], {"add_track": {"recording_id": catalogue["recording_id"]}})
@@ -1109,8 +1187,11 @@ def test_a_playlist_is_deleted_and_recordings_survive(server: Sut, root_token: s
 @allure.story("SCN-MUSIC-014-D")
 @allure.feature("REQ-MUSIC-015")
 @allure.story("SCN-MUSIC-015-D")
-def test_a_standard_user_cannot_curate_the_catalogue(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_standard_user_cannot_curate_the_catalogue(sut: Sut) -> None:
     """A Standard user reads a group and an album but every catalogue write answers 403."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     group = create_group(server, root_token)
 

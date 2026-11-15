@@ -18,7 +18,14 @@ module uploads real media and never fabricates a typed identifier.
 """
 
 import allure
-from harness import Sut
+import pytest
+from conftest import (
+    start_instance,
+)
+from harness import (
+    ROOT_ADMIN_USERNAME,
+    Sut,
+)
 from music import (
     create_album,
     create_group,
@@ -74,8 +81,11 @@ def covered_album(server: Sut, token: str, cover: int) -> dict:
 @allure.epic("Cover art")
 @allure.feature("REQ-COVER-ART-001")
 @allure.story("SCN-COVER-ART-001-A")
-def test_a_resource_with_its_own_artwork_reports_it(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_resource_with_its_own_artwork_reports_it(sut: Sut) -> None:
     """A group that stores a cover reports it as its only cover field."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
     group = create_group(server, root_token, cover_image_id=cover)
 
@@ -89,8 +99,11 @@ def test_a_resource_with_its_own_artwork_reports_it(server: Sut, root_token: str
 @allure.epic("Cover art")
 @allure.feature("REQ-COVER-ART-001")
 @allure.story("SCN-COVER-ART-001-B")
-def test_a_resource_without_artwork_reports_null(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_resource_without_artwork_reports_null(sut: Sut) -> None:
     """A group with no cover reports null and no cover link."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     group = create_group(server, root_token)
 
     body = server.follow(group, "self", token=root_token).json()
@@ -104,8 +117,11 @@ def test_a_resource_without_artwork_reports_null(server: Sut, root_token: str) -
 @allure.feature("REQ-COVER-ART-004")
 @allure.story("SCN-COVER-ART-004-A")
 @allure.story("SCN-COVER-ART-004-B")
-def test_the_cover_link_follows_the_stored_cover(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_cover_link_follows_the_stored_cover(sut: Sut) -> None:
     """An album with a cover exposes the link to that image, and an album without one exposes none."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
     covered = covered_album(server, root_token, cover)
     bare_group = create_group(server, root_token, name="Bare Band")
@@ -122,8 +138,11 @@ def test_the_cover_link_follows_the_stored_cover(server: Sut, root_token: str) -
 @allure.feature("REQ-COVER-ART-006")
 @allure.story("SCN-COVER-ART-006-A")
 @allure.story("SCN-COVER-ART-006-C")
-def test_a_track_reports_no_artwork(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_track_reports_no_artwork(sut: Sut) -> None:
     """An album track and a playlist track carry no cover; the album it belongs to reports one."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
     catalogue = covered_album(server, root_token, cover)
     recording_id = placed_recording(server, root_token, catalogue["album"]["id"])
@@ -147,8 +166,11 @@ def test_a_track_reports_no_artwork(server: Sut, root_token: str) -> None:
 @allure.feature("REQ-COVER-ART-006")
 @allure.story("SCN-COVER-ART-006-B")
 @allure.story("SCN-COVER-ART-006-C")
-def test_an_episode_reports_no_artwork(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_episode_reports_no_artwork(sut: Sut) -> None:
     """An episode carries no cover; the season that sequences it reports its own."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     season_cover = library_image(server, root_token)
     show = create_show(server, root_token, cover_image_id=library_image(server, root_token))
     season = create_season(server, root_token, show["id"], 1, cover_image_id=season_cover)
@@ -171,8 +193,11 @@ def test_an_episode_reports_no_artwork(server: Sut, root_token: str) -> None:
 @allure.story("SCN-COVER-ART-007-A")
 @allure.story("SCN-COVER-ART-007-B")
 @allure.story("SCN-COVER-ART-007-C")
-def test_a_playlist_attaches_replaces_and_clears_its_cover(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_playlist_attaches_replaces_and_clears_its_cover(sut: Sut) -> None:
     """A playlist stores a cover on creation, replaces it, reports it and clears it with null."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     first = library_image(server, root_token)
     second = library_image(server, root_token)
 
@@ -198,8 +223,11 @@ def test_a_playlist_attaches_replaces_and_clears_its_cover(server: Sut, root_tok
 @allure.story("SCN-COVER-ART-003-C")
 @allure.feature("REQ-COVER-ART-007")
 @allure.story("SCN-COVER-ART-007-D")
-def test_a_playlist_refuses_an_unusable_image(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_playlist_refuses_an_unusable_image(sut: Sut) -> None:
     """A library image and an unknown image are both refused and store nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     library_cover = library_image(server, root_token)
     create_group(server, root_token, cover_image_id=library_cover)
 

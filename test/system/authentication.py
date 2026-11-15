@@ -28,6 +28,10 @@ from harness import (
     register,
 )
 
+# Authentication owns its instances: the bootstrapped principal, its one-time password, the login quota and the minted
+# tokens are process state a second case would disturb.
+pytestmark = pytest.mark.own_instance(reason="process_state")
+
 PASSWORD_SYMBOLS = frozenset("!@#$%^&*()-_=+")
 
 

@@ -23,8 +23,19 @@ import time
 from datetime import UTC, datetime
 
 import allure
-from conftest import FIXTURE_DIRECTORY, provision, upload
-from harness import MEDIA_DIRECTORY, Sut, link_of
+import pytest
+from conftest import (
+    FIXTURE_DIRECTORY,
+    provision,
+    start_instance,
+    upload,
+)
+from harness import (
+    MEDIA_DIRECTORY,
+    ROOT_ADMIN_USERNAME,
+    Sut,
+    link_of,
+)
 
 IMAGE_CONTENT_TYPE = "image/png"
 AUDIO_CONTENT_TYPE = "audio/flac"
@@ -122,6 +133,7 @@ def test_a_promoted_upload_is_an_uploaded_file(server: Sut, root_token: str) -> 
 @allure.epic("File")
 @allure.feature("REQ-FILE-001")
 @allure.story("SCN-FILE-001-B")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_content_the_scan_found_is_a_scanned_file(sut: Sut) -> None:
     """Content the ingest found under the root records the `SCANNED` origin at a root-relative path."""
     _server, found = found_file(sut)
@@ -135,6 +147,7 @@ def test_content_the_scan_found_is_a_scanned_file(sut: Sut) -> None:
 @allure.epic("File")
 @allure.feature("REQ-FILE-001")
 @allure.story("SCN-FILE-001-C")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_a_file_records_the_content_it_names(sut: Sut) -> None:
     """The record carries the content's media type, size and modification instant, and its registration date."""
     _server, found = found_file(sut)
@@ -175,8 +188,11 @@ def test_a_file_of_an_existing_identifier_is_read(server: Sut, root_token: str) 
 @allure.epic("File")
 @allure.feature("REQ-FILE-002")
 @allure.story("SCN-FILE-002-B")
-def test_an_unknown_or_unviewable_file_answers_not_found(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_unknown_or_unviewable_file_answers_not_found(sut: Sut) -> None:
     """A file that does not exist and one the caller may not view both answer `404`."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     uploaded = upload(server, root_token, "private.png", (FIXTURE_DIRECTORY / "cover.png").read_bytes())
 
@@ -262,8 +278,11 @@ def test_a_typed_media_backed_file_links_its_typed_view(server: Sut, root_token:
 @allure.epic("File")
 @allure.feature("REQ-FILE-003")
 @allure.story("SCN-FILE-003-D")
-def test_a_file_with_no_media_row_carries_no_typed_link(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="global_filesystem")
+def test_a_file_with_no_media_row_carries_no_typed_link(sut: Sut) -> None:
     """A file that backs no typed asset carries none of `image`, `audio` and `video`."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     uploaded = upload(server, root_token, "bare.png", (FIXTURE_DIRECTORY / "cover.png").read_bytes())
     with sqlite3.connect(server.dir / "mnemorium.db") as connection:
         connection.execute("DELETE FROM image WHERE file_id = ?1", (uploaded["id"],))

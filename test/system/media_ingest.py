@@ -45,8 +45,20 @@ import time
 from datetime import UTC, datetime
 
 import allure
-from conftest import FIXTURE_DIRECTORY, add_to_gallery, create_gallery, upload
-from harness import MEDIA_DIRECTORY, ROOT_ADMIN_USERNAME, Sut, link_of
+import pytest
+from conftest import (
+    FIXTURE_DIRECTORY,
+    add_to_gallery,
+    create_gallery,
+    start_instance,
+    upload,
+)
+from harness import (
+    MEDIA_DIRECTORY,
+    ROOT_ADMIN_USERNAME,
+    Sut,
+    link_of,
+)
 
 IMAGE_CONTENT_TYPE = "image/png"
 IMAGE_SOURCE = "cover.png"
@@ -201,6 +213,7 @@ def test_a_promoted_upload_is_addressed_under_the_root(server: Sut, root_token: 
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-001")
 @allure.story("SCN-MEDIA-INGEST-001-B")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_a_found_file_is_addressed_under_the_same_root(sut: Sut) -> None:
     """A file the scan found records a path relative to the same root that resolves to that file."""
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -218,6 +231,7 @@ def test_a_found_file_is_addressed_under_the_same_root(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-002")
 @allure.story("SCN-MEDIA-INGEST-002-A")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_a_present_root_is_examined_at_startup(sut: Sut) -> None:
     """The root exists at startup, so the scan registers the file under it without waiting."""
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -232,6 +246,7 @@ def test_a_present_root_is_examined_at_startup(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-002")
 @allure.story("SCN-MEDIA-INGEST-002-B")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_a_root_that_appears_within_the_window_is_examined(sut: Sut) -> None:
     """A root that appears within the window is scanned, and no record is reconciled as removed for its absence."""
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -255,6 +270,7 @@ def test_a_root_that_appears_within_the_window_is_examined(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-002")
 @allure.story("SCN-MEDIA-INGEST-002-C")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_an_absent_required_root_refuses_startup(sut: Sut) -> None:
     """A root that never appears while it is required refuses startup and reconciles no record as removed."""
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -276,6 +292,7 @@ def test_an_absent_required_root_refuses_startup(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-002")
 @allure.story("SCN-MEDIA-INGEST-002-D")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_an_absent_optional_root_starts_and_reconciles_empty(sut: Sut) -> None:
     """A root that never appears while it is not required starts the server and reconciles every record as removed."""
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -297,6 +314,7 @@ def test_an_absent_optional_root_starts_and_reconciles_empty(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-003")
 @allure.story("SCN-MEDIA-INGEST-003-A")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_a_request_during_the_scan_is_answered(sut: Sut) -> None:
     """A request reaching a server that scans a populated root is answered, and the scan still registers every file."""
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -311,6 +329,7 @@ def test_a_request_during_the_scan_is_answered(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-003")
 @allure.story("SCN-MEDIA-INGEST-003-B")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_an_absent_optional_root_does_not_delay_readiness(sut: Sut) -> None:
     """The root is absent and not required, so the server is healthy while the reconciliation runs without blocking."""
     server = sut.start(config={"library": {"startup": {"media_root_wait_seconds": 3}}}, create_media=False)
@@ -328,6 +347,7 @@ def test_an_absent_optional_root_does_not_delay_readiness(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-004")
 @allure.story("SCN-MEDIA-INGEST-004-A")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_the_content_decides_the_media_type(sut: Sut) -> None:
     """A file whose name suggests text is registered as the image its content is."""
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -342,6 +362,7 @@ def test_the_content_decides_the_media_type(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-004")
 @allure.story("SCN-MEDIA-INGEST-004-B")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_content_without_a_media_type_is_skipped(sut: Sut) -> None:
     """A file whose content yields no media type is skipped."""
     server = preplace(sut, {"opaque.bin": bytes(range(64))})
@@ -355,6 +376,7 @@ def test_content_without_a_media_type_is_skipped(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-005")
 @allure.story("SCN-MEDIA-INGEST-005-A")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_a_file_that_is_not_media_is_skipped(sut: Sut) -> None:
     """A file whose content is not an image, a video or audio is skipped and the scan continues."""
     server = preplace(sut, {"document.pdf": PDF_BYTES, "photo.png": (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()})
@@ -369,6 +391,7 @@ def test_a_file_that_is_not_media_is_skipped(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-005")
 @allure.story("SCN-MEDIA-INGEST-005-B")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_an_unsupported_media_type_is_skipped(sut: Sut) -> None:
     """An audio file whose media type the server does not support is skipped while a supported one is registered."""
     data = (FIXTURE_DIRECTORY / AUDIO_SOURCE).read_bytes()
@@ -384,6 +407,7 @@ def test_an_unsupported_media_type_is_skipped(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-005")
 @allure.story("SCN-MEDIA-INGEST-005-C")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_unsuitable_files_do_not_abort_the_scan(sut: Sut) -> None:
     """Several unsuitable files among suitable ones leave every suitable file registered."""
     image = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -410,6 +434,7 @@ def test_unsuitable_files_do_not_abort_the_scan(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-006")
 @allure.story("SCN-MEDIA-INGEST-006-A")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_an_image_is_registered_with_its_media_row(sut: Sut) -> None:
     """An accepted image records its file row and an image row carrying the probed dimensions and orientation."""
     server = preplace(sut, {"photo.png": (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()})
@@ -426,6 +451,7 @@ def test_an_image_is_registered_with_its_media_row(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-006")
 @allure.story("SCN-MEDIA-INGEST-006-B")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_a_video_is_registered_with_its_media_row(sut: Sut) -> None:
     """An accepted video records its file row and a video row carrying the probed characteristics."""
     server = preplace(sut, {"clip.mp4": (FIXTURE_DIRECTORY / VIDEO_SOURCE).read_bytes()})
@@ -443,6 +469,7 @@ def test_a_video_is_registered_with_its_media_row(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-006")
 @allure.story("SCN-MEDIA-INGEST-006-C")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_an_audio_file_is_registered_with_absent_measurements(sut: Sut) -> None:
     """An accepted audio file records the reported codec, sample rate and duration, and the block size it omits."""
     server = preplace(sut, {"song.mp3": mp3_frame_bytes()})
@@ -460,6 +487,7 @@ def test_an_audio_file_is_registered_with_absent_measurements(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-007")
 @allure.story("SCN-MEDIA-INGEST-007-A")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_a_registered_file_carries_its_size_and_instant(sut: Sut) -> None:
     """A registered file records the size its content has and the instant it was last modified."""
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -475,6 +503,7 @@ def test_a_registered_file_carries_its_size_and_instant(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-008")
 @allure.story("SCN-MEDIA-INGEST-008-A")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_a_found_file_belongs_to_the_root_admin(sut: Sut) -> None:
     """A file the scan found is attributed to the Root Admin and to no other account."""
     server = preplace(sut, {"owned.png": (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()})
@@ -490,6 +519,7 @@ def test_a_found_file_belongs_to_the_root_admin(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-009")
 @allure.story("SCN-MEDIA-INGEST-009-A")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_an_unchanged_file_is_reported_untouched(sut: Sut) -> None:
     """A registered file whose size and instant match its record is reported untouched and nothing is written."""
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -508,6 +538,7 @@ def test_an_unchanged_file_is_reported_untouched(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-009")
 @allure.story("SCN-MEDIA-INGEST-009-B")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_a_changed_file_is_reported_and_left_alone(sut: Sut) -> None:
     """A registered file whose size differs from its record is reported changed and its record is left as it was."""
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -528,6 +559,7 @@ def test_a_changed_file_is_reported_and_left_alone(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-009")
 @allure.story("SCN-MEDIA-INGEST-009-C")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_a_vanished_file_is_reconciled_as_removed(sut: Sut) -> None:
     """A registered file the scan no longer finds is reconciled as removed, not as untouched or changed."""
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -547,6 +579,7 @@ def test_a_vanished_file_is_reconciled_as_removed(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-010")
 @allure.story("SCN-MEDIA-INGEST-010-A")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_a_missing_media_row_is_completed(sut: Sut) -> None:
     """A registered file without the row its media type requires is probed and the missing row is recorded."""
     server = sut.start()
@@ -574,6 +607,7 @@ def test_a_missing_media_row_is_completed(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-011")
 @allure.story("SCN-MEDIA-INGEST-011-A")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_the_ingest_leaves_the_content_byte_identical(sut: Sut) -> None:
     """Every file under the root is byte-identical after the scan, and the scan added, moved and removed none."""
     image = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -593,6 +627,7 @@ def test_the_ingest_leaves_the_content_byte_identical(sut: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-011")
 @allure.story("SCN-MEDIA-INGEST-011-B")
+@pytest.mark.own_instance(reason="global_filesystem")
 def test_an_unreadable_file_does_not_damage_the_ingest(sut: Sut) -> None:
     """A file the ingest cannot read is skipped without being altered, and the remaining files are still registered."""
     image = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
@@ -618,8 +653,11 @@ def test_an_unreadable_file_does_not_damage_the_ingest(sut: Sut) -> None:
 @allure.feature("REQ-MEDIA-INGEST-012")
 @allure.story("SCN-MEDIA-INGEST-012-A")
 @allure.story("SCN-MEDIA-INGEST-012-B")
-def test_removing_a_gallery_leaves_the_content_alone(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_removing_a_gallery_leaves_the_content_alone(sut: Sut) -> None:
     """Removing a gallery item and removing a whole gallery each leave the stored bytes and the file record."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     removed = upload(server, root_token, "kept.svg", (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes())
     discarded = upload(server, root_token, "kept.png", (FIXTURE_DIRECTORY / "gallery.png").read_bytes())
     gallery = create_gallery(server, root_token, "Kept")
@@ -646,8 +684,10 @@ def test_removing_a_gallery_leaves_the_content_alone(server: Sut, root_token: st
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-014")
 @allure.story("SCN-MEDIA-INGEST-014-A")
-def test_a_renamed_file_keeps_its_record(server: Sut) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_renamed_file_keeps_its_record(sut: Sut) -> None:
     """A file renamed while the server runs follows its content, keeping the record and the media row it carried."""
+    server = start_instance(sut)
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
     (server.dir / MEDIA_DIRECTORY / "before.png").write_bytes(data)
     before = wait_for_record(server, "before.png")
@@ -673,8 +713,10 @@ def test_a_renamed_file_keeps_its_record(server: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-013")
 @allure.story("SCN-MEDIA-INGEST-013-A")
-def test_a_file_added_while_the_server_runs_is_registered(server: Sut) -> None:
+@pytest.mark.own_instance(reason="global_filesystem")
+def test_a_file_added_while_the_server_runs_is_registered(sut: Sut) -> None:
     """A file added under the root while the server runs is registered without a restart."""
+    server = start_instance(sut)
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
     (server.dir / MEDIA_DIRECTORY / "added.png").write_bytes(data)
 
@@ -687,8 +729,10 @@ def test_a_file_added_while_the_server_runs_is_registered(server: Sut) -> None:
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-013")
 @allure.story("SCN-MEDIA-INGEST-013-B")
-def test_a_file_still_being_written_is_registered_once_complete(server: Sut) -> None:
+@pytest.mark.own_instance(reason="global_filesystem")
+def test_a_file_still_being_written_is_registered_once_complete(sut: Sut) -> None:
     """A file whose content is still changing is not registered until it stops, then with the size it finally has."""
+    server = start_instance(sut)
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
     path = server.dir / MEDIA_DIRECTORY / "growing.png"
     with path.open("wb") as content:
@@ -707,8 +751,10 @@ def test_a_file_still_being_written_is_registered_once_complete(server: Sut) -> 
 @allure.epic("Media ingest")
 @allure.feature("REQ-MEDIA-INGEST-015")
 @allure.story("SCN-MEDIA-INGEST-015-A")
-def test_a_file_removed_while_the_server_runs_is_reconciled(server: Sut) -> None:
+@pytest.mark.own_instance(reason="global_filesystem")
+def test_a_file_removed_while_the_server_runs_is_reconciled(sut: Sut) -> None:
     """A registered file removed while the server runs has its record and its media row removed."""
+    server = start_instance(sut)
     data = (FIXTURE_DIRECTORY / IMAGE_SOURCE).read_bytes()
     (server.dir / MEDIA_DIRECTORY / "leaving.png").write_bytes(data)
     record = wait_for_record(server, "leaving.png")

@@ -1,16 +1,15 @@
-"""Harness for the black-box suites: one containerised server per test.
+"""Harness for the black-box system suite: one container per worker, or one per test when it marks itself own.
 
 Every test drives the image named by `MNEMORIUM_IMAGE` as a black box. The image is never built here: a missing image
-is a configuration error and stops the run with a hint, not an implicit build (TEST-058). Each test gets its own
-container, its own writable working directory bind-mounted at `/app`, and its own random loopback port, so no test
-observes another test's server or the repository working tree.
+is a configuration error and stops the run with a hint, not an implicit build (TEST-058). A case marked
+`@pytest.mark.own_instance(reason=...)` gets its own container, its own writable working directory bind-mounted at
+`/app`, and its own random loopback port. Every other case drives the one container its worker booted and shares
+(`test/system/conftest.py`), so a shared case must never mutate state another case asserts on and never starts, stops
+or restarts a container; no test touches the repository working tree.
 
 Operator prose lives in this module only (TEST-057): a test matches a message through the constants below and never
 inlines one. The structured `event=`/`component=` fields a lifecycle message carries are matched where the server emits
 them.
-
-The module is loaded as the `harness` pytest plugin (`pytest.ini`), not as a `conftest.py`: the system suite keeps its
-own `test/system/conftest.py` for its fixtures and collection hook, and the plugin keeps its own module name.
 """
 
 import base64
@@ -34,6 +33,7 @@ import yaml
 IMAGE_ENV = "MNEMORIUM_IMAGE"
 DEFAULT_IMAGE = "mnemorium:latest"
 CONTAINER_PREFIX = os.environ.get("MNEMORIUM_CONTAINER_PREFIX", "mnemorium-config-")
+CONTAINER_LEDGER_ENV = "MNEMORIUM_CONTAINER_LEDGER"
 CONTAINER_PORT = 4080
 HEALTH_PATH = "/health"
 API_PREFIX = "/api/v1"
@@ -71,6 +71,26 @@ REQUEST_TIMEOUT_S = 10
 # `docker inspect` itself failed, so each is polled rather than read as a terminal outcome (TEST-058).
 TERMINAL_STATUSES = frozenset({"exited", "dead", "removing"})
 
+# Every container this process starts, in start order. The terminal summary reports the count, and the ledger below
+# carries it across `pytest-xdist` workers, each of which has its own copy of this list.
+CONTAINERS_STARTED: list[tuple[str, str]] = []
+
+
+def containers_started() -> list[tuple[str, str]]:
+    """The containers this process has started, as `(name, kind)` with kind `shared` or `own`."""
+    return list(CONTAINERS_STARTED)
+
+
+def _record_container(name: str, kind: str) -> None:
+    """Append one started container to the in-process list and to the run-wide ledger."""
+    CONTAINERS_STARTED.append((name, kind))
+    ledger = os.environ.get(CONTAINER_LEDGER_ENV)
+    if ledger is None:
+        return
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "controller")
+    with (Path(ledger) / f"{worker}.tsv").open("a", encoding="utf-8") as handle:
+        handle.write(f"{kind}\t{name}\n")
+
 
 class StartupFailed(AssertionError):
     """A server that should have become healthy did not; carries why, its exit code and its logs."""
@@ -95,11 +115,12 @@ class StartupFailure:
 class Sut:
     """One containerised server with its own writable working directory."""
 
-    def __init__(self, image: str, tmp_root: Path) -> None:
+    def __init__(self, image: str, tmp_root: Path, *, shared: bool = False) -> None:
         self.image = image
         self.dir = Path(tmp_root)
         self.name = f"{CONTAINER_PREFIX}{uuid.uuid4().hex[:8]}"
         self.base_url = ""
+        self.shared = shared
         self._created = False
 
     # lifecycle
@@ -193,6 +214,10 @@ class Sut:
         self.base_url = ""
 
     # observation
+
+    def probe(self) -> bool:
+        """One health request; the suite's liveness check between shared tests."""
+        return self._healthy()
 
     def logs(self) -> str:
         """The container's stdout and stderr merged; safe while the server runs."""
@@ -368,6 +393,7 @@ class Sut:
         self.base_url = ""
         subprocess.run(args, capture_output=True, text=True, check=True)
         self._created = True
+        _record_container(self.name, "shared" if self.shared else "own")
 
         deadline = time.monotonic() + STARTUP_TIMEOUT_S
         while time.monotonic() < deadline:

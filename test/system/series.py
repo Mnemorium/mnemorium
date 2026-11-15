@@ -19,9 +19,19 @@ fabricates a typed identifier.
 import time
 
 import allure
-from conftest import add_to_gallery, create_gallery, provision
+import pytest
+from conftest import (
+    add_to_gallery,
+    create_gallery,
+    provision,
+    start_instance,
+)
 from gallery import image_file
-from harness import Sut, link_of
+from harness import (
+    ROOT_ADMIN_USERNAME,
+    Sut,
+    link_of,
+)
 from video import assert_summary, typed_video, upload_video
 
 # The show resource kind the resource-policy route addresses.
@@ -224,8 +234,11 @@ def deny_viewer(server: Sut, token: str, user_id: int, series_id: int) -> None:
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-008")
 @allure.story("SCN-SERIES-008-A")
-def test_a_new_show_is_created(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_new_show_is_created(sut: Sut) -> None:
     """A show is created from its metadata and answers 201 with a Location and no seasons."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
 
     response = post_show(
@@ -261,8 +274,11 @@ def test_a_new_show_is_created(server: Sut, root_token: str) -> None:
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-008")
 @allure.story("SCN-SERIES-008-B")
-def test_a_repeated_name_creates_a_second_show(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_repeated_name_creates_a_second_show(sut: Sut) -> None:
     """A name another show already uses creates a second show rather than returning the first."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     first = create_show(server, root_token, name="Twin Peaks")
 
     second = create_show(server, root_token, name="Twin Peaks")
@@ -276,8 +292,11 @@ def test_a_repeated_name_creates_a_second_show(server: Sut, root_token: str) -> 
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-008")
 @allure.story("SCN-SERIES-008-C")
-def test_an_unknown_genre_is_stored_and_linked(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_unknown_genre_is_stored_and_linked(sut: Sut) -> None:
     """A genre the catalogue does not hold is stored and the show reports it."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     created = create_show(server, root_token, genres=[UNKNOWN_GENRE])
 
     assert created["genres"] == [UNKNOWN_GENRE.upper()]
@@ -289,8 +308,11 @@ def test_an_unknown_genre_is_stored_and_linked(server: Sut, root_token: str) -> 
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-008")
 @allure.story("SCN-SERIES-008-D")
-def test_unusable_creation_input_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_unusable_creation_input_is_refused(sut: Sut) -> None:
     """An empty name or genre, malformed date or non-two-letter country answers 422 and stores nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     bodies = [
         show_body(name=""),
         show_body(genres=[""]),
@@ -310,8 +332,11 @@ def test_unusable_creation_input_is_refused(server: Sut, root_token: str) -> Non
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-008")
 @allure.story("SCN-SERIES-008-E")
-def test_a_cover_that_is_not_library_artwork_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
     """An image already used as gallery media answers 409 and creates no show."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     attached = gallery_image(server, alice)
 
@@ -326,8 +351,11 @@ def test_a_cover_that_is_not_library_artwork_is_refused(server: Sut, root_token:
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-008")
 @allure.story("SCN-SERIES-008-F")
-def test_a_standard_user_cannot_create_a_show(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_standard_user_cannot_create_a_show(sut: Sut) -> None:
     """A Standard user's creation answers 403 and stores nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
 
     response = post_show(server, alice, show_body())
@@ -344,8 +372,11 @@ def test_a_standard_user_cannot_create_a_show(server: Sut, root_token: str) -> N
 @allure.story("SCN-SERIES-001-D")
 @allure.feature("REQ-SERIES-002")
 @allure.story("SCN-SERIES-002-A")
-def test_the_collection_lists_partial_shows_in_identifier_order(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_collection_lists_partial_shows_in_identifier_order(sut: Sut) -> None:
     """Two shows list as partial items by ascending identifier, with their cover links."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
     first = create_show(server, root_token, name="First", cover_image_id=cover)
     second = create_show(server, root_token, name="Second")
@@ -373,8 +404,11 @@ def test_the_collection_lists_partial_shows_in_identifier_order(server: Sut, roo
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-001")
 @allure.story("SCN-SERIES-001-B")
-def test_the_name_filter_and_page_are_applied(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_name_filter_and_page_are_applied(sut: Sut) -> None:
     """The name filter narrows the collection and limit/offset select one page."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     ids = [create_show(server, root_token, name=name)["id"] for name in ("Alpha", "Beta", "Gamma")]
 
     filtered = list_shows(server, root_token, "?name=Beta")
@@ -389,8 +423,11 @@ def test_the_name_filter_and_page_are_applied(server: Sut, root_token: str) -> N
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-001")
 @allure.story("SCN-SERIES-001-C")
-def test_a_caller_that_discovers_no_show_lists_an_empty_collection(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_caller_that_discovers_no_show_lists_an_empty_collection(sut: Sut) -> None:
     """A caller denied the only show discovers none and receives an empty collection."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token)
     deny_viewer(server, root_token, alice_id, show["id"])
@@ -478,8 +515,11 @@ def test_a_show_without_a_date_or_country_reports_null(server: Sut, root_token: 
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-002")
 @allure.story("SCN-SERIES-002-D")
-def test_an_unknown_or_unviewable_show_is_not_found(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_unknown_or_unviewable_show_is_not_found(sut: Sut) -> None:
     """An unknown show and one the caller may not view both answer 404."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token)
     deny_viewer(server, root_token, alice_id, show["id"])
@@ -635,8 +675,11 @@ def test_a_malformed_index_or_identifier_is_refused(server: Sut, root_token: str
 @allure.feature("REQ-SERIES-005")
 @allure.story("SCN-SERIES-005-A")
 @allure.story("SCN-SERIES-005-B")
-def test_the_episodes_of_a_season_are_listed_with_their_fields(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_episodes_of_a_season_are_listed_with_their_fields(sut: Sut) -> None:
     """The episode collection carries each episode's index, fields, video summary and links."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     show = create_show(server, root_token)
     create_season(server, root_token, show["id"])
     dated_file, dated_video = episode_video(server, root_token, "dated.mp4")
@@ -765,8 +808,11 @@ def test_an_episode_outside_the_season_is_not_found(server: Sut, root_token: str
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-007")
 @allure.story("SCN-SERIES-007-A")
-def test_seasons_and_episodes_are_listed_in_ascending_index_order(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_seasons_and_episodes_are_listed_in_ascending_index_order(sut: Sut) -> None:
     """Seasons and episodes list by ascending index whatever order they were written in."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     show = create_show(server, root_token)
     for season_index in (3, 1, 2):
         create_season(server, root_token, show["id"], season_index, name=f"Season {season_index}")
@@ -884,8 +930,11 @@ def test_null_clears_a_show_optional_value(server: Sut, root_token: str) -> None
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-009")
 @allure.story("SCN-SERIES-009-D")
-def test_a_standard_user_may_read_but_not_edit_a_show(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_standard_user_may_read_but_not_edit_a_show(sut: Sut) -> None:
     """A Standard user reads the show but its patch answers 403 and stores nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token, name="Untouched")
 
@@ -900,8 +949,11 @@ def test_a_standard_user_may_read_but_not_edit_a_show(server: Sut, root_token: s
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-009")
 @allure.story("SCN-SERIES-009-E")
-def test_an_unknown_or_unviewable_show_cannot_be_patched(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_unknown_or_unviewable_show_cannot_be_patched(sut: Sut) -> None:
     """An unknown show and one the caller may not view both answer 404 and apply nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token, name="Untouched")
     deny_viewer(server, root_token, alice_id, show["id"])
@@ -919,8 +971,11 @@ def test_an_unknown_or_unviewable_show_cannot_be_patched(server: Sut, root_token
 @allure.story("SCN-SERIES-010-A")
 @allure.story("SCN-SERIES-010-B")
 @allure.story("SCN-SERIES-010-C")
-def test_a_season_is_created_then_replaced_keeping_its_episodes(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_season_is_created_then_replaced_keeping_its_episodes(sut: Sut) -> None:
     """A free index creates a season with 201; the same index replaces it with 200 and keeps the episodes."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
     show = create_show(server, root_token)
 
@@ -959,8 +1014,11 @@ def test_a_season_is_created_then_replaced_keeping_its_episodes(server: Sut, roo
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-010")
 @allure.story("SCN-SERIES-010-D")
-def test_a_season_write_of_an_unknown_show_or_malformed_index_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_season_write_of_an_unknown_show_or_malformed_index_is_refused(sut: Sut) -> None:
     """An unknown show answers 404 and an index that is not a 32-bit unsigned integer answers 400."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     show = create_show(server, root_token)
 
     unknown_show = put_season(server, root_token, show["id"] + 1_000_000, 1, {"name": "Season One"})
@@ -974,8 +1032,11 @@ def test_a_season_write_of_an_unknown_show_or_malformed_index_is_refused(server:
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-010")
 @allure.story("SCN-SERIES-010-E")
-def test_a_season_cover_that_is_not_library_artwork_is_refused(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_season_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
     """An image already used as gallery media answers 409 and creates no season."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     attached = gallery_image(server, alice)
     show = create_show(server, root_token)
@@ -989,8 +1050,11 @@ def test_a_season_cover_that_is_not_library_artwork_is_refused(server: Sut, root
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-010")
 @allure.story("SCN-SERIES-010-F")
-def test_a_standard_user_cannot_write_a_season(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_standard_user_cannot_write_a_season(sut: Sut) -> None:
     """A Standard user's season write answers 403 and creates no season."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token)
 
@@ -1066,8 +1130,11 @@ def test_an_unknown_or_malformed_season_cannot_be_patched(server: Sut, root_toke
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-011")
 @allure.story("SCN-SERIES-011-E")
-def test_a_standard_user_may_read_but_not_edit_a_season(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_standard_user_may_read_but_not_edit_a_season(sut: Sut) -> None:
     """A Standard user reads the season but its patch answers 403 and stores nothing."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token)
     create_season(server, root_token, show["id"], 1, name="Season One")
@@ -1112,8 +1179,11 @@ def test_an_episode_is_created_at_a_free_index(server: Sut, root_token: str) -> 
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-012")
 @allure.story("SCN-SERIES-012-B")
-def test_an_episode_is_replaced_keeping_its_address(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_episode_is_replaced_keeping_its_address(sut: Sut) -> None:
     """A second write at an existing index stores the new metadata, keeps the address and answers 200."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     show = create_show(server, root_token)
     create_season(server, root_token, show["id"])
     _file, video = episode_video(server, root_token)
@@ -1228,8 +1298,11 @@ def test_an_episode_write_of_an_unknown_parent_or_malformed_index_is_refused(ser
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-012")
 @allure.story("SCN-SERIES-012-G")
-def test_a_standard_user_cannot_write_an_episode(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_standard_user_cannot_write_an_episode(sut: Sut) -> None:
     """A Standard user's episode write answers 403 and creates no episode."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token)
     create_season(server, root_token, show["id"])
@@ -1245,8 +1318,11 @@ def test_a_standard_user_cannot_write_an_episode(server: Sut, root_token: str) -
 @allure.feature("REQ-SERIES-013")
 @allure.story("SCN-SERIES-013-A")
 @allure.story("SCN-SERIES-013-C")
-def test_the_episode_metadata_is_updated_partially(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_the_episode_metadata_is_updated_partially(sut: Sut) -> None:
     """A patch stores each submitted field and leaves the backing video unchanged."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     show = create_show(server, root_token)
     create_season(server, root_token, show["id"])
     _file, video = episode_video(server, root_token)
@@ -1300,8 +1376,11 @@ def test_null_clears_the_air_date(server: Sut, root_token: str) -> None:
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-013")
 @allure.story("SCN-SERIES-013-D")
-def test_an_unknown_episode_or_denied_caller_cannot_be_patched(server: Sut, root_token: str) -> None:
+@pytest.mark.own_instance(reason="exact_collection")
+def test_an_unknown_episode_or_denied_caller_cannot_be_patched(sut: Sut) -> None:
     """An unknown episode answers 404, a Standard user answers 403 and the stored episode survives."""
+    server = start_instance(sut)
+    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token)
     create_season(server, root_token, show["id"])
