@@ -40,7 +40,6 @@ from harness import (
 )
 
 # The music resource kinds the resource-policy route addresses.
-ALBUM = "MUSIC_ALBUM"
 PLAYLIST = "MUSIC_PLAYLIST"
 RECORDING = "MUSIC_RECORDING"
 

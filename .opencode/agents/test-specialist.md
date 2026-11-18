@@ -31,6 +31,9 @@ permissions:
     resource: "ruff *"
     effect: allow
   - action: shell
+    resource: "vulture *"
+    effect: allow
+  - action: shell
     resource: "docker build *"
     effect: allow
   - action: shell
@@ -286,7 +289,7 @@ missing, report it rather than working around it.
 
 1. `cargo test`
 2. `cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80`
-3. `ruff check .` and `ruff format --check .` when Python tests changed
+3. `ruff check .`, `ruff format --check .` and `vulture` when Python tests changed
 4. `script/system.sh` when system tests changed — the image `mnemorium:latest`
    must already exist (`docker build -t mnemorium:latest .`), so run it with
    `NO_BUILD=1`; `PYTEST_WORKERS=4` runs four workers, each with one shared

@@ -158,6 +158,16 @@ in
     # === python
     ruff.enable = true;
     ruff-format.enable = true;
+    vulture = {
+      enable = true;
+      name = "vulture";
+      entry = "vulture";
+      # The config's `paths` own the scope: vulture resolves uses across files, so a
+      # changed-file subset would report every cross-module helper as dead.
+      pass_filenames = false;
+      files = "(\\.py$|^pyproject\\.toml$|^requirements\\.txt$)";
+      fail_fast = true;
+    };
     # === Nix (This file)
     nixfmt = {
       enable = true;
@@ -432,7 +442,7 @@ in
   };
 
   tasks."lint:python" = {
-    exec = "ruff check .";
+    exec = "ruff check . && vulture";
     description = "Lint python code";
   };
 

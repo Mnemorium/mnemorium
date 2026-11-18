@@ -3268,6 +3268,7 @@ Source: `requirements.txt`.
 | [PyYAML](https://pypi.org/project/PyYAML/)                   | YAML parser the configuration harness renders `config.yaml` with. | 6.0.3   | MIT          |
 | [requests](https://pypi.org/project/requests/)               | HTTP library for Python.                                          | 2.34.2  | Apache-2.0   |
 | [ruff](https://pypi.org/project/ruff/)                       | Fast Python linter and formatter.                                 | 0.16.5  | MIT          |
+| [vulture](https://pypi.org/project/vulture/)                 | Finds unused functions, constants and attributes in `test/`.      | 2.16    | MIT          |
 
 ---
 

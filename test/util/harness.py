@@ -37,9 +37,6 @@ CONTAINER_LEDGER_ENV = "MNEMORIUM_CONTAINER_LEDGER"
 CONTAINER_PORT = 4080
 HEALTH_PATH = "/health"
 API_PREFIX = "/api/v1"
-LOGIN_PATH = f"{API_PREFIX}/identity/login"
-REGISTER_PATH = f"{API_PREFIX}/identity/register"
-ME_PATH = f"{API_PREFIX}/user/me"
 
 CONFIG_PATH = "config.yaml"
 STATE_PATH = "state.yaml"
@@ -58,7 +55,6 @@ MSG_PASSWORD_LOGGED = re.compile(
     r"Root admin initialized; use the default password to authenticate and change it: '([^']+)'"
 )
 MSG_PASSWORD_HIDDEN = "the default password logging is disabled"
-MSG_STATE_MISSING = "restore state.yaml"
 
 SECRET_PASSWORD = "C0rrect!Horse"
 WRONG_PASSWORD = "Wr0ng!pass"
@@ -74,11 +70,6 @@ TERMINAL_STATUSES = frozenset({"exited", "dead", "removing"})
 # Every container this process starts, in start order. The terminal summary reports the count, and the ledger below
 # carries it across `pytest-xdist` workers, each of which has its own copy of this list.
 CONTAINERS_STARTED: list[tuple[str, str]] = []
-
-
-def containers_started() -> list[tuple[str, str]]:
-    """The containers this process has started, as `(name, kind)` with kind `shared` or `own`."""
-    return list(CONTAINERS_STARTED)
 
 
 def _record_container(name: str, kind: str) -> None:

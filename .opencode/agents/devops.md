@@ -60,6 +60,7 @@ permissions:
   - { action: shell, resource: "shfmt -d *", effect: allow }
   - { action: shell, resource: "ruff check *", effect: allow }
   - { action: shell, resource: "ruff format --check *", effect: allow }
+  - { action: shell, resource: "vulture *", effect: allow }
   - { action: shell, resource: "sqlfluff lint *", effect: allow }
   - { action: shell, resource: "taplo fmt --check*", effect: allow }
   - { action: shell, resource: "taplo lint *", effect: allow }

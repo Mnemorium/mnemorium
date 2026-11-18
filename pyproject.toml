@@ -1,7 +1,7 @@
-# Python tool configuration. The file sits at the repository root because all three
+# Python tool configuration. The file sits at the repository root because all four
 # tools below resolve the test tree from here: pytest adds `test/util` to `sys.path`,
-# ruff anchors its `extend-exclude` globs here, and pyright derives its search roots
-# from `extraPaths`.
+# ruff anchors its `extend-exclude` globs here, pyright derives its search roots
+# from `extraPaths`, and vulture resolves its `paths` and exemptions here.
 
 [tool.pytest.ini_options]
 # The patterns collect `test_*.py`, `*_test.py` and `*_*.py` modules. The system
@@ -38,6 +38,26 @@ extend-select = [
   "UP",  # pyupgrade
   "SIM", # simplification
 ]
+
+[tool.vulture]
+# The test tree is the repository's whole Python surface: the server is Rust, so
+# this is the only place dead Python can hide. Paths are relative to this file,
+# which is why the tool runs from the repository root.
+paths = ["test"]
+# 60% is the default and the useful floor: unused functions, constants and
+# attributes, which neither ruff nor pyright checks. Ruff owns the 90% unused-import
+# class and F841 already owns unused locals; unused arguments and unreachable code
+# sit at 100%.
+min_confidence = 60
+# `filter_case` is an entry point: `schemathesis.toml` loads this module by path and
+# calls the hook by name, so no Python code references it.
+ignore_decorators = ["@schemathesis.hook"]
+# Names whose owner resolves them outside this tree: pytest's hooks and the
+# `pytestmark` markers, the `ctx` and `call` parameters whose names the caller fixes
+# (Schemathesis and the pytest hookspec respectively), and the sqlite3 Connection
+# attributes the suite sets. A whitelist module would restate these as bare
+# expressions, which ruff rejects (B018 useless expression, F821 undefined name).
+ignore_names = ["pytest*", "row_factory", "shouldstop", "ctx", "call"]
 
 [tool.pyright]
 # The test tree imports its shared modules flat: `harness` lives in `test/util`,
