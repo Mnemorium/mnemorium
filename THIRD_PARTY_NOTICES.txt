@@ -636,11 +636,12 @@ Apache License 2.0 (Apache-2.0)
 
 Used by:
   - cmov 0.5.4 (https://github.com/RustCrypto/utils)
-  - ctutils 0.4.5 (https://github.com/RustCrypto/utils)
-  - encoding_rs 0.8.42 (https://github.com/hsivonen/encoding_rs)
+  - ctutils 0.4.8 (https://github.com/RustCrypto/utils)
+  - encoding_rs 0.8.44 (https://github.com/hsivonen/encoding_rs)
   - multiversion_no_op 1.0.0 (https://github.com/hsivonen/multiversion_no_op)
-  - utf8_iter 1.0.4 (https://github.com/hsivonen/utf8_iter)
-  - zeroize 1.9.1 (https://github.com/RustCrypto/utils)
+  - utf8_iter 1.1.0 (https://github.com/hsivonen/utf8_iter)
+  - utf_types 1.0.0 (https://github.com/hsivonen/utf_types)
+  - zeroize 1.9.2 (https://github.com/RustCrypto/utils)
   - zeroize_derive 1.5.0 (https://github.com/RustCrypto/utils)
 
                                  Apache License
@@ -1894,8 +1895,9 @@ Used by:
 Apache License 2.0 (Apache-2.0)
 
 Used by:
+  - email_address 0.2.10 (https://github.com/johnstonskj/rust-email_address.git)
   - rustls-platform-verifier 0.7.1 (https://github.com/rustls/rustls-platform-verifier)
-  - spinning_top 0.3.0 (https://github.com/rust-osdev/spinning_top)
+  - spinning_top 0.3.1 (https://github.com/rust-osdev/spinning_top)
   - zune-core 0.5.3 (https://github.com/etemesi254/zune-image)
   - zune-jpeg 0.5.15 (https://github.com/etemesi254/zune-image/tree/dev/crates/zune-jpeg)
                                  Apache License
@@ -2313,7 +2315,7 @@ Used by:
 Apache License 2.0 (Apache-2.0)
 
 Used by:
-  - crc32fast 1.5.3 (https://github.com/srijs/rust-crc32fast)
+  - crc32fast 1.5.5 (https://github.com/srijs/rust-crc32fast)
   - hex 0.4.3 (https://github.com/KokaKiwi/rust-hex)
   - quick-error 2.0.1 (http://github.com/tailhook/quick-error)
                                  Apache License
@@ -4402,7 +4404,7 @@ limitations under the License.
 Apache License 2.0 (Apache-2.0)
 
 Used by:
-  - rustls-pki-types 1.15.1 (https://github.com/rustls/pki-types)
+  - rustls-pki-types 1.16.0 (https://github.com/rustls/pki-types)
                               Apache License
                         Version 2.0, January 2004
                      http://www.apache.org/licenses/
@@ -4610,7 +4612,7 @@ limitations under the License.
 Apache License 2.0 (Apache-2.0)
 
 Used by:
-  - notify-types 2.2.0 (https://github.com/notify-rs/notify.git)
+  - notify-types 2.3.1 (https://github.com/notify-rs/notify.git)
                               Apache License
                         Version 2.0, January 2004
                      http://www.apache.org/licenses/
@@ -5038,9 +5040,9 @@ Used by:
   - displaydoc 0.2.7 (https://github.com/yaahc/displaydoc)
   - either 1.19.0 (https://github.com/rayon-rs/either)
   - equivalent 1.0.3 (https://github.com/indexmap-rs/equivalent)
-  - errno 0.3.14 (https://github.com/lambda-fairy/rust-errno)
+  - errno 0.3.15 (https://github.com/lambda-fairy/rust-errno)
   - event-listener 5.4.2 (https://github.com/smol-rs/event-listener)
-  - flate2 1.1.10 (https://github.com/rust-lang/flate2-rs)
+  - flate2 1.1.11 (https://github.com/rust-lang/flate2-rs)
   - fnv 1.0.7 (https://github.com/servo/rust-fnv)
   - form_urlencoded 1.2.2 (https://github.com/servo/rust-url)
   - futures-timer 3.0.4 (https://github.com/async-rs/futures-timer)
@@ -5055,32 +5057,32 @@ Used by:
   - indexmap 2.14.2 (https://github.com/indexmap-rs/indexmap)
   - lazy_static 1.5.1 (https://github.com/rust-lang-nursery/lazy-static.rs)
   - lock_api 0.4.14 (https://github.com/Amanieu/parking_lot)
-  - log 0.4.34 (https://github.com/rust-lang/log)
-  - mime 0.3.17 (https://github.com/hyperium/mime)
+  - log 0.4.35 (https://github.com/rust-lang/log)
+  - mime 0.3.18 (https://github.com/hyperium/mime)
   - num-bigint 0.4.8 (https://github.com/rust-num/num-bigint)
   - num-integer 0.1.47 (https://github.com/rust-num/num-integer)
   - num-traits 0.2.19 (https://github.com/rust-num/num-traits)
   - once_cell 1.21.4 (https://github.com/matklad/once_cell)
-  - openssl-probe 0.2.1 (https://github.com/rustls/openssl-probe)
+  - openssl-probe 0.2.2 (https://github.com/rustls/openssl-probe)
   - parking 2.2.1 (https://github.com/smol-rs/parking)
   - parking_lot 0.12.5 (https://github.com/Amanieu/parking_lot)
   - parking_lot_core 0.9.12 (https://github.com/Amanieu/parking_lot)
   - percent-encoding 2.3.2 (https://github.com/servo/rust-url/)
   - png 0.18.1 (https://github.com/image-rs/image-png)
-  - regex-automata 0.4.18 (https://github.com/rust-lang/regex)
-  - regex-syntax 0.8.11 (https://github.com/rust-lang/regex)
-  - regex 1.13.1 (https://github.com/rust-lang/regex)
+  - regex-automata 0.4.19 (https://github.com/rust-lang/regex)
+  - regex-syntax 0.8.12 (https://github.com/rust-lang/regex)
+  - regex 1.13.2 (https://github.com/rust-lang/regex)
   - rustls-native-certs 0.8.5 (https://github.com/rustls/rustls-native-certs)
   - rustls 0.23.46 (https://github.com/rustls/rustls)
   - scopeguard 1.2.0 (https://github.com/bluss/scopeguard)
   - signal-hook-registry 1.4.8 (https://github.com/vorner/signal-hook)
-  - smallvec 1.16.4 (https://github.com/servo/rust-smallvec)
+  - smallvec 1.16.6 (https://github.com/smallvec/smallvec)
   - socket2 0.6.5 (https://github.com/rust-lang/socket2)
   - stable_deref_trait 1.2.1 (https://github.com/storyyeller/stable_deref_trait)
   - symlink 0.1.0 (https://gitlab.com/chris-morgan/symlink)
   - thread_local 1.1.10 (https://github.com/Amanieu/thread_local-rs)
   - url 2.5.8 (https://github.com/servo/rust-url)
-  - uuid 1.29.0 (https://github.com/uuid-rs/uuid)
+  - uuid 1.29.3 (https://github.com/uuid-rs/uuid)
                               Apache License
                         Version 2.0, January 2004
                      http://www.apache.org/licenses/
@@ -5498,20 +5500,15 @@ Used by:
   - argon2 0.6.0 (https://github.com/RustCrypto/password-hashes)
   - base64ct 1.8.3 (https://github.com/RustCrypto/formats)
   - blake2 0.11.0 (https://github.com/RustCrypto/hashes)
-  - block-buffer 0.10.4 (https://github.com/RustCrypto/utils)
   - block-buffer 0.12.1 (https://github.com/RustCrypto/utils)
   - chacha20 0.10.2 (https://github.com/RustCrypto/stream-ciphers)
-  - const-oid 0.10.2 (https://github.com/RustCrypto/formats)
-  - cpufeatures 0.2.17 (https://github.com/RustCrypto/utils)
+  - const-oid 0.10.3 (https://github.com/RustCrypto/formats)
   - cpufeatures 0.3.1 (https://github.com/RustCrypto/utils)
-  - crypto-common 0.1.6 (https://github.com/RustCrypto/traits)
   - crypto-common 0.2.2 (https://github.com/RustCrypto/traits)
-  - digest 0.10.7 (https://github.com/RustCrypto/traits)
   - digest 0.11.3 (https://github.com/RustCrypto/traits)
   - hybrid-array 0.4.15 (https://github.com/RustCrypto/hybrid-array)
   - password-hash 0.6.1 (https://github.com/RustCrypto/traits)
   - phc 0.6.1 (https://github.com/RustCrypto/formats)
-  - sha2 0.10.9 (https://github.com/RustCrypto/hashes)
   - sha2 0.11.1 (https://github.com/RustCrypto/hashes)
   - signature 2.2.0 (https://github.com/RustCrypto/traits/tree/master/signature)
                               Apache License
@@ -6608,7 +6605,11 @@ limitations under the License.
 Apache License 2.0 (Apache-2.0)
 
 Used by:
-  - sqlx 0.9.0 (https://github.com/launchbadge/sqlx)
+  - sqlx-core 0.9.1 (https://github.com/launchbadge/sqlx)
+  - sqlx-macros-core 0.9.1 (https://github.com/launchbadge/sqlx)
+  - sqlx-macros 0.9.1 (https://github.com/launchbadge/sqlx)
+  - sqlx-sqlite 0.9.1 (https://github.com/launchbadge/sqlx)
+  - sqlx 0.9.1 (https://github.com/launchbadge/sqlx)
 Apache License
 Version 2.0, January 2004
 http://www.apache.org/licenses/
@@ -7027,23 +7028,23 @@ Apache License 2.0 (Apache-2.0)
 Used by:
   - allocator-api2 0.2.21 (https://github.com/zakarumych/allocator-api2)
   - anyhow 1.0.104 (https://github.com/dtolnay/anyhow)
-  - aws-lc-sys 0.46.0 (https://github.com/aws/aws-lc-rs)
+  - aws-lc-sys 0.47.0 (https://github.com/aws/aws-lc-rs)
   - fdeflate 0.3.7 (https://github.com/image-rs/fdeflate)
   - half 2.7.1 (https://github.com/VoidStarKat/half-rs)
   - image 0.25.10 (https://github.com/image-rs/image)
-  - itoa 1.0.18 (https://github.com/dtolnay/itoa)
+  - itoa 1.0.19 (https://github.com/dtolnay/itoa)
   - libc 0.2.191 (https://github.com/rust-lang/libc)
   - miniz_oxide 0.8.9 (https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide)
   - miniz_oxide 0.9.1 (https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide)
   - num-conv 0.2.2 (https://github.com/jhpratt/num-conv)
   - pastey 0.2.3 (https://github.com/as1100k/pastey)
-  - pin-project-internal 1.1.13 (https://github.com/taiki-e/pin-project)
-  - pin-project-lite 0.2.17 (https://github.com/taiki-e/pin-project-lite)
-  - pin-project 1.1.13 (https://github.com/taiki-e/pin-project)
+  - pin-project-internal 1.2.0 (https://github.com/taiki-e/pin-project)
+  - pin-project-lite 0.2.18 (https://github.com/taiki-e/pin-project-lite)
+  - pin-project 1.2.0 (https://github.com/taiki-e/pin-project)
   - portable-atomic 1.15.0 (https://github.com/taiki-e/portable-atomic)
   - proc-macro2 1.0.107 (https://github.com/dtolnay/proc-macro2)
   - quote 1.0.47 (https://github.com/dtolnay/quote)
-  - rand 0.10.3 (https://github.com/rust-random/rand)
+  - rand 0.10.4 (https://github.com/rust-random/rand)
   - rand 0.9.5 (https://github.com/rust-random/rand)
   - rand_chacha 0.9.0 (https://github.com/rust-random/rand)
   - ryu 1.0.23 (https://github.com/dtolnay/ryu)
@@ -7054,12 +7055,8 @@ Used by:
   - serde_path_to_error 0.1.20 (https://github.com/dtolnay/path-to-error)
   - serde_urlencoded 0.7.1 (https://github.com/nox/serde_urlencoded)
   - simdutf8 0.1.5 (https://github.com/rusticstuff/simdutf8)
-  - sqlx-core 0.9.0 (https://github.com/launchbadge/sqlx)
-  - sqlx-macros-core 0.9.0 (https://github.com/launchbadge/sqlx)
-  - sqlx-macros 0.9.0 (https://github.com/launchbadge/sqlx)
-  - sqlx-sqlite 0.9.0 (https://github.com/launchbadge/sqlx)
   - syn 2.0.119 (https://github.com/dtolnay/syn)
-  - syn 3.0.9 (https://github.com/dtolnay/syn)
+  - syn 3.0.10 (https://github.com/dtolnay/syn)
   - sync_wrapper 1.0.2 (https://github.com/Actyx/sync_wrapper)
   - thiserror-impl 1.0.69 (https://github.com/dtolnay/thiserror)
   - thiserror-impl 2.0.21 (https://github.com/dtolnay/thiserror)
@@ -7469,7 +7466,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 BSD 3-Clause &quot;New&quot; or &quot;Revised&quot; License (BSD-3-Clause)
 
 Used by:
-  - aws-lc-sys 0.46.0 (https://github.com/aws/aws-lc-rs)
+  - aws-lc-sys 0.47.0 (https://github.com/aws/aws-lc-rs)
 Copyright (c) <year> <owner>. 
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -7487,7 +7484,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 BSD 3-Clause &quot;New&quot; or &quot;Revised&quot; License (BSD-3-Clause)
 
 Used by:
-  - encoding_rs 0.8.42 (https://github.com/hsivonen/encoding_rs)
+  - encoding_rs 0.8.44 (https://github.com/hsivonen/encoding_rs)
 Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
 
 Redistribution and use in source and binary forms, with or without
@@ -7520,7 +7517,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Creative Commons Zero v1.0 Universal (CC0-1.0)
 
 Used by:
-  - notify 8.2.1 (https://github.com/notify-rs/notify.git)
+  - notify 8.2.2 (https://github.com/notify-rs/notify.git)
 Creative Commons CC0 1.0 Universal
 
 <<beginOptional;name=ccOptionalIntro>> CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE LEGAL SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES REGARDING THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED HEREUNDER.  <<endOptional>>
@@ -7667,7 +7664,7 @@ THIS SOFTWARE.
 ISC License (ISC)
 
 Used by:
-  - rustls-webpki 0.103.16 (https://github.com/rustls/webpki)
+  - rustls-webpki 0.103.17 (https://github.com/rustls/webpki)
 Except as otherwise noted, this project is licensed under the following
 (ISC-style) terms:
 
@@ -7693,8 +7690,8 @@ third-party/chromium/LICENSE.
 ISC License (ISC)
 
 Used by:
-  - aws-lc-rs 1.18.2 (https://github.com/aws/aws-lc-rs)
-  - aws-lc-sys 0.46.0 (https://github.com/aws/aws-lc-rs)
+  - aws-lc-rs 1.19.0 (https://github.com/aws/aws-lc-rs)
+  - aws-lc-sys 0.47.0 (https://github.com/aws/aws-lc-rs)
 ISC License:
 
 Copyright (c) 2004-2010 by Internet Systems Consortium, Inc. ("ISC")
@@ -7762,7 +7759,7 @@ Used by:
 MIT License (MIT)
 
 Used by:
-  - mio 1.2.4 (https://github.com/tokio-rs/mio)
+  - mio 1.2.5 (https://github.com/tokio-rs/mio)
 Copyright (c) 2014 Carl Lerche and other MIO contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -7788,7 +7785,7 @@ THE SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - libsqlite3-sys 0.37.0 (https://github.com/rusqlite/rusqlite)
+  - libsqlite3-sys 0.40.0 (https://github.com/rusqlite/rusqlite)
 Copyright (c) 2014 The rusqlite developers
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -7899,7 +7896,7 @@ DEALINGS IN THE SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - bytes 1.12.1 (https://github.com/tokio-rs/bytes)
+  - bytes 1.12.2 (https://github.com/tokio-rs/bytes)
 Copyright (c) 2018 Carl Lerche
 
 Permission is hereby granted, free of charge, to any
@@ -8458,34 +8455,6 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - email_address 0.2.9 (https://github.com/johnstonskj/rust-email_address.git)
-MIT License
-
-Copyright (c) 2019 Simon Johnston
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-
-===============================================================================
-MIT License (MIT)
-
-Used by:
   - tokio-macros 2.7.2 (https://github.com/tokio-rs/tokio)
 MIT License
 
@@ -8831,7 +8800,7 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - aws-lc-sys 0.46.0 (https://github.com/aws/aws-lc-rs)
+  - aws-lc-sys 0.47.0 (https://github.com/aws/aws-lc-rs)
 The MIT License (MIT)
 
 Copyright (c) 2015-2020 the fiat-crypto authors (see
@@ -8968,33 +8937,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-
-===============================================================================
-MIT License (MIT)
-
-Used by:
-  - generic-array 0.14.9 (https://github.com/fizyk20/generic-array.git)
-The MIT License (MIT)
-
-Copyright (c) 2015 Bartłomiej Kamiński
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 
 ===============================================================================
 Unicode License v3 (Unicode-3.0)
