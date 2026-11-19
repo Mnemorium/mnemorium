@@ -1,7 +1,6 @@
 use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
-use chrono::NaiveDate;
 use serde::Deserialize;
 use tracing::warn;
 use utoipa::ToSchema;
@@ -9,9 +8,9 @@ use utoipa::ToSchema;
 use crate::application::port::CreateMovieCommand;
 use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
-use crate::infrastructure::inbound::rest::handler::library::{DATE_FORMAT, MovieResponse};
+use crate::infrastructure::inbound::rest::handler::library::{MovieResponse, parse_wire_date};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
 /// Payload to create a film from a video.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -26,13 +25,23 @@ pub(crate) struct PostMovieRequest {
     /// Genres of the film.
     #[schema(min_length = 1)]
     pub genres: Option<Vec<String>>,
-    /// Name of the film.
-    #[schema(min_length = 1, max_length = 100)]
+    /// Name of the film; must not begin or end with whitespace. The submitted
+    /// value is stored unchanged.
+    #[schema(
+        min_length = 1,
+        max_length = 100,
+        pattern = r"^[^\s\u0085](?:[\s\S]*[^\s\u0085])?$"
+    )]
     pub name: String,
     /// Plot of the film, when known.
     pub plot: Option<String>,
     /// Date of the release, in `YYYY-MM-DD` form, when known.
-    #[schema(format = "date", example = "1959-08-17")]
+    #[schema(
+        format = "date",
+        min_length = 10,
+        max_length = 10,
+        example = "1959-08-17"
+    )]
     pub release_date: Option<String>,
     /// Identifier of the video backing the film.
     #[schema(example = 1)]
@@ -56,7 +65,7 @@ pub(crate) struct PostMovieRequest {
             body = MovieResponse,
             content_type = "application/hal+json",
             headers(
-                ("Location" = String, description = "URI of the newly created film"),
+                ("Location" = inline(UriReference), description = "URI of the newly created film"),
             ),
             description = "Film created",
         ),
@@ -127,7 +136,7 @@ pub(crate) async fn post_movie(
 ) -> Result<Response, ApiError> {
     let JsonObject(request) = payload;
     let release_date = match request.release_date.as_deref() {
-        Some(value) => Some(NaiveDate::parse_from_str(value, DATE_FORMAT).map_err(|_| {
+        Some(value) => Some(parse_wire_date(value).map_err(|()| {
             warn!(
                 target: "security",
                 event = "input_validation_failed",

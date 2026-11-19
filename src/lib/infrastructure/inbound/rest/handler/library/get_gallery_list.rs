@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 use utoipa::{IntoParams, ToSchema};
 
-use super::{DEFAULT_LIMIT, MAX_LIMIT};
 use crate::application::port::{ListGalleriesCommand, ListGalleriesError};
 use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
+use crate::infrastructure::inbound::rest::handler::{DEFAULT_LIMIT, MAX_LIMIT};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, Link, hal_json};
 
@@ -17,6 +17,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, Link, 
 /// Every filter is optional; an all-`None` query returns the first page of the
 /// galleries the caller may see.
 #[derive(Debug, Deserialize, IntoParams)]
+#[serde(deny_unknown_fields)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
 pub(crate) struct ListGalleriesQuery {

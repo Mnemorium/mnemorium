@@ -1,13 +1,4 @@
-"""Black-box proof of the `state` capability.
-
-Every case starts its own container from the image under test through the shared `harness` plugin and reads only what an
-operator can: HTTP responses, standard output, the working directory and the `state.yaml` artifact. `sut` is used
-directly because each case starts, stops or restarts its own container; the `server` fixture would start one implicitly.
-
-`/health` and the current-user route are resolved through the API index (`sut.href`) and representation links, so the
-system suite keeps its single base literal in `harness.Sut.index`. The state document's format belongs to the adapter;
-the decode-level scenarios are proven by the Rust adapter tests.
-"""
+"""Black-box proof of the `state` capability."""
 
 import os
 import re
@@ -15,6 +6,7 @@ import re
 import allure
 import pytest
 import yaml
+from conftest import login
 from harness import (
     CONFIG_PATH,
     DATABASE_PATH,
@@ -25,6 +17,8 @@ from harness import (
     hex64,
     register,
 )
+from mnemorium_client.api.identity import post_login
+from mnemorium_client.models import LoginRequest
 
 # State owns its instances: every case pre-places `state.yaml`, restarts the container or observes a refused start.
 pytestmark = pytest.mark.own_instance(reason="global_filesystem")
@@ -127,7 +121,7 @@ def test_a_persisted_identity_is_reused_silently(sut: Sut) -> None:
 def test_the_signing_secret_survives_a_restart(sut: Sut) -> None:
     """A token issued before the restart still validates afterwards."""
     sut.start(env={PEPPER_ENV: SEED_A, JWT_SECRET_ENV: SEED_B})
-    token = sut.login(ROOT_ADMIN_USERNAME, sut.root_password())
+    token = login(sut, ROOT_ADMIN_USERNAME, sut.root_password())
 
     sut.restart()
 
@@ -140,12 +134,12 @@ def test_the_signing_secret_survives_a_restart(sut: Sut) -> None:
 def test_the_pepper_survives_a_restart(sut: Sut) -> None:
     """A password hashed before the restart still verifies afterwards."""
     sut.start(env={PEPPER_ENV: SEED_A, JWT_SECRET_ENV: SEED_B})
-    token = sut.login(ROOT_ADMIN_USERNAME, sut.root_password())
+    token = login(sut, ROOT_ADMIN_USERNAME, sut.root_password())
     register(sut, token, "alice", "alice@example.com", SECRET_PASSWORD)
 
     sut.restart()
 
-    assert sut.login("alice", SECRET_PASSWORD)
+    assert login(sut, "alice", SECRET_PASSWORD)
 
 
 @allure.epic("State")
@@ -296,8 +290,13 @@ def test_an_identity_without_a_datastore_is_reused(sut: Sut) -> None:
     assert sut.exists(DATABASE_PATH)
 
     # A fresh datastore seeds its own Root Admin: the old credential is gone, the new one works.
-    assert sut.attempt_login(ROOT_ADMIN_USERNAME, stale_password).status_code == 401
-    assert sut.login(ROOT_ADMIN_USERNAME, sut.root_password())
+    assert (
+        post_login.sync_detailed(
+            client=sut.client(), body=LoginRequest(password=stale_password, identifier=ROOT_ADMIN_USERNAME)
+        ).status_code
+        == 401
+    )
+    assert login(sut, ROOT_ADMIN_USERNAME, sut.root_password())
 
 
 @allure.epic("State")

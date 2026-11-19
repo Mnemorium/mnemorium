@@ -6,7 +6,7 @@ use crate::application::port::GetAudioCommand;
 use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::asset::{asset_file_href, parse_asset_id};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference};
 
 /// Redirect the typed audio to its backing file.
 #[utoipa::path(
@@ -21,7 +21,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
         (
             status = SEE_OTHER,
             description = "Redirect to the stored file resource",
-            headers(("Location" = String, description = "Canonical URI of the stored file"))
+            headers(("Location" = inline(UriReference), description = "Canonical URI of the stored file"))
         ),
         (
             status = BAD_REQUEST,

@@ -39,8 +39,13 @@ pub(crate) struct PatchPlaylistRequest {
     pub cover_image_id: FieldUpdate<NumericID>,
     /// New visibility, when requested.
     pub is_public: Option<bool>,
-    /// New name, when requested.
-    #[schema(min_length = 1, max_length = 100)]
+    /// New name, when requested; must not begin or end with whitespace. The
+    /// submitted value is stored unchanged.
+    #[schema(
+        min_length = 1,
+        max_length = 100,
+        pattern = r"^[^\s\u0085](?:[\s\S]*[^\s\u0085])?$"
+    )]
     pub name: Option<String>,
 }
 

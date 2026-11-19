@@ -69,8 +69,8 @@ where
             UsernamePolicy::validate(command.username()).map_err(|error| match error {
                 UsernamePolicyError::TooShort
                 | UsernamePolicyError::TooLong
-                | UsernamePolicyError::ContainsUppercase
-                | UsernamePolicyError::SurroundingWhitespace => RegisterUserError::InvalidUsername,
+                | UsernamePolicyError::ContainsNul
+                | UsernamePolicyError::ContainsWhitespace => RegisterUserError::InvalidUsername,
             })?;
 
             User::try_new(0, username.clone(), email.clone(), 0, command.role()).map_err(
@@ -485,18 +485,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn register_user_uppercase_username_returns_invalid_username()
-    -> Result<(), Box<dyn Error>> {
+    async fn register_user_uppercase_username_succeeds() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|_, _, _| Ok(()))?;
+        let harness = use_case_with(|user_repository, credential_repository, password_hasher| {
+            expect_caller(user_repository, user(0, "root", Role::Admin)?);
+            expect_unique_search(user_repository);
+            expect_successful_persistence(credential_repository, password_hasher, user_repository);
+            Ok(())
+        })?;
         let command = command(0, "Alice", Role::Standard);
 
         // Act
         let result = harness.use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(RegisterUserError::InvalidUsername)));
-        assert!(!harness.committed.load(Ordering::SeqCst));
+        assert_eq!(result?.username(), "Alice");
+        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -534,23 +538,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn register_user_internal_space_username_succeeds() -> Result<(), Box<dyn Error>> {
+    async fn register_user_internal_space_username_returns_invalid_username()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, credential_repository, password_hasher| {
-            expect_caller(user_repository, user(0, "root", Role::Admin)?);
-            expect_unique_search(user_repository);
-            expect_successful_persistence(credential_repository, password_hasher, user_repository);
-            Ok(())
-        })?;
+        let harness = use_case_with(|_, _, _| Ok(()))?;
         let command = command(0, "al ice", Role::Standard);
 
         // Act
         let result = harness.use_case.execute(command).await;
 
         // Assert
-        let response = result?;
-        assert_eq!(response.username(), "al ice");
-        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(matches!(result, Err(RegisterUserError::InvalidUsername)));
+        assert!(!harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 

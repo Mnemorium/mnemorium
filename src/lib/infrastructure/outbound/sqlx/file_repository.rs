@@ -260,6 +260,9 @@ impl FileRepository for SqlxFileRepository<'_> {
         if let Some(user_id) = filter.user_id {
             push_filter(&mut first, &mut builder, "f.user_id = ", user_id);
         }
+        // A collection pages this read, so the order must be total: the
+        // identifier is the one key every file row carries.
+        builder.push(" ORDER BY f.file_id");
 
         let rows = builder
             .build_query_as::<SqlxFileWithOwner>()
@@ -592,6 +595,37 @@ mod tests {
         // Assert: a media removal addresses the row it read the stored path from,
         // so the identifier filter must select exactly that row.
         assert_eq!(found, vec![first]);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_returns_files_in_identifier_order() -> Result<(), Box<dyn Error>> {
+        // Arrange: the paths sort against the identifier order, so the assertion
+        // proves the order rather than the insertion sequence.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxFileRepository::new(&mut transaction);
+        let first = repository
+            .create(file(0, "files/z_last.png", 1, DIGEST)?)
+            .await?;
+        let second = repository
+            .create(file(
+                0,
+                "files/a_first.png",
+                1,
+                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            )?)
+            .await?;
+
+        // Act
+        let found = repository.search(&FileFilter::default()).await?;
+
+        // Assert: the stored-file collection pages this read, so its order is
+        // total and independent of the path.
+        assert_eq!(
+            found.iter().map(File::id).collect::<Vec<NumericID>>(),
+            vec![first.id(), second.id()]
+        );
         Ok(())
     }
 

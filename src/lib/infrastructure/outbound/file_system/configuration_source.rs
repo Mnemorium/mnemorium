@@ -166,6 +166,8 @@ impl Resolver<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "test-seed")]
+    use crate::domain::model::SeedProfile;
     use crate::domain::model::{Configuration, PartialAsset, Rotation};
 
     use allure_cargotest::allure_test;
@@ -434,6 +436,52 @@ mod tests {
         assert!(
             message.contains("storage"),
             "the rejection must name the retired key, got: {message:?}"
+        );
+        Ok(())
+    }
+
+    #[cfg(feature = "test-seed")]
+    #[test]
+    fn configuration_source_seed_profile_is_parsed_case_insensitively() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let directory = tempdir()?;
+        let path = directory.path().join("config.yaml");
+        fs::write(&path, "seed:\n  profile: SYSTEM\n")?;
+        let resolver = resolver(&path);
+
+        // Act
+        let loaded = resolver.resolve()?;
+
+        // Assert
+        assert_eq!(
+            loaded.partial().seed.profile,
+            Some(SeedProfile::System),
+            "a test-seed build accepts the setting, whatever its case"
+        );
+        Ok(())
+    }
+
+    #[cfg(not(feature = "test-seed"))]
+    #[test]
+    fn configuration_source_seed_key_is_rejected_without_the_feature() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the seed section ships only in a test build.
+        let directory = tempdir()?;
+        let path = directory.path().join("config.yaml");
+        fs::write(&path, "seed:\n  profile: api\n")?;
+        let resolver = resolver(&path);
+
+        // Act
+        let result = resolver.resolve();
+
+        // Assert
+        assert!(
+            matches!(
+                result,
+                Err(ConfigurationSourceError::InvalidConfiguration(_))
+            ),
+            "a shipped build must reject the test-only key as unknown, got: {result:?}"
         );
         Ok(())
     }

@@ -13,7 +13,9 @@ use crate::infrastructure::inbound::rest::handler::asset::{
     asset_file_href, asset_video_href, content_href, parse_asset_id,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, Link, hal_json};
+use crate::infrastructure::inbound::rest::{
+    ApiError, AppState, CacheControlHeader, ErrorBody, Link, hal_json,
+};
 
 /// HAL links exposed by a typed-video representation.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -104,7 +106,7 @@ impl From<GetVideoError> for ApiError {
             body = AssetVideoResponse,
             content_type = "application/hal+json",
             description = "Video found",
-            headers(("Cache-Control" = String, description = "Always `private, max-age=60`"))
+            headers(("Cache-Control" = inline(CacheControlHeader), description = "Always `private, max-age=60`"))
         ),
         (
             status = BAD_REQUEST,

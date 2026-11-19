@@ -10,6 +10,8 @@ mod get_audio_file;
 mod get_file;
 /// The get-file content endpoint.
 mod get_file_content;
+/// The list-files endpoint.
+mod get_file_list;
 /// The get-image endpoint.
 mod get_image;
 /// The get-image content endpoint.
@@ -31,6 +33,8 @@ mod post_upload_complete;
 /// The store-chunk endpoint.
 mod put_upload_chunk;
 
+use std::borrow::Cow;
+
 use axum::body::Body;
 use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header};
@@ -40,21 +44,22 @@ use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use tokio_util::io::ReaderStream;
 use tracing::warn;
-use utoipa::ToSchema;
+use utoipa::openapi::RefOr;
+use utoipa::openapi::schema::{KnownFormat, ObjectBuilder, Schema, SchemaFormat, Type};
+use utoipa::{PartialSchema, ToSchema};
 use utoipa_axum::router::{OpenApiRouter, UtoipaMethodRouterExt as _};
 use utoipa_axum::routes;
 
 use crate::application::port::{
     AssetTarget, ContentOutcome, GetAssetContentCommand, GetAssetContentError,
-    GetAssetContentResponse,
+    GetAssetContentResponse, GetFileResponse as GetFileResponseData,
 };
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::TIMESTAMP_FORMAT;
+use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::authenticate;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, Link};
 use crate::infrastructure::outbound::jwt::JwtTokenProvider;
-
-/// Date and time format of the asset representations.
-const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S";
 
 /// Date format of the asset representations.
 const DATE_FORMAT: &str = "%Y-%m-%d";
@@ -98,9 +103,8 @@ pub(crate) struct UploadSessionResponse {
     /// One character per chunk, `1` when received and `0` otherwise.
     #[schema(example = json!("110"))]
     pub bitmap: String,
-    /// Date and time at which the upload session expires, as
-    /// `YYYY-MM-DDTHH:MM:SS`.
-    #[schema(example = json!("2026-01-01T12:00:00"))]
+    /// Date and time at which the upload session expires, as RFC 3339 UTC.
+    #[schema(format = "date-time", example = json!("2026-01-01T12:00:00Z"))]
     pub expires_at: String,
     /// Unique identifier of the caller's file for the session digest, when one
     /// exists.
@@ -128,13 +132,138 @@ impl UploadSessionResponse {
     ) -> Self {
         Self {
             bitmap,
-            expires_at: expires_at.format("%Y-%m-%dT%H:%M:%S").to_string(),
+            expires_at: expires_at.format(TIMESTAMP_FORMAT).to_string(),
             file_id,
             is_finished,
             links: UploadSessionLinks::for_upload(upload_id),
             total_chunks,
         }
     }
+}
+
+/// HAL links exposed by a stored-file representation.
+///
+/// The `self` link addresses the file; `owner` names the account that owns it,
+/// and `image`, `audio` and `video` name the typed medium the file backs when
+/// one exists.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct FileLinks {
+    /// Link to the typed audio backed by the file, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio: Option<Link>,
+    /// Link to the file's playable content.
+    pub content: Link,
+    /// Link to the typed image backed by the file, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<Link>,
+    /// Link to the account owning the file.
+    pub owner: Link,
+    /// Link to the stored file itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+    /// Link to the typed video backed by the file, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video: Option<Link>,
+}
+
+/// Representation of a stored file.
+///
+/// The fetched file and a stored-file collection item are the same resource, so
+/// one representation serves both and `_links.self` of an item is the route
+/// `get_file` serves (`API-032`, `API-037`).
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct FileResponse {
+    /// Unique identifier of the stored file.
+    pub id: NumericID,
+    /// Whether the file is marked public.
+    pub is_public: bool,
+    /// Links to the file and the resources related to it.
+    #[serde(rename = "_links")]
+    pub links: FileLinks,
+    /// Media type of the file.
+    #[schema(
+        example = json!("image/png"),
+        pattern = "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$"
+    )]
+    pub mime_type: String,
+    /// Instant at which the content was last modified, as RFC 3339 UTC.
+    #[schema(format = "date-time", example = json!("2026-01-01T12:00:00Z"))]
+    pub modified_at: String,
+    /// Origin of the file's bytes.
+    #[schema(example = json!("UPLOADED"))]
+    pub origin: String,
+    /// Path of the file relative to the library root.
+    #[schema(example = json!("12_cover.png"))]
+    pub path: String,
+    /// Size of the file content, in bytes.
+    pub size_bytes: i64,
+    /// Date at which the file was uploaded, as `YYYY-MM-DD`.
+    #[schema(format = "date", example = json!("2026-01-01"))]
+    pub uploaded_date: String,
+}
+
+impl FileResponse {
+    /// Map a fetched file onto its HTTP representation.
+    ///
+    /// The collection and the single-file read share that read model, so one
+    /// mapping keeps the two representations from drifting.
+    #[must_use]
+    pub(crate) fn from_response(response: &GetFileResponseData) -> Self {
+        Self {
+            id: response.id(),
+            is_public: response.is_public(),
+            links: FileLinks {
+                audio: response
+                    .audio_id()
+                    .map(|id| Link::new(&asset_audio_href(id))),
+                content: content_href("file", response.id()),
+                image: response
+                    .image_id()
+                    .map(|id| Link::new(&asset_image_href(id))),
+                owner: Link::new(&user_self_href(response.owner_id())),
+                self_link: Link::new(&asset_file_href(response.id())),
+                video: response
+                    .video_id()
+                    .map(|id| Link::new(&asset_video_href(id))),
+            },
+            mime_type: response.mime_type_id().to_owned(),
+            modified_at: response.modified_at().format(TIMESTAMP_FORMAT).to_string(),
+            origin: response.origin().as_str().to_owned(),
+            path: response.path().to_owned(),
+            size_bytes: response.size_bytes(),
+            uploaded_date: format_date(response.uploaded_at()),
+        }
+    }
+}
+
+/// Raw bytes of a stored asset.
+///
+/// The content endpoints stream the stored file, so their body is raw bytes.
+/// Declared as a binary `String` so the `OpenAPI` schema describes what the
+/// wire carries instead of the JSON array of integers a bare `Vec<u8>` would
+/// produce. No value is ever constructed: the type only names the schema.
+#[derive(Debug)]
+#[non_exhaustive]
+pub(crate) struct AssetContent;
+
+impl PartialSchema for AssetContent {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .schema_type(Type::String)
+            .format(Some(SchemaFormat::KnownFormat(KnownFormat::Binary)))
+            .description(Some("Raw bytes of a stored asset."))
+            .into()
+    }
+}
+
+impl ToSchema for AssetContent {
+    fn name() -> Cow<'static, str> {
+        Cow::Borrowed("AssetContent")
+    }
+
+    fn schemas(_schemas: &mut Vec<(String, RefOr<Schema>)>) {}
 }
 
 /// Map an asset-content error to its API error.
@@ -393,7 +522,7 @@ pub(crate) fn parse_asset_id(
 /// The handlers carry their own paths, so this only groups them. The
 /// state-dependent chunk body limit is passed in because the `OpenAPI` document
 /// does not need it (`None`).
-#[cfg(any(feature = "api-docs", test))]
+#[cfg(feature = "api-docs")]
 pub(crate) fn asset_router(chunk_body_limit: Option<usize>) -> OpenApiRouter<AppState> {
     authenticated_asset_router(chunk_body_limit).merge(content_asset_router())
 }
@@ -416,6 +545,7 @@ fn authenticated_asset_router(chunk_body_limit: Option<usize>) -> OpenApiRouter<
         .routes(routes!(get_upload::get_upload))
         .merge(chunk)
         .routes(routes!(get_file::get_file))
+        .routes(routes!(get_file_list::get_file_list))
         .routes(routes!(get_image::get_image))
         .routes(routes!(get_image_file::get_image_file))
         .routes(routes!(get_audio::get_audio))

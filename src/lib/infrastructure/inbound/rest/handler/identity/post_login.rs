@@ -16,12 +16,12 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLi
 #[derive(Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct LoginRequest {
+    /// Username or email address of the user to authenticate.
+    #[schema(write_only)]
+    pub identifier: String,
     /// Password used to authenticate.
     #[schema(write_only)]
     pub password: String,
-    /// Username of the user to authenticate.
-    #[schema(write_only)]
-    pub username: String,
 }
 
 impl Debug for LoginRequest {
@@ -30,7 +30,7 @@ impl Debug for LoginRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("LoginRequest")
             .field("password", &"**")
-            .field("username", &self.username)
+            .field("identifier", &"**")
             .finish_non_exhaustive()
     }
 }
@@ -78,7 +78,7 @@ impl From<IssuedToken> for LoginResponse {
 impl From<LoginUserError> for ApiError {
     fn from(err: LoginUserError) -> Self {
         match err {
-            LoginUserError::InvalidPassword | LoginUserError::InvalidUsername => {
+            LoginUserError::InvalidPassword | LoginUserError::InvalidIdentifier => {
                 Self::Unauthorized("invalid credentials".to_owned())
             }
             LoginUserError::RateLimited(wait) => Self::TooManyRequests(format!(
@@ -92,7 +92,7 @@ impl From<LoginUserError> for ApiError {
 
 /// Authenticate a user and issue a token.
 ///
-/// The caller presents a username and a password. On success the endpoint
+/// The caller presents a username or an email address, and a password. On success the endpoint
 /// returns an access token to present in the `Authorization` header of
 /// subsequent requests, together with the number of seconds it stays valid.
 #[utoipa::path(
@@ -165,7 +165,7 @@ pub(crate) async fn post_login(
     match state
         .identity_use_case_factory()
         .login_user()
-        .execute(LoginUserCommand::new(request.username, request.password))
+        .execute(LoginUserCommand::new(request.identifier, request.password))
         .await
     {
         Ok(response) => Ok(hal_json(LoginResponse::from(response))),

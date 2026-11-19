@@ -9,10 +9,12 @@ on:
       - '**/*.rs'
       - 'Cargo.toml'
       - 'Cargo.lock'
-      - 'test/seed/**'
       - 'migrations/**/*.sql'
+      - 'pyproject.toml'
+      - 'requirements.txt'
       - 'schemathesis.toml'
       - 'test/api/**'
+      - 'test/util/**'
       - 'script/api_fuzz.sh'
       - 'devenv.nix'
 
@@ -46,6 +48,14 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install the suite's dependencies
+        run: pip install -r requirements.txt
+      # The container-free API cases prove the HAL helpers and run before the
+      # fuzz, so a broken helper fails fast instead of surfacing mid-fuzz.
+      - name: Run the API cases
+        run: pytest test/api -p no:cacheprovider
       # Builds the seeded server, starts it, and hands the schema URL, the
       # generated config and the Root Admin credentials to the next step. The
       # server stays up until `--stop` (always), so the fuzz runs against it.

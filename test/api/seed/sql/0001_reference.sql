@@ -1,10 +1,10 @@
 -- Seed media rows shared by the music and video scripts.
 --
--- The `file` rows these rows reference are created by the Rust seed step, which
--- owns the bytes and their metadata:
---   9001 seed/cover.png     9002 seed/gallery.png   9003 seed/playlist.png
---   9004 seed/clip.mp4      9005 seed/episode.mp4   9006 seed/gallery.mp4
---   9007 seed/track.flac
+-- The `file` rows these rows reference are declared by `0000_files.sql`, which
+-- runs first: 9001 seed/cover.png, 9002 seed/gallery.png,
+-- 9003 seed/playlist.png, 9004 seed/clip.mp4, 9005 seed/episode.mp4,
+-- 9006 seed/gallery.mp4 and 9007 seed/track.flac. The seed grounds each of them
+-- to the committed bytes.
 --
 -- Images start with a NULL scope: the attachment triggers set LIBRARY for a
 -- cover and USER for gallery or playlist media.

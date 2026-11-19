@@ -64,19 +64,9 @@ indistinguishable from a missing one.
 #### Scenario: SCN-IMAGE-003-A — An image of an existing identifier
 
 - **WHEN** an authenticated caller requests an image it may read
-- **THEN** the system returns `200 OK` with the image representation
+- **THEN** the system returns `200 OK`
 
 #### Scenario: SCN-IMAGE-003-B — Unknown or unreadable image
 
 - **WHEN** the image does not exist, or the caller may not read it
 - **THEN** the system returns `404 Not Found`
-
-### Requirement: REQ-IMAGE-004 — An image addresses its file
-
-The system SHALL serve the file alias of an image as an alias of the backing file resource, answering `303 See Other`
-with a `Location` naming the file.
-
-#### Scenario: SCN-IMAGE-004-A — The alias redirects
-
-- **WHEN** an authenticated caller requests the file alias of an image it may read
-- **THEN** the system returns `303 See Other` with the file resource in `Location`

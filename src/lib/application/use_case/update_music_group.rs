@@ -127,6 +127,16 @@ where
                                         );
                                         UpdateMusicGroupError::InvalidName
                                     }
+                                    NamePolicyError::SurroundingWhitespace => {
+                                        warn!(
+                                            target: "security",
+                                            event = "input_validation_failed",
+                                            field = %"name",
+                                            reason = %"surrounding_whitespace",
+                                            "rejected a client-supplied value"
+                                        );
+                                        UpdateMusicGroupError::InvalidName
+                                    }
                                     NamePolicyError::TooLong => {
                                         warn!(
                                             target: "security",
@@ -289,7 +299,7 @@ mod tests {
             .execute(UpdateMusicGroupCommand::new(
                 1,
                 7,
-                Some("  The Renamed  ".to_owned()),
+                Some("The Renamed".to_owned()),
                 FieldUpdate::Absent,
             ))
             .await?;

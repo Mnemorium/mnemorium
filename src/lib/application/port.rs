@@ -103,6 +103,8 @@ mod library_use_case_factory;
 mod list_album_tracks;
 /// The list albums use-case port.
 mod list_albums;
+/// The list files use-case port.
+mod list_files;
 /// The list galleries use-case port.
 mod list_galleries;
 /// The list movies use-case port.
@@ -334,6 +336,9 @@ pub(crate) use self::list_albums::{
     ListAlbumsCommand, ListAlbumsError, ListAlbumsItem, ListAlbumsMediumItem, ListAlbumsResponse,
     ListAlbumsUseCase,
 };
+pub(crate) use self::list_files::{
+    ListFilesCommand, ListFilesError, ListFilesResponse, ListFilesUseCase,
+};
 pub(crate) use self::list_galleries::{
     ListGalleriesCommand, ListGalleriesError, ListGalleriesItem, ListGalleriesResponse,
     ListGalleriesUseCase,
@@ -366,8 +371,6 @@ pub(crate) use self::load_state::{
     DATABASE_PATH, JWT_SECRET_VARIABLE, LoadStateError, LoadStateResponse, LoadStateUseCase,
     PEPPER_VARIABLE, SECRET_LENGTH, STATE_PATH, StateSeedSource, StateSeeds,
 };
-#[cfg(test)]
-pub(crate) use self::login_user::MockLoginUserUseCase;
 pub(crate) use self::login_user::{LoginUserCommand, LoginUserError, LoginUserUseCase};
 #[cfg(test)]
 pub(crate) use self::media_change_source::MockMediaChangeSource;
@@ -401,8 +404,6 @@ pub(crate) use self::reap_uploads::MockReapUploadsUseCase;
 pub(crate) use self::reap_uploads::{
     ReapUploadsCommand, ReapUploadsError, ReapUploadsResponse, ReapUploadsUseCase,
 };
-#[cfg(test)]
-pub(crate) use self::regenerate_token::MockRegenerateTokenUseCase;
 pub(crate) use self::regenerate_token::{
     RegenerateTokenCommand, RegenerateTokenError, RegenerateTokenUseCase,
 };

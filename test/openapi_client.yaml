@@ -1,0 +1,14 @@
+---
+# Input of `openapi-python-client` for the system suite's generated client
+# (`script/openapi_client.sh`). It carries the one override the document needs
+# and nothing else: a generator option here hides a missing declaration from the
+# suite, so every other gap is fixed in the handler's `#[utoipa::path(...)]` or
+# `ToSchema` instead (docs/development/TechnicalDesign.md, "System test").
+#
+# A content response's media type is the stored file's — `image/png`, a stream
+# type or `application/octet-stream` — so the document declares the wildcard
+# `*/*`, which the generator skips unless it is told which concrete type to
+# emit a body for. The body is raw bytes on the wire; a case reads it from
+# `Response.content`.
+content_type_overrides:
+  "*/*": application/octet-stream

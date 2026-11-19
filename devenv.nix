@@ -199,7 +199,7 @@ in
     coverage = {
       enable = true;
       name = "Coverage >= 80%";
-      entry = "cargo llvm-cov --lib --features test-seed --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
+      entry = "cargo llvm-cov --lib --features test-seed --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler|src/lib/infrastructure/seed.rs' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
       pass_filenames = false;
       files = "\\.rs$";
       fail_fast = true;
@@ -210,7 +210,7 @@ in
       enable = true;
       name = "sqlfluff";
       entry = "sqlfluff lint --dialect sqlite";
-      files = "(migrations|test/seed/sql)/.*\\.sql$";
+      files = "(migrations|test/(api|performance|system)/seed/sql)/.*\\.sql$";
     };
 
     cargo-deny = {
@@ -304,18 +304,30 @@ in
   };
 
   tasks."docs:html-coverage" = {
-    exec = "cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --html && xdg-open target/llvm-cov/html/index.html";
+    exec = "cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler|src/lib/infrastructure/seed.rs' --html && xdg-open target/llvm-cov/html/index.html";
     description = "Generate HTML coverage report and open it in the browser";
   };
 
   tasks."test:coverage" = {
-    exec = "cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler'";
+    exec = "cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler|src/lib/infrastructure/seed.rs'";
     description = "Generate test coverage report";
   };
 
   tasks."test:api" = {
     exec = "script/api_fuzz.sh";
     description = "Fuzz the API with Schemathesis against a disposable, seeded server";
+  };
+
+  # System suite
+
+  tasks."system:client" = {
+    exec = "script/openapi_client.sh generate";
+    description = "Regenerate the system suite's typed OpenAPI client from the image under test";
+  };
+
+  tasks."system:clean" = {
+    exec = "script/openapi_client.sh clean";
+    description = "Remove the generated system-suite client";
   };
 
   # Performance suite
@@ -420,7 +432,7 @@ in
   };
 
   tasks."fmt:sql" = {
-    exec = "sqlfluff format --dialect sqlite migrations test/seed/sql";
+    exec = "sqlfluff format --dialect sqlite migrations test/api/seed/sql test/performance/seed/sql test/system/seed/sql";
     description = "Format sql file";
   };
 
@@ -437,7 +449,7 @@ in
   };
 
   tasks."lint:sql" = {
-    exec = "sqlfluff lint --dialect sqlite migrations test/seed/sql";
+    exec = "sqlfluff lint --dialect sqlite migrations test/api/seed/sql test/performance/seed/sql test/system/seed/sql";
     description = "Lint sql file";
   };
 

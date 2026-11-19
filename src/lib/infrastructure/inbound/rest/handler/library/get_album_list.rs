@@ -5,11 +5,11 @@ use serde::Deserialize;
 use tracing::warn;
 use utoipa::IntoParams;
 
-use super::{DEFAULT_LIMIT, MAX_LIMIT};
 use crate::application::port::ListAlbumsCommand;
 use crate::infrastructure::inbound::rest::handler::library::{
     AlbumEmbedded, AlbumListLinks, AlbumListResponse, AlbumSummary,
 };
+use crate::infrastructure::inbound::rest::handler::{DEFAULT_LIMIT, MAX_LIMIT};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
@@ -18,6 +18,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
 /// Every filter is optional; an all-`None` query returns the first page of the
 /// albums the caller may see.
 #[derive(Debug, Deserialize, IntoParams)]
+#[serde(deny_unknown_fields)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
 pub(crate) struct ListAlbumsQuery {

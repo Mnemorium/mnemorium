@@ -1,7 +1,6 @@
 use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
-use chrono::NaiveDate;
 use serde::Deserialize;
 use tracing::warn;
 use utoipa::ToSchema;
@@ -11,10 +10,10 @@ use crate::domain::NumericID;
 use crate::domain::model::ProductionType;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
-    AlbumResponse, DATE_FORMAT, ProductionTypeRequest,
+    AlbumResponse, ProductionTypeRequest, parse_wire_date,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
 /// Payload to create a music album.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -29,13 +28,23 @@ pub(crate) struct PostAlbumRequest {
     /// Identifier of the music group the album belongs to.
     #[schema(example = 1)]
     pub music_group_id: NumericID,
-    /// Name of the album.
-    #[schema(min_length = 1, max_length = 100)]
+    /// Name of the album; must not begin or end with whitespace. The submitted
+    /// value is stored unchanged.
+    #[schema(
+        min_length = 1,
+        max_length = 100,
+        pattern = r"^[^\s\u0085](?:[\s\S]*[^\s\u0085])?$"
+    )]
     pub name: String,
     /// Production type of the album (`STUDIO`, `LIVE`, …), when set.
     pub production_type: Option<ProductionTypeRequest>,
     /// Date of the release, in `YYYY-MM-DD` form, when known.
-    #[schema(format = "date", example = "1959-08-17")]
+    #[schema(
+        format = "date",
+        min_length = 10,
+        max_length = 10,
+        example = "1959-08-17"
+    )]
     pub release_date: Option<String>,
 }
 
@@ -56,7 +65,7 @@ pub(crate) struct PostAlbumRequest {
             body = AlbumResponse,
             content_type = "application/hal+json",
             headers(
-                ("Location" = String, description = "URI of the newly created album"),
+                ("Location" = inline(UriReference), description = "URI of the newly created album"),
             ),
             description = "Album created",
         ),
@@ -128,7 +137,7 @@ pub(crate) async fn post_album(
     let JsonObject(request) = payload;
     let production_type = request.production_type.map(ProductionType::from);
     let release_date = match request.release_date.as_deref() {
-        Some(value) => Some(NaiveDate::parse_from_str(value, DATE_FORMAT).map_err(|_| {
+        Some(value) => Some(parse_wire_date(value).map_err(|()| {
             warn!(
                 target: "security",
                 event = "input_validation_failed",

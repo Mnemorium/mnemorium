@@ -89,6 +89,8 @@ pub(crate) use self::configuration::{
     RateLimitError, Rotation, Security, Sqlite3, VideoProvider, VideoProviders,
     parse_trusted_proxies,
 };
+#[cfg(feature = "test-seed")]
+pub(crate) use self::configuration::{Seed, SeedProfile};
 pub(crate) use self::credential::Credential;
 #[cfg(test)]
 pub(crate) use self::credential::CredentialError;
@@ -124,6 +126,8 @@ pub(crate) use self::music_playlist::{MusicPlaylist, MusicPlaylistError};
 pub(crate) use self::music_query::MusicQueryError;
 pub(crate) use self::music_query::{MusicKind, MusicQuery};
 pub(crate) use self::music_recording::{MusicRecording, MusicRecordingError, TrackIndex};
+#[cfg(feature = "test-seed")]
+pub(crate) use self::partial_configuration::PartialSeed;
 pub(crate) use self::partial_configuration::{
     PartialAsset, PartialAssetUpload, PartialConfiguration, PartialJwt, PartialLibrary,
     PartialLogging, PartialPersistence, PartialRateLimit, PartialSecurity, PartialSqlite3,

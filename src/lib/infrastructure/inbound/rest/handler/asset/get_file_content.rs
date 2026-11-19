@@ -5,9 +5,13 @@ use axum::response::Response;
 use crate::application::port::AssetTarget;
 use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::asset::{
-    asset_content_response, content_command, content_disposition, parse_asset_id,
+    AssetContent, asset_content_response, content_command, content_disposition, parse_asset_id,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{
+    AcceptRangesHeader, ContentDispositionHeader, ContentLength, ContentRangeHeader, EntityTag,
+    HttpDate,
+};
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
 use axum::http::header;
 
@@ -32,36 +36,48 @@ use axum::http::header;
     responses(
         (
             status = OK,
-            body = Vec<u8>,
+            body = AssetContent,
             content_type = "*/*",
             description = "Stored bytes of the file",
             headers(
-                ("Accept-Ranges" = String, description = "Always `bytes`"),
-                ("Content-Disposition" = String, description = "Attachment naming the file's original name"),
-                ("Content-Range" = String, description = "Served span and total size"),
-                ("Content-Length" = String, description = "Length of the served span"),
-                ("ETag" = String, description = "Validator from the stored digest, when present"),
-                ("Last-Modified" = String, description = "Modification instant of the content"),
+                ("Accept-Ranges" = inline(AcceptRangesHeader), description = "Always `bytes`"),
+                ("Content-Disposition" = inline(ContentDispositionHeader), description = "Attachment naming the file's original name"),
+                ("Content-Length" = inline(ContentLength), description = "Length of the served span"),
+                ("ETag" = inline(EntityTag), description = "Validator from the stored digest, when present"),
+                ("Last-Modified" = inline(HttpDate), description = "Modification instant of the content"),
             )
         ),
         (
             status = PARTIAL_CONTENT,
-            body = Vec<u8>,
+            body = AssetContent,
             content_type = "*/*",
             description = "The requested byte range",
             headers(
-                ("Content-Disposition" = String, description = "Attachment naming the file's original name"),
-                ("Content-Range" = String, description = "Served span and total size"),
+                ("Accept-Ranges" = inline(AcceptRangesHeader), description = "Always `bytes`"),
+                ("Content-Disposition" = inline(ContentDispositionHeader), description = "Attachment naming the file's original name"),
+                ("Content-Length" = inline(ContentLength), description = "Length of the served span"),
+                ("Content-Range" = inline(ContentRangeHeader), description = "Served span and total size"),
+                ("ETag" = inline(EntityTag), description = "Validator from the stored digest, when present"),
+                ("Last-Modified" = inline(HttpDate), description = "Modification instant of the content"),
             )
         ),
         (
             status = RANGE_NOT_SATISFIABLE,
             description = "The requested range cannot be satisfied",
-            headers(("Content-Range" = String, description = "`bytes */<size>`"))
+            headers(
+                ("Accept-Ranges" = inline(AcceptRangesHeader), description = "Always `bytes`"),
+                ("Content-Range" = inline(ContentRangeHeader), description = "`bytes */<size>`"),
+                ("ETag" = inline(EntityTag), description = "Validator from the stored digest, when present"),
+                ("Last-Modified" = inline(HttpDate), description = "Modification instant of the content"),
+            )
         ),
         (
             status = NOT_MODIFIED,
-            description = "The content matches the presented validator"
+            description = "The content matches the presented validator",
+            headers(
+                ("ETag" = inline(EntityTag), description = "Validator from the stored digest, when present"),
+                ("Last-Modified" = inline(HttpDate), description = "Modification instant of the content"),
+            )
         ),
         (
             status = UNAUTHORIZED,

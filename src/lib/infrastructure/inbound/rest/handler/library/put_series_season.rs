@@ -11,7 +11,7 @@ use crate::infrastructure::inbound::rest::handler::library::{
     SeasonResponse, parse_season_index, parse_series_id,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
 /// Payload to create or replace a show season.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -45,7 +45,7 @@ pub(crate) struct PutSeriesSeasonRequest {
             body = SeasonResponse,
             content_type = "application/hal+json",
             headers(
-                ("Location" = String, description = "URI of the newly created season"),
+                ("Location" = inline(UriReference), description = "URI of the newly created season"),
             ),
             description = "Season created",
         ),

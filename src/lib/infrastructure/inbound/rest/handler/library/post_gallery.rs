@@ -8,7 +8,7 @@ use crate::application::port::{CreateGalleryCommand, CreateGalleryError};
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
 /// Payload to create a gallery owned by the caller.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -20,8 +20,13 @@ pub(crate) struct PostGalleryRequest {
     /// share, which still need a grant.
     #[serde(default)]
     pub is_public: bool,
-    /// Name of the gallery.
-    #[schema(min_length = 1, max_length = 100)]
+    /// Name of the gallery; must not begin or end with whitespace. The
+    /// submitted value is stored unchanged.
+    #[schema(
+        min_length = 1,
+        max_length = 100,
+        pattern = r"^[^\s\u0085](?:[\s\S]*[^\s\u0085])?$"
+    )]
     pub name: String,
 }
 
@@ -43,7 +48,8 @@ impl From<CreateGalleryError> for ApiError {
 /// Create a gallery owned by the caller.
 ///
 /// A caller the `CreateChild` action on `GALLERY_COLLECTION` admits creates a
-/// gallery. The name is required, trimmed and at most 100 characters long;
+/// gallery. The name is required, at most 100 characters long and must not begin or end
+/// with whitespace;
 /// `is_public` defaults to `false` and selects a public or private gallery.
 /// Public grants the viewer actions only, never moderation.
 #[utoipa::path(
@@ -58,7 +64,7 @@ impl From<CreateGalleryError> for ApiError {
             body = GalleryResponse,
             content_type = "application/hal+json",
             headers(
-                ("Location" = String, description = "URI of the newly created gallery"),
+                ("Location" = inline(UriReference), description = "URI of the newly created gallery"),
             ),
             description = "Gallery created",
         ),

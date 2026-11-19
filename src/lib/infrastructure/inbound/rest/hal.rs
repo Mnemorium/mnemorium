@@ -16,7 +16,9 @@ pub(crate) const HAL_CONTENT_TYPE: &str = "application/hal+json";
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct Link {
-    /// Target URI reference of the link.
+    /// Target URI reference of the link, or an RFC 6570 template when the
+    /// link is templated (`API-050`).
+    #[schema(min_length = 1, format = "uri-template", pattern = "^/")]
     pub href: String,
     /// Whether `href` is a URI template, per RFC 6570.
     #[serde(skip_serializing_if = "Option::is_none")]

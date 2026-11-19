@@ -1,27 +1,10 @@
-"""Black-box proof of the `metadata enrichment` capability a container can observe.
-
-Metadata enrichment turns a media name or a music query into provider-independent candidates, resolves a provider
-reference into provider-independent metadata and applies that metadata to the catalogue. The image's provider base URLs
-are fixed at composition and no provider is configured by default, so the provider-less cases prove the surface that
-answers without one: the unavailable document on every identification route, the query rejections, the provider a route
-does not serve and the apply that finds no provider. The configured-provider cases prove that a valid provider list —
-empty, or listing two providers — is accepted at startup without contacting one, and that a configured key reaches
-neither log sink. Everything that needs a provider answer — candidate shape and order, metadata mapping, absence,
-genres, failover, retry and the apply writes — stays with the Rust tests, which drive the adapters through `wiremock`
-and the golden payloads. The absence of a startup request is a Rust witness too: the container observes that startup
-proceeds, not that no request left the process.
-
-Every route is resolved from the API index, so the suite keeps its single `/api/v1` base literal in `harness.Sut.index`.
-A status, media type, body shape or `_links` field the served document declares belongs to the API fuzz test; these
-cases assert the outcome a schema cannot: that identification is reported unavailable rather than as no candidate,
-that the refusals happen before a provider is consulted, and that an apply that finds no provider leaves the entry
-unchanged.
-"""
+"""Black-box proof of the `metadata enrichment` capability a container can observe."""
 
 import allure
 import pytest
 import requests
 from conftest import (
+    login,
     start_instance,
 )
 from harness import (
@@ -211,12 +194,13 @@ def test_an_empty_film_name_is_rejected(server: Sut, root_token: str) -> None:
 @allure.feature("REQ-METADATA-ENRICHMENT-017")
 @allure.story("SCN-METADATA-ENRICHMENT-017-I")
 def test_a_partial_episode_position_is_rejected(server: Sut, root_token: str) -> None:
-    """A season without its episode is rejected as a partial position."""
+    """A season without its episode, or an episode without its season, is rejected."""
     _movie, series, _music = _identify_routes(server)
 
-    response = server.request("GET", f"{series}/tmdb/1920?season=1", token=root_token)
+    for query in ("season=1", "episode=1"):
+        response = server.request("GET", f"{series}/tmdb/1920?{query}", token=root_token)
 
-    _assert_error(response, 422)
+        _assert_error(response, 422)
 
 
 @allure.epic("Metadata enrichment")
@@ -305,7 +289,7 @@ def _create_album(server: Sut, token: str, name: str) -> dict:
 def test_an_apply_without_a_provider_reports_the_failure_and_stores_nothing(sut: Sut) -> None:
     """An apply that finds no configured provider fails and leaves the addressed album unchanged."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     album = _create_album(server, root_token, "Kind of Blue")
     self_href = link_of(album, "self")
 

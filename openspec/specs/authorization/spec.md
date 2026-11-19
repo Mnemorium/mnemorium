@@ -27,8 +27,8 @@ exist SHALL be indistinguishable from one the caller may not discover.
 
 #### Scenario: SCN-AUTHORIZATION-001-C — An unknown resource is concealed
 
-- **WHEN** the addressed kind and identifier resolve to no resource
-- **THEN** the system answers `404 Not Found` through the read path
+- **WHEN** the addressed kind and identifier resolve to no resource, or to one the caller may not discover
+- **THEN** the read path answers `404 Not Found`, indistinguishable from a missing resource
 
 ### Requirement: REQ-AUTHORIZATION-002 — The resource tree defines authorization parents
 
@@ -502,12 +502,12 @@ resource by default.
 
 #### Scenario: SCN-AUTHORIZATION-022-A — A standard user reads the catalogue
 
-- **WHEN** a Standard User with the seeded role reads a film, a show or an album
+- **WHEN** a Standard User with the seeded role reads a film, a show, a music group or an album
 - **THEN** the read allows
 
 #### Scenario: SCN-AUTHORIZATION-022-B — A standard user cannot write the catalogue
 
-- **WHEN** a Standard User with the seeded role edits a film
+- **WHEN** a Standard User with the seeded role renames a film, a music group or an album
 - **THEN** the system answers `403 Forbidden` and applies nothing
 
 #### Scenario: SCN-AUTHORIZATION-022-C — An admin curates the catalogue
@@ -544,13 +544,24 @@ Standard account, and only the root an Admin account.
 
 #### Scenario: SCN-AUTHORIZATION-023-D — Only the root creates an admin
 
-- **WHEN** the root creates an Admin account
-- **THEN** the account is created
+- **WHEN** a caller other than the root creates an Admin account
+- **THEN** the system answers `403 Forbidden` and creates nothing
+- **AND** the root's own creation of an Admin account succeeds
 
 #### Scenario: SCN-AUTHORIZATION-023-E — A creation surface is not an authorization parent
 
 - **WHEN** a caller creates a gallery through the gallery creation surface
 - **THEN** the gallery's authorization parent is the library, not the surface
+
+#### Scenario: SCN-AUTHORIZATION-023-F — A denied creation surface refuses
+
+- **WHEN** a Standard User whose `CreateChild` on the playlist collection is denied creates a playlist
+- **THEN** the system answers `403 Forbidden` and creates nothing
+
+#### Scenario: SCN-AUTHORIZATION-023-G — A standard user cannot create music catalogue content
+
+- **WHEN** a Standard User creates a music group or a music album under the catalogue
+- **THEN** the system answers `403 Forbidden` and creates nothing
 
 ### Requirement: REQ-AUTHORIZATION-024 — Content operations follow the generic actions
 
@@ -728,8 +739,8 @@ endpoint SHALL NOT grant a higher role or a `Deny`.
 
 #### Scenario: SCN-AUTHORIZATION-033-B — Sharing cannot escalate
 
-- **WHEN** a caller holding `Share` shares `Editor`
-- **THEN** the system answers `403 Forbidden` and stores nothing
+- **WHEN** a caller holding `Share` shares a role outside the two read roles the request publishes
+- **THEN** the system answers `422 Unprocessable Content` and stores nothing
 
 #### Scenario: SCN-AUTHORIZATION-033-C — A share is revoked
 
@@ -842,5 +853,15 @@ A listing SHALL return only the resources the caller may discover.
 
 #### Scenario: SCN-AUTHORIZATION-039-A — A listing is filtered
 
-- **WHEN** a caller may discover only some albums
-- **THEN** the album listing returns only those albums
+- **WHEN** a caller may discover only some films, albums or stored files
+- **THEN** each listing returns only the items the caller may discover
+
+### Requirement: REQ-AUTHORIZATION-040 — An operation checks the second resource it names
+
+An operation that addresses a second resource SHALL check the caller's action on it beside the action its own resource
+requires, and SHALL apply nothing when either check refuses.
+
+#### Scenario: SCN-AUTHORIZATION-040-A — An unreadable recording refuses the append
+
+- **WHEN** a caller may add to a playlist but may not read the metadata of the recording it names
+- **THEN** the system answers `403 Forbidden` and appends nothing

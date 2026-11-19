@@ -1,0 +1,16 @@
+# Glossary Reference
+
+| Term              | Source Glossary                | Context                                                                                                                                                                         |
+| ----------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Closed vocabulary | `docs/development/Glossary.md` | A finite set of wire values the server enforces for one property or parameter, published as an enum schema; the glossary gains the term with this change.                       |
+| Fuzz carve-out    | `docs/development/Glossary.md` | An exception in `schemathesis.toml` or `hooks.py` that names the server behaviour or tool limitation the document cannot express; the glossary gains the term with this change. |
+| Custom check      | `docs/development/Glossary.md` | A Schemathesis check registered from `test/api/hooks.py` that asserts one cross-cutting representation rule; the glossary gains the term with this change.                      |
+| Login identifier  | `docs/development/Glossary.md` | The username or email address a caller submits to authenticate; the glossary gains the term with this change.                                                                   |
+| Resource          | `docs/development/Glossary.md` | The proposal's named resources are galleries, films, albums, groups, playlists, shows and episodes, whose names the contract tightens.                                          |
+| Gallery           | `docs/development/Glossary.md` | A named resource whose surrounding-whitespace refusal the contract changes.                                                                                                     |
+| Movie             | `docs/development/Glossary.md` | A named resource whose surrounding-whitespace refusal the contract changes.                                                                                                     |
+| Series            | `docs/development/Glossary.md` | A named resource whose surrounding-whitespace refusal the contract changes.                                                                                                     |
+| Season            | `docs/development/Glossary.md` | Named alongside the show; its name rule is deliberately left unchanged.                                                                                                         |
+| Episode           | `docs/development/Glossary.md` | A named resource whose surrounding-whitespace refusal the contract changes.                                                                                                     |
+| Security event    | `docs/development/Glossary.md` | The `authn_failed` event loses its identity field, so the proposal names the event rather than a value.                                                                         |
+| Stored file       | `docs/development/Glossary.md` | A stored file is the content whose body the published document must describe as bytes rather than an integer array.                                                             |

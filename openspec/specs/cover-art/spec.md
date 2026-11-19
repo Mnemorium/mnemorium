@@ -137,6 +137,12 @@ The server SHALL NOT resolve a cover from a resource that contains another. An e
 - **WHEN** an album stores a cover and the system returns that album
 - **THEN** the album reports `cover_image_id` and `_links.cover`
 
+#### Scenario: SCN-COVER-ART-006-D — A playlist track reports no artwork
+
+- **WHEN** the system returns a playlist track whose recording's album stores a cover
+- **THEN** the track carries no `cover_image_id` and no `_links.cover`
+- **AND** the album it belongs to still reports that cover
+
 ### Requirement: REQ-COVER-ART-007 — Attach artwork to a playlist
 
 A playlist SHALL carry an optional cover, reported as `cover_image_id` and accepted on creation and metadata update. A

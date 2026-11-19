@@ -492,6 +492,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn datastore_username_check_accepts_uppercase_and_keeps_exact_uniqueness()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: a stored lowercase row is a value an earlier release wrote.
+        let mut transaction = begin_transaction().await?;
+        seed_credential(&mut transaction, 1).await?;
+        seed_credential(&mut transaction, 2).await?;
+        sqlx::query(
+            "INSERT INTO user (user_id, credential_id, email, role, username)
+             VALUES (1, 1, NULL, 'STANDARD', 'alice')",
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        // Act: a burst of uppercase letters is no longer a constraint violation.
+        let uppercase = sqlx::query(
+            "INSERT INTO user (user_id, credential_id, email, role, username)
+             VALUES (2, 2, NULL, 'STANDARD', 'Alice')",
+        )
+        .execute(&mut *transaction)
+        .await;
+
+        // Assert
+        assert!(uppercase.is_ok(), "an uppercase username must be accepted");
+        let duplicate = sqlx::query(
+            "INSERT INTO user (user_id, credential_id, email, role, username)
+             VALUES (3, 2, NULL, 'STANDARD', 'Alice')",
+        )
+        .execute(&mut *transaction)
+        .await;
+        assert!(matches!(
+            duplicate.map_err(RepositoryError::from),
+            Err(RepositoryError::AlreadyExist)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn save_missing_credential_returns_data_integrity_violation() -> Result<(), Box<dyn Error>>
     {
         // Arrange

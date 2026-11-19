@@ -67,13 +67,14 @@ authenticate.
 
 ### Requirement: REQ-AUTHENTICATION-004 — Valid credentials issue a bearer token
 
-The login operation SHALL be reachable without a bearer token and, for a matching username and password, SHALL answer
+The login operation SHALL be reachable without a bearer token and, for a matching identifier and password, SHALL answer
 `200 OK` with `application/hal+json` carrying `access_token`, `expires_in`, `token_type` set to `bearer`, and
-`_links.self` naming the login operation.
+`_links.self` naming the login operation. The identifier SHALL be a username or an email address; an identifier that
+matches a username SHALL resolve as that username, and only otherwise SHALL it be looked up as an email address.
 
 #### Scenario: SCN-AUTHENTICATION-004-A — Successful login
 
-- **WHEN** an existing user submits its username and matching password
+- **WHEN** an existing user submits its username or email address and matching password
 - **THEN** the response is `200 OK`, `application/hal+json`, with `access_token`, `expires_in`, `token_type` of `bearer`
   and `_links.self` naming `/api/v1/identity/login`
 
@@ -87,15 +88,21 @@ The login operation SHALL be reachable without a bearer token and, for a matchin
 - **WHEN** a login succeeds
 - **THEN** the response contains no password or password hash
 
+#### Scenario: SCN-AUTHENTICATION-004-D — A login by email address
+
+- **WHEN** an existing user submits the email address stored on its account and its matching password
+- **THEN** the login succeeds exactly as it does for the username
+
 ### Requirement: REQ-AUTHENTICATION-005 — Bad credentials are rejected uniformly
 
-An unknown username and a wrong password SHALL be indistinguishable: the same `401 Unauthorized` status and the same
-error message. The system SHALL perform comparable password work on both branches so the response time does not reveal
-which value was wrong.
+An identifier that resolves to no account and a wrong password SHALL be indistinguishable: the same `401 Unauthorized`
+status and the same error message. The system SHALL perform comparable password work on both branches so the response
+time does not reveal which value was wrong.
 
 #### Scenario: SCN-AUTHENTICATION-005-A — Bad credentials
 
-- **WHEN** an existing username is submitted with a wrong password, or a username no account holds is submitted
+- **WHEN** an existing identifier is submitted with a wrong password, or an identifier that resolves to no account is
+  submitted
 - **THEN** the system answers `401 Unauthorized` with the same error message for both
 
 ### Requirement: REQ-AUTHENTICATION-006 — Password material never leaves the credential
@@ -127,8 +134,8 @@ many seconds after issue.
 ### Requirement: REQ-AUTHENTICATION-008 — Login is rate limited per client address and account
 
 Login SHALL be limited both per client address and per user account. The account key SHALL be the resolved user
-identifier; a username that resolves to no account SHALL use a derived key that does not reveal it. An attempt SHALL be
-rejected when either key is exhausted, answering `429 Too Many Requests` with `Retry-After`. Both keys SHALL use the
+identifier; an identifier that resolves to no account SHALL use a derived key that does not reveal it. An attempt SHALL
+be rejected when either key is exhausted, answering `429 Too Many Requests` with `Retry-After`. Both keys SHALL use the
 configured burst and period. The client address SHALL be the peer unless it is a configured trusted proxy, whose
 declared header is then read.
 
@@ -157,6 +164,11 @@ declared header is then read.
 
 - **WHEN** attempts against a username no account holds exceed its quota
 - **THEN** they answer `429 Too Many Requests`, indistinguishable from a username that exists
+
+#### Scenario: SCN-AUTHENTICATION-008-F — An unknown email is throttled identically
+
+- **WHEN** attempts against an email address no account holds exceed its quota
+- **THEN** they answer `429 Too Many Requests`, indistinguishable from an email address that exists
 
 ### Requirement: REQ-AUTHENTICATION-009 — Protected endpoints require a bearer token
 

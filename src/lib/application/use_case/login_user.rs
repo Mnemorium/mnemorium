@@ -61,7 +61,7 @@ where
         let attempt_limiter = Arc::clone(&self.attempt_limiter);
 
         Box::pin(async move {
-            let username = command.username().to_owned();
+            let identifier = command.identifier().to_owned();
             let password = command.password().to_owned();
 
             let mut unit_of_work = unit_of_work_factory
@@ -70,31 +70,46 @@ where
                 .map_err(|error| LoginUserError::Unknown(error.into()))?;
 
             let result = async {
-                let Some(user) = unit_of_work
+                // The submitted value is a username or an email address. A
+                // value that matches a username resolves as that username even
+                // when another account's email address matches it too; only
+                // when no username matches is it looked up as an email address.
+                let mut found = unit_of_work
                     .users()
                     .search(&UserFilter {
-                        username: Some(username.clone()),
+                        username: Some(identifier.clone()),
                         ..UserFilter::default()
                     })
                     .await
-                    .map_err(|error| LoginUserError::Unknown(error.into()))?
-                    .into_iter()
-                    .next()
-                else {
-                    // A username that resolves to no account is throttled under
-                    // a derived key, so a `429` cannot reveal whether it exists.
-                    if let Some(wait) = attempt_limiter.check(LoginAttemptKey::Username(username)) {
+                    .map_err(|error| LoginUserError::Unknown(error.into()))?;
+                if found.is_empty() {
+                    found = unit_of_work
+                        .users()
+                        .search(&UserFilter {
+                            email: Some(identifier.clone()),
+                            ..UserFilter::default()
+                        })
+                        .await
+                        .map_err(|error| LoginUserError::Unknown(error.into()))?;
+                }
+                let Some(user) = found.into_iter().next() else {
+                    // An identifier that resolves to no account is throttled
+                    // under a derived key, so a `429` cannot reveal whether it
+                    // exists.
+                    if let Some(wait) =
+                        attempt_limiter.check(LoginAttemptKey::Identifier(identifier))
+                    {
                         return Err(LoginUserError::RateLimited(wait));
                     }
                     // Spend the same password work as a real verification on
-                    // the absent-user branch, then report an unknown username.
+                    // the absent-user branch, then report an unknown identifier.
                     // A backend fault surfaces as an internal error, exactly as
                     // it does on the known-user branch.
                     password_hasher
                         .hash_password(&password)
                         .await
                         .map_err(|error| LoginUserError::Unknown(error.into()))?;
-                    return Err(LoginUserError::InvalidUsername);
+                    return Err(LoginUserError::InvalidIdentifier);
                 };
 
                 // The account dimension is checked before any password work, so
@@ -161,21 +176,15 @@ where
                 Err(error) => {
                     if matches!(
                         error,
-                        LoginUserError::InvalidUsername | LoginUserError::InvalidPassword
+                        LoginUserError::InvalidIdentifier | LoginUserError::InvalidPassword
                     ) {
-                        // The claimed identity is the submitted username, the explicit
-                        // exception in TechnicalDesign.md § 9; cap its length and escape
-                        // control characters so it cannot forge a log record (OBS-003).
-                        let claimed_identity: String = command
-                            .username()
-                            .chars()
-                            .take(256)
-                            .flat_map(char::escape_debug)
-                            .collect();
+                        // The event names its reason and nothing the client sent:
+                        // no username, email address or derived value reaches a
+                        // sink, and the rejection is uniform across the two
+                        // branches.
                         warn!(
                             target: "security",
                             event = "authn_failed",
-                            claimed_identity = %claimed_identity,
                             reason = "invalid_credentials",
                             "rejected an authentication attempt"
                         );
@@ -306,6 +315,27 @@ mod tests {
             });
     }
 
+    /// Expect the one account's email lookup that follows a failed username
+    /// lookup on the register, returning `found`.
+    fn expect_email_lookup(user_repository: &mut MockUserRepository, found: Vec<User>) {
+        user_repository
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.username.is_none() && filter.email.is_some())
+            .returning(move |_| {
+                let own = found.clone();
+                Box::pin(async move { Ok(own) })
+            });
+    }
+
+    /// Expect the username and email lookups an unknown identifier makes.
+    fn expect_absent_identifier(user_repository: &mut MockUserRepository) {
+        user_repository
+            .expect_search()
+            .times(2)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+    }
+
     fn expect_credential(
         credential_repository: &mut MockCredentialRepository,
         credential: Credential,
@@ -353,13 +383,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn login_user_unknown_username_returns_invalid_username() -> Result<(), Box<dyn Error>> {
+    async fn login_user_unknown_identifier_returns_invalid_identifier() -> Result<(), Box<dyn Error>>
+    {
         // Arrange
         let harness = use_case_with(|user_repository, _, password_hasher, _| {
-            user_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            expect_absent_identifier(user_repository);
             password_hasher
                 .expect_hash_password()
                 .times(1)
@@ -372,20 +400,17 @@ mod tests {
         let result = harness.use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(LoginUserError::InvalidUsername)));
+        assert!(matches!(result, Err(LoginUserError::InvalidIdentifier)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
-    async fn login_user_unknown_username_with_failing_hasher_returns_unknown()
+    async fn login_user_unknown_identifier_with_failing_hasher_returns_unknown()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository, _, password_hasher, _| {
-            user_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            expect_absent_identifier(user_repository);
             password_hasher
                 .expect_hash_password()
                 .times(1)
@@ -613,28 +638,24 @@ mod tests {
                 .then_some(())
                 .ok_or_else(|| format!("expected the uniform reason (found {count})"))
         });
-        logs_assert(|lines| {
-            let count = lines
-                .iter()
-                .filter(|line| line.contains("claimed_identity=alice"))
-                .count();
-            (count == 1)
-                .then_some(())
-                .ok_or_else(|| format!("expected the claimed identity (found {count})"))
-        });
+        assert!(
+            !logs_contain("alice"),
+            "the submitted identifier must never reach the sink"
+        );
+        assert!(
+            !logs_contain("claimed_identity"),
+            "the event carries no client-supplied identity"
+        );
         Ok(())
     }
 
     #[tokio::test]
     #[traced_test]
-    async fn login_user_unknown_username_emits_uniform_authn_failed() -> Result<(), Box<dyn Error>>
+    async fn login_user_unknown_identifier_emits_uniform_authn_failed() -> Result<(), Box<dyn Error>>
     {
         // Arrange
         let harness = use_case_with(|user_repository, _, password_hasher, _| {
-            user_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            expect_absent_identifier(user_repository);
             password_hasher
                 .expect_hash_password()
                 .times(1)
@@ -670,27 +691,19 @@ mod tests {
                 .then_some(())
                 .ok_or_else(|| format!("expected the uniform reason (found {count})"))
         });
-        logs_assert(|lines| {
-            let count = lines
-                .iter()
-                .filter(|line| line.contains("claimed_identity=ghost"))
-                .count();
-            (count == 1)
-                .then_some(())
-                .ok_or_else(|| format!("expected the claimed identity (found {count})"))
-        });
+        assert!(
+            !logs_contain("ghost"),
+            "the submitted identifier must never reach the sink"
+        );
         Ok(())
     }
 
     #[tokio::test]
     #[traced_test]
-    async fn login_user_unknown_username_escapes_claimed_identity() -> Result<(), Box<dyn Error>> {
+    async fn login_user_unknown_identifier_never_reaches_a_sink() -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository, _, password_hasher, _| {
-            user_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            expect_absent_identifier(user_repository);
             password_hasher
                 .expect_hash_password()
                 .times(1)
@@ -703,18 +716,22 @@ mod tests {
         assert!(harness.use_case.execute(command).await.is_err());
 
         // Assert
+        assert!(
+            !logs_contain("bad"),
+            "the submitted identifier must never reach the sink"
+        );
+        assert!(
+            !logs_contain("claimed_identity"),
+            "the event carries no client-supplied identity"
+        );
         logs_assert(|lines| {
             (lines.len() == 1).then_some(()).ok_or_else(|| {
                 format!(
-                    "the claimed identity must not forge a log record (found {})",
+                    "a client value must not forge a second log record (found {})",
                     lines.len()
                 )
             })
         });
-        assert!(
-            logs_contain(r"claimed_identity=bad\nname"),
-            "the claimed identity must be escaped"
-        );
         Ok(())
     }
 
@@ -814,20 +831,82 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn login_user_exhausted_unknown_username_quota_returns_rate_limited()
+    async fn login_user_by_email_address_succeeds() -> Result<(), Box<dyn Error>> {
+        // Arrange: the username lookup finds nothing, so the email lookup runs.
+        let harness = use_case_with(
+            |user_repository, credential_repository, password_hasher, token_provider| {
+                user_repository
+                    .expect_search()
+                    .times(1)
+                    .withf(|filter| filter.username.is_some() && filter.email.is_none())
+                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                expect_email_lookup(user_repository, vec![user(1, "alice")?]);
+                expect_credential(credential_repository, credential(1)?);
+                expect_valid_password(password_hasher);
+                token_provider.expect_issue().times(1).returning(|_| {
+                    Box::pin(async { Ok(IssuedToken::new("token".to_owned(), 3600)) })
+                });
+                Ok(())
+            },
+        )?;
+        let command = command("alice@example.com", SECRET_PASSWORD);
+
+        // Act
+        let response = harness.use_case.execute(command).await?;
+
+        // Assert
+        assert_eq!(response.value(), "token");
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn login_user_identifier_matching_a_username_wins_over_an_email()
     -> Result<(), Box<dyn Error>> {
-        // Arrange: an unknown username is counted under its own derived key.
+        // Arrange: the username lookup returns an account, so the email lookup
+        // must not run even though another account's address might match.
+        let harness = use_case_with(
+            |user_repository, credential_repository, password_hasher, token_provider| {
+                let found = vec![user(1, "alice")?];
+                user_repository
+                    .expect_search()
+                    .times(1)
+                    .withf(|filter| filter.username.is_some() && filter.email.is_none())
+                    .returning(move |_| {
+                        let existing = found.clone();
+                        Box::pin(async move { Ok(existing) })
+                    });
+                expect_credential(credential_repository, credential(1)?);
+                expect_valid_password(password_hasher);
+                token_provider.expect_issue().times(1).returning(|_| {
+                    Box::pin(async { Ok(IssuedToken::new("token".to_owned(), 3600)) })
+                });
+                Ok(())
+            },
+        )?;
+        let command = command("alice", SECRET_PASSWORD);
+
+        // Act
+        let response = harness.use_case.execute(command).await?;
+
+        // Assert
+        assert_eq!(response.value(), "token");
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn login_user_exhausted_unknown_identifier_quota_returns_rate_limited()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: an unknown identifier is counted under its own derived key.
         let mut attempt_limiter = MockLoginAttemptLimiter::new();
         attempt_limiter.expect_check().times(1).returning(|key| {
-            assert!(matches!(key, LoginAttemptKey::Username(_)));
+            assert!(matches!(key, LoginAttemptKey::Identifier(_)));
             Some(Duration::from_secs(5))
         });
         let harness = use_case_with_limiter(
             |user_repository, _, _, _| {
-                user_repository
-                    .expect_search()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                expect_absent_identifier(user_repository);
                 Ok(())
             },
             attempt_limiter,

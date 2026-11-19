@@ -112,8 +112,8 @@ where
                     UsernamePolicy::validate(&username).map_err(|error| match error {
                         UsernamePolicyError::TooShort
                         | UsernamePolicyError::TooLong
-                        | UsernamePolicyError::ContainsUppercase
-                        | UsernamePolicyError::SurroundingWhitespace => {
+                        | UsernamePolicyError::ContainsNul
+                        | UsernamePolicyError::ContainsWhitespace => {
                             UpdateUserError::InvalidUsername
                         }
                     })?;
@@ -599,8 +599,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_user_uppercase_username_returns_invalid_username() -> Result<(), Box<dyn Error>>
-    {
+    async fn update_user_rename_to_a_whitespace_username_returns_invalid_username()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository| {
             expect_caller_and_user(
@@ -609,7 +609,7 @@ mod tests {
                 user(2, "brad", None, Role::Standard),
             )
         })?;
-        let command = command(0, 2, Some("Renamed"), None, None);
+        let command = command(0, 2, Some("Renamed Name"), None, None);
 
         // Act
         let result = harness.use_case.execute(command).await;

@@ -9,7 +9,7 @@ use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::MusicGroupResponse;
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
 /// Payload to create a music group.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -18,15 +18,21 @@ pub(crate) struct PostMusicGroupRequest {
     /// Identifier of the image holding the group's artwork, when set.
     #[schema(example = 1)]
     pub cover_image_id: Option<NumericID>,
-    /// Stage name of the group.
-    #[schema(min_length = 1, max_length = 100)]
+    /// Stage name of the group; must not begin or end with whitespace. The
+    /// submitted value is stored unchanged.
+    #[schema(
+        min_length = 1,
+        max_length = 100,
+        pattern = r"^[^\s\u0085](?:[\s\S]*[^\s\u0085])?$"
+    )]
     pub name: String,
 }
 
 /// Create a music group.
 ///
 /// Creating a group requires `CreateChild` for a music group on the
-/// **Catalogue**. The name is trimmed and must be unique; the optional cover
+/// **Catalogue**. The name must not begin or end with whitespace and must be unique; the
+/// optional cover
 /// must be a `LIBRARY` image.
 #[utoipa::path(
     post,
@@ -40,7 +46,7 @@ pub(crate) struct PostMusicGroupRequest {
             body = MusicGroupResponse,
             content_type = "application/hal+json",
             headers(
-                ("Location" = String, description = "URI of the newly created group"),
+                ("Location" = inline(UriReference), description = "URI of the newly created group"),
             ),
             description = "Group created",
         ),

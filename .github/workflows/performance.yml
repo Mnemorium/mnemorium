@@ -69,7 +69,7 @@ jobs:
           if [[ -z "${last}" ]]; then
             echo "run=true" >>"${GITHUB_OUTPUT}"
           elif git diff --quiet "${last}" HEAD -- \
-            src migrations test/seed test/performance Dockerfile devenv.nix script/performance.sh; then
+            src migrations test/api/seed test/performance/seed Dockerfile devenv.nix script/performance.sh; then
             echo "run=false" >>"${GITHUB_OUTPUT}"
           else
             echo "run=true" >>"${GITHUB_OUTPUT}"

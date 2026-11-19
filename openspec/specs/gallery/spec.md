@@ -40,9 +40,10 @@ automatically, and it SHALL be readable like any other gallery.
 
 ### Requirement: REQ-GALLERY-003 — Create a gallery
 
-Creating a gallery SHALL require the `CreateChild` action on `GALLERY_COLLECTION`. The name SHALL be trimmed and SHALL
-be non-empty and at most 100 characters. `is_public` SHALL default to `false`. A duplicate name for the same owner SHALL
-answer `409 Conflict`; success SHALL answer `201 Created` with a `Location`. A refused creation SHALL store nothing.
+Creating a gallery SHALL require the `CreateChild` action on `GALLERY_COLLECTION`. The name SHALL be non-empty, at most
+100 characters, and SHALL NOT begin or end with whitespace; such a name answers `422` and stores nothing. Interior
+whitespace is allowed and the submitted value is stored unchanged. `is_public` SHALL default to `false`. A duplicate
+name for the same owner SHALL answer `409 Conflict`; success SHALL answer `201 Created` with a `Location`.
 
 #### Scenario: SCN-GALLERY-003-A — A gallery is created
 
@@ -57,12 +58,12 @@ answer `409 Conflict`; success SHALL answer `201 Created` with a `Location`. A r
 
 #### Scenario: SCN-GALLERY-003-C — The owner already has that name
 
-- **WHEN** the caller already owns a gallery with the same trimmed name
+- **WHEN** the caller already owns a gallery with the same name
 - **THEN** the system returns `409 Conflict` and creates nothing
 
 #### Scenario: SCN-GALLERY-003-D — The name is unusable
 
-- **WHEN** the submitted name is empty, only whitespace, or longer than 100 characters
+- **WHEN** the submitted name is empty, only whitespace, begins or ends with whitespace, or longer than 100 characters
 - **THEN** the system returns `422 Unprocessable Content` and creates nothing
 
 #### Scenario: SCN-GALLERY-003-E — The caller may not create a gallery

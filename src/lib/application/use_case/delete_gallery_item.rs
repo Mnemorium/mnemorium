@@ -13,8 +13,9 @@ use crate::domain::model::{Action, GalleryItemMedia, ResourceKind, ResourceRef};
 use crate::domain::port::{
     AssetUnitOfWork, FileFilter, FileRepository as _, FileStorage, GalleryFilter,
     GalleryItemFilter, GalleryRepository as _, IdentityUnitOfWork, ImageFilter,
-    ImageRepository as _, LibraryUnitOfWork, RepositoryError, UnitOfWork as _, UnitOfWorkFactory,
-    UserFilter, UserRepository as _, UserUnitOfWork, VideoFilter, VideoRepository as _,
+    ImageRepository as _, LibraryUnitOfWork, RepositoryError, ResourceRepository as _,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    VideoFilter, VideoRepository as _,
 };
 
 /// Use case implementation for deleting one item of a gallery.
@@ -121,6 +122,19 @@ where
                 if !deleted {
                     return Err(DeleteGalleryItemError::NoSuchItem);
                 }
+
+                // The item's resource outlives its row unless this unit of work
+                // removes it: a later item reuses the freed identifier and
+                // collides with the stale resource (`PERS-020`).
+                unit_of_work
+                    .resources()
+                    .delete(ResourceRef::new(
+                        ResourceKind::GalleryItem,
+                        command.gallery_item_id(),
+                    ))
+                    .await
+                    .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?;
+
                 let deleted_media = match media {
                     GalleryItemMedia::Image(image_id) => {
                         unit_of_work
@@ -282,7 +296,7 @@ mod tests {
 
     use crate::domain::port::{
         GalleryItemDetail, MockFileRepository, MockFileStorage, MockGalleryRepository,
-        MockImageRepository, MockUserRepository, MockVideoRepository,
+        MockImageRepository, MockResourceRepository, MockUserRepository, MockVideoRepository,
     };
 
     use crate::test_helpers::*;
@@ -352,11 +366,22 @@ mod tests {
         videos: MockVideoRepository,
         files: MockFileRepository,
     ) -> GalleryFactoryHarness {
+        harness_with_resources(users, galleries, images, videos, files, no_resources())
+    }
+
+    fn harness_with_resources(
+        users: MockUserRepository,
+        galleries: MockGalleryRepository,
+        images: MockImageRepository,
+        videos: MockVideoRepository,
+        files: MockFileRepository,
+        resources: MockResourceRepository,
+    ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            resources: no_resources(),
             files,
             galleries,
             images,
+            resources,
             users,
             videos,
             ..TestUnitOfWork::default()
@@ -485,6 +510,64 @@ mod tests {
         assert!(result.is_ok());
         assert!(harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[allure_test]
+    #[tokio::test]
+    async fn delete_gallery_item_removes_its_resource() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-010");
+        allure.story("SCN-GALLERY-010-A");
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 4, Role::Standard)?;
+        let mut galleries = MockGalleryRepository::new();
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
+        let found = detail(42, 3, GalleryItemMedia::Image(7))?;
+        galleries
+            .expect_search_items()
+            .times(1)
+            .return_once(move |_| {
+                let value = found.clone();
+                Box::pin(async move { Ok(vec![value]) })
+            });
+        galleries
+            .expect_delete_item()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        galleries
+            .expect_save()
+            .times(1)
+            .returning(|saved| Box::pin(async move { Ok(saved) }));
+        let mut images = MockImageRepository::new();
+        images
+            .expect_delete()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        let mut videos = MockVideoRepository::new();
+        let mut files = MockFileRepository::new();
+        expect_removable_backing_file(&mut images, &mut videos, &mut files, 4)?;
+        let mut resources = caller_owned_resources();
+        resources
+            .expect_delete()
+            .times(1)
+            .withf(|address| address.kind() == ResourceKind::GalleryItem && address.id() == 42)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        let harness = harness_with_resources(users, galleries, images, videos, files, resources);
+        let mut file_storage = MockFileStorage::new();
+        expect_backing_bytes(&mut file_storage);
+        let use_case = use_case(&harness, file_storage);
+
+        // Act
+        let result = use_case
+            .execute(DeleteGalleryItemCommand::new(4, 3, 42))
+            .await;
+
+        // Assert: the freed item identifier leaves no stale resource a later
+        // creation collides with.
+        assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 

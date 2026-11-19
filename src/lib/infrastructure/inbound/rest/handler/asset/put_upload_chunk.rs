@@ -14,7 +14,9 @@ use crate::domain::NumericID;
 use crate::domain::model::{DIGEST_HEX_LENGTH, IntegrityHash};
 use crate::infrastructure::inbound::rest::handler::asset::UploadSessionResponse;
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, HAL_CONTENT_TYPE};
+use crate::infrastructure::inbound::rest::{
+    AllowMethods, ApiError, AppState, ErrorBody, HAL_CONTENT_TYPE,
+};
 
 /// Number of raw bytes a content digest carries: two hexadecimal characters
 /// encode one byte.
@@ -128,7 +130,7 @@ impl From<WriteUploadChunkError> for ApiError {
             body = ErrorBody,
             content_type = "application/hal+json",
             headers(
-                ("Allow" = String, description = "HTTP methods accepted by this path"),
+                ("Allow" = inline(AllowMethods), description = "HTTP methods accepted by this path"),
             ),
             description = "Method not allowed"
         ),

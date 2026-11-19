@@ -9,3 +9,8 @@ requests==2.34.2
 sqlfluff==4.3.0
 allure-pytest==2.16.2
 vulture==2.16
+# The system suite drives the client openapi-python-client emits from the served
+# document; `attrs` and `httpx2` are the generated package's only runtime imports.
+openapi-python-client==0.30.0
+attrs==26.1.0
+httpx2==2.16.2

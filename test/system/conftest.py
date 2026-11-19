@@ -1,57 +1,68 @@
-"""Collect the system suite's feature-area modules and share their fixtures and helpers.
-
-The suite names one module per feature area — `authentication.py` and `upload.py` among them — but the three global
-`python_files` patterns (`test_*.py`, `*_test.py`, `*_*.py`) match none of those single-word names. This hook collects
-every module directly in this folder that those patterns leave out, so a feature area needs no prefix and no entry in
-`pyproject.toml`.
-
-A case that does not mark itself own drives the one instance its worker booted and shares, so the session fixture, the
-shared configuration, the health probe and the cached Root Admin token live here rather than in each module. A case
-marked `@pytest.mark.own_instance(reason=...)` drives its own container through the `sut` fixture instead. The
-seed-media directory and the request helpers that more than one operation needs are shared here the same way; every
-route those helpers address comes from the API index or from a representation's links, never from a path built in this
-suite.
-
-`/api/v1` is the system suite's only base literal, and it lives in `harness.Sut.index`.
-"""
+"""Collect the system suite's feature-area modules and share their fixtures and helpers."""
 
 import base64
 import hashlib
 import hmac
 import json
-import os
 import shutil
-import tempfile
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from fnmatch import fnmatch
 from pathlib import Path
 
 import allure
 import pytest
 from harness import (
-    CONTAINER_LEDGER_ENV,
     LOG_DIRECTORY,
     ROOT_ADMIN_USERNAME,
     SECRET_PASSWORD,
+    SEED_PROFILE_ENV,
+    STAGING_DIRECTORY,
     WRONG_PASSWORD,
     Sut,
-    begin_upload,
-    complete_upload,
+    UploadSession,
     hex64,
     link_of,
-    put_chunk,
+    payload,
     register,
 )
+from mnemorium_client.api.asset import (
+    get_file,
+    get_upload,
+    list_files,
+    post_upload,
+    post_upload_complete,
+    put_upload_chunk,
+)
+from mnemorium_client.api.identity import post_login
+from mnemorium_client.api.library import post_gallery, post_gallery_item
+from mnemorium_client.models import (
+    GalleryItemType,
+    LoginRequest,
+    PostGalleryItemRequest,
+    PostGalleryRequest,
+    PostUploadRequest,
+)
+from mnemorium_client.types import File
 
 HERE = Path(__file__).parent
-FIXTURE_DIRECTORY = HERE.parent / "seed" / "media"
+# The API fixture's media speak for the schemas the fuzzer addresses; the system fixture's own bytes live beside this
+# module, under the seed tree the system profile applies.
+FIXTURE_DIRECTORY = HERE.parent / "api" / "seed" / "media"
+SEED_MEDIA_DIRECTORY = HERE / "seed" / "media"
 
 # The instance secrets are fixed for every feature module that mints a token or proves redaction, so a case can restart
 # the same directory deterministically and a leak assertion is a substring search.
 JWT_SECRET = hex64("a1")
 PEPPER = hex64("b2")
 INSTANCE_ENV = {"MNEMORIUM_JWT_SECRET": JWT_SECRET, "MNEMORIUM_PEPPER": PEPPER}
+# The worker's shared instance boots the system profile: one browsable catalogue seeded once per worker, so a case
+# reads a row it did not create instead of building its preconditions. An own instance stays unseeded unless the case
+# names a profile itself.
+SHARED_ENV = {**INSTANCE_ENV, SEED_PROFILE_ENV: "system"}
+# The account the system seed profile creates, and the fixed password it shares with `SECRET_PASSWORD`.
+SEED_ACCOUNT = "coverart"
+SEED_PASSWORD = SECRET_PASSWORD
 # The closed set of reasons an own instance may cite; `pytest_collection_modifyitems` rejects anything else.
 REASONS = frozenset({"first_boot", "restart", "global_filesystem", "log_sink", "exact_collection", "process_state"})
 
@@ -75,38 +86,11 @@ SHARED_CONFIG = {
     }
 }
 
-# The Root Admin's one-time password and its access token, cached per instance for the worker's life.
+# The Root Admin's one-time password, its access token and the seeded identity's access token, cached per instance for
+# the worker's life.
 _ROOT_PASSWORDS: dict[int, str] = {}
 _ROOT_TOKENS: dict[int, str] = {}
-
-
-def pytest_configure(config: pytest.Config) -> None:
-    """Start the suite's clock and, on the controller, open the ledger every worker writes to."""
-    config._system_suite_started = time.monotonic()
-    if hasattr(config, "workerinput"):
-        return
-    ledger = Path(tempfile.mkdtemp(prefix="mnemorium-containers-"))
-    os.environ[CONTAINER_LEDGER_ENV] = str(ledger)
-    config._container_ledger = ledger
-
-
-def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter, config: pytest.Config) -> None:
-    """Report the suite's wall clock and the containers it started, one session per worker included."""
-    started = getattr(config, "_system_suite_started", None)
-    ledger = getattr(config, "_container_ledger", None)
-    if started is None or ledger is None:
-        return
-    kinds = [
-        line.split("\t", 1)[0]
-        for path in Path(ledger).glob("*.tsv")
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line
-    ]
-    shared = kinds.count("shared")
-    terminalreporter.write_sep("-", "system suite")
-    terminalreporter.write_line(f"containers: {len(kinds)} (shared {shared}, own {len(kinds) - shared})")
-    terminalreporter.write_line(f"wall clock: {time.monotonic() - started:.1f}s")
-    shutil.rmtree(ledger, ignore_errors=True)
+_SEED_TOKENS: dict[int, str] = {}
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -157,8 +141,15 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
 
 
 def pytest_collect_file(file_path: Path, parent: pytest.Collector) -> pytest.Collector | None:
-    """Collect each unprefixed Python module of the system suite."""
+    """Collect each unprefixed Python module of the system suite, exactly once.
+
+    A module the invocation names explicitly (`pytest test/system/upload.py`) is collected by pytest itself, so
+    collecting it here as well would run every case twice; a bare directory run leaves the set empty and this hook is
+    the only collector of the unprefixed feature modules.
+    """
     if file_path.suffix != ".py" or file_path.parent != HERE or file_path.name == "conftest.py":
+        return None
+    if file_path.resolve() in {Path(argument).resolve() for argument in parent.config.args}:
         return None
     if any(fnmatch(file_path.name, pattern) for pattern in parent.config.getini("python_files")):
         return None
@@ -168,8 +159,8 @@ def pytest_collect_file(file_path: Path, parent: pytest.Collector) -> pytest.Col
 @pytest.fixture(scope="session")
 def _shared_server(image: str, tmp_path_factory: pytest.TempPathFactory) -> Iterator[Sut]:
     """The worker's one container, booted on first use and shared by every case that does not mark itself own."""
-    server = Sut(image=image, tmp_root=tmp_path_factory.mktemp("shared"), shared=True)
-    server.start(env=INSTANCE_ENV, config=SHARED_CONFIG)
+    server = Sut(image=image, tmp_root=tmp_path_factory.mktemp("shared"))
+    server.start(env=SHARED_ENV, config=SHARED_CONFIG)
     try:
         yield server
     finally:
@@ -193,12 +184,38 @@ def root_token(server: Sut, request: pytest.FixtureRequest) -> str:
     """A bearer token for the Root Admin, cached per instance and re-minted after a `401`."""
     if request.node.get_closest_marker("own_instance") is not None:
         pytest.fail("an own-instance test authenticates against its own container, never the shared one")
-    token = _ROOT_TOKENS.get(id(server))
+    return _live_token(
+        server,
+        _ROOT_TOKENS,
+        lambda: login(server, ROOT_ADMIN_USERNAME, _ROOT_PASSWORDS.setdefault(id(server), server.root_password())),
+    )
+
+
+@pytest.fixture
+def seed_token(server: Sut, request: pytest.FixtureRequest) -> str:
+    """A bearer token for the system profile's seeded identity, cached per instance and re-minted after a `401`."""
+    if request.node.get_closest_marker("own_instance") is not None:
+        pytest.fail("an own-instance test authenticates against its own container, never the shared one")
+    return _live_token(server, _SEED_TOKENS, lambda: login(server, SEED_ACCOUNT, SEED_PASSWORD))
+
+
+def login(server: Sut, username: str, password: str) -> str:
+    """Authenticate through the generated client and return the access token."""
+    response = post_login.sync_detailed(
+        client=server.client(),
+        body=LoginRequest(password=password, identifier=username),
+    )
+    assert response.status_code == 200, f"login failed: {response.status_code} {response.content!r}"
+    return json.loads(response.content)["access_token"]
+
+
+def _live_token(server: Sut, cache: dict[int, str], mint: Callable[[], str]) -> str:
+    """A cached token while the instance accepts it, otherwise a freshly minted one stored in `cache`."""
+    token = cache.get(id(server))
     if token is not None and server.request("GET", server.href("current_user"), token=token).status_code != 401:
         return token
-    password = _ROOT_PASSWORDS.setdefault(id(server), server.root_password())
-    token = server.login(ROOT_ADMIN_USERNAME, password)
-    _ROOT_TOKENS[id(server)] = token
+    token = mint()
+    cache[id(server)] = token
     return token
 
 
@@ -206,7 +223,7 @@ def provision(server: Sut, root_token: str, username: str, role: str = "STANDARD
     """Create an account as the Root Admin and return its identifier and access token."""
     response = register(server, root_token, username, None, SECRET_PASSWORD, role=role)
     assert response.status_code == 201, f"creation failed: {response.status_code} {response.text}"
-    return response.json()["id"], server.login(username, SECRET_PASSWORD)
+    return response.json()["id"], login(server, username, SECRET_PASSWORD)
 
 
 def start_instance(sut: Sut, *, config: dict | None = None, env: dict[str, str] | None = None) -> Sut:
@@ -244,7 +261,10 @@ def mint_token(secret: str, subject: str, *, expires_in: int = 3600, tampered: b
 def attempt(server: Sut, username: str, address: str | None = None):
     """A login attempt the limiter counts; the credentials cannot succeed."""
     headers = {"x-real-ip": address} if address is not None else None
-    return server.attempt_login(username, WRONG_PASSWORD, headers=headers)
+    return post_login.sync_detailed(
+        client=server.client(headers=headers),
+        body=LoginRequest(password=WRONG_PASSWORD, identifier=username),
+    )
 
 
 def upload(
@@ -255,14 +275,12 @@ def upload(
     content_type: str = "image/png",
 ) -> dict:
     """Upload one file to completion and return the file representation."""
-    session = begin_upload(server, token, file_name, data, content_type)
-    chunk = put_chunk(server, token, session, 0, data, len(data))
-    assert chunk.status_code == 200, f"chunk failed: {chunk.status_code} {chunk.text}"
-    completed = complete_upload(server, token, session)
-    assert completed.status_code == 200, f"completion failed: {completed.status_code} {completed.text}"
-    response = server.request("GET", link_of(completed.json(), "file"), token=token)
-    assert response.status_code == 200, f"file read failed: {response.status_code} {response.text}"
-    return response.json()
+    client = server.client(token)
+    session = begin(server, token, file_name, data, content_type)
+    chunk = store_chunk(server, token, session, 0, data)
+    assert chunk.status_code == 200, f"chunk failed: {chunk.status_code} {chunk.content!r}"
+    completed = post_upload_complete.sync_detailed(session.id, client=client)
+    return completed_file(server, token, completed)
 
 
 def linked_id(href: str) -> int:
@@ -272,23 +290,140 @@ def linked_id(href: str) -> int:
 
 def create_gallery(server: Sut, token: str, name: str, is_public: bool = False) -> dict:
     """Create a gallery and return its representation."""
-    response = server.request(
-        "POST",
-        server.href("gallery"),
-        token=token,
-        json={"name": name, "is_public": is_public},
+    response = post_gallery.sync_detailed(
+        client=server.client(token),
+        body=PostGalleryRequest(name=name, is_public=is_public),
     )
-    assert response.status_code == 201, f"gallery failed: {response.status_code} {response.text}"
-    return response.json()
+    assert response.status_code == 201, f"gallery failed: {response.status_code} {response.content!r}"
+    return payload(response)
 
 
 def add_to_gallery(server: Sut, token: str, gallery: dict, media_id: int) -> dict:
     """Add an image to a gallery and return the created item's representation."""
-    response = server.request(
-        "POST",
-        link_of(gallery, "items"),
-        token=token,
-        json={"type": "image", "media_id": media_id},
+    response = post_gallery_item.sync_detailed(
+        gallery["id"],
+        client=server.client(token),
+        body=PostGalleryItemRequest(media_id=media_id, type_=GalleryItemType.IMAGE),
     )
-    assert response.status_code == 201, f"item failed: {response.status_code} {response.text}"
-    return response.json()
+    assert response.status_code == 201, f"item failed: {response.status_code} {response.content!r}"
+    return payload(response)
+
+
+def file_at(server: Sut, token: str, path: str) -> dict | None:
+    """The stored-file collection item at root-relative `path`, or `None` when the caller may discover none.
+
+    The collection is the suite's only way to read a stored record: the path is the one a case wrote or the fixture
+    committed, and the item is the single-file representation `get_file` serves.
+    """
+    response = list_files.sync_detailed(client=server.client(token), path=path)
+    assert response.status_code == 200, f"file collection failed: {response.status_code} {response.content!r}"
+    items = payload(response)["items"]
+    assert len(items) <= 1, f"the exact-path filter returned {len(items)} items for {path!r}"
+    return items[0] if items else None
+
+
+def ingest_report(record: dict[str, str]) -> dict[str, int]:
+    """The aggregate counters one logged ingest event reported."""
+    names = ("registered", "completed", "untouched", "changed", "missing", "removed", "skipped")
+    absent = [name for name in names if name not in record]
+    assert not absent, f"the ingest report carries no {absent}"
+    return {name: int(record[name]) for name in names}
+
+
+def wait_for_ingest(
+    server: Sut,
+    predicate: Callable[[dict[str, int]], bool] | None = None,
+    description: str = "the ingest reported its outcome",
+) -> dict[str, int]:
+    """Wait until a logged ingest report satisfies `predicate` and return it.
+
+    The report names no file, so a case waits for the one outcome its own change makes observable and reads the
+    counters; the files themselves are polled through `file_at`.
+    """
+    matches = predicate or (lambda _report: True)
+
+    def reports() -> list[dict[str, int]]:
+        return [ingest_report(record) for record in server.events("ingest")]
+
+    server.wait_until(lambda: any(matches(report) for report in reports()), description)
+    return next(report for report in reports() if matches(report))
+
+
+def begin(
+    server: Sut,
+    token: str,
+    file_name: str,
+    data: bytes,
+    content_type: str = "image/png",
+    *,
+    file_size: int | None = None,
+    integrity_hash: str | None = None,
+) -> UploadSession:
+    """Open an upload session from a declaration and read it from the representation the begin returns."""
+    response = post_upload.sync_detailed(
+        client=server.client(token),
+        body=PostUploadRequest(
+            content_type=content_type,
+            file_name=file_name,
+            file_size=len(data) if file_size is None else file_size,
+            integrity_hash=integrity_hash if integrity_hash is not None else hashlib.sha256(data).hexdigest(),
+        ),
+    )
+    assert response.status_code == 201, f"begin failed: {response.status_code} {response.content!r}"
+    return UploadSession.from_body(payload(response))
+
+
+def session_state(server: Sut, token: str, session: UploadSession) -> dict:
+    """Read one upload session, asserting the read succeeds."""
+    response = get_upload.sync_detailed(session.id, client=server.client(token))
+    assert response.status_code == 200, f"session read failed: {response.status_code} {response.content!r}"
+    return payload(response)
+
+
+def staged_path(server: Sut, session: UploadSession) -> str:
+    """The session's staged file, relative to the working directory."""
+    return f"{STAGING_DIRECTORY}/{session.id}"
+
+
+def store_chunk(
+    server: Sut,
+    token: str,
+    session: UploadSession,
+    number: int,
+    data: bytes,
+    *,
+    start: int | None = None,
+    total: int | None = None,
+    digest: bytes | None = None,
+    range_header: str | None = None,
+    send_digest: bool = True,
+):
+    """Send one chunk with control over the headers a malformed case needs.
+
+    `total` is the declared content length; it defaults to the chunk's own length, which is the whole file for a session
+    whose content fits in one chunk. `send_digest=False` sends an empty `Content-Digest`, which the server refuses
+    exactly as it refuses an absent one: the generated client cannot omit a header the document declares.
+    """
+    offset = number * len(data) if start is None else start
+    declared = len(data) if total is None else total
+    declared_range = f"bytes {offset}-{offset + len(data) - 1}/{declared}"
+    baked = hashlib.sha256(data).digest() if digest is None else digest
+    return put_upload_chunk.sync_detailed(
+        session.id,
+        number,
+        client=server.client(token),
+        body=File(payload=data),
+        content_range=declared_range if range_header is None else range_header,
+        content_digest=f"sha-256=:{base64.b64encode(baked).decode()}:" if send_digest else "",
+    )
+
+
+def completed_file(server: Sut, token: str, completed) -> dict:
+    """Read the file a completion links, asserting both outcomes succeed."""
+    assert completed.status_code == 200, f"completion failed: {completed.status_code} {completed.content!r}"
+    response = get_file.sync_detailed(
+        linked_id(link_of(payload(completed), "file")),
+        client=server.client(token),
+    )
+    assert response.status_code == 200, f"file read failed: {response.status_code} {response.content!r}"
+    return payload(response)

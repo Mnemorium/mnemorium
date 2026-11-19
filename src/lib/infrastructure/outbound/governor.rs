@@ -10,7 +10,7 @@ use crate::infrastructure::rate_limit::LoginAttemptLimit;
 ///
 /// The per-client limiter is HTTP middleware; this adapter is checked inside
 /// the login use case, so one account is throttled across client addresses. A
-/// username that resolves to no account is keyed by a `SHA-256` digest of the
+/// identifier that resolves to no account is keyed by a `SHA-256` digest of the
 /// submitted value, which is never logged.
 pub(crate) struct KeyedLoginAttemptLimiter {
     /// The process-lifetime account limit the adapter reads.
@@ -70,26 +70,26 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_username_is_throttled_under_a_derived_key() -> Result<(), Box<dyn Error>> {
+    fn an_unknown_identifier_is_throttled_under_a_derived_key() -> Result<(), Box<dyn Error>> {
         // Arrange
         let limiter = limiter(&rate_limit(1, 60)?);
 
         // Act & Assert: the derived key is spent like any account key.
         assert!(
             limiter
-                .check(LoginAttemptKey::Username("ghost".to_owned()))
+                .check(LoginAttemptKey::Identifier("ghost".to_owned()))
                 .is_none()
         );
         assert!(
             limiter
-                .check(LoginAttemptKey::Username("ghost".to_owned()))
+                .check(LoginAttemptKey::Identifier("ghost".to_owned()))
                 .is_some()
         );
 
-        // Another username and a user identifier each keep their own bucket.
+        // Another identifier and a user identifier each keep their own bucket.
         assert!(
             limiter
-                .check(LoginAttemptKey::Username("other".to_owned()))
+                .check(LoginAttemptKey::Identifier("other".to_owned()))
                 .is_none()
         );
         assert!(limiter.check(LoginAttemptKey::User(0)).is_none());

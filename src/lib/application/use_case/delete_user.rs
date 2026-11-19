@@ -421,6 +421,15 @@ where
                     .await
                     .map_err(|error| DeleteUserError::Unknown(error.into()))?;
 
+                // The identity's resource outlives the row it addresses unless
+                // this unit of work removes it: a later account reuses the freed
+                // identifier and collides with the stale resource (`PERS-020`).
+                unit_of_work
+                    .resources()
+                    .delete(ResourceRef::new(ResourceKind::User, target.id()))
+                    .await
+                    .map_err(|error| DeleteUserError::Unknown(error.into()))?;
+
                 Ok(removed_paths)
             }
             .await;
@@ -463,11 +472,12 @@ where
 mod tests {
     use super::*;
     use crate::domain::model::{
-        ChunkBitmap, Gallery, IntegrityHash, MusicPlaylist, Role, Upload, User,
+        ChunkBitmap, File, Gallery, Image, IntegrityHash, MusicPlaylist, Orientation, Role, Upload,
+        User,
     };
-    use crate::domain::port::{MockFileStorage, MockUserRepository};
+    use crate::domain::port::{MockFileRepository, MockFileStorage, MockUserRepository};
     use crate::test_helpers::*;
-    use chrono::NaiveDateTime;
+    use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -582,6 +592,20 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
     }
 
+    /// Expect the owned file and the Root Admin's digest collision to be found.
+    fn expect_shared_files(files: &mut MockFileRepository, owned: File, root_file: File) {
+        files.expect_search().times(2).returning(move |filter| {
+            let found = if filter.user_id == Some(8) && filter.integrity_hash.is_none() {
+                vec![owned.clone()]
+            } else if filter.user_id == Some(0) && filter.integrity_hash.is_some() {
+                vec![root_file.clone()]
+            } else {
+                Vec::new()
+            };
+            Box::pin(async move { Ok(found) })
+        });
+    }
+
     /// Expect the user row and its credential to be removed.
     fn expect_identity_removal(unit_of_work: &mut TestUnitOfWork, target: &User) {
         let target_id = target.id();
@@ -637,6 +661,145 @@ mod tests {
         assert!(result.is_ok());
         assert!(harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_user_removes_its_resource() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(7, Role::Admin)?;
+        let target = user(8, Role::Standard)?;
+        let mut unit_of_work = bare_unit_of_work(&caller, &target);
+        expect_no_owned_content(&mut unit_of_work);
+        expect_identity_removal(&mut unit_of_work, &target);
+        let mut resources = caller_owned_resources();
+        resources
+            .expect_delete()
+            .times(1)
+            .withf(|address| address.kind() == ResourceKind::User && address.id() == 8)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        unit_of_work.resources = resources;
+        let harness = harness(unit_of_work, MockFileStorage::new());
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(DeleteUserCommand::new(caller.id(), target.id()))
+            .await;
+
+        // Assert: a freed identifier must not leave a stale USER resource.
+        assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_user_clears_a_colliding_digest_on_transfer() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(0, Role::Admin)?;
+        let target = user(8, Role::Standard)?;
+        let mut unit_of_work = bare_unit_of_work(&caller, &target);
+        unit_of_work
+            .galleries
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        unit_of_work
+            .music_playlists
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        unit_of_work
+            .uploads
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let owned = File::try_new(
+            1,
+            "files/1_artwork.png".to_owned(),
+            8,
+            false,
+            "image/png".to_owned(),
+            NaiveDate::default(),
+            0,
+            NaiveDateTime::default(),
+            Some(IntegrityHash::try_new(DIGEST.to_owned())?),
+            Some(Origin::Uploaded),
+        )?;
+        let root_file = File::try_new(
+            2,
+            "files/2_artwork.png".to_owned(),
+            0,
+            false,
+            "image/png".to_owned(),
+            NaiveDate::default(),
+            0,
+            NaiveDateTime::default(),
+            Some(IntegrityHash::try_new(DIGEST.to_owned())?),
+            Some(Origin::Uploaded),
+        )?;
+        expect_shared_files(&mut unit_of_work.files, owned, root_file);
+        unit_of_work.images.expect_search().times(1).returning(|_| {
+            let image = Image::try_new(
+                1,
+                "artwork.png".to_owned(),
+                64,
+                64,
+                Orientation::Square,
+                NaiveDate::default(),
+                1,
+                Some(AssetScope::Library),
+            );
+            Box::pin(async move { Ok(image.into_iter().collect()) })
+        });
+        unit_of_work
+            .videos
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        unit_of_work
+            .audios
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        unit_of_work
+            .files
+            .expect_clear_integrity_hash()
+            .times(1)
+            .withf(|id| *id == 1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        unit_of_work
+            .files
+            .expect_reassign_owner()
+            .times(1)
+            .withf(|id, owner| *id == 1 && *owner == 0)
+            .returning(|_, _| Box::pin(async { Ok(true) }));
+        expect_identity_removal(&mut unit_of_work, &target);
+        let mut resources = caller_owned_resources();
+        resources
+            .expect_reassign_owner()
+            .times(1)
+            .withf(|address, owner, _| {
+                address.kind() == ResourceKind::File && address.id() == 1 && *owner == Some(0)
+            })
+            .returning(|_, _, _| Box::pin(async { Ok(true) }));
+        resources
+            .expect_delete()
+            .times(1)
+            .withf(|address| address.kind() == ResourceKind::User && address.id() == 8)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        unit_of_work.resources = resources;
+        let harness = harness(unit_of_work, MockFileStorage::new());
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(DeleteUserCommand::new(caller.id(), target.id()))
+            .await;
+
+        // Assert: the transferred row must not collide on the Root Admin's digest.
+        assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Run the system test suite against the mnemorium image.
 #
+# The image is built with the `test-seed` feature, so the suite boots a server that can seed the profile it names; a
+# boot that names no profile applies no fixture at all. It also carries `api-docs`, because the suite drives the typed
+# client generated from the image's own `/doc/openapi.json`: `script/openapi_client.sh` regenerates it before pytest,
+# so a case can never run against a client the handlers have outgrown. The client is never committed.
+#
 # Two container kinds: each pytest worker boots one instance that every case shares, and a
 # case marked `own_instance` starts its own container. Both keep the `mnemorium-system-`
 # prefix, so the sweep below removes what a killed run left behind.
@@ -17,6 +22,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
 readonly IMAGE="${IMAGE:-mnemorium:latest}"
 readonly CONTAINER_PREFIX="mnemorium-system-"
 readonly SUITE="test/system"
@@ -38,19 +45,23 @@ trap 'exit 143' TERM
 
 if [[ -n ${NO_BUILD:-} ]]; then
 	if ! docker image inspect "${IMAGE}" >/dev/null 2>&1; then
-		echo "image ${IMAGE} not found; build it with docker build -t mnemorium:latest . or omit NO_BUILD" >&2
+		echo "image ${IMAGE} not found; build it with CARGO_FEATURES='api-docs test-seed' docker build -t mnemorium:latest . or omit NO_BUILD" >&2
 		exit 1
 	fi
 else
-	echo "==> Building image ${IMAGE}"
+	echo "==> Building image ${IMAGE} with the test-seed and api-docs features"
 	if [[ -n ${BUILDX_CACHE_DIR:-} ]]; then
 		docker buildx build --load -t "${IMAGE}" \
+			--build-arg CARGO_FEATURES="api-docs test-seed" \
 			--cache-from "type=local,src=${BUILDX_CACHE_DIR}" \
 			--cache-to "type=local,dest=${BUILDX_CACHE_DIR}-new,mode=max" .
 	else
-		docker build -t "${IMAGE}" .
+		docker build --build-arg CARGO_FEATURES="api-docs test-seed" -t "${IMAGE}" .
 	fi
 fi
+
+echo "==> Generating the typed client from ${IMAGE}"
+MNEMORIUM_IMAGE="${IMAGE}" "${SCRIPT_DIR}/openapi_client.sh" generate
 
 PYTEST_ARGS=(-p no:cacheprovider -ra --tb=short)
 if [[ -n ${PYTEST_WORKERS:-} ]]; then

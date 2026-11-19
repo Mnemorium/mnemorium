@@ -8,9 +8,43 @@ hooks = "test/api/hooks.py"
 [auth]
 auto-signup = false
 
+# The HTTP/1 parser answers `414` before the router runs when a query string
+# pushes the request line past its 64 KiB buffer. The served document declares
+# that status on every operation, and both data checks accept it: it is a
+# refusal of the data rather than an acceptance or a server error.
+[checks.negative_data_rejection]
+expected-statuses = [
+  "400",
+  "401",
+  "403",
+  "404",
+  "405",
+  "406",
+  "409",
+  "414",
+  "415",
+  "422",
+  "428",
+  "429",
+  "5xx",
+]
+
+[checks.positive_data_acceptance]
+expected-statuses = [
+  "2xx",
+  "3xx",
+  "401",
+  "403",
+  "404",
+  "409",
+  "414",
+  "429",
+  "5xx",
+]
+
 # Fixture catalogue for the disposable, seeded server `script/api_fuzz.sh`
 # starts. The identifiers are the fixed ones `src/lib/infrastructure/seed.rs`
-# and `test/seed/sql` create, so the fuzzer reaches existing rows instead of
+# and `test/api/seed/sql` create, so the fuzzer reaches existing rows instead of
 # 404ing on generated identifiers.
 #
 # A single `[[operations]]` entry ORs its include filters, so an operation that
@@ -100,11 +134,13 @@ checks = { positive_data_acceptance = { expected-statuses = [
 include-operation-id = "get_video_file"
 parameters = { video_id = 9001 }
 
-# Generated login bodies cannot carry the real credentials, so every positive
-# login case answers 401; the dynamic auth flow proves the endpoint works.
+# A generated login body cannot carry the fixture's credentials, so the two
+# fields are pinned to the Root Admin's. The dynamic auth flow still proves the
+# endpoint, and the operation's negative body surface is proved by the system
+# suite rather than by a warning-suppressing run.
 [[operations]]
 include-operation-id = "post_login"
-warnings = false
+parameters = { "body.identifier" = "${LOGIN_USERNAME}", "body.password" = "${LOGIN_PASSWORD}" }
 
 [[operations]]
 include-operation-id = "post_upload"
@@ -119,7 +155,6 @@ checks = { positive_data_acceptance = { expected-statuses = [
   413,
   422,
   429,
-  "5xx",
 ] }, negative_data_rejection = { expected-statuses = [
   400,
   401,
@@ -133,7 +168,6 @@ checks = { positive_data_acceptance = { expected-statuses = [
   422,
   428,
   429,
-  "5xx",
 ] } }
 
 [[operations]]
@@ -149,24 +183,57 @@ include-operation-id = "get_permission_summary"
 parameters = { user_id = 9001 }
 # A decision query supplies `resource_kind`, `resource_id` and `action`
 # together; the query schema cannot express that dependency, so a partial one is
-# a documented `400`. A value outside the closed action or kind vocabulary is a
-# documented `422`, classified as an `enum_validation_failed` event.
+# a documented `400`.
 checks = { positive_data_acceptance = { expected-statuses = [
   "2xx",
   "3xx",
-  400,
   401,
   403,
   404,
-  422,
+  409,
   429,
-  "5xx",
+  400,
 ] } }
 
+# The permission routes address a resource by kind and identifier in the URI, so
+# each one is pinned to a seeded resource. The grant fixture is seeded by
+# `test/api/seed/sql/0005_resources.sql`: the share upserts the same
+# (principal, resource, role) tuple, so the delete addresses a stable grant id.
+[[operations]]
+include-operation-id = "get_resource_permission"
+parameters = { kind = "GALLERY", id = 9001 }
+
+[[operations]]
+include-operation-id = "post_permission_share"
+parameters = { kind = "GALLERY", id = 9001, "body.principal.kind" = "USER", "body.principal.id" = 9002, "body.role" = "VIEWER" }
+phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  429,
+  422,
+] } }
+
+[[operations]]
+include-operation-id = "delete_permission_share"
+parameters = { kind = "GALLERY", id = 9001, grant_id = 9001 }
+generation = { mode = "positive", max-examples = 1 }
+phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
+
 # A body or query value naming a resource rather than the URI is a body value
-# under `API-044`, so a missing reference is a `422`, not a `404`.
+# under `API-044`, so a missing reference is a `422`, not a `404`. The target is a
+# playlist no other write mutates, and the replacement carries no grants, so it
+# cannot wipe a share another operation reads. The body names no resource, but
+# the generated grant set can; the mismatch warning is therefore suppressed
+# rather than made meaningful by a fixture the document cannot express.
 [[operations]]
 include-operation-id = "put_resource_permission"
+parameters = { kind = "MUSIC_PLAYLIST", id = 9002, "body.grants" = [
+], "body.visibility" = "PUBLIC" }
 warnings = { display = ["missing_test_data"] }
 checks = { positive_data_acceptance = { expected-statuses = [
   "2xx",
@@ -175,73 +242,26 @@ checks = { positive_data_acceptance = { expected-statuses = [
   403,
   404,
   409,
-  422,
   429,
-  "5xx",
-] } }
-
-# A resource kind, grant role, principal kind or effect outside the closed
-# vocabulary is a documented `422`: the handler validates the raw wire value so
-# the rejection is an `enum_validation_failed` event rather than a framework
-# decode failure.
-[[operations]]
-include-operation-id = "get_resource_permission"
-checks = { positive_data_acceptance = { expected-statuses = [
-  "2xx",
-  "3xx",
-  401,
-  403,
-  404,
   422,
-  429,
-  "5xx",
 ] } }
-
-[[operations]]
-include-operation-id = "post_permission_share"
-checks = { positive_data_acceptance = { expected-statuses = [
-  "2xx",
-  "3xx",
-  401,
-  403,
-  404,
-  422,
-  429,
-  "5xx",
-] } }
-
-[[operations]]
-include-operation-id = "delete_permission_share"
-checks = { positive_data_acceptance = { expected-statuses = [
-  "2xx",
-  "3xx",
-  401,
-  403,
-  404,
-  422,
-  429,
-  "5xx",
-] } }
-
-# No metadata provider is configured in the fixture server, so a known provider
-# name reaches the "available: false" answer instead of an unknown-provider 404.
-[[operations]]
-include-path = "/library/movie/identify/{provider}/{reference}"
-parameters = { provider = "tmdb", reference = "1" }
-
-[[operations]]
-include-path = "/library/series/identify/{provider}/{reference}"
-parameters = { provider = "tmdb", reference = "1" }
-
-[[operations]]
-include-path = "/library/music/identify/{provider}/{kind}/{reference}"
-parameters = { provider = "musicbrainz", kind = "release", reference = "1" }
 
 # The position pair is supplied together; the query schema cannot express the
-# dependency between the two optional parameters.
+# dependency between the two optional parameters, so a partial pair is a
+# documented server behaviour (`422`) rather than a schema violation.
 [[operations]]
 include-operation-id = "identify_video_series_metadata"
 parameters = { season = 1, episode = 1 }
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  429,
+  422,
+] } }
 
 [[operations]]
 include-operation-id = "list_series_episodes"
@@ -254,6 +274,7 @@ parameters = { series_id = 9001, season_index = 1 }
 [[operations]]
 include-operation-id = "patch_series_season"
 parameters = { series_id = 9001, season_index = 1 }
+warnings = { display = ["missing_test_data"] }
 
 [[operations]]
 include-operation-id = "get_series_episode"
@@ -269,15 +290,19 @@ checks = { positive_data_acceptance = { expected-statuses = [
   403,
   404,
   409,
-  422,
   429,
-  "5xx",
+  422,
 ] } }
 
+# A required body identifier must name an existing entity. The fuzzing phase
+# honours the pin below; the examples and coverage phases seed the body from the
+# schema's examples, so they send identifiers the fixture cannot have and are
+# disabled for these operations. Video 9003 is the one seeded video no movie or
+# episode owns.
 [[operations]]
 include-operation-id = "put_series_episode"
-warnings = { display = ["missing_test_data"] }
-parameters = { series_id = 9001, season_index = 1, episode_index = 2 }
+parameters = { series_id = 9001, season_index = 1, episode_index = 2, "body.video_id" = 9003 }
+phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
 checks = { positive_data_acceptance = { expected-statuses = [
   "2xx",
   "3xx",
@@ -285,9 +310,8 @@ checks = { positive_data_acceptance = { expected-statuses = [
   403,
   404,
   409,
-  422,
   429,
-  "5xx",
+  422,
 ] } }
 
 [[operations]]
@@ -300,12 +324,17 @@ parameters = { series_id = 9001, season_index = 1, episode_index = 1 }
 include-operation-id = "get_gallery"
 parameters = { id = 9001 }
 
-# The destructive operations run only in fuzzing: the coverage phase would
-# consume the row before the first positive fuzzing case can.
+# The destructive operations are one-shot: each addresses a row no other
+# operation in the run reads, and exactly one positive fuzzing case addresses it.
+# The examples and coverage phases send the same pinned identifier repeatedly,
+# so every case after the first would be a `404` by design; the stateful phase
+# repeats a deletion its own scenario already consumed (`use_after_free`).
+# Deletion semantics are proved by the system suite.
 [[operations]]
 include-operation-id = "delete_gallery"
 parameters = { id = 9002 }
-phases = { examples = { enabled = false }, coverage = { enabled = false } }
+generation = { mode = "positive", max-examples = 1 }
+phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
 
 [[operations]]
 include-operation-id = "get_gallery_item_list"
@@ -318,35 +347,32 @@ parameters = { id = 9001, item_id = 9002 }
 [[operations]]
 include-operation-id = "delete_gallery_item"
 parameters = { id = 9001, item_id = 9001 }
-phases = { examples = { enabled = false }, coverage = { enabled = false } }
+generation = { mode = "positive", max-examples = 1 }
+phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
 
 # Deletion cascades across every fixture the deleted user owns, so the target
-# must own none of them: bobby (9002) does. Stateful is disabled because an
-# inferred link would otherwise pick alice (9001) from a read and delete the
-# galleries and playlists the rest of the run addresses.
+# must own none of them: bobby (9002) owns no seeded content, while alice (9001)
+# owns the galleries and playlists the rest of the run reads.
 [[operations]]
 include-operation-id = "delete_user"
 parameters = { id = 9002 }
+generation = { mode = "positive", max-examples = 1 }
 phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
 
-# A chunk write needs a coherent body, range and digest; a generated request
-# with a malformed header is a `400` the schema's positive case may still hit.
+# A chunk write needs a body, a `Content-Range` and a `Content-Digest` that all
+# agree. The generator cannot produce that triple, so a positive case is refused
+# before the session is read (`422`). The system suite drives the chunk protocol
+# with a coherent body; the fuzz run keeps the session create, read and complete
+# operations.
 [[operations]]
 include-operation-id = "put_upload_chunk"
-phases = { stateful = { enabled = false } }
-warnings = { display = ["missing_test_data"] }
-checks = { positive_data_acceptance = { expected-statuses = [
-  400,
-  "2xx",
-  "3xx",
-  401,
-  403,
-  404,
-  409,
-  422,
-  429,
-  "5xx",
-] } }
+enabled = false
+
+# Deleting the only completed fixture session would strand the completion and
+# read cases that share it. The system suite covers upload deletion.
+[[operations]]
+include-operation-id = "delete_upload"
+enabled = false
 
 [[operations]]
 include-operation-id = "get_album_medium"
@@ -370,8 +396,8 @@ parameters = { album_id = 9001, medium_index = 1, track_index = 1 }
 
 [[operations]]
 include-operation-id = "put_album_track"
-warnings = { display = ["missing_test_data"] }
-parameters = { album_id = 9001, medium_index = 1, track_index = 1 }
+parameters = { album_id = 9001, medium_index = 1, track_index = 1, "body.recording_id" = 9001 }
+phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
 checks = { positive_data_acceptance = { expected-statuses = [
   "2xx",
   "3xx",
@@ -379,15 +405,17 @@ checks = { positive_data_acceptance = { expected-statuses = [
   403,
   404,
   409,
-  422,
   429,
-  "5xx",
+  422,
 ] } }
 
+# The gallery id is pinned here; `script/api_fuzz.sh` appends the completed
+# upload's file id as `body.media_id`, because the only current medium the
+# fixture leaves unattached is the one that upload creates. The appended entry
+# supplies the whole `parameters` table, so this entry must not define one.
 [[operations]]
 include-operation-id = "post_gallery_item"
-warnings = { display = ["missing_test_data"] }
-parameters = { id = 9001 }
+phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
 checks = { positive_data_acceptance = { expected-statuses = [
   "2xx",
   "3xx",
@@ -395,13 +423,47 @@ checks = { positive_data_acceptance = { expected-statuses = [
   403,
   404,
   409,
-  422,
   429,
-  "5xx",
+  422,
 ] } }
 
 [[operations]]
 include-operation-id = "post_movie"
+parameters = { "body.video_id" = 9001 }
+phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  429,
+  422,
+] } }
+
+[[operations]]
+include-operation-id = "post_album"
+parameters = { "body.music_group_id" = 9001 }
+phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  429,
+  422,
+] } }
+
+# The patch bodies carry an optional artwork identifier. Coverage generates an
+# identifier that need not exist, and the document cannot express existence, so
+# the operation narrows its displayed warnings to missing test data and drops
+# the mismatch warning; the path is pinned to a seeded row.
+[[operations]]
+include-operation-id = "patch_album"
+parameters = { album_id = 9001 }
 warnings = { display = ["missing_test_data"] }
 checks = { positive_data_acceptance = { expected-statuses = [
   "2xx",
@@ -410,38 +472,24 @@ checks = { positive_data_acceptance = { expected-statuses = [
   403,
   404,
   409,
-  422,
   429,
-  "5xx",
+  422,
 ] } }
 
 [[operations]]
-include-operation-id = "post_album"
-checks = { positive_data_acceptance = { expected-statuses = [
-  "2xx",
-  "3xx",
-  401,
-  403,
-  404,
-  409,
-  422,
-  429,
-  "5xx",
-] } }
+include-operation-id = "patch_movie"
+parameters = { movie_id = 9001 }
+warnings = { display = ["missing_test_data"] }
 
 [[operations]]
-include-operation-id = "patch_album"
-checks = { positive_data_acceptance = { expected-statuses = [
-  "2xx",
-  "3xx",
-  401,
-  403,
-  404,
-  409,
-  422,
-  429,
-  "5xx",
-] } }
+include-operation-id = "patch_series"
+parameters = { series_id = 9001 }
+warnings = { display = ["missing_test_data"] }
+
+[[operations]]
+include-operation-id = "patch_music_group"
+parameters = { group_id = 9001 }
+warnings = { display = ["missing_test_data"] }
 
 # Likewise, the read and the delete address different seeded playlists.
 [[operations]]
@@ -451,15 +499,19 @@ parameters = { playlist_id = 9001, track_index = 1 }
 [[operations]]
 include-operation-id = "delete_playlist"
 parameters = { playlist_id = 9003 }
-phases = { examples = { enabled = false }, coverage = { enabled = false } }
+generation = { mode = "positive", max-examples = 1 }
+phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
 
 [[operations]]
 include-operation-id = "delete_playlist_track"
 parameters = { playlist_id = 9002, track_index = 1 }
-phases = { examples = { enabled = false }, coverage = { enabled = false } }
+generation = { mode = "positive", max-examples = 1 }
+phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
 
 [[operations]]
 include-operation-id = "patch_playlist"
+parameters = { playlist_id = 9002 }
+warnings = { display = ["missing_test_data"] }
 checks = { positive_data_acceptance = { expected-statuses = [
   "2xx",
   "3xx",
@@ -467,15 +519,16 @@ checks = { positive_data_acceptance = { expected-statuses = [
   403,
   404,
   409,
-  422,
   429,
-  "5xx",
+  422,
 ] } }
 
 # The order must be a permutation of the current tracks; that rule depends on
 # the stored playlist, so the schema cannot express it.
 [[operations]]
 include-operation-id = "put_playlist_track"
+parameters = { playlist_id = 9004, "body.order" = [0] }
+warnings = { display = ["missing_test_data"] }
 checks = { positive_data_acceptance = { expected-statuses = [
   "2xx",
   "3xx",
@@ -483,10 +536,39 @@ checks = { positive_data_acceptance = { expected-statuses = [
   403,
   404,
   409,
-  422,
   429,
-  "5xx",
+  422,
 ] } }
+
+# A catalogue read addresses one seeded row. A generated identifier would 404,
+# so each read is pinned to the row the rest of the run also addresses.
+[[operations]]
+include-operation-id = "get_album"
+parameters = { album_id = 9001 }
+
+[[operations]]
+include-operation-id = "get_movie"
+parameters = { movie_id = 9001 }
+
+[[operations]]
+include-operation-id = "get_music_group"
+parameters = { group_id = 9001 }
+
+[[operations]]
+include-operation-id = "get_playlist"
+parameters = { playlist_id = 9001 }
+
+[[operations]]
+include-operation-id = "get_playlist_track_list"
+parameters = { playlist_id = 9001 }
+
+[[operations]]
+include-operation-id = "get_series"
+parameters = { series_id = 9001 }
+
+[[operations]]
+include-operation-id = "get_user"
+parameters = { id = 9001 }
 
 # Provider-backed writes cannot pass on a server that configures no metadata
 # provider: they need a live TMDB or MusicBrainz response. They stay specified
@@ -507,16 +589,10 @@ enabled = false
 include-path = "/library/music/album/{album_id}/apply"
 enabled = false
 
-# The inference assumes a created gallery or playlist has items/tracks, so it
-# reports a child delete as unavailable. The fixture run is not a stateful
-# create-then-delete flow.
-[checks.ensure_resource_availability]
-enabled = false
-
 # To test authenticated operations, obtain a bearer token from a real account.
 # Export LOGIN_USERNAME and LOGIN_PASSWORD, then uncomment this table:
 #
 # [auth.dynamic.openapi.bearer_auth]
 # path = "/identity/login"
-# payload = { username = "${LOGIN_USERNAME}", password = "${LOGIN_PASSWORD}" }
+# payload = { identifier = "${LOGIN_USERNAME}", password = "${LOGIN_PASSWORD}" }
 # extract_selector = "/access_token"

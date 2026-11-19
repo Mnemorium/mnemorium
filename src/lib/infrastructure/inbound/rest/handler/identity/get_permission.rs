@@ -7,10 +7,11 @@ use crate::application::port::{
     GetPermissionSummaryCommand, PermissionDecisionQuery, PermissionSummary,
 };
 use crate::domain::NumericID;
-use crate::domain::model::ResourceRef;
+use crate::domain::model::{ResourceRef, Role};
 use crate::domain::service::Explanation;
 use crate::infrastructure::inbound::rest::handler::identity::{
-    GrantBody, ResourceBody, parse_action, parse_resource_kind,
+    ActionWire, GrantBody, ResourceBody, ResourceKindWire, VisibilityWire, parse_action,
+    parse_resource_kind,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLinks, hal_json};
@@ -31,6 +32,7 @@ pub(crate) struct DecisionResponse {
     /// Why the decision allowed or denied the action.
     pub reason: String,
     /// Visibility of the addressed resource.
+    #[schema(value_type = VisibilityWire)]
     pub visibility: String,
 }
 
@@ -65,6 +67,7 @@ pub(crate) struct PermissionSummaryResponse {
     #[serde(rename = "_links")]
     pub links: SelfLinks,
     /// Role of the user the summary describes.
+    #[schema(value_type = Role)]
     pub role: String,
     /// Identifier of the user the summary describes.
     pub user_id: NumericID,
@@ -100,14 +103,17 @@ impl PermissionSummaryResponse {
 
 /// Query narrowing the summary to one decision.
 #[derive(Debug, Deserialize, IntoParams)]
+#[serde(deny_unknown_fields)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
 pub(crate) struct PermissionQuery {
     /// Action the decision answers.
+    #[param(inline, value_type = Option<ActionWire>)]
     pub action: Option<String>,
     /// Identifier of the addressed resource.
     pub resource_id: Option<NumericID>,
     /// Kind of the addressed resource.
+    #[param(inline, value_type = Option<ResourceKindWire>)]
     pub resource_kind: Option<String>,
     /// Identifier of the user whose summary is requested.
     pub user_id: Option<NumericID>,
@@ -117,14 +123,11 @@ impl PermissionQuery {
     /// Turn the query into its use-case command.
     ///
     /// A request that names no user describes the caller, so `user_id` is
-    /// optional. An empty value for `action` or `resource_kind` is absent.
+    /// optional. A supplied `action` or `resource_kind` must name a published
+    /// value, so an empty one is rejected rather than treated as absent.
     fn into_command(self, caller_id: NumericID) -> Result<GetPermissionSummaryCommand, ApiError> {
         let user_id = self.user_id.unwrap_or(caller_id);
-        let decision = match (
-            non_blank(self.resource_kind),
-            self.resource_id,
-            non_blank(self.action),
-        ) {
+        let decision = match (self.resource_kind, self.resource_id, self.action) {
             (None, None, None) => None,
             (Some(kind), Some(id), Some(action)) => Some(PermissionDecisionQuery {
                 action: parse_action(&action)?,
@@ -142,11 +145,6 @@ impl PermissionQuery {
             user_id,
         })
     }
-}
-
-/// Treat an empty or blank query value as absent.
-fn non_blank(value: Option<String>) -> Option<String> {
-    value.filter(|inner| !inner.trim().is_empty())
 }
 
 /// Return the `_links.self` target of a user's summary.

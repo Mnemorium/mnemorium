@@ -8,10 +8,12 @@ message: >-
   application-layer tests
 rule:
   any:
-    # #[cfg(test)] and #[cfg(any(test, ...))].
+    # #[cfg(test)] and #[cfg(any(test, ...))]. A feature gate whose *name* starts
+    # or ends with `test` (for example `cfg(feature = "test-seed")`) is a build
+    # configuration, not a test construct, so it must not match.
     - all:
         - kind: attribute_item
-        - regex: 'cfg\(.*\btest\b'
+        - regex: 'cfg\(\s*(?:any|all)?\s*\(\s*test\s*[,)]|cfg\(\s*test\s*\)'
     # #[cfg_attr(test, ...)].
     - all:
         - kind: attribute_item

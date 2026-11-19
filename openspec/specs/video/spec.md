@@ -58,22 +58,12 @@ SHALL answer `404 Not Found`, indistinguishable from a missing one.
 #### Scenario: SCN-VIDEO-003-A — A video of an existing identifier
 
 - **WHEN** an authenticated caller requests a video it may read
-- **THEN** the system returns `200 OK` with the video representation
+- **THEN** the system returns `200 OK`
 
 #### Scenario: SCN-VIDEO-003-B — Unknown or unreadable video
 
 - **WHEN** the video does not exist, or the caller may not read it
 - **THEN** the system returns `404 Not Found`
-
-### Requirement: REQ-VIDEO-004 — A video addresses its file
-
-The system SHALL serve the file alias of a video as an alias of the backing file resource, answering `303 See Other`
-with a `Location` naming the file.
-
-#### Scenario: SCN-VIDEO-004-A — The alias redirects
-
-- **WHEN** an authenticated caller requests the file alias of a video it may read
-- **THEN** the system returns `303 See Other` with the file resource in `Location`
 
 ### Requirement: REQ-VIDEO-005 — A resource embeds the video summary shape
 

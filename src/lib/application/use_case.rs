@@ -88,6 +88,8 @@ mod initialize_root_admin;
 mod list_album_tracks;
 /// The list albums use case implementation.
 mod list_albums;
+/// The list files use case implementation.
+mod list_files;
 /// The list galleries use case implementation.
 mod list_galleries;
 /// The list movies use case implementation.
@@ -202,6 +204,7 @@ pub(crate) use self::ingest_media::IngestMedia;
 pub(crate) use self::initialize_root_admin::InitializeRootAdmin;
 pub(crate) use self::list_album_tracks::ListAlbumTracks;
 pub(crate) use self::list_albums::ListAlbums;
+pub(crate) use self::list_files::ListFiles;
 pub(crate) use self::list_galleries::ListGalleries;
 pub(crate) use self::list_movies::ListMovies;
 pub(crate) use self::list_music_groups::ListMusicGroups;

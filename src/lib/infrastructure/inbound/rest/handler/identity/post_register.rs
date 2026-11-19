@@ -10,7 +10,9 @@ use crate::domain::model::Role;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLinks, hal_json};
+use crate::infrastructure::inbound::rest::{
+    ApiError, AppState, ErrorBody, SelfLinks, UriReference, hal_json,
+};
 
 /// Payload to register a new user.
 ///
@@ -39,8 +41,15 @@ pub(crate) struct RegisterRequest {
     pub role: String,
     /// Username of the new user.
     ///
-    /// Must be 4 to 100 characters long, contain no uppercase letter, and not begin or end with whitespace.
-    #[schema(min_length = 4, max_length = 100)]
+    /// Must be 4 to 100 characters long and contain no whitespace or NUL
+    /// character. Uppercase letters are allowed, and the submitted value is
+    /// stored unchanged.
+    #[schema(
+        min_length = 4,
+        max_length = 100,
+        pattern = r"^[^\s\u0085\x00]+$",
+        example = json!("aliceSmith")
+    )]
     pub username: String,
 }
 
@@ -110,7 +119,7 @@ impl From<RegisterUserError> for ApiError {
             body = RegisterResponse,
             content_type = "application/hal+json",
             headers(
-                ("Location" = String, description = "URI of the newly registered user"),
+                ("Location" = inline(UriReference), description = "URI of the newly registered user"),
             ),
             description = "User registered",
         ),

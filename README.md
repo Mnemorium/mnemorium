@@ -151,14 +151,16 @@ devenv shell
 cargo run --bin server
 ```
 
-To start with the test seed — demo accounts, media bytes and library rows — enable the `test-seed` feature:
+To start with the test seed — demo accounts, media bytes and library rows — enable the `test-seed` feature and name the
+`api` profile:
 
 ```sh
-cargo run --features test-seed --bin server
+MNEMORIUM_SEED_PROFILE=api cargo run --features test-seed --bin server
 ```
 
 The first seeded run prints the shared demo password; the accounts are `alice` and `bobby`. This is test data only: a
-default build and the shipped image are unseeded.
+default build and the shipped image are unseeded. A `test-seed` boot that names no profile starts unseeded too, and
+`seed.profile` in `config.yaml` is the same setting in the file layer.
 
 ### Configuration
 
@@ -207,15 +209,17 @@ at `/doc` and the raw document as JSON at `/doc/openapi.json`.
 
 Enter the environment first: `devenv shell`.
 
-| Task      | Command                                                                                                                                                                                           |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Build     | `cargo build` (server: `cargo build --bin server`)                                                                                                                                                |
-| Run       | `cargo run --bin server` (listens on `:4080`; health `GET /health`)                                                                                                                               |
-| Test      | `cargo test` (unit + integration)                                                                                                                                                                 |
-| Coverage  | `cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler'` (gate ≥ 80% lines/regions/functions; REST handlers are covered by the system suite and Schemathesis) |
-| API fuzz  | `script/api_fuzz.sh` (disposable local server; extra arguments go to Schemathesis)                                                                                                                |
-| Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check`                                                                                                          |
-| Full gate | `devenv test` (all pre-commit hooks)                                                                                                                                                              |
+| Task      | Command                                                                                                                                                                                                                                                                                                                                                                 |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Build     | `cargo build` (server: `cargo build --bin server`)                                                                                                                                                                                                                                                                                                                      |
+| Run       | `cargo run --bin server` (listens on `:4080`; health `GET /health`)                                                                                                                                                                                                                                                                                                     |
+| Test      | `cargo test` (unit + integration)                                                                                                                                                                                                                                                                                                                                       |
+| System    | `script/system.sh` (builds the image with `test-seed` and `api-docs`, regenerates the suite's typed client, runs `test/system`)                                                                                                                                                                                                                                         |
+| Client    | `script/openapi_client.sh` or `devenv tasks run system:client` (regenerates `test/generated/` from the image under test; never committed)                                                                                                                                                                                                                               |
+| Coverage  | `cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler\|src/lib/infrastructure/seed.rs' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80` (gate ≥ 80%; the REST handler tree is covered by the system suite and Schemathesis instead, and the seed file by every suite run and the performance dataset gate) |
+| API fuzz  | `script/api_fuzz.sh` (disposable local server; extra arguments go to Schemathesis)                                                                                                                                                                                                                                                                                      |
+| Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check`                                                                                                                                                                                                                                                                                |
+| Full gate | `devenv test` (all pre-commit hooks)                                                                                                                                                                                                                                                                                                                                    |
 
 The module and layer map lives in [Overview](docs/development/Overview.md). That document also defines the branch, PR
 title, and commit conventions; see the [Technical Design Document](docs/development/TechnicalDesign.md) § 5 for the

@@ -11,7 +11,7 @@ use crate::infrastructure::inbound::rest::handler::library::{
     MediumResponse, parse_album_id, parse_write_index,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
 /// Payload to create or retype a music medium.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -44,7 +44,7 @@ pub(crate) struct PutAlbumMediumRequest {
             body = MediumResponse,
             content_type = "application/hal+json",
             headers(
-                ("Location" = String, description = "URI of the newly created medium"),
+                ("Location" = inline(UriReference), description = "URI of the newly created medium"),
             ),
             description = "Medium created",
         ),

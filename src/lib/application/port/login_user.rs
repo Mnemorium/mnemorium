@@ -8,17 +8,26 @@ use crate::domain::port::IssuedToken;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub(crate) struct LoginUserCommand {
+    /// Username or email address of the user to authenticate.
+    identifier: String,
     /// Password of the user to authenticate.
     password: String,
-    /// Username of the user to authenticate.
-    username: String,
 }
 
 impl LoginUserCommand {
+    /// Return the username or email address.
+    #[must_use]
+    pub(crate) fn identifier(&self) -> &str {
+        &self.identifier
+    }
+
     /// Create a new authentication command.
     #[must_use]
-    pub(crate) fn new(username: String, password: String) -> Self {
-        Self { password, username }
+    pub(crate) fn new(identifier: String, password: String) -> Self {
+        Self {
+            identifier,
+            password,
+        }
     }
 
     /// Return the password.
@@ -26,24 +35,18 @@ impl LoginUserCommand {
     pub(crate) fn password(&self) -> &str {
         &self.password
     }
-
-    /// Return the username.
-    #[must_use]
-    pub(crate) fn username(&self) -> &str {
-        &self.username
-    }
 }
 
 /// Error returned when authenticating a user.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum LoginUserError {
+    /// No user exists with the provided identifier.
+    #[error("no user matches the provided identifier")]
+    InvalidIdentifier,
     /// The password does not satisfy the stored hash of the user.
     #[error("the password does not match the stored hash")]
     InvalidPassword,
-    /// No user exists with the provided username.
-    #[error("no user matches the provided username")]
-    InvalidUsername,
     /// The account's login quota is spent.
     #[error("too many authentication attempts; retry in {} seconds", .0.as_secs())]
     RateLimited(Duration),

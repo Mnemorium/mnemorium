@@ -236,6 +236,7 @@ start_sut() {
 		-e MNEMORIUM_SEED_PROFILE=perf \
 		-p "127.0.0.1:${PORT}:4080" \
 		-v "${log_dir}:/app" \
+		-v "${REPO_ROOT}/test:/app/test:ro" \
 		"${IMAGE}" >/dev/null
 
 	if ! wait_for_health "${ROOT_URL}" 180; then

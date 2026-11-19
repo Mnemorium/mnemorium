@@ -29,9 +29,10 @@ pub(crate) struct PatchUserRequest {
     // rather than a generic deserialization failure.
     #[schema(value_type = Option<Role>)]
     pub role: Option<String>,
-    /// New username; must be 4 to 100 characters long, contain no uppercase letter, and not begin or end with
-    /// whitespace.
-    #[schema(min_length = 4, max_length = 100)]
+    /// New username; must be 4 to 100 characters long and contain no whitespace
+    /// or NUL character. Uppercase letters are allowed, and the submitted value
+    /// is stored unchanged.
+    #[schema(min_length = 4, max_length = 100, pattern = r"^[^\s\u0085\x00]+$")]
     pub username: Option<String>,
 }
 

@@ -11,7 +11,7 @@ use crate::infrastructure::inbound::rest::handler::library::{
     GalleryItemDetailResponse, GalleryItemType, parse_gallery_id,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
 /// Payload to add one of the caller's media to a gallery.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -81,7 +81,7 @@ impl From<AddGalleryItemError> for ApiError {
             body = GalleryItemDetailResponse,
             content_type = "application/hal+json",
             headers(
-                ("Location" = String, description = "URI of the newly added item"),
+                ("Location" = inline(UriReference), description = "URI of the newly added item"),
             ),
             description = "Item added",
         ),

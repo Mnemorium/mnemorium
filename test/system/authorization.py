@@ -1,61 +1,149 @@
-"""Black-box proof of the `authorization` capability.
+"""Black-box proof of the `authorization` capability."""
 
-Every case starts its own container from the image under test through the shared `harness` plugin and reads only what an
-operator can: HTTP responses and the working directory. The suite drives the resource-and-grant engine through the
-public API: it creates galleries, reads them as several callers, and changes their permission with the three
-`/identity/permission` operations.
-
-The API index publishes the permission summary operation; the resource policy and the share operation extend it, so no
-path is built from a base literal here.
-
-The `REQ-GALLERY-006` case lives here because it is the same shape of proof as the rest of the module — a resource the
-caller can read but may not change answers `403` — but its labels stay the gallery capability's, because the scenario is
-owned by `openspec/specs/gallery/spec.md`. The split is deliberate, not drift.
-"""
+import json
+from itertools import count
 
 import allure
-import pytest
 from conftest import (
-    FIXTURE_DIRECTORY,
+    SEED_MEDIA_DIRECTORY,
     add_to_gallery,
+    begin,
     create_gallery,
-    linked_id,
     provision,
-    start_instance,
     upload,
 )
-from harness import (
-    ROOT_ADMIN_USERNAME,
-    SECRET_PASSWORD,
-    Sut,
-    begin_upload,
-    link_of,
-    register,
+from harness import ROOT_ADMIN_USERNAME, SECRET_PASSWORD, Sut
+from mnemorium_client.api.asset import get_file, get_upload
+from mnemorium_client.api.identity import (
+    delete_permission_share,
+    get_permission_summary,
+    get_resource_permission,
+    post_login,
+    post_permission_share,
+    post_register,
+    put_resource_permission,
+)
+from mnemorium_client.api.library import (
+    delete_gallery,
+    get_album,
+    get_gallery,
+    get_gallery_item,
+    get_movie,
+    get_music_group,
+    get_playlist,
+    get_series,
+    list_albums,
+    list_movies,
+    list_music_groups,
+    patch_album,
+    patch_movie,
+    patch_music_group,
+    patch_playlist,
+    post_album,
+    post_gallery,
+    post_gallery_item,
+    post_movie,
+    post_music_group,
+    post_playlist,
+)
+from mnemorium_client.api.user import delete_user, get_me, get_user, list_users, update_user
+from mnemorium_client.models import (
+    AddPlaylistTrackRequest,
+    ChildKindWire,
+    GalleryItemType,
+    GetPermissionSummaryAction,
+    GetPermissionSummaryResourceKind,
+    GrantEffectWire,
+    GrantPayload,
+    GrantRoleWire,
+    LoginRequest,
+    PatchAlbumRequest,
+    PatchMovieRequest,
+    PatchMusicGroupRequest,
+    PatchPlaylistRequest,
+    PatchUserRequest,
+    PostAlbumRequest,
+    PostGalleryItemRequest,
+    PostGalleryRequest,
+    PostMovieRequest,
+    PostMusicGroupRequest,
+    PostPlaylistRequest,
+    PrincipalKindWire,
+    PrincipalPayload,
+    PutPermissionRequest,
+    RegisterRequest,
+    Role,
+    ShareRequest,
+    ShareRoleWire,
+    VisibilityWire,
 )
 
 GALLERY = "GALLERY"
-VIEWER = "VIEWER"
-EDITOR = "EDITOR"
-OWNER = "OWNER"
-ADMINISTRATION = "MANAGE_PERMISSIONS"
+MUSIC_RECORDING = "MUSIC_RECORDING"
+PLAYLIST_COLLECTION = "PLAYLIST_COLLECTION"
+MOVIE = "MOVIE"
 
-PRIVATE = "PRIVATE"
+VIEWER = GrantRoleWire.VIEWER
+EDITOR = GrantRoleWire.EDITOR
+MANAGER = GrantRoleWire.MANAGER
+CONTRIBUTOR = GrantRoleWire.CONTRIBUTOR
+
+ALLOW = GrantEffectWire.ALLOW
+DENY = GrantEffectWire.DENY
+PRIVATE = VisibilityWire.PRIVATE
+PUBLIC = VisibilityWire.PUBLIC
+
+SEEDED_MOVIE = 13011
+SEEDED_PRIVATE_MOVIE = 13012
+SEEDED_GROUP = 11001
+SEEDED_ALBUM = 11003
+SEEDED_SERIES = 11014
+SEEDED_RECORDING = 12301
+
+_ACCOUNTS = count()
+
+
+def _user(id: int) -> PrincipalPayload:
+    """The principal naming one user."""
+    return PrincipalPayload(kind=PrincipalKindWire.USER, id=id)
+
+
+def _grant(
+    id: int,
+    role: GrantRoleWire,
+    effect: GrantEffectWire = ALLOW,
+    child_kind: ChildKindWire | None = None,
+) -> GrantPayload:
+    """One user grant at the resource role the case names."""
+    return GrantPayload(
+        principal=_user(id),
+        role=role,
+        effect=effect,
+        child_kind=child_kind,
+    )
+
+
+def _resource_permission_href(server: Sut, gallery_id: int) -> str:
+    """The permission route of one gallery, addressed outside the typed client."""
+    return f"{server.href('permission')}/resource/GALLERY/{gallery_id}"
+
+
+def _share_href(server: Sut, gallery_id: int) -> str:
+    """The share route of one gallery, addressed outside the typed client."""
+    return f"{_resource_permission_href(server, gallery_id)}/share"
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-031")
 @allure.story("SCN-AUTHORIZATION-031-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_caller_reads_its_own_summary(sut: Sut) -> None:
+def test_a_caller_reads_its_own_summary(server: Sut, root_token: str) -> None:
     """A Standard user reaches its own summary and receives no grant internals."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    alice_id, alice = provision(server, root_token, "alice")
+    alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
 
-    response = server.request("GET", f"{server.href('permission')}?user_id={alice_id}", token=alice)
+    response = get_permission_summary.sync_detailed(client=server.client(alice), user_id=alice_id)
 
-    assert response.status_code == 200, f"summary failed: {response.status_code} {response.text}"
-    body = response.json()
+    assert response.status_code == 200
+    body = json.loads(response.content)
     assert body["user_id"] == alice_id
     assert body["role"] == "STANDARD"
     assert all("grant_id" not in item for item in body["grants"])
@@ -64,56 +152,48 @@ def test_a_caller_reads_its_own_summary(sut: Sut) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-031")
 @allure.story("SCN-AUTHORIZATION-031-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_admin_reads_a_standard_users_summary(sut: Sut) -> None:
+def test_an_admin_reads_a_standard_users_summary(server: Sut, root_token: str) -> None:
     """An Admin reaches a Standard user's summary."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    bob_id, _bob = provision(server, root_token, "bobby")
-    admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
-    assert admin_id > 0
+    bob_id, _bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
+    _, admin = provision(server, root_token, f"azadmin{next(_ACCOUNTS)}", role="ADMIN")
 
-    response = server.request("GET", f"{server.href('permission')}?user_id={bob_id}", token=admin)
+    response = get_permission_summary.sync_detailed(client=server.client(admin), user_id=bob_id)
 
-    assert response.status_code == 200, f"summary failed: {response.status_code} {response.text}"
+    assert response.status_code == 200
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-031")
 @allure.story("SCN-AUTHORIZATION-031-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_another_users_summary_is_forbidden(sut: Sut) -> None:
+def test_another_users_summary_is_forbidden(server: Sut, root_token: str) -> None:
     """A Standard user may not read another user's summary."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _bob_id, bob = provision(server, root_token, "bobby")
-    carol_id, _carol = provision(server, root_token, "carol")
+    _, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
+    carol_id, _carol = provision(server, root_token, f"azcarol{next(_ACCOUNTS)}")
 
-    response = server.request("GET", f"{server.href('permission')}?user_id={carol_id}", token=bob)
+    response = get_permission_summary.sync_detailed(client=server.client(bob), user_id=carol_id)
 
-    assert response.status_code == 403, f"summary leaked: {response.status_code} {response.text}"
+    assert response.status_code == 403
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-031")
 @allure.story("SCN-AUTHORIZATION-031-D")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_explanation_is_returned_to_a_manager(sut: Sut) -> None:
+def test_the_explanation_is_returned_to_a_manager(server: Sut, root_token: str) -> None:
     """The Root Admin receives the decision and its explanation."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    alice_id, _alice = provision(server, root_token, "alice")
-    gallery = create_gallery(server, root_token, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
+    alice_id, _alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    _, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
+    gallery = create_gallery(server, bob, "explanation")
 
-    response = server.request(
-        "GET",
-        f"{server.href('permission')}?user_id={alice_id}&resource_kind={GALLERY}&resource_id={gallery_id}&action=view",
-        token=root_token,
+    response = get_permission_summary.sync_detailed(
+        client=server.client(root_token),
+        user_id=alice_id,
+        resource_kind=GetPermissionSummaryResourceKind.GALLERY,
+        resource_id=gallery["id"],
+        action=GetPermissionSummaryAction.VIEW,
     )
 
-    assert response.status_code == 200, f"explanation failed: {response.status_code} {response.text}"
-    decision = response.json()["decision"]
+    assert response.status_code == 200
+    decision = json.loads(response.content)["decision"]
     assert decision["allowed"] is False
     assert decision["reason"] == "default"
     assert decision["auth_path"][0]["kind"] == GALLERY
@@ -122,23 +202,15 @@ def test_the_explanation_is_returned_to_a_manager(sut: Sut) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-032")
 @allure.story("SCN-AUTHORIZATION-032-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_owner_reads_the_resource_permission(sut: Sut) -> None:
+def test_an_owner_reads_the_resource_permission(server: Sut, root_token: str) -> None:
     """The owner reads its gallery's visibility and grants."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
 
-    response = server.request(
-        "GET",
-        f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}",
-        token=alice,
-    )
+    response = get_resource_permission.sync_detailed(GALLERY, gallery["id"], client=server.client(alice))
 
-    assert response.status_code == 200, f"policy failed: {response.status_code} {response.text}"
-    body = response.json()
+    assert response.status_code == 200
+    body = json.loads(response.content)
     assert body["visibility"] == PRIVATE
     assert body["address"]["kind"] == GALLERY
 
@@ -146,305 +218,252 @@ def test_an_owner_reads_the_resource_permission(sut: Sut) -> None:
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-032")
 @allure.story("SCN-AUTHORIZATION-032-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_owner_replaces_the_set(sut: Sut) -> None:
-    """A replacement stores exactly the submitted grant set."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    bob_id, bob = provision(server, root_token, "bobby")
+@allure.feature("REQ-DOWNLOAD-002")
+@allure.story("SCN-DOWNLOAD-002-D")
+def test_an_owner_replaces_the_set(server: Sut, root_token: str) -> None:
+    """A replacement stores exactly the submitted grant set, and the dropped recipient is concealed."""
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    bob_id, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
-    policy = f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}"
 
-    replaced = server.request(
-        "PUT",
-        policy,
-        token=alice,
-        json={
-            "visibility": "PUBLIC",
-            "grants": [{"principal": {"kind": "USER", "id": bob_id}, "role": VIEWER, "effect": "ALLOW"}],
-        },
+    replaced = put_resource_permission.sync_detailed(
+        GALLERY,
+        gallery["id"],
+        client=server.client(alice),
+        body=PutPermissionRequest(visibility=PRIVATE, grants=[_grant(bob_id, VIEWER)]),
     )
-    followed = server.request("GET", policy, token=alice)
+    followed = get_resource_permission.sync_detailed(GALLERY, gallery["id"], client=server.client(alice))
+    granted = get_gallery.sync_detailed(gallery["id"], client=server.client(bob))
+    dropped = put_resource_permission.sync_detailed(
+        GALLERY,
+        gallery["id"],
+        client=server.client(alice),
+        body=PutPermissionRequest(visibility=PRIVATE, grants=[]),
+    )
+    concealed = get_gallery.sync_detailed(gallery["id"], client=server.client(bob))
 
-    assert replaced.status_code == 200, f"replacement failed: {replaced.status_code} {replaced.text}"
-    assert followed.status_code == 200, f"policy failed: {followed.status_code} {followed.text}"
-    body = followed.json()
-    assert body["visibility"] == "PUBLIC"
+    assert replaced.status_code == 200
+    assert followed.status_code == 200
+    body = json.loads(followed.content)
+    assert body["visibility"] == PRIVATE
     assert [item["role"] for item in body["grants"] if item["principal"]["id"] == bob_id] == [VIEWER]
-    assert bob_id > 0
-    assert bob
+    assert granted.status_code == 200, "the granted caller must read the gallery"
+    assert dropped.status_code == 200
+    assert concealed.status_code == 404, "the dropped caller must be concealed"
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-032")
 @allure.story("SCN-AUTHORIZATION-032-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_manager_cannot_replace(sut: Sut) -> None:
+def test_a_manager_cannot_replace(server: Sut, root_token: str) -> None:
     """A caller holding Manager but not ManagePermissions may read but not replace."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    alice_id, alice = provision(server, root_token, "alice")
-    bob_id, bob = provision(server, root_token, "bobby")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    bob_id, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
-    policy = f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}"
 
-    shared = server.request(
-        "PUT",
-        policy,
-        token=alice,
-        json={
-            "visibility": PRIVATE,
-            "grants": [{"principal": {"kind": "USER", "id": bob_id}, "role": "MANAGER", "effect": "ALLOW"}],
-        },
+    shared = put_resource_permission.sync_detailed(
+        GALLERY,
+        gallery["id"],
+        client=server.client(alice),
+        body=PutPermissionRequest(visibility=PRIVATE, grants=[_grant(bob_id, MANAGER)]),
     )
-    assert shared.status_code == 200, f"replacement failed: {shared.status_code} {shared.text}"
+    read = get_resource_permission.sync_detailed(GALLERY, gallery["id"], client=server.client(bob))
+    replaced = put_resource_permission.sync_detailed(
+        GALLERY,
+        gallery["id"],
+        client=server.client(bob),
+        body=PutPermissionRequest(visibility=PUBLIC, grants=[]),
+    )
 
-    read = server.request("GET", policy, token=bob)
-    replaced = server.request("PUT", policy, token=bob, json={"visibility": "PUBLIC", "grants": []})
-
-    assert read.status_code == 200, f"policy failed: {read.status_code} {read.text}"
-    assert replaced.status_code == 403, f"replacement allowed: {replaced.status_code} {replaced.text}"
-    assert alice_id > 0
+    assert shared.status_code == 200
+    assert read.status_code == 200
+    assert replaced.status_code == 403
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-032")
 @allure.story("SCN-AUTHORIZATION-032-D")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_rejected_replacement_leaves_the_previous_set(sut: Sut) -> None:
+@allure.feature("REQ-AUTHORIZATION-034")
+@allure.story("SCN-AUTHORIZATION-034-A")
+def test_a_rejected_replacement_leaves_the_previous_set(server: Sut, root_token: str) -> None:
     """A replacement naming the Owner role answers 422 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    bob_id, _bob = provision(server, root_token, "bobby")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    bob_id, _bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
-    policy = f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}"
 
     refused = server.request(
         "PUT",
-        policy,
+        _resource_permission_href(server, gallery["id"]),
         token=alice,
         json={
             "visibility": "PUBLIC",
-            "grants": [{"principal": {"kind": "USER", "id": bob_id}, "role": OWNER, "effect": "ALLOW"}],
+            "grants": [
+                {
+                    "principal": {"id": bob_id, "kind": "USER"},
+                    "role": "OWNER",
+                    "effect": "ALLOW",
+                }
+            ],
         },
     )
-    followed = server.request("GET", policy, token=alice)
+    followed = get_resource_permission.sync_detailed(GALLERY, gallery["id"], client=server.client(alice))
 
-    assert refused.status_code == 422, f"replacement accepted: {refused.status_code} {refused.text}"
-    assert followed.json()["visibility"] == PRIVATE
+    assert refused.status_code == 422
+    body = json.loads(followed.content)
+    assert body["visibility"] == PRIVATE
+    assert body["grants"] == []
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-033")
 @allure.story("SCN-AUTHORIZATION-033-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_manager_shares_a_viewer(sut: Sut) -> None:
+def test_a_manager_shares_a_viewer(server: Sut, root_token: str) -> None:
     """An owner shares Viewer and the recipient can read the gallery."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    bob_id, bob = provision(server, root_token, "bobby")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    bob_id, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
 
-    shared = server.request(
-        "POST",
-        f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}/share",
-        token=alice,
-        json={"principal": {"kind": "USER", "id": bob_id}, "role": VIEWER},
+    shared = post_permission_share.sync_detailed(
+        GALLERY,
+        gallery["id"],
+        client=server.client(alice),
+        body=ShareRequest(principal=_user(bob_id), role=ShareRoleWire.VIEWER),
     )
-    read = server.request("GET", f"{server.href('gallery')}/{gallery_id}", token=bob)
+    read = get_gallery.sync_detailed(gallery["id"], client=server.client(bob))
 
-    assert shared.status_code == 200, f"share failed: {shared.status_code} {shared.text}"
-    assert read.status_code == 200, f"shared read failed: {read.status_code} {read.text}"
+    assert shared.status_code == 200
+    assert read.status_code == 200
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-033")
 @allure.story("SCN-AUTHORIZATION-033-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_sharing_cannot_escalate(sut: Sut) -> None:
-    """A share naming Editor answers 403 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    bob_id, bob = provision(server, root_token, "bobby")
+def test_sharing_cannot_escalate(server: Sut, root_token: str) -> None:
+    """A share naming a role outside the published read roles answers 422 and stores nothing."""
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    bob_id, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
 
     shared = server.request(
         "POST",
-        f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}/share",
+        _share_href(server, gallery["id"]),
         token=alice,
-        json={"principal": {"kind": "USER", "id": bob_id}, "role": EDITOR},
+        json={"principal": {"id": bob_id, "kind": "USER"}, "role": "EDITOR"},
     )
-    read = server.request("GET", f"{server.href('gallery')}/{gallery_id}", token=bob)
+    read = get_gallery.sync_detailed(gallery["id"], client=server.client(bob))
 
-    assert shared.status_code == 403, f"escalation allowed: {shared.status_code} {shared.text}"
-    assert read.status_code == 404, f"escalated read allowed: {read.status_code} {read.text}"
+    assert shared.status_code == 422, "a role outside the published share vocabulary must be refused"
+    assert read.status_code == 404
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-033")
 @allure.story("SCN-AUTHORIZATION-033-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_share_is_revoked(sut: Sut) -> None:
+def test_a_share_is_revoked(server: Sut, root_token: str) -> None:
     """A revoked share stops reaching the resource."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    bob_id, bob = provision(server, root_token, "bobby")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    bob_id, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
-    shared = server.request(
-        "POST",
-        f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}/share",
-        token=alice,
-        json={"principal": {"kind": "USER", "id": bob_id}, "role": VIEWER},
+    shared = post_permission_share.sync_detailed(
+        GALLERY,
+        gallery["id"],
+        client=server.client(alice),
+        body=ShareRequest(principal=_user(bob_id), role=ShareRoleWire.VIEWER),
     )
-    assert shared.status_code == 200, f"share failed: {shared.status_code} {shared.text}"
+    assert shared.status_code == 200
+    grant_id = json.loads(shared.content)["grant_id"]
 
-    revoked = server.request("DELETE", shared.json()["_links"]["self"]["href"], token=alice)
-    read = server.request("GET", f"{server.href('gallery')}/{gallery_id}", token=bob)
+    revoked = delete_permission_share.sync_detailed(GALLERY, gallery["id"], grant_id, client=server.client(alice))
+    read = get_gallery.sync_detailed(gallery["id"], client=server.client(bob))
 
-    assert revoked.status_code == 204, f"revocation failed: {revoked.status_code} {revoked.text}"
-    assert read.status_code == 404, f"revoked read allowed: {read.status_code} {read.text}"
-
-
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-034")
-@allure.story("SCN-AUTHORIZATION-034-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_owner_role_is_refused(sut: Sut) -> None:
-    """A grant naming Owner answers 422."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    bob_id, _bob = provision(server, root_token, "bobby")
-    gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
-
-    response = server.request(
-        "PUT",
-        f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}",
-        token=alice,
-        json={
-            "visibility": PRIVATE,
-            "grants": [{"principal": {"kind": "USER", "id": bob_id}, "role": OWNER, "effect": "ALLOW"}],
-        },
-    )
-
-    assert response.status_code == 422, f"owner grant accepted: {response.status_code} {response.text}"
+    assert revoked.status_code == 204
+    assert read.status_code == 404
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-034")
 @allure.story("SCN-AUTHORIZATION-034-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_permission_administration_is_refused(sut: Sut) -> None:
+def test_permission_administration_is_refused(server: Sut, root_token: str) -> None:
     """A grant naming ManagePermissions answers 422."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    bob_id, _bob = provision(server, root_token, "bobby")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    bob_id, _bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
 
     response = server.request(
         "PUT",
-        f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}",
+        _resource_permission_href(server, gallery["id"]),
         token=alice,
         json={
-            "visibility": PRIVATE,
+            "visibility": "PRIVATE",
             "grants": [
                 {
-                    "principal": {"kind": "USER", "id": bob_id},
-                    "role": ADMINISTRATION,
+                    "principal": {"id": bob_id, "kind": "USER"},
+                    "role": "MANAGE_PERMISSIONS",
                     "effect": "ALLOW",
                 }
             ],
         },
     )
 
-    assert response.status_code == 422, f"administration grant accepted: {response.status_code}"
+    assert response.status_code == 422
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-034")
 @allure.story("SCN-AUTHORIZATION-034-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_duplicate_is_refused(sut: Sut) -> None:
+def test_a_duplicate_is_refused(server: Sut, root_token: str) -> None:
     """A set naming the same grant twice answers 422."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    bob_id, _bob = provision(server, root_token, "bobby")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    bob_id, _bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
-    duplicate = {"principal": {"kind": "USER", "id": bob_id}, "role": VIEWER, "effect": "ALLOW"}
+    duplicate = _grant(bob_id, VIEWER)
 
-    response = server.request(
-        "PUT",
-        f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}",
-        token=alice,
-        json={"visibility": PRIVATE, "grants": [duplicate, duplicate]},
+    response = put_resource_permission.sync_detailed(
+        GALLERY,
+        gallery["id"],
+        client=server.client(alice),
+        body=PutPermissionRequest(visibility=PRIVATE, grants=[duplicate, duplicate]),
     )
 
-    assert response.status_code == 422, f"duplicate accepted: {response.status_code} {response.text}"
+    assert response.status_code == 422
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-034")
 @allure.story("SCN-AUTHORIZATION-034-D")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_unknown_principal_is_refused(sut: Sut) -> None:
+def test_an_unknown_principal_is_refused(server: Sut, root_token: str) -> None:
     """A grant naming a user that does not exist answers 422."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
 
-    response = server.request(
-        "PUT",
-        f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}",
-        token=alice,
-        json={
-            "visibility": PRIVATE,
-            "grants": [{"principal": {"kind": "USER", "id": 999_999}, "role": VIEWER, "effect": "ALLOW"}],
-        },
+    response = put_resource_permission.sync_detailed(
+        GALLERY,
+        gallery["id"],
+        client=server.client(alice),
+        body=PutPermissionRequest(visibility=PRIVATE, grants=[_grant(999_999, VIEWER)]),
     )
 
-    assert response.status_code == 422, f"unknown principal accepted: {response.status_code}"
+    assert response.status_code == 422
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-034")
 @allure.story("SCN-AUTHORIZATION-034-E")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_admin_creation_is_refused(sut: Sut) -> None:
+def test_admin_creation_is_refused(server: Sut, root_token: str) -> None:
     """A CreateChild grant naming the Admin child kind answers 422."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    bob_id, _bob = provision(server, root_token, "bobby")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    bob_id, _bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
 
     response = server.request(
         "PUT",
-        f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}",
+        _resource_permission_href(server, gallery["id"]),
         token=alice,
         json={
-            "visibility": PRIVATE,
+            "visibility": "PRIVATE",
             "grants": [
                 {
-                    "principal": {"kind": "USER", "id": bob_id},
+                    "principal": {"id": bob_id, "kind": "USER"},
                     "role": "CONTRIBUTOR",
                     "child_kind": "ADMIN",
                     "effect": "ALLOW",
@@ -453,282 +472,241 @@ def test_admin_creation_is_refused(sut: Sut) -> None:
         },
     )
 
-    assert response.status_code == 422, f"admin creation accepted: {response.status_code}"
+    assert response.status_code == 422
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-035")
 @allure.story("SCN-AUTHORIZATION-035-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_role_grant_cannot_be_written(sut: Sut) -> None:
+def test_a_role_grant_cannot_be_written(server: Sut, root_token: str) -> None:
     """A replacement naming a role principal answers 422."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
 
-    response = server.request(
-        "PUT",
-        f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}",
-        token=alice,
-        json={
-            "visibility": PRIVATE,
-            "grants": [
-                {
-                    "principal": {"kind": "ROLE", "role": "STANDARD"},
-                    "role": VIEWER,
-                    "effect": "ALLOW",
-                }
+    response = put_resource_permission.sync_detailed(
+        GALLERY,
+        gallery["id"],
+        client=server.client(alice),
+        body=PutPermissionRequest(
+            visibility=PRIVATE,
+            grants=[
+                GrantPayload(
+                    principal=PrincipalPayload(
+                        kind=PrincipalKindWire.ROLE,
+                        role=Role.STANDARD,
+                    ),
+                    role=VIEWER,
+                    effect=ALLOW,
+                )
             ],
-        },
+        ),
     )
 
-    assert response.status_code == 422, f"role grant accepted: {response.status_code} {response.text}"
+    assert response.status_code == 422
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-035")
 @allure.story("SCN-AUTHORIZATION-035-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_seeded_role_applies(sut: Sut) -> None:
+def test_the_seeded_role_applies(server: Sut, root_token: str) -> None:
     """A Standard user with no per-resource grant creates a gallery through its seeded role."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
 
-    response = server.request(
-        "POST",
-        server.href("gallery"),
-        token=alice,
-        json={"name": "owned", "is_public": False},
-    )
+    created = post_gallery.sync_detailed(client=server.client(alice), body=PostGalleryRequest(name="owned"))
 
-    assert response.status_code == 201, f"catalogue write failed: {response.status_code} {response.text}"
+    assert created.status_code == 201
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-016")
-@allure.story("SCN-AUTHORIZATION-016-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_public_resource_is_readable_by_every_caller(sut: Sut) -> None:
+@allure.story("SCN-AUTHORIZATION-016-C")
+def test_a_public_resource_is_readable_by_every_caller(server: Sut, root_token: str) -> None:
     """A public gallery is readable by a user with no grant."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    _bob_id, bob = provision(server, root_token, "bobby")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    _, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday", is_public=True)
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
 
-    response = server.request("GET", f"{server.href('gallery')}/{gallery_id}", token=bob)
+    response = get_gallery.sync_detailed(gallery["id"], client=server.client(bob))
 
-    assert response.status_code == 200, f"public read failed: {response.status_code} {response.text}"
+    assert response.status_code == 200
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-014")
 @allure.story("SCN-AUTHORIZATION-014-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_deny_wins_over_a_grant(sut: Sut) -> None:
+def test_a_deny_wins_over_a_grant(server: Sut, root_token: str) -> None:
     """A deny stored on the resource defeats a viewer grant."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    bob_id, bob = provision(server, root_token, "bobby")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    bob_id, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
-    policy = f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}"
 
-    permitted = server.request(
-        "PUT",
-        policy,
-        token=alice,
-        json={
-            "visibility": PRIVATE,
-            "grants": [{"principal": {"kind": "USER", "id": bob_id}, "role": VIEWER, "effect": "ALLOW"}],
-        },
+    permitted = put_resource_permission.sync_detailed(
+        GALLERY,
+        gallery["id"],
+        client=server.client(alice),
+        body=PutPermissionRequest(visibility=PRIVATE, grants=[_grant(bob_id, VIEWER)]),
     )
-    assert permitted.status_code == 200, f"grant failed: {permitted.status_code} {permitted.text}"
-    readable = server.request("GET", f"{server.href('gallery')}/{gallery_id}", token=bob)
-    assert readable.status_code == 200, f"granted read failed: {readable.status_code}"
-
-    denied = server.request(
-        "PUT",
-        policy,
-        token=alice,
-        json={
-            "visibility": PRIVATE,
-            "grants": [
-                {"principal": {"kind": "USER", "id": bob_id}, "role": VIEWER, "effect": "ALLOW"},
-                {"principal": {"kind": "USER", "id": bob_id}, "role": VIEWER, "effect": "DENY"},
-            ],
-        },
+    readable = get_gallery.sync_detailed(gallery["id"], client=server.client(bob))
+    denied = put_resource_permission.sync_detailed(
+        GALLERY,
+        gallery["id"],
+        client=server.client(alice),
+        body=PutPermissionRequest(
+            visibility=PRIVATE,
+            grants=[_grant(bob_id, VIEWER), _grant(bob_id, VIEWER, effect=DENY)],
+        ),
     )
-    unreadable = server.request("GET", f"{server.href('gallery')}/{gallery_id}", token=bob)
+    unreadable = get_gallery.sync_detailed(gallery["id"], client=server.client(bob))
+    stored = get_resource_permission.sync_detailed(GALLERY, gallery["id"], client=server.client(alice))
+    restored = put_resource_permission.sync_detailed(
+        GALLERY,
+        gallery["id"],
+        client=server.client(alice),
+        body=PutPermissionRequest(visibility=PRIVATE, grants=[]),
+    )
 
-    assert denied.status_code == 200, f"deny failed: {denied.status_code} {denied.text}"
-    assert unreadable.status_code == 404, f"deny defeated: {unreadable.status_code} {unreadable.text}"
+    assert permitted.status_code == 200
+    assert readable.status_code == 200
+    assert denied.status_code == 200
+    assert unreadable.status_code == 404
+    assert restored.status_code == 200
+    assert all(grant["principal"]["kind"] == "USER" for grant in json.loads(stored.content)["grants"]), (
+        "a replacement must not rewrite the seeded role grants"
+    )
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-021")
 @allure.story("SCN-AUTHORIZATION-021-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_caller_reads_its_own_account(sut: Sut) -> None:
+def test_a_caller_reads_its_own_account(server: Sut, root_token: str) -> None:
     """A caller reads its own account without a grant."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    alice_id, alice = provision(server, root_token, "alice")
+    alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
 
-    response = server.request("GET", f"{server.href('user')}/{alice_id}", token=alice)
+    response = get_user.sync_detailed(alice_id, client=server.client(alice))
 
-    assert response.status_code == 200, f"own account failed: {response.status_code} {response.text}"
+    assert response.status_code == 200
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-018")
-@allure.story("SCN-AUTHORIZATION-018-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_root_cannot_read_another_users_upload(sut: Sut) -> None:
+@allure.story("SCN-AUTHORIZATION-018-B")
+def test_the_root_cannot_read_another_users_upload(server: Sut, root_token: str) -> None:
     """An upload is owner-only, even for the Root Admin."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    image = (FIXTURE_DIRECTORY / "cover.png").read_bytes()
-    session = begin_upload(server, alice, "cover.png", image)
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    session = begin(server, alice, "cover.png", (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes())
 
-    response = server.request("GET", session.self_href, token=root_token)
+    response = get_upload.sync_detailed(session.id, client=server.client(root_token))
 
-    assert response.status_code == 404, f"root read the upload: {response.status_code} {response.text}"
-
-
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-022")
-@allure.story("SCN-AUTHORIZATION-022-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_user_cannot_create_an_admin(sut: Sut) -> None:
-    """A Standard user may not register an Admin account."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-
-    response = server.request(
-        "POST",
-        server.href("register"),
-        token=alice,
-        json={
-            "username": "mallory",
-            "email": None,
-            "password": SECRET_PASSWORD,
-            "role": "ADMIN",
-        },
-    )
-
-    assert response.status_code == 403, f"admin creation allowed: {response.status_code} {response.text}"
+    assert response.status_code == 404
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-025")
-@allure.story("SCN-AUTHORIZATION-025-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_asset_is_reachable_through_its_gallery(sut: Sut) -> None:
+@allure.story("SCN-AUTHORIZATION-025-B")
+def test_an_asset_is_reachable_through_its_gallery(server: Sut, root_token: str) -> None:
     """A gallery item's image is readable by the gallery owner and concealed from others."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    _bob_id, bob = provision(server, root_token, "bobby")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    _, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    image = (FIXTURE_DIRECTORY / "cover.png").read_bytes()
-    file = upload(server, alice, "cover.png", image)
-    item = add_to_gallery(server, alice, gallery, linked_id(link_of(file, "image")))
+    file = upload(server, alice, "cover.png", (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes())
+    item = add_to_gallery(server, alice, gallery, file["id"])
 
-    owner_read = server.request("GET", link_of(item, "self"), token=alice)
-    stranger_read = server.request("GET", link_of(item, "self"), token=bob)
+    owner_read = get_gallery_item.sync_detailed(gallery["id"], item["id"], client=server.client(alice))
+    stranger_read = get_gallery_item.sync_detailed(gallery["id"], item["id"], client=server.client(bob))
 
-    assert owner_read.status_code == 200, f"owner read failed: {owner_read.status_code}"
-    assert stranger_read.status_code == 404, f"stranger read allowed: {stranger_read.status_code}"
+    assert owner_read.status_code == 200
+    assert stranger_read.status_code == 404
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-019")
 @allure.story("SCN-AUTHORIZATION-019-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_admin_creates_a_standard_account(sut: Sut) -> None:
+def test_an_admin_creates_a_standard_account(server: Sut, root_token: str) -> None:
     """An Admin creates a Standard account, which then authenticates."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
+    _, admin = provision(server, root_token, f"azadmin{next(_ACCOUNTS)}", role="ADMIN")
+    username = f"azcreated{next(_ACCOUNTS)}"
 
-    created = register(server, admin, "alice", None, SECRET_PASSWORD)
+    created = post_register.sync_detailed(
+        client=server.client(admin),
+        body=RegisterRequest(password=SECRET_PASSWORD, role=Role.STANDARD, username=username),
+    )
 
-    assert created.status_code == 201, f"creation failed: {created.status_code} {created.text}"
-    assert created.json()["role"] == "STANDARD"
-    assert server.attempt_login("alice", SECRET_PASSWORD).status_code == 200
+    assert created.status_code == 201
+    assert json.loads(created.content)["role"] == "STANDARD"
+    assert (
+        post_login.sync_detailed(
+            client=server.client(), body=LoginRequest(password=SECRET_PASSWORD, identifier=username)
+        ).status_code
+        == 200
+    )
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-019")
 @allure.story("SCN-AUTHORIZATION-019-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_admin_cannot_create_an_admin(sut: Sut) -> None:
-    """An Admin creating an Admin answers 403 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
+@allure.feature("REQ-AUTHORIZATION-023")
+@allure.story("SCN-AUTHORIZATION-023-D")
+def test_an_admin_cannot_create_an_admin(server: Sut, root_token: str) -> None:
+    """Neither an Admin nor a Standard user creates an Admin account, while the root does."""
+    _, admin = provision(server, root_token, f"azadmin{next(_ACCOUNTS)}", role="ADMIN")
+    _, standard = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    refused_name = f"azmallory{next(_ACCOUNTS)}"
 
-    response = server.request(
-        "POST",
-        server.href("register"),
-        token=admin,
-        json={
-            "username": "mallory",
-            "email": None,
-            "password": SECRET_PASSWORD,
-            "role": "ADMIN",
-        },
+    for token in (admin, standard):
+        refused = post_register.sync_detailed(
+            client=server.client(token),
+            body=RegisterRequest(password=SECRET_PASSWORD, role=Role.ADMIN, username=refused_name),
+        )
+        assert refused.status_code == 403
+
+    listed = list_users.sync_detailed(client=server.client(root_token), username=refused_name)
+    assert json.loads(listed.content)["items"] == []
+    assert (
+        post_login.sync_detailed(
+            client=server.client(), body=LoginRequest(password=SECRET_PASSWORD, identifier=refused_name)
+        ).status_code
+        == 401
     )
 
-    assert response.status_code == 403, f"admin creation allowed: {response.status_code} {response.text}"
-    listed = server.request("GET", f"{server.href('user')}?username=mallory", token=root_token)
-    assert listed.json()["items"] == []
-    assert server.attempt_login("mallory", SECRET_PASSWORD).status_code == 401
+    promoted_name = f"azpromoted{next(_ACCOUNTS)}"
+    created = post_register.sync_detailed(
+        client=server.client(root_token),
+        body=RegisterRequest(password=SECRET_PASSWORD, role=Role.ADMIN, username=promoted_name),
+    )
+
+    assert created.status_code == 201
+    assert json.loads(created.content)["role"] == "ADMIN"
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-019")
 @allure.story("SCN-AUTHORIZATION-019-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_admin_cannot_touch_an_admin(sut: Sut) -> None:
+def test_an_admin_cannot_touch_an_admin(server: Sut, root_token: str) -> None:
     """An Admin deleting an Admin peer or itself answers 403 and applies nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
-    peer_id, peer = provision(server, root_token, "adminb", role="ADMIN")
+    admin_id, admin = provision(server, root_token, f"azadmina{next(_ACCOUNTS)}", role="ADMIN")
+    peer_id, peer = provision(server, root_token, f"azadminb{next(_ACCOUNTS)}", role="ADMIN")
 
-    peer_deleted = server.request("DELETE", f"{server.href('user')}/{peer_id}", token=admin)
-    self_deleted = server.request("DELETE", f"{server.href('user')}/{admin_id}", token=admin)
+    peer_deleted = delete_user.sync_detailed(peer_id, client=server.client(admin))
+    self_deleted = delete_user.sync_detailed(admin_id, client=server.client(admin))
 
-    assert peer_deleted.status_code == 403, f"peer delete allowed: {peer_deleted.status_code}"
-    assert self_deleted.status_code == 403, f"self delete allowed: {self_deleted.status_code}"
-    assert server.request("GET", server.href("current_user"), token=peer).status_code == 200
-    assert server.request("GET", server.href("current_user"), token=admin).status_code == 200
+    assert peer_deleted.status_code == 403
+    assert self_deleted.status_code == 403
+    assert get_me.sync_detailed(client=server.client(peer)).status_code == 200
+    assert get_me.sync_detailed(client=server.client(admin)).status_code == 200
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-019")
 @allure.story("SCN-AUTHORIZATION-019-D")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_root_admin_deletes_an_admin(sut: Sut) -> None:
+def test_the_root_admin_deletes_an_admin(server: Sut, root_token: str) -> None:
     """The Root Admin deletes an Admin account and the account is gone."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
+    admin_id, admin = provision(server, root_token, f"azadmina{next(_ACCOUNTS)}", role="ADMIN")
 
-    deleted = server.request("DELETE", f"{server.href('user')}/{admin_id}", token=root_token)
+    deleted = delete_user.sync_detailed(admin_id, client=server.client(root_token))
 
-    assert deleted.status_code == 204, f"delete failed: {deleted.status_code} {deleted.text}"
-    assert server.request("GET", f"{server.href('user')}/{admin_id}", token=root_token).status_code == 404
-    assert server.request("GET", server.href("current_user"), token=admin).status_code == 401
+    assert deleted.status_code == 204
+    assert get_user.sync_detailed(admin_id, client=server.client(root_token)).status_code == 404
+    assert get_me.sync_detailed(client=server.client(admin)).status_code == 401
 
 
 @allure.epic("Authorization")
@@ -736,98 +714,338 @@ def test_the_root_admin_deletes_an_admin(sut: Sut) -> None:
 @allure.story("SCN-AUTHORIZATION-019-E")
 def test_the_root_account_is_untouchable(server: Sut, root_token: str) -> None:
     """Deleting or updating account 0 answers 403 and applies nothing."""
-    deleted = server.request("DELETE", f"{server.href('user')}/0", token=root_token)
-    updated = server.request(
-        "PATCH",
-        f"{server.href('user')}/0",
-        token=root_token,
-        json={"username": "notroot"},
+    deleted = delete_user.sync_detailed(0, client=server.client(root_token))
+    updated = update_user.sync_detailed(
+        0,
+        client=server.client(root_token),
+        body=PatchUserRequest(username="notroot"),
     )
 
-    assert deleted.status_code == 403, f"root deleted: {deleted.status_code} {deleted.text}"
-    assert updated.status_code == 403, f"root updated: {updated.status_code} {updated.text}"
-    stored = server.request("GET", f"{server.href('user')}/0", token=root_token)
-    assert stored.status_code == 200, f"the root account must survive: {stored.text}"
-    assert stored.json()["username"] == ROOT_ADMIN_USERNAME
+    assert deleted.status_code == 403
+    assert updated.status_code == 403
+    stored = get_user.sync_detailed(0, client=server.client(root_token))
+    assert stored.status_code == 200
+    assert json.loads(stored.content)["username"] == ROOT_ADMIN_USERNAME
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-020")
 @allure.story("SCN-AUTHORIZATION-020-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_admin_replaces_a_standard_users_grants(sut: Sut) -> None:
+def test_an_admin_replaces_a_standard_users_grants(server: Sut, root_token: str) -> None:
     """An Admin replaces the grant set naming a Standard user and reads the replacement back."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
-    alice_id, alice = provision(server, root_token, "alice")
+    _, admin = provision(server, root_token, f"azadmin{next(_ACCOUNTS)}", role="ADMIN")
+    alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
     gallery = create_gallery(server, admin, "holiday")
-    gallery_id = linked_id(gallery["_links"]["self"]["href"])
-    policy = f"{server.href('permission')}/resource/{GALLERY}/{gallery_id}"
 
-    replaced = server.request(
-        "PUT",
-        policy,
-        token=admin,
-        json={
-            "visibility": PRIVATE,
-            "grants": [{"principal": {"kind": "USER", "id": alice_id}, "role": VIEWER, "effect": "ALLOW"}],
-        },
+    replaced = put_resource_permission.sync_detailed(
+        GALLERY,
+        gallery["id"],
+        client=server.client(admin),
+        body=PutPermissionRequest(visibility=PRIVATE, grants=[_grant(alice_id, VIEWER)]),
     )
-    followed = server.request("GET", policy, token=admin)
-    readable = server.request("GET", f"{server.href('gallery')}/{gallery_id}", token=alice)
+    followed = get_resource_permission.sync_detailed(GALLERY, gallery["id"], client=server.client(admin))
+    readable = get_gallery.sync_detailed(gallery["id"], client=server.client(alice))
 
-    assert replaced.status_code == 200, f"replacement failed: {replaced.status_code} {replaced.text}"
-    assert followed.status_code == 200, f"policy failed: {followed.status_code} {followed.text}"
-    body = followed.json()
+    assert replaced.status_code == 200
+    assert followed.status_code == 200
+    body = json.loads(followed.content)
     assert body["visibility"] == PRIVATE
     assert [item["principal"] for item in body["grants"]] == [{"kind": "USER", "id": alice_id}]
-    assert readable.status_code == 200, f"granted read failed: {readable.status_code} {readable.text}"
+    assert readable.status_code == 200
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-AUTHORIZATION-017")
 @allure.story("SCN-AUTHORIZATION-017-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_root_administers_another_callers_private_gallery(sut: Sut) -> None:
+def test_the_root_administers_another_callers_private_gallery(server: Sut, root_token: str) -> None:
     """The Root Admin reads, appends media to and deletes another caller's private gallery."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
     gallery = create_gallery(server, alice, "holiday")
-    image = (FIXTURE_DIRECTORY / "cover.png").read_bytes()
-    file = upload(server, alice, "cover.png", image)
+    file = upload(server, alice, "cover.png", (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes())
 
-    read = server.request("GET", link_of(gallery, "self"), token=root_token)
-    added = server.request(
-        "POST",
-        link_of(gallery, "items"),
-        token=root_token,
-        json={"type": "image", "media_id": linked_id(link_of(file, "image"))},
+    read = get_gallery.sync_detailed(gallery["id"], client=server.client(root_token))
+    added = post_gallery_item.sync_detailed(
+        gallery["id"],
+        client=server.client(root_token),
+        body=PostGalleryItemRequest(media_id=file["id"], type_=GalleryItemType.IMAGE),
     )
-    removed = server.request("DELETE", link_of(gallery, "self"), token=root_token)
+    removed = delete_gallery.sync_detailed(gallery["id"], client=server.client(root_token))
 
-    assert read.status_code == 200, f"root read failed: {read.status_code} {read.text}"
-    assert read.json()["is_public"] is False
-    assert added.status_code == 201, f"root append failed: {added.status_code} {added.text}"
-    assert removed.status_code == 204, f"root delete failed: {removed.status_code} {removed.text}"
-    assert server.request("GET", link_of(gallery, "self"), token=alice).status_code == 404
+    assert read.status_code == 200
+    assert json.loads(read.content)["is_public"] is False
+    assert added.status_code == 201
+    assert removed.status_code == 204
+    assert get_gallery.sync_detailed(gallery["id"], client=server.client(alice)).status_code == 404
 
 
 @allure.epic("Authorization")
 @allure.feature("REQ-GALLERY-006")
 @allure.story("SCN-GALLERY-006-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_admin_cannot_delete_a_readable_public_gallery(sut: Sut) -> None:
+def test_an_admin_cannot_delete_a_readable_public_gallery(server: Sut, root_token: str) -> None:
     """An Admin deleting a readable public gallery answers 403 and the gallery survives."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    _admin_id, admin = provision(server, root_token, "admina", role="ADMIN")
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    _, admin = provision(server, root_token, f"azadmin{next(_ACCOUNTS)}", role="ADMIN")
     gallery = create_gallery(server, alice, "holiday", is_public=True)
 
-    deleted = server.request("DELETE", link_of(gallery, "self"), token=admin)
-    kept = server.request("GET", link_of(gallery, "self"), token=alice)
+    deleted = delete_gallery.sync_detailed(gallery["id"], client=server.client(admin))
+    kept = get_gallery.sync_detailed(gallery["id"], client=server.client(alice))
 
-    assert deleted.status_code == 403, f"gallery deleted: {deleted.status_code} {deleted.text}"
-    assert kept.status_code == 200, f"the gallery must survive: {kept.status_code} {kept.text}"
+    assert deleted.status_code == 403
+    assert kept.status_code == 200
+
+
+@allure.epic("Authorization")
+@allure.feature("REQ-AUTHORIZATION-022")
+@allure.story("SCN-AUTHORIZATION-022-A")
+def test_a_standard_user_reads_the_catalogue(server: Sut, root_token: str) -> None:
+    """A Standard user with the seeded role reads a film, a show, a music group and an album."""
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+
+    film = get_movie.sync_detailed(SEEDED_MOVIE, client=server.client(alice))
+    show = get_series.sync_detailed(SEEDED_SERIES, client=server.client(alice))
+    group = get_music_group.sync_detailed(SEEDED_GROUP, client=server.client(alice))
+    album = get_album.sync_detailed(SEEDED_ALBUM, client=server.client(alice))
+
+    assert film.status_code == 200
+    assert show.status_code == 200
+    assert group.status_code == 200
+    assert album.status_code == 200
+
+
+@allure.epic("Authorization")
+@allure.feature("REQ-AUTHORIZATION-022")
+@allure.story("SCN-AUTHORIZATION-022-B")
+def test_a_standard_user_cannot_rename_the_catalogue(server: Sut, root_token: str) -> None:
+    """A Standard user renaming a film, a music group or an album answers 403 and applies nothing."""
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    renamed = f"renamed{next(_ACCOUNTS)}"
+
+    film = patch_movie.sync_detailed(
+        SEEDED_MOVIE,
+        client=server.client(alice),
+        body=PatchMovieRequest(name=renamed),
+    )
+    group = patch_music_group.sync_detailed(
+        SEEDED_GROUP,
+        client=server.client(alice),
+        body=PatchMusicGroupRequest(name=renamed),
+    )
+    album = patch_album.sync_detailed(
+        SEEDED_ALBUM,
+        client=server.client(alice),
+        body=PatchAlbumRequest(name=renamed),
+    )
+
+    assert film.status_code == 403
+    assert group.status_code == 403
+    assert album.status_code == 403
+    stored_film = get_movie.sync_detailed(SEEDED_MOVIE, client=server.client(alice))
+    stored_group = get_music_group.sync_detailed(SEEDED_GROUP, client=server.client(alice))
+    stored_album = get_album.sync_detailed(SEEDED_ALBUM, client=server.client(alice))
+    assert json.loads(stored_film.content)["name"] == "Listed One"
+    assert json.loads(stored_group.content)["name"] == "Covered Group"
+    assert json.loads(stored_album.content)["name"] == "Covered Album"
+
+
+@allure.epic("Authorization")
+@allure.feature("REQ-AUTHORIZATION-023")
+@allure.story("SCN-AUTHORIZATION-023-G")
+def test_a_standard_user_cannot_create_a_music_group(server: Sut, root_token: str) -> None:
+    """A Standard user creating a music group answers 403 and creates nothing."""
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    name = f"forbidden-group{next(_ACCOUNTS)}"
+
+    created = post_music_group.sync_detailed(
+        client=server.client(alice),
+        body=PostMusicGroupRequest(name=name),
+    )
+    listed = list_music_groups.sync_detailed(client=server.client(root_token), name=name)
+
+    assert created.status_code == 403
+    assert json.loads(listed.content)["_embedded"]["items"] == []
+
+
+@allure.epic("Authorization")
+@allure.feature("REQ-AUTHORIZATION-023")
+@allure.story("SCN-AUTHORIZATION-023-G")
+def test_a_standard_user_cannot_create_a_music_album(server: Sut, root_token: str) -> None:
+    """A Standard user creating a music album answers 403 and creates nothing."""
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    name = f"forbidden-album{next(_ACCOUNTS)}"
+
+    created = post_album.sync_detailed(
+        client=server.client(alice),
+        body=PostAlbumRequest(name=name, music_group_id=SEEDED_GROUP),
+    )
+    listed = list_albums.sync_detailed(client=server.client(root_token), name=name)
+
+    assert created.status_code == 403
+    assert json.loads(listed.content)["_embedded"]["items"] == []
+
+
+@allure.epic("Authorization")
+@allure.feature("REQ-AUTHORIZATION-023")
+@allure.story("SCN-AUTHORIZATION-023-B")
+def test_a_standard_user_cannot_create_a_film(server: Sut, root_token: str) -> None:
+    """A Standard user creating a film answers 403 and creates nothing."""
+    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    name = f"forbidden-film{next(_ACCOUNTS)}"
+
+    created = post_movie.sync_detailed(
+        client=server.client(alice),
+        body=PostMovieRequest(name=name, video_id=13212),
+    )
+    listed = list_movies.sync_detailed(client=server.client(root_token), name=name)
+
+    assert created.status_code == 403
+    assert json.loads(listed.content)["_embedded"]["items"] == []
+
+
+@allure.epic("Authorization")
+@allure.feature("REQ-AUTHORIZATION-023")
+@allure.story("SCN-AUTHORIZATION-023-F")
+def test_a_denied_playlist_surface_refuses_creation(server: Sut, root_token: str) -> None:
+    """A denied CreateChild on the playlist collection refuses creation and leaves the seeded role intact."""
+    alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    current = get_resource_permission.sync_detailed(PLAYLIST_COLLECTION, 0, client=server.client(root_token))
+    assert current.status_code == 200
+    visibility = VisibilityWire(json.loads(current.content)["visibility"])
+
+    denied = put_resource_permission.sync_detailed(
+        PLAYLIST_COLLECTION,
+        0,
+        client=server.client(root_token),
+        body=PutPermissionRequest(
+            visibility=visibility,
+            grants=[_grant(alice_id, CONTRIBUTOR, effect=DENY, child_kind=ChildKindWire.MUSIC_PLAYLIST)],
+        ),
+    )
+    refused = post_playlist.sync_detailed(client=server.client(alice), body=PostPlaylistRequest(name="denied-surface"))
+    restored = put_resource_permission.sync_detailed(
+        PLAYLIST_COLLECTION,
+        0,
+        client=server.client(root_token),
+        body=PutPermissionRequest(visibility=visibility, grants=[]),
+    )
+    allowed = post_playlist.sync_detailed(
+        client=server.client(alice), body=PostPlaylistRequest(name="restored-surface")
+    )
+
+    assert denied.status_code == 200
+    assert refused.status_code == 403
+    assert restored.status_code == 200
+    assert allowed.status_code == 201, "the seeded role grant must survive the deny"
+
+
+@allure.epic("Authorization")
+@allure.feature("REQ-AUTHORIZATION-040")
+@allure.story("SCN-AUTHORIZATION-040-A")
+def test_an_unreadable_recording_refuses_the_append(server: Sut, root_token: str) -> None:
+    """A caller that cannot read the named recording answers 403 and appends nothing."""
+    alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    playlist = post_playlist.sync_detailed(
+        client=server.client(alice), body=PostPlaylistRequest(name="unreadable-recording")
+    )
+    assert playlist.status_code == 201
+    playlist_id = json.loads(playlist.content)["id"]
+    current = get_resource_permission.sync_detailed(MUSIC_RECORDING, SEEDED_RECORDING, client=server.client(root_token))
+    assert current.status_code == 200
+    visibility = VisibilityWire(json.loads(current.content)["visibility"])
+
+    denied = put_resource_permission.sync_detailed(
+        MUSIC_RECORDING,
+        SEEDED_RECORDING,
+        client=server.client(root_token),
+        body=PutPermissionRequest(visibility=visibility, grants=[_grant(alice_id, VIEWER, effect=DENY)]),
+    )
+    refused = patch_playlist.sync_detailed(
+        playlist_id,
+        client=server.client(alice),
+        body=PatchPlaylistRequest(add_track=AddPlaylistTrackRequest(recording_id=SEEDED_RECORDING)),
+    )
+    restored = put_resource_permission.sync_detailed(
+        MUSIC_RECORDING,
+        SEEDED_RECORDING,
+        client=server.client(root_token),
+        body=PutPermissionRequest(visibility=visibility, grants=[]),
+    )
+    stored = get_playlist.sync_detailed(playlist_id, client=server.client(alice))
+
+    assert denied.status_code == 200
+    assert refused.status_code == 403
+    assert restored.status_code == 200
+    body = json.loads(stored.content)
+    assert body["track_count"] == 0
+    assert body["tracks"] == []
+
+
+@allure.epic("Authorization")
+@allure.feature("REQ-AUTHORIZATION-039")
+@allure.story("SCN-AUTHORIZATION-039-A")
+def test_a_filtered_film_listing_returns_discoverable_films(server: Sut, root_token: str) -> None:
+    """A film hidden from one caller is absent from their listing and present for the root."""
+    alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    current = get_resource_permission.sync_detailed(MOVIE, SEEDED_PRIVATE_MOVIE, client=server.client(root_token))
+    assert current.status_code == 200
+    visibility = VisibilityWire(json.loads(current.content)["visibility"])
+
+    denied = put_resource_permission.sync_detailed(
+        MOVIE,
+        SEEDED_PRIVATE_MOVIE,
+        client=server.client(root_token),
+        body=PutPermissionRequest(visibility=visibility, grants=[_grant(alice_id, VIEWER, effect=DENY)]),
+    )
+    filtered = list_movies.sync_detailed(client=server.client(alice), limit=100)
+    everything = list_movies.sync_detailed(client=server.client(root_token), limit=100)
+    restored = put_resource_permission.sync_detailed(
+        MOVIE,
+        SEEDED_PRIVATE_MOVIE,
+        client=server.client(root_token),
+        body=PutPermissionRequest(visibility=visibility, grants=[]),
+    )
+
+    assert denied.status_code == 200
+    visible = [item["id"] for item in json.loads(filtered.content)["_embedded"]["items"]]
+    assert SEEDED_MOVIE in visible
+    assert SEEDED_PRIVATE_MOVIE not in visible
+    assert SEEDED_PRIVATE_MOVIE in [item["id"] for item in json.loads(everything.content)["_embedded"]["items"]]
+    assert restored.status_code == 200
+
+
+@allure.epic("Authorization")
+@allure.feature("REQ-AUTHORIZATION-001")
+@allure.story("SCN-AUTHORIZATION-001-C")
+def test_a_hidden_resource_is_concealed(server: Sut, root_token: str) -> None:
+    """A denied film answers 404 for a read and a write, and another user's private file answers 404."""
+    alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
+    _, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
+    current = get_resource_permission.sync_detailed(MOVIE, SEEDED_MOVIE, client=server.client(root_token))
+    assert current.status_code == 200
+    visibility = VisibilityWire(json.loads(current.content)["visibility"])
+
+    denied = put_resource_permission.sync_detailed(
+        MOVIE,
+        SEEDED_MOVIE,
+        client=server.client(root_token),
+        body=PutPermissionRequest(visibility=visibility, grants=[_grant(alice_id, VIEWER, effect=DENY)]),
+    )
+    read = get_movie.sync_detailed(SEEDED_MOVIE, client=server.client(alice))
+    write = patch_movie.sync_detailed(
+        SEEDED_MOVIE,
+        client=server.client(alice),
+        body=PatchMovieRequest(name="concealed-rename"),
+    )
+    restored = put_resource_permission.sync_detailed(
+        MOVIE,
+        SEEDED_MOVIE,
+        client=server.client(root_token),
+        body=PutPermissionRequest(visibility=visibility, grants=[]),
+    )
+    private = upload(server, bob, "private.png", (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes())
+    concealed = get_file.sync_detailed(private["id"], client=server.client(alice))
+
+    assert denied.status_code == 200
+    assert read.status_code == 404, "a denied film must be concealed from a read"
+    assert write.status_code == 404, "a denied film must be concealed from a write"
+    assert restored.status_code == 200
+    assert concealed.status_code == 404, "another user's private file must be concealed"

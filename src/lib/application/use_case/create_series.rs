@@ -88,6 +88,16 @@ where
                                 );
                                 CreateSeriesError::InvalidName
                             }
+                            NamePolicyError::SurroundingWhitespace => {
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"surrounding_whitespace",
+                                    "rejected a client-supplied value"
+                                );
+                                CreateSeriesError::InvalidName
+                            }
                             NamePolicyError::TooLong => {
                                 warn!(
                                     target: "security",
@@ -283,7 +293,7 @@ mod tests {
         let response = use_case
             .execute(CreateSeriesCommand::new(
                 1,
-                "  Twin Peaks  ".to_owned(),
+                "Twin Peaks".to_owned(),
                 Some("A plot".to_owned()),
                 Some("us".to_owned()),
                 Some(NaiveDate::from_ymd_opt(1990, 4, 8).unwrap_or_default()),

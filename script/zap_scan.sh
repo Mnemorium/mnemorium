@@ -9,7 +9,8 @@
 #
 # The binary is built with the `api-docs` and `test-seed` features: the scan
 # imports the document served at /doc/openapi.json, and the seed data gives the
-# scanner populated rows instead of an empty library.
+# scanner populated rows instead of an empty library. The run names the `api`
+# profile: a `test-seed` boot that names none starts unseeded.
 #
 # The active scanner is destructive, so this script only ever scans the
 # throwaway instance it starts: it refuses to run while anything else answers
@@ -205,9 +206,12 @@ fi
 select_policy "${ZAP_POLICY}" "${ZAP_WORK_DIR}/zap.yaml"
 
 echo "==> Starting a disposable server in ${SERVER_DIR}"
+# The seed reads its fixture from the working directory, so the checkout's tree is linked beside it rather than copied.
+ln -sfn "${REPO_ROOT}/test" "${SERVER_DIR}/test"
 (
 	cd "${SERVER_DIR}"
 	exec env \
+		MNEMORIUM_SEED_PROFILE=api \
 		MNEMORIUM_SECURITY_LOG_ROOT_ADMIN_PASSWORD=true \
 		MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE=10000 \
 		"${BINARY}"

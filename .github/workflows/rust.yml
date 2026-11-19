@@ -9,7 +9,9 @@ on:
       - '**/*.rs'
       - 'Cargo.toml'
       - 'Cargo.lock'
-      - 'test/seed/**'
+      - 'test/api/seed/**'
+      - 'test/performance/seed/**'
+      - 'test/system/seed/**'
 
 permissions:
   contents: read
@@ -105,7 +107,7 @@ jobs:
           cargo llvm-cov --lib \
             --features test-seed \
             --locked \
-            --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' \
+            --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler|src/lib/infrastructure/seed.rs' \
             --fail-under-functions 80 \
             --fail-under-regions 80 \
             --fail-under-lines 80 \

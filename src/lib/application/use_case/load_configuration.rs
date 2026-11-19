@@ -5,6 +5,8 @@ use std::sync::Arc;
 use crate::application::port::{
     LoadConfigurationError, LoadConfigurationResponse, LoadConfigurationUseCase,
 };
+#[cfg(feature = "test-seed")]
+use crate::domain::model::Seed;
 use crate::domain::model::{
     Asset, AssetUpload, ClientIpHeader, Configuration, Jwt, Library, LibraryMetadata,
     LibraryStartup, Logging, MusicProvider, MusicProviders, PartialConfiguration, Persistence,
@@ -295,14 +297,28 @@ fn merge(
         rate_limit,
     );
 
+    let resolved = Configuration::new(persistence, security, logging, asset, library);
+
+    // The seed section is test-only: a shipped build has no such key, so the
+    // feature gates both the merge and the field it fills. An absent profile
+    // resolves to `None`, which means the boot applies no fixture at all.
+    #[cfg(feature = "test-seed")]
+    let profile = match partial.seed.profile {
+        Some(named) => {
+            applied.push("seed.profile");
+            Some(named)
+        }
+        None => base.seed().profile(),
+    };
+    #[cfg(feature = "test-seed")]
+    let configuration = resolved.with_seed(Seed::new(profile));
+    #[cfg(not(feature = "test-seed"))]
+    let configuration = resolved;
+
     applied.sort_unstable();
     applied.dedup();
-    Ok((
-        Configuration::new(persistence, security, logging, asset, library),
-        applied,
-    ))
+    Ok((configuration, applied))
 }
-
 /// Build the rejection of `setting` from the domain failure `source`.
 fn invalid(setting: &'static str, source: impl Into<anyhow::Error>) -> LoadConfigurationError {
     LoadConfigurationError::InvalidConfiguration(source.into().context(setting))
@@ -334,6 +350,8 @@ mod tests {
         PartialRateLimit, PartialSecurity, PartialVideoMetadata, PartialVideoProvider, ProviderId,
         Rotation,
     };
+    #[cfg(feature = "test-seed")]
+    use crate::domain::model::{PartialSeed, SeedProfile};
     use allure_cargotest::allure_test;
 
     use crate::domain::port::{
@@ -458,8 +476,22 @@ mod tests {
         }
     }
 
+    /// A seed section deserialized from its configuration shape, as a layer does.
+    #[cfg(feature = "test-seed")]
+    fn seed_section(profile: &str) -> Result<PartialSeed, serde_json::Error> {
+        serde_json::from_str(&format!(r#"{{"profile":"{profile}"}}"#))
+    }
+
+    /// A partial naming only the seed profile.
+    #[cfg(feature = "test-seed")]
+    fn seed_profile(profile: &str) -> Result<PartialConfiguration, serde_json::Error> {
+        Ok(PartialConfiguration {
+            seed: seed_section(profile)?,
+            ..PartialConfiguration::default()
+        })
+    }
+
     /// Assert the file layer naming `partial` is rejected and the message names `setting`.
-    ///
     /// The environment layer must not be consulted: a file value that fails validation stops the
     /// merge before the higher layer runs.
     async fn assert_rejected_naming(partial: PartialConfiguration, setting: &str) {
@@ -1438,5 +1470,117 @@ mod tests {
             "the built-in default lists no music provider, so identification is unavailable"
         );
         Ok(())
+    }
+
+    #[cfg(feature = "test-seed")]
+    #[rstest::rstest]
+    #[case::lower_api("api", SeedProfile::Api)]
+    #[case::upper_api("API", SeedProfile::Api)]
+    #[case::mixed_api("Api", SeedProfile::Api)]
+    #[case::lower_perf("perf", SeedProfile::Perf)]
+    #[case::upper_perf("PERF", SeedProfile::Perf)]
+    #[case::mixed_perf("Perf", SeedProfile::Perf)]
+    #[case::lower_system("system", SeedProfile::System)]
+    #[case::upper_system("SYSTEM", SeedProfile::System)]
+    #[case::mixed_system("System", SeedProfile::System)]
+    #[tokio::test]
+    async fn load_configuration_resolves_the_seed_profile_case_insensitively(
+        #[case] declared: &str,
+        #[case] expected: SeedProfile,
+    ) -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = use_case(
+            file_layer(seed_profile(declared)?, false),
+            environment_layer(PartialConfiguration::default()),
+        );
+
+        // Act
+        let response = use_case.execute().await?;
+
+        // Assert
+        assert_eq!(response.configuration().seed().profile(), Some(expected));
+        Ok(())
+    }
+
+    #[cfg(feature = "test-seed")]
+    #[tokio::test]
+    async fn load_configuration_absent_seed_profile_applies_no_fixture()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the layer names the section but not the profile.
+        let section: PartialSeed = serde_json::from_str("{}")?;
+        let use_case = use_case(
+            file_layer(
+                PartialConfiguration {
+                    seed: section,
+                    ..PartialConfiguration::default()
+                },
+                false,
+            ),
+            environment_layer(PartialConfiguration::default()),
+        );
+
+        // Act
+        let response = use_case.execute().await?;
+
+        // Assert
+        assert_eq!(
+            response.configuration().seed().profile(),
+            None,
+            "an absent profile must apply no fixture at all"
+        );
+        assert!(
+            response.applied().is_empty(),
+            "a layer that named nothing must report nothing"
+        );
+        Ok(())
+    }
+
+    #[cfg(feature = "test-seed")]
+    #[tokio::test]
+    async fn load_configuration_seed_profile_is_reported_as_applied() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the environment layer is the highest one.
+        let use_case = use_case(
+            file_layer(PartialConfiguration::default(), false),
+            environment_layer(seed_profile("system")?),
+        );
+
+        // Act
+        let response = use_case.execute().await?;
+
+        // Assert
+        assert_eq!(
+            response.configuration().seed().profile(),
+            Some(SeedProfile::System)
+        );
+        assert_eq!(
+            response.applied(),
+            &["seed.profile"],
+            "the resolved setting is named without its value"
+        );
+        Ok(())
+    }
+
+    #[cfg(feature = "test-seed")]
+    #[tokio::test]
+    async fn load_configuration_unknown_seed_profile_names_the_setting() {
+        // Arrange: the layer names a profile this build does not carry. The
+        // domain parser is covered here because domain models keep no test
+        // module of their own (`TEST-019`).
+        let parsed = serde_json::from_str::<PartialSeed>(r#"{"profile":"nightly"}"#);
+
+        // Act
+        let error = parsed.err();
+
+        // Assert
+        let message = error.as_ref().map(ToString::to_string).unwrap_or_default();
+        assert!(
+            message.contains("seed.profile"),
+            "the rejection must name the setting, got: {message:?}"
+        );
+        assert!(
+            !message.contains("nightly"),
+            "the rejection must not carry the value, got: {message:?}"
+        );
     }
 }

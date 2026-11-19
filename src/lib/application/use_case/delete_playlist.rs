@@ -8,7 +8,8 @@ use crate::application::port::{DeletePlaylistCommand, DeletePlaylistError, Delet
 use crate::domain::model::Action;
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicPlaylistFilter, MusicPlaylistRepository as _,
-    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    ResourceRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork,
 };
 
 /// Use case implementation for deleting a playlist.
@@ -96,6 +97,18 @@ where
                 if !deleted {
                     return Err(DeletePlaylistError::NoSuchPlaylist);
                 }
+
+                // The resource outlives the row it addresses unless this unit of
+                // work removes it: a later playlist reuses the freed identifier
+                // and collides with the stale resource (`PERS-020`).
+                unit_of_work
+                    .resources()
+                    .delete(ResourceRef::new(
+                        ResourceKind::MusicPlaylist,
+                        command.playlist_id(),
+                    ))
+                    .await
+                    .map_err(|error| DeletePlaylistError::Unknown(error.into()))?;
                 Ok(())
             }
             .await;
@@ -120,7 +133,9 @@ mod tests {
     use super::*;
     use crate::domain::model::{MusicPlaylist, Role, User};
 
-    use crate::domain::port::{MockMusicPlaylistRepository, MockUserRepository, RepositoryError};
+    use crate::domain::port::{
+        MockMusicPlaylistRepository, MockResourceRepository, MockUserRepository, RepositoryError,
+    };
 
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
@@ -146,8 +161,16 @@ mod tests {
         users: MockUserRepository,
         playlists: MockMusicPlaylistRepository,
     ) -> GalleryFactoryHarness {
+        harness_with_resources(users, no_resources(), playlists)
+    }
+
+    fn harness_with_resources(
+        users: MockUserRepository,
+        resources: MockResourceRepository,
+        playlists: MockMusicPlaylistRepository,
+    ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            resources: no_resources(),
+            resources,
             music_playlists: playlists,
             users,
             ..TestUnitOfWork::default()
@@ -197,6 +220,37 @@ mod tests {
         let result = use_case.execute(DeletePlaylistCommand::new(4, 3)).await;
 
         // Assert
+        assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_playlist_removes_its_resource() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 4, Role::Standard)?;
+        let mut playlists = MockMusicPlaylistRepository::new();
+        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false));
+        playlists
+            .expect_delete()
+            .times(1)
+            .withf(|filter| filter.id == Some(3))
+            .returning(|_| Box::pin(async { Ok(true) }));
+        let mut resources = caller_owned_resources();
+        resources
+            .expect_delete()
+            .times(1)
+            .withf(|address| address.kind() == ResourceKind::MusicPlaylist && address.id() == 3)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        let harness = harness_with_resources(users, resources, playlists);
+        let use_case: UseCase = DeletePlaylist::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case.execute(DeletePlaylistCommand::new(4, 3)).await;
+
+        // Assert: the freed playlist identifier must not leave a stale resource
+        // that a later creation collides with.
         assert!(result.is_ok());
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
