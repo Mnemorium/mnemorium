@@ -70,7 +70,6 @@ feature-depth = 1
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-  { id = "RUSTSEC-2026-0459", reason = "The server owns its datastore directory, so no less trusted party can plant the crafted database and -wal pair the advisory requires. sqlx 0.9.0 does not yet accept the patched libsqlite3-sys 0.39.x." },
   { id = "RUSTSEC-2026-0543", reason = "The unmaintained chrono crate is a transitive dependency of sqlx 0.9 and is used directly for the wire date and timestamp types; no fixed release exists. Revisit when sqlx drops chrono or the project migrates to jiff or time." },
   #"RUSTSEC-0000-0000",
   #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
