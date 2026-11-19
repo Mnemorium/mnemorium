@@ -9,7 +9,7 @@ import type { FlowFn } from "./types.ts";
 
 export const login: FlowFn = async ({ client, ctx, flow }) => {
   const result = await client.postLogin({
-    body: { password: ACCOUNT.password, username: ACCOUNT.username },
+    body: { identifier: ACCOUNT.username, password: ACCOUNT.password },
     ...endpointTag("post-login"),
   });
   if (!isStatus(result, flow, 200)) {
