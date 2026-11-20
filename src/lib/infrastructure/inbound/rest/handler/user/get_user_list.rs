@@ -20,6 +20,7 @@ use crate::infrastructure::inbound::rest::{
 ///
 /// Every filter is optional; an all-`None` query returns every user.
 #[derive(Debug, Deserialize, IntoParams)]
+#[serde(deny_unknown_fields)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
 pub(crate) struct ListUsersQuery {

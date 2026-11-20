@@ -97,6 +97,16 @@ where
                                 );
                                 CreateMusicGroupError::InvalidName
                             }
+                            NamePolicyError::SurroundingWhitespace => {
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"surrounding_whitespace",
+                                    "rejected a client-supplied value"
+                                );
+                                CreateMusicGroupError::InvalidName
+                            }
                             NamePolicyError::TooLong => {
                                 warn!(
                                     target: "security",
@@ -226,45 +236,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_music_group_trims_the_name_and_stores_the_cover() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange: no group carries the trimmed name yet.
+    async fn create_music_group_surrounding_whitespace_returns_invalid_name()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
-        groups
-            .expect_search()
-            .times(1)
-            .withf(|filter| filter.stage_name.as_deref() == Some("The Group"))
-            .return_once(|_| Box::pin(async { Ok(Vec::new()) }));
-        let stored = group(7, "The Group", Some(19))?;
-        groups
-            .expect_create()
-            .times(1)
-            .withf(|group| group.stage_name() == "The Group" && group.cover_image_id() == Some(19))
-            .return_once(move |_| {
-                let created = stored.clone();
-                Box::pin(async move { Ok(created) })
-            });
+        groups.expect_search().times(0);
+        groups.expect_create().times(0);
         let harness = harness_with(users, groups);
         let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
 
         // Act
-        let response = use_case
+        let result = use_case
             .execute(CreateMusicGroupCommand::new(
                 1,
-                "  The Group  ".to_owned(),
+                " The Group ".to_owned(),
                 Some(19),
             ))
-            .await?;
+            .await;
 
         // Assert
-        assert_eq!(response.group().id(), 7);
-        assert_eq!(response.group().stage_name(), "The Group");
-        assert_eq!(response.group().cover_image_id(), Some(19));
-        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(matches!(result, Err(CreateMusicGroupError::InvalidName)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
+
     #[tokio::test]
     async fn create_music_group_duplicate_name_returns_name_already_exists()
     -> Result<(), Box<dyn Error>> {

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::application::port::{
     BeginUploadUseCase, CancelUploadUseCase, CompleteUploadUseCase, GetAssetContentUseCase,
     GetAudioUseCase, GetFileUseCase, GetImageUseCase, GetUploadUseCase, GetVideoUseCase,
-    ReapUploadsUseCase, WriteUploadChunkUseCase,
+    ListFilesUseCase, ReapUploadsUseCase, WriteUploadChunkUseCase,
 };
 
 /// Builds the use cases of the Asset bounded context on demand.
@@ -38,6 +38,9 @@ pub(crate) trait AssetUseCaseFactory: Send + Sync {
 
     /// Build the use case fetching one typed video.
     fn get_video(&self) -> Arc<dyn GetVideoUseCase>;
+
+    /// Build the use case listing the stored files the caller may discover.
+    fn list_files(&self) -> Arc<dyn ListFilesUseCase>;
 
     /// Build the use case reaping expired, stale and orphaned upload sessions.
     fn reap_uploads(&self) -> Arc<dyn ReapUploadsUseCase>;

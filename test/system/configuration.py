@@ -1,15 +1,9 @@
-"""Black-box proof of the `configuration` capability's resolution mechanism.
+"""Black-box proof of the `configuration` capability's resolution mechanism."""
 
-The layer order and the file's lifecycle are proved on cheap probes rather than on every setting: `security.jwt.ttl` is
-visible in the login response, `logging.ansi` in one escape byte, and `security.rate_limit.burst_size` in a few logins.
-No case reads a setting for its own sake, and no case asserts a value the layer below already carries.
-
-These cases moved here when the per-setting configuration modules were retired: each case names one general behaviour,
-and the container is the only observer an operator has. Every case starts its own container through the shared
-`harness` plugin and reads only HTTP responses, standard output, the log sink and the working directory.
-"""
-
+import base64
+import json
 import os
+import time
 
 import allure
 import pytest
@@ -21,6 +15,8 @@ from harness import (
     WRONG_PASSWORD,
     Sut,
 )
+from mnemorium_client.api.identity import post_login
+from mnemorium_client.models import LoginRequest
 
 # Configuration owns its instances: every case writes or observes `config.yaml`, the environment and a restart.
 pytestmark = pytest.mark.own_instance(reason="global_filesystem")
@@ -30,9 +26,11 @@ _DEFAULT_TTL_S = 3600
 
 def _login(sut: Sut, password: str) -> int:
     """Log in as the Root Admin and return the advertised token lifetime."""
-    response = sut.attempt_login(ROOT_ADMIN_USERNAME, password)
-    assert response.status_code == 200, f"login failed: {response.status_code} {response.text}"
-    return response.json()["expires_in"]
+    response = post_login.sync_detailed(
+        client=sut.client(), body=LoginRequest(password=password, identifier=ROOT_ADMIN_USERNAME)
+    )
+    assert response.status_code == 200, f"login failed: {response.status_code} {response.content!r}"
+    return json.loads(response.content)["expires_in"]
 
 
 @allure.epic("Configuration")
@@ -50,6 +48,30 @@ def test_nothing_supplied_uses_the_defaults_and_writes_the_file(sut: Sut) -> Non
     assert isinstance(generated, dict), "the generated file must be a complete document"
     assert generated["security"]["jwt"]["ttl"] == _DEFAULT_TTL_S
     assert _login(server, server.root_password()) == _DEFAULT_TTL_S
+
+
+@allure.epic("Configuration")
+@allure.feature("REQ-CONFIGURATION-001")
+@allure.story("SCN-CONFIGURATION-001-E")
+@allure.feature("REQ-AUTHENTICATION-007")
+@allure.story("SCN-AUTHENTICATION-007-A")
+def test_the_resolved_lifetime_reaches_the_issued_token(sut: Sut) -> None:
+    """A configured `security.jwt.ttl` is advertised and carried by the token's expiry."""
+    ttl = 120
+    server = sut.start(config={"security": {"jwt": {"ttl": ttl}}})
+
+    before = int(time.time())
+    response = post_login.sync_detailed(
+        client=server.client(), body=LoginRequest(password=server.root_password(), identifier=ROOT_ADMIN_USERNAME)
+    )
+    after = int(time.time())
+
+    assert response.status_code == 200
+    body = json.loads(response.content)
+    payload = body["access_token"].split(".")[1]
+    issued = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    assert body["expires_in"] == ttl
+    assert before + ttl <= issued["exp"] <= after + ttl
 
 
 @allure.epic("Configuration")
@@ -150,13 +172,33 @@ def test_a_runtime_edit_has_no_effect_until_restart(sut: Sut) -> None:
     server = sut.start(config={"security": {"rate_limit": {"burst_size": 5}}})
 
     for _ in range(3):
-        assert server.attempt_login(ROOT_ADMIN_USERNAME, WRONG_PASSWORD).status_code == 401
+        assert (
+            post_login.sync_detailed(
+                client=server.client(), body=LoginRequest(password=WRONG_PASSWORD, identifier=ROOT_ADMIN_USERNAME)
+            ).status_code
+            == 401
+        )
 
     sut.write(CONFIG_PATH, "security:\n  rate_limit:\n    burst_size: 1\n")
 
-    assert server.attempt_login(ROOT_ADMIN_USERNAME, WRONG_PASSWORD).status_code == 401
+    assert (
+        post_login.sync_detailed(
+            client=server.client(), body=LoginRequest(password=WRONG_PASSWORD, identifier=ROOT_ADMIN_USERNAME)
+        ).status_code
+        == 401
+    )
 
     server.restart()
 
-    assert server.attempt_login(ROOT_ADMIN_USERNAME, WRONG_PASSWORD).status_code == 401
-    assert server.attempt_login(ROOT_ADMIN_USERNAME, WRONG_PASSWORD).status_code == 429
+    assert (
+        post_login.sync_detailed(
+            client=server.client(), body=LoginRequest(password=WRONG_PASSWORD, identifier=ROOT_ADMIN_USERNAME)
+        ).status_code
+        == 401
+    )
+    assert (
+        post_login.sync_detailed(
+            client=server.client(), body=LoginRequest(password=WRONG_PASSWORD, identifier=ROOT_ADMIN_USERNAME)
+        ).status_code
+        == 429
+    )

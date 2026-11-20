@@ -13,6 +13,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
 
 /// The name a caller knows about the show work it wants identified.
 #[derive(Debug, Deserialize, IntoParams)]
+#[serde(deny_unknown_fields)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
 pub(crate) struct IdentifySeriesQuery {

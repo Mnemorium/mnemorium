@@ -95,6 +95,16 @@ where
                                 );
                                 CreateGalleryError::InvalidName
                             }
+                            NamePolicyError::SurroundingWhitespace => {
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"surrounding_whitespace",
+                                    "rejected a client-supplied value"
+                                );
+                                CreateGalleryError::InvalidName
+                            }
                             NamePolicyError::TooLong => {
                                 warn!(
                                     target: "security",
@@ -333,43 +343,33 @@ mod tests {
 
     #[allure_test]
     #[tokio::test]
-    async fn create_gallery_trims_surrounding_whitespace() -> Result<(), Box<dyn Error>> {
+    #[traced_test]
+    async fn create_gallery_surrounding_whitespace_returns_invalid_name()
+    -> Result<(), Box<dyn Error>> {
         allure.epic("Gallery");
         allure.feature("REQ-GALLERY-003");
-        allure.story("SCN-GALLERY-003-A");
+        allure.story("SCN-GALLERY-003-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
         let mut galleries = MockGalleryRepository::new();
-        let stored = gallery(6, Some(1), "Holidays", false);
-        galleries
-            .expect_search()
-            .times(1)
-            .withf(|filter| filter.name.as_deref() == Some("Holidays") && filter.user_id == Some(1))
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        galleries
-            .expect_create()
-            .times(1)
-            .withf(|pending| pending.name() == "Holidays")
-            .return_once(move |_| {
-                let found = stored.clone();
-                Box::pin(async move { Ok(found) })
-            });
+        galleries.expect_search().times(0);
+        galleries.expect_create().times(0);
         let harness = harness_with(users, galleries);
         let use_case: UseCase = CreateGallery::new(Arc::clone(&harness.factory));
 
         // Act
-        let response = use_case
-            .execute(CreateGalleryCommand::new(
-                1,
-                "  Holidays  ".to_owned(),
-                false,
-            ))
-            .await?;
+        let result = use_case
+            .execute(CreateGalleryCommand::new(1, " Holidays ".to_owned(), false))
+            .await;
 
         // Assert
-        assert_eq!(response.name(), "Holidays");
-        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(matches!(result, Err(CreateGalleryError::InvalidName)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        assert!(
+            logs_contain("reason=surrounding_whitespace"),
+            "the event must classify the rejection"
+        );
         Ok(())
     }
 

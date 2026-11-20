@@ -64,13 +64,3 @@ measurements the content reports and the backing file identifier. An unknown or 
 
 - **WHEN** the audio does not exist, or the caller may not read it
 - **THEN** the system returns `404 Not Found`
-
-### Requirement: REQ-AUDIO-004 — An audio addresses its file
-
-The system SHALL serve the file alias of an audio as an alias of the backing file resource, answering `303 See Other`
-with a `Location` naming the file.
-
-#### Scenario: SCN-AUDIO-004-A — The alias redirects
-
-- **WHEN** an authenticated caller requests the file alias of an audio it may read
-- **THEN** the system returns `303 See Other` with the file resource in `Location`

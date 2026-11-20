@@ -120,6 +120,16 @@ where
                                 );
                                 UpdateMusicAlbumError::InvalidName
                             }
+                            NamePolicyError::SurroundingWhitespace => {
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"surrounding_whitespace",
+                                    "rejected a client-supplied value"
+                                );
+                                UpdateMusicAlbumError::InvalidName
+                            }
                             NamePolicyError::TooLong => {
                                 warn!(
                                     target: "security",

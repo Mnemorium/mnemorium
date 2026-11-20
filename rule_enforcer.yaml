@@ -36,7 +36,21 @@ rules:
     # predicate production runs; `relation_sources_from` keeps the batched
     # resolution in `search_many` readable; `summary_album` is the album row
     # mapper that sits beside the hydrated one.
-    max_single_call_functions: 87
+    # Raised to 88 for the seed setting: `Configuration::with_seed` is the only
+    # way the application layer can fill a private field on a configuration the
+    # shipped build does not have, and it is called once because it is a
+    # builder, not a helper.
+    # Raised to 93 for the permission wire vocabulary: `parse_grant_role`,
+    # `parse_share_role`, `parse_child_kind` and `parse_grant_effect` each have
+    # one caller by construction, and keeping them separate is what lets the
+    # rejection be the catalogued `enum_validation_failed` event rather than a
+    # domain error.
+    # Raised to 89 for the system fixture's account announcement:
+    # `show_system_account` mirrors `show_demo_accounts`, and each one-call
+    # printer carries the `print_stdout` exemption for the one credential it
+    # reveals, so inlining either would spread that exemption into the seeding
+    # logic.
+    max_single_call_functions: 93
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset
@@ -147,7 +161,7 @@ rules:
     # representations now, so the asset content bytes are the only body outside
     # the rule: their stored media type is served whole, not as a representation.
     non_hal_bodies:
-      - Vec
+      - AssetContent
   API-033:
     # The root keys a HAL representation's business data must not be nested
     # under. `_embedded` is HAL's own nesting key and is governed by API-035;

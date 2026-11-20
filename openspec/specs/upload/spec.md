@@ -13,13 +13,13 @@ stored asset and deciding who may address a session belong to their own capabili
 
 The system SHALL create an **Upload session** from a begin request carrying a declared **Content Type**, file name, file
 size and whole-file **Integrity hash**, owned by the **Caller**. It SHALL reject an unsafe name, a zero or oversized
-file, a malformed hash and an unsupported type, and SHALL answer `201 Created` with the identifier, the fixed chunk
-size, the expiry instant and the session, chunk and completion links.
+file — one larger than `asset.upload.max_file_size_bytes` — a malformed hash and an unsupported type, and SHALL answer
+`201 Created` with the identifier, the fixed chunk size, the expiry instant and the session, chunk and completion links.
 
 #### Scenario: SCN-UPLOAD-001-A — A valid request creates a session
 
-- **WHEN** an authenticated caller posts a supported content type, a safe file name, a positive size within the maximum
-  and a valid integrity hash
+- **WHEN** an authenticated caller posts a supported content type, a safe file name, a positive size within
+  `asset.upload.max_file_size_bytes` and a valid integrity hash
 - **THEN** the system answers `201 Created` with the session identifier, the fixed chunk size, the expiry instant and
   the session, chunk and completion links
 - **AND** the `Location` header names the session
@@ -41,7 +41,7 @@ size, the expiry instant and the session, chunk and completion links.
 
 #### Scenario: SCN-UPLOAD-001-E — The file size exceeds the maximum
 
-- **WHEN** the declared file size exceeds the configured maximum
+- **WHEN** the declared file size exceeds `asset.upload.max_file_size_bytes`
 - **THEN** the system answers `413 Content Too Large` and creates no session
 
 #### Scenario: SCN-UPLOAD-001-F — The integrity hash is malformed
@@ -284,9 +284,9 @@ answer `200 OK` with that file, store nothing new and leave the session unfinish
 
 ### Requirement: REQ-UPLOAD-012 — A session expires at a fixed instant
 
-An **Upload session** SHALL expire at an instant derived from its creation and the configured lifetime and SHALL NOT be
-renewed by activity. An expired session SHALL answer `410 Gone` to a chunk or completion and `404 Not Found` to a status
-read, and its **Staged content** SHALL be removed.
+An **Upload session** SHALL expire at an instant derived from its creation and the `asset.upload.expiry_seconds`
+lifetime and SHALL NOT be renewed by activity. An expired session SHALL answer `410 Gone` to a chunk or completion and
+`404 Not Found` to a status read, and its **Staged content** SHALL be removed.
 
 #### Scenario: SCN-UPLOAD-012-A — A chunk is sent after expiry
 
@@ -346,9 +346,10 @@ bitmap, and its identifier SHALL NOT be reused for another session.
 
 ### Requirement: REQ-UPLOAD-015 — Expired, stale and orphaned sessions are reaped
 
-The system SHALL periodically remove expired pending sessions and their **Staged content**, unseal a verification that
-has outlived its bound, and remove **Staged content** no session owns, without delaying readiness. It SHALL report
-aggregate counts only, never a file name or a path.
+The system SHALL periodically — every `asset.upload.reap_interval_seconds` — remove expired pending sessions and their
+**Staged content**, unseal a verification that has outlived its bound, and remove **Staged content** no session owns,
+without delaying readiness. Each phase SHALL handle at most `asset.upload.reap_batch_size` items, so one run never holds
+the reaper past the next tick. It SHALL report aggregate counts only, never a file name or a path.
 
 #### Scenario: SCN-UPLOAD-015-A — An expired session is reaped
 

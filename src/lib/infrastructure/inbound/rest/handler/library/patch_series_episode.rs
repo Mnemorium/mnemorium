@@ -1,6 +1,5 @@
 use axum::extract::{Path, State};
 use axum::response::Response;
-use chrono::NaiveDate;
 use serde::Deserialize;
 use tracing::warn;
 use utoipa::ToSchema;
@@ -10,8 +9,8 @@ use crate::application::port::UpdateSeriesEpisodeCommand;
 use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
-    DATE_FORMAT, EpisodeResponse, deserialize_field_update, parse_episode_index,
-    parse_season_index, parse_series_id,
+    EpisodeResponse, deserialize_field_update, parse_episode_index, parse_season_index,
+    parse_series_id, parse_wire_date,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
@@ -25,10 +24,21 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
 pub(crate) struct PatchSeriesEpisodeRequest {
     /// Date of the first airing in `YYYY-MM-DD` form; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
-    #[schema(value_type = Option<String>, nullable = true, format = "date")]
+    #[schema(
+        value_type = Option<String>,
+        nullable = true,
+        format = "date",
+        min_length = 10,
+        max_length = 10
+    )]
     pub air_date: FieldUpdate<String>,
-    /// Name of the episode.
-    #[schema(min_length = 1, max_length = 100)]
+    /// Name of the episode; must not begin or end with whitespace. The
+    /// submitted value is stored unchanged.
+    #[schema(
+        min_length = 1,
+        max_length = 100,
+        pattern = r"^[^\s\u0085](?:[\s\S]*[^\s\u0085])?$"
+    )]
     pub name: Option<String>,
     /// Plot of the episode; omit to keep it.
     pub plot: Option<String>,
@@ -124,7 +134,7 @@ pub(crate) async fn patch_series_episode(
     let episode_index = parse_episode_index(&episode_index_value)?;
     let JsonObject(request) = payload;
     let air_date = request.air_date.try_map(|value| {
-        NaiveDate::parse_from_str(&value, DATE_FORMAT).map_err(|_| {
+        parse_wire_date(&value).map_err(|()| {
             warn!(
                 target: "security",
                 event = "input_validation_failed",

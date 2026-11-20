@@ -6,7 +6,7 @@ use utoipa::ToSchema;
 use crate::application::port::ShareResourceCommand;
 use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::identity::{
-    GrantBody, PrincipalPayload, parse_address, parse_resource_role,
+    GrantBody, PrincipalPayload, ResourceKindWire, ShareRoleWire, parse_address, parse_share_role,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
@@ -18,6 +18,7 @@ pub(crate) struct ShareRequest {
     /// The user principal the share reaches.
     pub principal: PrincipalPayload,
     /// The read role the share carries (`VIEWER` or `DOWNLOADER`).
+    #[schema(value_type = ShareRoleWire)]
     pub role: String,
 }
 
@@ -32,7 +33,7 @@ pub(crate) struct ShareRequest {
     path = "/permission/resource/{kind}/{id}/share",
     tag = "identity",
     params(
-        ("kind" = String, Path, description = "Kind of the addressed resource"),
+        ("kind" = inline(ResourceKindWire), Path, description = "Kind of the addressed resource"),
         ("id" = NumericID, Path, description = "Identifier of the addressed resource"),
     ),
     request_body = ShareRequest,
@@ -101,7 +102,7 @@ pub(crate) async fn post_permission_share(
             address,
             caller_id: caller.user_id(),
             principal,
-            role: parse_resource_role(&request.role)?,
+            role: parse_share_role(&request.role)?,
         })
         .await?;
     Ok(hal_json(GrantBody::from_grant(&grant, address)))

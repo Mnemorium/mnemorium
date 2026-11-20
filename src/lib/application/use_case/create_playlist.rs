@@ -99,6 +99,16 @@ where
                                 );
                                 CreatePlaylistError::InvalidName
                             }
+                            NamePolicyError::SurroundingWhitespace => {
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"surrounding_whitespace",
+                                    "rejected a client-supplied value"
+                                );
+                                CreatePlaylistError::InvalidName
+                            }
                             NamePolicyError::TooLong => {
                                 warn!(
                                     target: "security",
@@ -285,40 +295,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_playlist_trims_the_name() -> Result<(), Box<dyn Error>> {
+    async fn create_playlist_surrounding_whitespace_returns_invalid_name()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
-        let stored = playlist(9, 1, "Mix", false);
         let mut playlists = MockMusicPlaylistRepository::new();
-        playlists
-            .expect_search()
-            .times(1)
-            .withf(|filter| filter.name.as_deref() == Some("Mix") && filter.user_id == Some(1))
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        playlists
-            .expect_create()
-            .times(1)
-            .withf(|pending| pending.name() == "Mix")
-            .return_once(move |_| {
-                let found = stored.clone();
-                Box::pin(async move { Ok(found) })
-            });
+        playlists.expect_search().times(0);
+        playlists.expect_create().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = CreatePlaylist::new(Arc::clone(&harness.factory));
 
         // Act
-        let response = use_case
+        let result = use_case
             .execute(CreatePlaylistCommand::new(
                 1,
-                "  Mix  ".to_owned(),
+                " Mix ".to_owned(),
                 false,
                 None,
             ))
-            .await?;
+            .await;
 
         // Assert
-        assert_eq!(response.playlist().name(), "Mix");
+        assert!(matches!(result, Err(CreatePlaylistError::InvalidName)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 

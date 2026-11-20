@@ -1,6 +1,5 @@
 use axum::extract::{Path, State};
 use axum::response::Response;
-use chrono::NaiveDate;
 use serde::Deserialize;
 use tracing::warn;
 use utoipa::ToSchema;
@@ -10,7 +9,7 @@ use crate::application::port::UpdateSeriesCommand;
 use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
-    DATE_FORMAT, SeriesResponse, deserialize_field_update, parse_series_id,
+    SeriesResponse, deserialize_field_update, parse_series_id, parse_wire_date,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
@@ -32,13 +31,24 @@ pub(crate) struct PatchSeriesRequest {
     pub cover_image_id: FieldUpdate<NumericID>,
     /// Date of the first airing in `YYYY-MM-DD` form; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
-    #[schema(value_type = Option<String>, nullable = true, format = "date")]
+    #[schema(
+        value_type = Option<String>,
+        nullable = true,
+        format = "date",
+        min_length = 10,
+        max_length = 10
+    )]
     pub first_air_date: FieldUpdate<String>,
     /// Genres of the show; omit to keep them.
     #[schema(min_length = 1)]
     pub genres: Option<Vec<String>>,
-    /// Name of the show.
-    #[schema(min_length = 1, max_length = 100)]
+    /// Name of the show; must not begin or end with whitespace. The submitted
+    /// value is stored unchanged.
+    #[schema(
+        min_length = 1,
+        max_length = 100,
+        pattern = r"^[^\s\u0085](?:[\s\S]*[^\s\u0085])?$"
+    )]
     pub name: Option<String>,
     /// Plot of the show; omit to keep it.
     pub plot: Option<String>,
@@ -133,7 +143,7 @@ pub(crate) async fn patch_series(
     let series_id = parse_series_id(&series_id_value)?;
     let JsonObject(request) = payload;
     let first_air_date = request.first_air_date.try_map(|value| {
-        NaiveDate::parse_from_str(&value, DATE_FORMAT).map_err(|_| {
+        parse_wire_date(&value).map_err(|()| {
             warn!(
                 target: "security",
                 event = "input_validation_failed",

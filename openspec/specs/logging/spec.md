@@ -11,8 +11,7 @@ catalog of security events with the trigger, severity and fields of each.
 ### Requirement: REQ-LOGGING-001 — Every event reaches a file sink and a standard-output sink
 
 The server SHALL write every emitted event to a rotating file under `logs/`, named `mnemorium.log`, and to standard
-output. The file SHALL hold plain text; only standard output SHALL carry colour, and only when the installed
-configuration enables it.
+output. The file SHALL hold plain text; only standard output SHALL carry colour, and only when `logging.ansi` is true.
 
 #### Scenario: SCN-LOGGING-001-A — The file sink holds the event
 
@@ -26,54 +25,60 @@ configuration enables it.
 
 #### Scenario: SCN-LOGGING-001-C — The file sink is never coloured
 
-- **WHEN** colour is enabled for standard output and an event is emitted
+- **WHEN** `logging.ansi` is true and an event is emitted
 - **THEN** its file line carries no ANSI escape sequence
+
+#### Scenario: SCN-LOGGING-001-D — A disabled configuration colours nothing
+
+- **WHEN** `logging.ansi` is false and an event is emitted
+- **THEN** neither sink carries an ANSI escape sequence
 
 ### Requirement: REQ-LOGGING-002 — The file sink rotates and prunes
 
-The active file SHALL be replaced at the configured period — minutely, hourly or daily — or never. Rotated files SHALL
-be pruned to the configured maximum, and a maximum of zero SHALL keep every file.
+The active file SHALL be replaced at the `logging.rotation` period — minutely, hourly or daily — or never. Rotated files
+SHALL be pruned to `logging.max_files`, and a maximum of zero SHALL keep every file.
 
 #### Scenario: SCN-LOGGING-002-A — Rotation replaces the active file
 
-- **WHEN** the configured period elapses and a further event is emitted
+- **WHEN** the `logging.rotation` period elapses and a further event is emitted
 - **THEN** a new active file holds the further event and the previous file is retained
 
 #### Scenario: SCN-LOGGING-002-B — Pruning bounds the retained files
 
-- **WHEN** more files have rotated than the configured maximum allows
-- **THEN** only the configured number of files remains
+- **WHEN** more files have rotated than `logging.max_files` allows
+- **THEN** no more than `logging.max_files` files remain
 
 #### Scenario: SCN-LOGGING-002-C — A zero maximum keeps every file
 
-- **WHEN** the configured maximum is zero and files rotate
+- **WHEN** `logging.max_files` is zero and files rotate
 - **THEN** every rotated file is retained
 
 ### Requirement: REQ-LOGGING-003 — Verbosity is startup-only and bounded
 
-The verbosity directive SHALL be read once, at startup, and SHALL refine operational verbosity only. A value that is
-empty, that disables logging as a whole (`off`, `none`), or that carries a directive for the reserved target SHALL be
+The `logging.level` directive SHALL be read once, at startup, and SHALL refine operational verbosity only. A value that
+is empty, that disables logging as a whole (`off`, `none`), or that carries a directive for the reserved target SHALL be
 refused at startup, naming the setting and never the value.
 
 #### Scenario: SCN-LOGGING-003-A — An empty verbosity is refused
 
-- **WHEN** the installed configuration carries an empty verbosity value
+- **WHEN** the installed configuration carries an empty `logging.level` value
 - **THEN** startup fails naming the setting and the server does not accept requests
 
 #### Scenario: SCN-LOGGING-003-B — Disabling logging is refused
 
-- **WHEN** the installed configuration disables logging as a whole with `off` or `none`
+- **WHEN** `logging.level` is `off` or `none`
 - **THEN** startup fails naming the setting and the value is not echoed
 
 #### Scenario: SCN-LOGGING-003-C — Targeting the reserved target is refused
 
-- **WHEN** the installed configuration carries a directive that names the reserved target
+- **WHEN** `logging.level` carries a directive that names the reserved target
 - **THEN** startup fails naming the setting and the server does not accept requests
 
 #### Scenario: SCN-LOGGING-003-D — The value tunes operational verbosity
 
-- **WHEN** the verbosity excludes a diagnostics level and the server emits a diagnostics event
-- **THEN** that event reaches no sink
+- **WHEN** `logging.level` is installed and the server emits operational records at each severity
+- **THEN** the records at that severity and above reach a sink
+- **AND** the records below it reach none
 
 ### Requirement: REQ-LOGGING-004 — A catalogued event cannot be suppressed
 
@@ -217,7 +222,7 @@ The security-event catalog:
 | `enum_validation_failed`         | `warn`   | `field`, `reason`                                                                  | a discrete, finite list (for example `Role`) rejects a value                                |
 | `output_validation_failed`       | `warn`   | `reason`                                                                           | stored data fails to decode, or an integrity check fails                                    |
 | `authn_succeeded`                | `info`   | `actor`                                                                            | a credential is accepted                                                                    |
-| `authn_failed`                   | `warn`   | `claimed_identity`, `reason`                                                       | a credential is rejected; one reason, never distinguishing a bad identity from a bad secret |
+| `authn_failed`                   | `warn`   | `reason`                                                                           | a credential is rejected; one reason, never distinguishing a bad identity from a bad secret |
 | `authz_failed`                   | `warn`   | `actor`, `action`, `target`                                                        | an authorization decision denies an action                                                  |
 | `session_validation_failed`      | `warn`   | `reason`                                                                           | a token is missing, invalid or expired                                                      |
 | `rate_limit_exceeded`            | `warn`   | `route`, `reason`                                                                  | a request is rejected by a rate limiter                                                     |
@@ -250,27 +255,8 @@ The `authz_failed` fields are a closed vocabulary shared with the permission cat
 `moderate`, `manage`, `use`, `write`, `update`, `update_role`, `create`, `delete` or `patch_credential`; `target` is one
 of `library`, `gallery`, `playlist`, `file`, `upload` or `user`.
 
-An explicit, narrow exception to the field rule: `authn_failed.claimed_identity` is the submitted username, because it
-is the only identity available when authentication fails. It is escaped and bounded so it cannot forge a record
-(`REQ-LOGGING-011`).
-
 Events with no surface in this server are deliberately absent: import/export, network and TLS failures, payment,
 geolocation and consent, fraud, excessive use, and key rotation.
-
-### Requirement: REQ-LOGGING-011 — A claimed identity cannot forge a record
-
-The one catalogued field that carries a client-supplied identity SHALL be escaped so control characters cannot forge or
-split a record, and SHALL be bounded in length. It SHALL carry the submitted username and no other value.
-
-#### Scenario: SCN-LOGGING-011-A — A control character is escaped
-
-- **WHEN** a rejected login claims an identity carrying a newline
-- **THEN** the event carries the newline escaped and the record stays on one line
-
-#### Scenario: SCN-LOGGING-011-B — The identity is bounded
-
-- **WHEN** a rejected login claims an identity longer than the bound
-- **THEN** the event carries at most the bound and no further value
 
 ### Requirement: REQ-LOGGING-012 — Every authentication outcome is recorded
 
@@ -285,8 +271,8 @@ declared fields.
 
 #### Scenario: SCN-LOGGING-012-B — A rejection is uniform
 
-- **WHEN** a wrong password or an unknown username is rejected
-- **THEN** exactly one `authn_failed` event records the claimed identity and the same reason for both
+- **WHEN** a wrong password or an identifier that resolves to no account is rejected
+- **THEN** exactly one `authn_failed` event records the same reason for both
 
 #### Scenario: SCN-LOGGING-012-C — A token rejection names its reason
 

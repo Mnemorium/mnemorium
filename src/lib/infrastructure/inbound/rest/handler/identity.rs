@@ -17,14 +17,8 @@ mod post_token;
 /// The resource permission replacement endpoint.
 mod put_resource_permission;
 
-#[cfg(test)]
-pub(crate) use post_login::{LoginRequest, LoginResponse, post_login as handle_login};
-#[cfg(test)]
-pub(crate) use post_token::{TokenResponse, post_token as handle_token};
-
 use axum::middleware;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
@@ -41,6 +35,239 @@ use crate::infrastructure::inbound::rest::middleware::{LoginRateLimiter, authent
 use crate::infrastructure::inbound::rest::{ApiError, AppState, SelfLinks};
 use crate::infrastructure::outbound::jwt::JwtTokenProvider;
 
+/// Wire vocabulary of a resource visibility (`API-047`).
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "UPPERCASE")]
+#[non_exhaustive]
+pub(crate) enum VisibilityWire {
+    /// Adds no implicit grant.
+    Private,
+    /// Grants the viewer actions to every authenticated caller.
+    Public,
+    /// Grants discovery and metadata to every authenticated caller.
+    Restricted,
+}
+
+/// Wire vocabulary of the actions a permission decision names (`API-047`).
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub(crate) enum ActionWire {
+    /// Change a user's role.
+    ChangeRole,
+    /// Create a child of the addressed creation surface or resource.
+    CreateChild,
+    /// Remove the resource.
+    Delete,
+    /// Report that a resource exists and include it in a listing.
+    Discover,
+    /// Retrieve the original bytes of a resource.
+    Download,
+    /// Change the metadata of a resource.
+    EditMetadata,
+    /// Change the visibility or the grant set of a resource.
+    ManagePermissions,
+    /// Replace a user's credential.
+    ReplaceCredential,
+    /// Replace the binary content of a resource.
+    ReplaceMedia,
+    /// Add or revoke a read grant on a resource.
+    Share,
+    /// Play the audio or video bytes of a resource.
+    Stream,
+    /// Read the rendered content of a resource.
+    View,
+    /// Read the metadata of a resource.
+    ViewMetadata,
+}
+
+/// Wire vocabulary of a resource kind (`API-047`).
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[non_exhaustive]
+pub(crate) enum ResourceKindWire {
+    /// An audio asset.
+    Audio,
+    /// The shared catalogue container.
+    Catalogue,
+    /// An episode.
+    Episode,
+    /// A stored file.
+    File,
+    /// A gallery.
+    Gallery,
+    /// The gallery creation surface.
+    GalleryCollection,
+    /// An item of a gallery.
+    GalleryItem,
+    /// An image asset.
+    Image,
+    /// The instance root.
+    Instance,
+    /// The library container.
+    Library,
+    /// A film.
+    Movie,
+    /// A music album.
+    MusicAlbum,
+    /// A music group.
+    MusicGroup,
+    /// A music medium.
+    MusicMedium,
+    /// A music playlist.
+    MusicPlaylist,
+    /// A music recording.
+    MusicRecording,
+    /// The playlist creation surface.
+    PlaylistCollection,
+    /// A season of a show.
+    Season,
+    /// A show.
+    Series,
+    /// An upload session.
+    Upload,
+    /// The upload creation surface.
+    UploadCollection,
+    /// A user account.
+    User,
+    /// The user creation surface.
+    UserCollection,
+    /// A video asset.
+    Video,
+}
+
+/// Wire vocabulary of the child kind a grant permits (`API-047`).
+///
+/// `ADMIN` is absent because it is root-only and is never stored as a grant.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[non_exhaustive]
+pub(crate) enum ChildKindWire {
+    /// The grant permits every child kind.
+    All,
+    /// An audio asset.
+    Audio,
+    /// An episode.
+    Episode,
+    /// A stored file.
+    File,
+    /// A gallery.
+    Gallery,
+    /// A gallery item.
+    GalleryItem,
+    /// An image asset.
+    Image,
+    /// A film.
+    Movie,
+    /// A music album.
+    MusicAlbum,
+    /// A music group.
+    MusicGroup,
+    /// A music medium.
+    MusicMedium,
+    /// A music playlist.
+    MusicPlaylist,
+    /// A music recording.
+    MusicRecording,
+    /// A season.
+    Season,
+    /// A show.
+    Series,
+    /// An upload session.
+    Upload,
+    /// A user account.
+    User,
+    /// A video asset.
+    Video,
+}
+
+/// Wire vocabulary of a grant effect (`API-047`).
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "UPPERCASE")]
+#[non_exhaustive]
+pub(crate) enum GrantEffectWire {
+    /// The role's actions are permitted.
+    Allow,
+    /// The role's actions are refused.
+    Deny,
+}
+
+/// Wire vocabulary of a role a caller may store as a grant (`API-047`).
+///
+/// `OWNER` is absent because ownership is implicit and is never a user grant.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "UPPERCASE")]
+#[non_exhaustive]
+pub(crate) enum GrantRoleWire {
+    /// Contributes a child.
+    Contributor,
+    /// Reads, discovers and downloads.
+    Downloader,
+    /// Changes metadata and media.
+    Editor,
+    /// Manages the grant set.
+    Manager,
+    /// Reads and discovers.
+    Viewer,
+}
+
+/// Wire vocabulary of a read role a share grants (`API-047`).
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "UPPERCASE")]
+#[non_exhaustive]
+pub(crate) enum ShareRoleWire {
+    /// Reads, discovers and downloads.
+    Downloader,
+    /// Reads and discovers.
+    Viewer,
+}
+
+/// Wire vocabulary of a resource role a permission representation reports (`API-047`).
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "UPPERCASE")]
+#[non_exhaustive]
+pub(crate) enum ResourceRoleWire {
+    /// Contributes a child.
+    Contributor,
+    /// Reads, discovers and downloads.
+    Downloader,
+    /// Changes metadata and media.
+    Editor,
+    /// Manages the grant set.
+    Manager,
+    /// Owns the resource; implicit from ownership.
+    Owner,
+    /// Reads and discovers.
+    Viewer,
+}
+
+/// Wire vocabulary of a principal kind a grant may name (`API-047`).
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "UPPERCASE")]
+#[non_exhaustive]
+pub(crate) enum PrincipalKindWire {
+    /// A role principal.
+    Role,
+    /// A user principal.
+    User,
+}
+
+/// Wire vocabulary of a principal kind a representation reports (`API-047`).
+///
+/// `ROOT` is response-only: the root holds no stored grant, so a request never
+/// names it.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "UPPERCASE")]
+#[non_exhaustive]
+pub(crate) enum PrincipalKindResponseWire {
+    /// A role principal.
+    Role,
+    /// The instance root.
+    Root,
+    /// A user principal.
+    User,
+}
+
 /// Kind, identifier and stored identity of one addressed resource.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[non_exhaustive]
@@ -48,6 +275,7 @@ pub(crate) struct ResourceBody {
     /// Identifier of the entity in its own table.
     pub id: NumericID,
     /// Kind of the addressed resource.
+    #[schema(value_type = ResourceKindWire)]
     pub kind: String,
 }
 
@@ -69,9 +297,11 @@ pub(crate) struct PrincipalBody {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<NumericID>,
     /// Kind of the principal (`USER`, `ROLE` or `ROOT`).
+    #[schema(value_type = PrincipalKindResponseWire)]
     pub kind: String,
     /// Role the grant names, when the principal is a role.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<Role>)]
     pub role: Option<String>,
 }
 
@@ -113,6 +343,7 @@ pub(crate) struct ResourcePermissionBody {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner_id: Option<NumericID>,
     /// Visibility of the resource.
+    #[schema(value_type = VisibilityWire)]
     pub visibility: String,
 }
 
@@ -140,8 +371,10 @@ pub(crate) struct GrantBody {
     /// The resource the grant is stored on.
     pub address: ResourceBody,
     /// Kind of child the grant permits when its role includes `CreateChild`.
+    #[schema(value_type = ChildKindWire)]
     pub child_kind: String,
     /// Whether the grant allows or denies its role's actions.
+    #[schema(value_type = GrantEffectWire)]
     pub effect: String,
     /// Stored identity of the grant, when the caller may see grant internals.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -153,6 +386,7 @@ pub(crate) struct GrantBody {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub principal: Option<PrincipalBody>,
     /// The resource role the grant carries.
+    #[schema(value_type = ResourceRoleWire)]
     pub role: String,
 }
 
@@ -203,8 +437,10 @@ pub(crate) struct PrincipalPayload {
     /// Identifier of the user principal.
     pub id: Option<NumericID>,
     /// Kind of the principal (`USER` or `ROLE`).
+    #[schema(value_type = PrincipalKindWire)]
     pub kind: String,
     /// Role the principal names, when the principal is a role.
+    #[schema(value_type = Option<Role>)]
     pub role: Option<String>,
 }
 
@@ -222,14 +458,10 @@ impl PrincipalPayload {
                 let stored = self.role.ok_or_else(|| {
                     ApiError::UnprocessableEntity("the principal role is required".to_owned())
                 })?;
-                let role = Role::from_wire(&stored).ok_or_else(|| {
-                    ApiError::UnprocessableEntity("unknown principal role".to_owned())
-                })?;
+                let role = Role::from_wire(&stored).ok_or_else(|| ApiError::reject_enum("role"))?;
                 Ok(Principal::Role(role))
             }
-            _ => Err(ApiError::UnprocessableEntity(
-                "unknown principal kind".to_owned(),
-            )),
+            _ => Err(ApiError::reject_enum("kind")),
         }
     }
 }
@@ -239,12 +471,15 @@ impl PrincipalPayload {
 #[non_exhaustive]
 pub(crate) struct GrantPayload {
     /// Kind of child the grant permits when its role includes `CreateChild`.
+    #[schema(value_type = Option<ChildKindWire>)]
     pub child_kind: Option<String>,
     /// Whether the grant allows or denies its role's actions.
+    #[schema(value_type = GrantEffectWire)]
     pub effect: String,
     /// The user principal the grant applies to.
     pub principal: PrincipalPayload,
     /// The resource role the grant carries.
+    #[schema(value_type = GrantRoleWire)]
     pub role: String,
 }
 
@@ -254,16 +489,13 @@ impl GrantPayload {
         let principal = self.principal.into_principal()?;
         let child_kind = match self.child_kind.as_deref() {
             None => ChildKind::All,
-            Some(value) => ChildKind::from_wire(value)
-                .ok_or_else(|| ApiError::UnprocessableEntity("unknown child kind".to_owned()))?,
+            Some(value) => parse_child_kind(value)?,
         };
-        let effect = GrantEffect::from_wire(&self.effect)
-            .ok_or_else(|| ApiError::UnprocessableEntity("unknown grant effect".to_owned()))?;
         Ok(GrantRequest {
             child_kind,
-            effect,
+            effect: parse_grant_effect(&self.effect)?,
             principal,
-            role: parse_resource_role(&self.role)?,
+            role: parse_grant_role(&self.role)?,
         })
     }
 }
@@ -310,58 +542,49 @@ pub(crate) fn parse_address(kind: &str, id: &str) -> Result<ResourceRef, ApiErro
 
 /// Parse an action from its wire representation.
 pub(crate) fn parse_action(value: &str) -> Result<Action, ApiError> {
-    Action::from_wire(value).ok_or_else(|| {
-        warn!(
-            target: "security",
-            event = "input_validation_failed",
-            field = "action",
-            reason = "invalid_enum",
-            "rejected an unknown action"
-        );
-        ApiError::UnprocessableEntity("unknown action".to_owned())
-    })
+    Action::from_wire(value).ok_or_else(|| ApiError::reject_enum("action"))
 }
 
 /// Parse a resource kind from its wire representation.
 pub(crate) fn parse_resource_kind(value: &str) -> Result<ResourceKind, ApiError> {
-    ResourceKind::from_wire(value).ok_or_else(|| {
-        warn!(
-            target: "security",
-            event = "input_validation_failed",
-            field = "resource_kind",
-            reason = "invalid_enum",
-            "rejected an unknown resource kind"
-        );
-        ApiError::UnprocessableEntity("unknown resource kind".to_owned())
-    })
+    ResourceKind::from_wire(value).ok_or_else(|| ApiError::reject_enum("resource_kind"))
 }
 
-/// Parse a resource role from its wire representation.
-pub(crate) fn parse_resource_role(value: &str) -> Result<ResourceRole, ApiError> {
-    ResourceRole::from_wire(value).ok_or_else(|| {
-        warn!(
-            target: "security",
-            event = "input_validation_failed",
-            field = "role",
-            reason = "invalid_enum",
-            "rejected an unknown resource role"
-        );
-        ApiError::UnprocessableEntity("unknown resource role".to_owned())
-    })
+/// Parse a role a caller may store as a grant.
+///
+/// `OWNER` is implicit from ownership and is never a user grant, so it is
+/// outside the published vocabulary and is rejected as an unknown value.
+pub(crate) fn parse_grant_role(value: &str) -> Result<ResourceRole, ApiError> {
+    ResourceRole::from_wire(value)
+        .filter(|role| role.is_grantable_by_user())
+        .ok_or_else(|| ApiError::reject_enum("role"))
+}
+
+/// Parse a read role a share grants.
+pub(crate) fn parse_share_role(value: &str) -> Result<ResourceRole, ApiError> {
+    ResourceRole::from_wire(value)
+        .filter(|role| matches!(role, ResourceRole::Viewer | ResourceRole::Downloader))
+        .ok_or_else(|| ApiError::reject_enum("role"))
+}
+
+/// Parse a child kind a grant may permit.
+///
+/// `ADMIN` is root-only and is never stored as a grant, so it is outside the
+/// published vocabulary and is rejected as an unknown value.
+pub(crate) fn parse_child_kind(value: &str) -> Result<ChildKind, ApiError> {
+    ChildKind::from_wire(value)
+        .filter(|kind| *kind != ChildKind::Admin)
+        .ok_or_else(|| ApiError::reject_enum("child_kind"))
+}
+
+/// Parse a grant effect from its wire representation.
+pub(crate) fn parse_grant_effect(value: &str) -> Result<GrantEffect, ApiError> {
+    GrantEffect::from_wire(value).ok_or_else(|| ApiError::reject_enum("effect"))
 }
 
 /// Parse a visibility from its wire representation.
 pub(crate) fn parse_visibility(value: &str) -> Result<Visibility, ApiError> {
-    Visibility::from_wire(value).ok_or_else(|| {
-        warn!(
-            target: "security",
-            event = "input_validation_failed",
-            field = "visibility",
-            reason = "invalid_enum",
-            "rejected an unknown visibility"
-        );
-        ApiError::UnprocessableEntity("unknown visibility".to_owned())
-    })
+    Visibility::from_wire(value).ok_or_else(|| ApiError::reject_enum("visibility"))
 }
 
 /// Register the protected routes of the identity bounded context.

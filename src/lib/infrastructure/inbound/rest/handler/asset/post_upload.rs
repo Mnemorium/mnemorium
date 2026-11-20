@@ -10,10 +10,12 @@ use crate::application::port::{
 };
 use crate::domain::NumericID;
 use crate::domain::model::{DIGEST_HEX_LENGTH, IntegrityHash};
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::asset::UploadSessionLinks;
+use crate::infrastructure::inbound::rest::handler::{JsonObject, TIMESTAMP_FORMAT};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, HAL_CONTENT_TYPE};
+use crate::infrastructure::inbound::rest::{
+    AllowMethods, ApiError, AppState, ErrorBody, HAL_CONTENT_TYPE, UriReference,
+};
 
 /// Payload initializing an upload session.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -50,7 +52,7 @@ struct PostUploadResponse {
     pub chunk_size: u64,
     /// Date and time at which the upload session expires, as
     /// `YYYY-MM-DDTHH:MM:SS`.
-    #[schema(example = json!("2026-01-01T12:00:00"))]
+    #[schema(format = "date-time", example = json!("2026-01-01T12:00:00Z"))]
     pub expires_at: String,
     /// Links to the created upload session.
     #[serde(rename = "_links")]
@@ -65,10 +67,7 @@ impl From<BeginUploadResponseData> for PostUploadResponse {
         let upload_id = response.upload_id();
         Self {
             chunk_size: response.chunk_size(),
-            expires_at: response
-                .expires_at()
-                .format("%Y-%m-%dT%H:%M:%S")
-                .to_string(),
+            expires_at: response.expires_at().format(TIMESTAMP_FORMAT).to_string(),
             links: UploadSessionLinks::for_upload(upload_id),
             upload_id,
         }
@@ -111,7 +110,7 @@ impl From<BeginUploadError> for ApiError {
             body = PostUploadResponse,
             content_type = "application/hal+json",
             headers(
-                ("Location" = String, description = "Canonical URI of the created upload session"),
+                ("Location" = inline(UriReference), description = "Canonical URI of the created upload session"),
             ),
             description = "Upload session created"
         ),
@@ -132,7 +131,7 @@ impl From<BeginUploadError> for ApiError {
             body = ErrorBody,
             content_type = "application/hal+json",
             headers(
-                ("Allow" = String, description = "HTTP methods accepted by this path"),
+                ("Allow" = inline(AllowMethods), description = "HTTP methods accepted by this path"),
             ),
             description = "Method not allowed"
         ),

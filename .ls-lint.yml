@@ -6,9 +6,11 @@ ls:
   migrations:
     .*: exists:0  # any non-sql scripts aren't allowed
     .sql: snake_case
-  test/seed/api:
+  test/api/seed:
     .sql: snake_case
-  test/seed/perf:
+  test/performance/seed:
+    .sql: snake_case
+  test/system/seed:
     .sql: snake_case
 
   .rs: snake_case
@@ -29,4 +31,5 @@ ignore:
   - test/TODO.md
   - test/performance/node_modules
   - test/performance/generated
+  - test/generated
   - openspec

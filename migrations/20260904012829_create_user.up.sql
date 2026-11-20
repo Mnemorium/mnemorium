@@ -14,7 +14,6 @@ CREATE TABLE user (
     CONSTRAINT chk_user_role CHECK (role IN ('ADMIN', 'STANDARD')),
     CONSTRAINT chk_user_username CHECK (
         length(username) BETWEEN 4 AND 100
-        AND username = lower(username)
         AND username = trim(username)
     ),
     CONSTRAINT chk_user_email CHECK (

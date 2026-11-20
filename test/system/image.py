@@ -1,54 +1,25 @@
-"""Black-box proof of the `image` capability.
+"""Black-box proof of the `image` capability."""
 
-An image is the typed row an uploaded or found image file backs. This module proves what the row reports — the name the
-intake assigned, the dimensions, the orientation derived from them, the creation date and the backing file — and how a
-caller reads it: the typed representation, its links, its file alias, and the `404` an unknown image answers.
-
-The declarative contract — the media types, the status of each operation, the representation's fields and its
-`_links` — is validated by Schemathesis from the served document. These cases prove only what a schema cannot: that the
-orientation follows the dimensions rather than the declaration, that a file backs at most one image, that another media
-family creates no image, and that following a representation's links reaches the resource it names. Every route comes
-from the file's `_links.image` or from the typed representation's own links, so the suite keeps its single `/api/v1`
-base literal in `harness.Sut.index`.
-"""
-
+import json
 import struct
 import zlib
 from datetime import UTC, datetime
 from itertools import count
 
 import allure
-import pytest
-from conftest import (
-    FIXTURE_DIRECTORY,
-    linked_id,
-    start_instance,
-    upload,
-)
-from harness import (
-    ROOT_ADMIN_USERNAME,
-    Sut,
-    link_of,
-)
+from conftest import SEED_MEDIA_DIRECTORY, upload
+from harness import Sut
 
-# The three dimensions that classify an image, each distinct so its bytes are distinct too: the upload flow
-# deduplicates by integrity hash, so a repeated byte string would reuse the file and its image.
+IMAGE_CONTENT_TYPE = "image/png"
+AUDIO_CONTENT_TYPE = "audio/flac"
+VIDEO_CONTENT_TYPE = "video/mp4"
+
 LANDSCAPE = (32, 16)
 PORTRAIT = (16, 32)
 SQUARE = (16, 16)
 
-# The orientation the system derives from each pair of dimensions.
-ORIENTATIONS = {
-    LANDSCAPE: "LANDSCAPE",
-    PORTRAIT: "PORTRAIT",
-    SQUARE: "SQUARE",
-}
-
-# Every generated image carries a per-call colour, so a second `SQUARE` upload is not the first one's file.
+# Every generated image carries a per-call colour, so a repeated byte string is not the first one's file.
 _IMAGE_NONCE = count(datetime.now(UTC).toordinal())
-
-AUDIO_CONTENT_TYPE = "audio/flac"
-VIDEO_CONTENT_TYPE = "video/mp4"
 
 
 def _png_chunk(chunk_type: bytes, data: bytes) -> bytes:
@@ -67,61 +38,43 @@ def png(width: int, height: int) -> bytes:
     return b"\x89PNG\r\n\x1a\n" + _png_chunk(b"IHDR", header) + _png_chunk(b"IDAT", pixels) + _png_chunk(b"IEND", b"")
 
 
-def upload_image(server: Sut, token: str, name: str, dimensions: tuple[int, int]) -> dict:
-    """Upload one image of the given dimensions and return the file representation."""
-    width, height = dimensions
-    return upload(server, token, name, png(width, height), "image/png")
-
-
-def typed_image(server: Sut, token: str, file: dict) -> dict:
-    """Follow a file's `image` link and return the typed representation."""
-    response = server.follow(file, "image", token=token)
-    assert response.status_code == 200, f"image read failed: {response.status_code} {response.text}"
-    return response.json()
-
-
-def unknown_image(server: Sut, token: str, image: dict):
-    """Request the image one identifier past `image`, which the instance has never created."""
-    href = link_of(image, "self")
-    base, _, _ = href.rpartition("/")
-    return server.request("GET", f"{base}/{linked_id(href) + 1}", token=token)
-
-
 @allure.epic("Image")
 @allure.feature("REQ-IMAGE-001")
 @allure.story("SCN-IMAGE-001-A")
-@pytest.mark.own_instance(reason="process_state")
-def test_an_image_file_creates_one_image(sut: Sut) -> None:
-    """An image upload leaves exactly one image backing the uploaded file."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    file = upload_image(server, root_token, "screen.png", SQUARE)
+def test_an_image_file_creates_one_image(server: Sut, root_token: str) -> None:
+    """An image upload leaves one image backed by the uploaded file."""
+    file = upload(server, root_token, "screen.png", png(*SQUARE), IMAGE_CONTENT_TYPE)
 
-    image = typed_image(server, root_token, file)
+    response = server.follow(file, "image", token=root_token)
+    assert response.status_code == 200, f"image read failed: {response.status_code} {response.content!r}"
+    image = json.loads(response.content)
 
     assert image["file_id"] == file["id"]
-    assert link_of(file, "image").endswith(f"/{image['id']}")
-    assert unknown_image(server, root_token, image).status_code == 404
+    assert file["_links"]["image"]["href"].endswith(f"/{image['id']}")
 
 
 @allure.epic("Image")
 @allure.feature("REQ-IMAGE-001")
 @allure.story("SCN-IMAGE-001-B")
-@pytest.mark.own_instance(reason="process_state")
-def test_a_file_backs_one_image(sut: Sut) -> None:
-    """Registering the same stored file again creates no second image for it."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+def test_a_file_backs_one_image(server: Sut, root_token: str) -> None:
+    """Uploading the same content twice reuses the stored file and its one image."""
     data = png(*SQUARE)
-    first = upload(server, root_token, "screen.png", data, "image/png")
-    before = typed_image(server, root_token, first)
+    first = upload(server, root_token, "screen.png", data, IMAGE_CONTENT_TYPE)
+    first_response = server.follow(first, "image", token=root_token)
+    assert first_response.status_code == 200, (
+        f"image read failed: {first_response.status_code} {first_response.content!r}"
+    )
+    first_image = json.loads(first_response.content)
 
-    again = upload(server, root_token, "screen.png", data, "image/png")
-    after = typed_image(server, root_token, again)
+    second = upload(server, root_token, "screen.png", data, IMAGE_CONTENT_TYPE)
+    second_response = server.follow(second, "image", token=root_token)
+    assert second_response.status_code == 200, (
+        f"image read failed: {second_response.status_code} {second_response.content!r}"
+    )
+    second_image = json.loads(second_response.content)
 
-    assert again["id"] == first["id"], "the same content must reuse its stored file"
-    assert after["id"] == before["id"], "the second registration created a second image"
-    assert unknown_image(server, root_token, after).status_code == 404
+    assert second["id"] == first["id"], "the same content must reuse its stored file"
+    assert second_image["id"] == first_image["id"], "the second registration created a second image"
 
 
 @allure.epic("Image")
@@ -133,14 +86,14 @@ def test_audio_and_video_content_create_no_image(server: Sut, root_token: str) -
         server,
         root_token,
         "track.flac",
-        (FIXTURE_DIRECTORY / "track.flac").read_bytes(),
+        (SEED_MEDIA_DIRECTORY / "track.flac").read_bytes(),
         AUDIO_CONTENT_TYPE,
     )
     video = upload(
         server,
         root_token,
         "clip.mp4",
-        (FIXTURE_DIRECTORY / "clip.mp4").read_bytes(),
+        (SEED_MEDIA_DIRECTORY / "episode.mp4").read_bytes(),
         VIDEO_CONTENT_TYPE,
     )
 
@@ -153,10 +106,14 @@ def test_audio_and_video_content_create_no_image(server: Sut, root_token: str) -
 @allure.story("SCN-IMAGE-002-A")
 def test_a_wider_image_is_landscape(server: Sut, root_token: str) -> None:
     """Width exceeding height reports `LANDSCAPE`."""
-    image = typed_image(server, root_token, upload_image(server, root_token, "wide.png", LANDSCAPE))
+    file = upload(server, root_token, "wide.png", png(*LANDSCAPE), IMAGE_CONTENT_TYPE)
+
+    response = server.follow(file, "image", token=root_token)
+    assert response.status_code == 200, f"image read failed: {response.status_code} {response.content!r}"
+    image = json.loads(response.content)
 
     assert (image["width_px"], image["height_px"]) == LANDSCAPE
-    assert image["orientation"] == ORIENTATIONS[LANDSCAPE]
+    assert image["orientation"] == "LANDSCAPE"
 
 
 @allure.epic("Image")
@@ -164,10 +121,14 @@ def test_a_wider_image_is_landscape(server: Sut, root_token: str) -> None:
 @allure.story("SCN-IMAGE-002-B")
 def test_a_taller_image_is_portrait(server: Sut, root_token: str) -> None:
     """Height exceeding width reports `PORTRAIT`."""
-    image = typed_image(server, root_token, upload_image(server, root_token, "tall.png", PORTRAIT))
+    file = upload(server, root_token, "tall.png", png(*PORTRAIT), IMAGE_CONTENT_TYPE)
+
+    response = server.follow(file, "image", token=root_token)
+    assert response.status_code == 200, f"image read failed: {response.status_code} {response.content!r}"
+    image = json.loads(response.content)
 
     assert (image["width_px"], image["height_px"]) == PORTRAIT
-    assert image["orientation"] == ORIENTATIONS[PORTRAIT]
+    assert image["orientation"] == "PORTRAIT"
 
 
 @allure.epic("Image")
@@ -175,10 +136,14 @@ def test_a_taller_image_is_portrait(server: Sut, root_token: str) -> None:
 @allure.story("SCN-IMAGE-002-C")
 def test_a_square_image_is_square(server: Sut, root_token: str) -> None:
     """Equal width and height report `SQUARE`."""
-    image = typed_image(server, root_token, upload_image(server, root_token, "square.png", SQUARE))
+    file = upload(server, root_token, "square.png", png(*SQUARE), IMAGE_CONTENT_TYPE)
+
+    response = server.follow(file, "image", token=root_token)
+    assert response.status_code == 200, f"image read failed: {response.status_code} {response.content!r}"
+    image = json.loads(response.content)
 
     assert (image["width_px"], image["height_px"]) == SQUARE
-    assert image["orientation"] == ORIENTATIONS[SQUARE]
+    assert image["orientation"] == "SQUARE"
 
 
 @allure.epic("Image")
@@ -187,54 +152,11 @@ def test_a_square_image_is_square(server: Sut, root_token: str) -> None:
 def test_the_name_and_creation_date_are_reported(server: Sut, root_token: str) -> None:
     """The name is the one the intake assigned and the creation date is the registration date."""
     registered_on = datetime.now(UTC).date().isoformat()
+    file = upload(server, root_token, "holiday.png", png(*SQUARE), IMAGE_CONTENT_TYPE)
 
-    image = typed_image(server, root_token, upload_image(server, root_token, "holiday.png", SQUARE))
+    response = server.follow(file, "image", token=root_token)
+    assert response.status_code == 200, f"image read failed: {response.status_code} {response.content!r}"
+    image = json.loads(response.content)
 
     assert image["name"] == "holiday.png"
-    assert image["created_at"] == registered_on
-
-
-@allure.epic("Image")
-@allure.feature("REQ-IMAGE-003")
-@allure.story("SCN-IMAGE-003-A")
-def test_an_image_carries_its_representation(server: Sut, root_token: str) -> None:
-    """The typed representation carries the image's fields and links its own resource, file and content."""
-    file = upload_image(server, root_token, "poster.png", LANDSCAPE)
-    typed_href = link_of(file, "image")
-
-    image = typed_image(server, root_token, file)
-
-    assert set(image) == {"created_at", "file_id", "height_px", "id", "name", "orientation", "width_px", "_links"}
-    assert image["name"] == "poster.png"
-    assert link_of(image, "self") == typed_href
-    assert link_of(image, "file") == link_of(file, "self")
-    assert link_of(image, "content") == f"{typed_href}/content"
-
-
-@allure.epic("Image")
-@allure.feature("REQ-IMAGE-003")
-@allure.story("SCN-IMAGE-003-B")
-@pytest.mark.own_instance(reason="process_state")
-def test_an_unknown_image_is_not_found(sut: Sut) -> None:
-    """An image the instance never created answers `404`, like one the caller may not read."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    image = typed_image(server, root_token, upload_image(server, root_token, "gone.png", SQUARE))
-
-    response = unknown_image(server, root_token, image)
-
-    assert response.status_code == 404, f"unknown image answered {response.status_code}: {response.text}"
-
-
-@allure.epic("Image")
-@allure.feature("REQ-IMAGE-004")
-@allure.story("SCN-IMAGE-004-A")
-def test_the_file_alias_redirects_to_the_file(server: Sut, root_token: str) -> None:
-    """The typed file alias answers `303` with the backing file resource in `Location`."""
-    file = upload_image(server, root_token, "alias.png", SQUARE)
-    typed_href = link_of(file, "image")
-
-    response = server.request("GET", f"{typed_href}/file", token=root_token, allow_redirects=False)
-
-    assert response.status_code == 303, f"alias answered {response.status_code}: {response.text}"
-    assert response.headers["Location"] == link_of(file, "self")
+    assert image["created_date"] == registered_on

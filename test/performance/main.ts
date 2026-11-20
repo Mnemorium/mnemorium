@@ -47,7 +47,7 @@ export const options: Options = {
 export async function setup(): Promise<RunContext> {
   const client = anonymousClient();
   const login = await client.postLogin({
-    body: { password: ACCOUNT.password, username: ACCOUNT.username },
+    body: { identifier: ACCOUNT.username, password: ACCOUNT.password },
   });
   if (login.status !== 200) {
     fail(`setup: login answered ${login.status}`);

@@ -1,6 +1,5 @@
 use axum::extract::{Path, State};
 use axum::response::Response;
-use chrono::NaiveDate;
 use serde::Deserialize;
 use tracing::warn;
 use utoipa::ToSchema;
@@ -11,7 +10,7 @@ use crate::domain::NumericID;
 use crate::domain::model::ProductionType;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
-    AlbumResponse, DATE_FORMAT, ProductionTypeRequest, deserialize_field_update, parse_album_id,
+    AlbumResponse, ProductionTypeRequest, deserialize_field_update, parse_album_id, parse_wire_date,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
@@ -32,8 +31,13 @@ pub(crate) struct PatchAlbumRequest {
     /// Identifier of the music group the album belongs to.
     #[schema(example = 1)]
     pub music_group_id: Option<NumericID>,
-    /// Name of the album.
-    #[schema(min_length = 1, max_length = 100)]
+    /// Name of the album; must not begin or end with whitespace. The submitted
+    /// value is stored unchanged.
+    #[schema(
+        min_length = 1,
+        max_length = 100,
+        pattern = r"^[^\s\u0085](?:[\s\S]*[^\s\u0085])?$"
+    )]
     pub name: Option<String>,
     /// Production type of the album; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
@@ -41,7 +45,13 @@ pub(crate) struct PatchAlbumRequest {
     pub production_type: FieldUpdate<ProductionTypeRequest>,
     /// Date of the release in `YYYY-MM-DD` form; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
-    #[schema(value_type = Option<String>, nullable = true, format = "date")]
+    #[schema(
+        value_type = Option<String>,
+        nullable = true,
+        format = "date",
+        min_length = 10,
+        max_length = 10
+    )]
     pub release_date: FieldUpdate<String>,
 }
 
@@ -139,7 +149,7 @@ pub(crate) async fn patch_album(
         FieldUpdate::Set(value) => FieldUpdate::Set(ProductionType::from(value)),
     };
     let release_date = request.release_date.try_map(|value| {
-        NaiveDate::parse_from_str(&value, DATE_FORMAT).map_err(|_| {
+        parse_wire_date(&value).map_err(|()| {
             warn!(
                 target: "security",
                 event = "input_validation_failed",

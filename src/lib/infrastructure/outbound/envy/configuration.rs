@@ -6,6 +6,8 @@ use crate::domain::model::{
     PartialLogging, PartialPersistence, PartialRateLimit, PartialSecurity, PartialSqlite3,
     Rotation,
 };
+#[cfg(feature = "test-seed")]
+use crate::domain::model::{PartialSeed, SeedProfile};
 use crate::domain::port::{ConfigurationSourceError, EnvironmentConfiguration};
 
 /// Prefix every server environment variable carries.
@@ -54,6 +56,9 @@ struct EnvConfiguration {
     security_rate_limit_period_seconds: Option<u64>,
     /// `security.rate_limit.trusted_proxies`.
     security_rate_limit_trusted_proxies: Option<String>,
+    /// `seed.profile`.
+    #[cfg(feature = "test-seed")]
+    seed_profile: Option<SeedProfile>,
 }
 
 impl From<EnvConfiguration> for PartialConfiguration {
@@ -94,6 +99,13 @@ impl From<EnvConfiguration> for PartialConfiguration {
                     period_seconds: env.security_rate_limit_period_seconds,
                     trusted_proxies: env.security_rate_limit_trusted_proxies,
                 },
+            },
+            // The seed profile names a fixture a `test-seed` build carries; a
+            // shipped build has no such setting, so the variable is discarded
+            // like any unknown name.
+            #[cfg(feature = "test-seed")]
+            seed: PartialSeed {
+                profile: env.seed_profile,
             },
         }
     }
@@ -139,11 +151,14 @@ impl EnvConfigurationSource {
                 let raw = error.to_string();
                 let variable = raw.rsplit_once(" provided by ").map_or_else(
                     || {
-                        // envy names the field for a typed value, but not for an
-                        // unsupported enum variant; the rotation is the only enum
-                        // the environment carries, so the rejection names it.
+                        // envy names the field for a typed value, but not for a
+                        // value a domain type parses itself; the rotation and the
+                        // seed profile are the only two the environment carries,
+                        // so each rejection names its setting.
                         if raw.starts_with("unknown variant") {
                             format!("{ENVIRONMENT_PREFIX}LOGGING_ROTATION")
+                        } else if raw.starts_with("seed.profile") {
+                            format!("{ENVIRONMENT_PREFIX}SEED_PROFILE")
                         } else {
                             format!("{ENVIRONMENT_PREFIX}*")
                         }
@@ -278,6 +293,41 @@ mod tests {
         );
         assert!(
             !message.contains("many"),
+            "the rejection must not carry the value, got: {message:?}"
+        );
+    }
+
+    #[cfg(feature = "test-seed")]
+    #[test]
+    fn environment_configuration_seed_profile_maps_to_its_variable() -> Result<(), Box<dyn Error>> {
+        // Act
+        let partial = adapter([variable("MNEMORIUM_SEED_PROFILE", "SYSTEM")])?;
+
+        // Assert
+        assert_eq!(
+            partial.seed.profile,
+            Some(SeedProfile::System),
+            "the profile is accepted case-insensitively"
+        );
+        Ok(())
+    }
+
+    #[cfg(feature = "test-seed")]
+    #[test]
+    fn environment_configuration_unknown_seed_profile_names_the_variable() {
+        // Act
+        let error =
+            EnvConfigurationSource::read_from([variable("MNEMORIUM_SEED_PROFILE", "nightly")])
+                .err();
+
+        // Assert
+        let message = error.as_ref().map(ToString::to_string).unwrap_or_default();
+        assert!(
+            message.contains("MNEMORIUM_SEED_PROFILE"),
+            "the rejection must name the variable, got: {message:?}"
+        );
+        assert!(
+            !message.contains("nightly"),
             "the rejection must not carry the value, got: {message:?}"
         );
     }

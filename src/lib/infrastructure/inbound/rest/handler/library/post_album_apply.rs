@@ -7,7 +7,9 @@ use crate::application::port::{AlbumPlacement, ApplyMusicAlbumCommand};
 use crate::domain::NumericID;
 use crate::domain::model::{ExternalRef, ProviderId};
 use crate::infrastructure::inbound::rest::handler::JsonObject;
-use crate::infrastructure::inbound::rest::handler::library::{AlbumResponse, parse_album_id};
+use crate::infrastructure::inbound::rest::handler::library::{
+    AlbumResponse, MusicProviderRequest, parse_album_id,
+};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
@@ -19,7 +21,7 @@ pub(crate) struct ApplyReferenceRequest {
     #[schema(example = "75b3b57b-5f6f-3c1f-9b7e-9b2f0a2b4b6e")]
     pub id: String,
     /// Provider that issued the identifier (`musicbrainz`).
-    #[schema(example = "musicbrainz")]
+    #[schema(value_type = MusicProviderRequest, example = "musicbrainz")]
     pub provider: String,
 }
 

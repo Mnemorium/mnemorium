@@ -6,7 +6,8 @@ use utoipa::ToSchema;
 use crate::application::port::PutResourcePermissionCommand;
 use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::identity::{
-    GrantPayload, ResourcePermissionBody, parse_address, parse_visibility,
+    GrantPayload, ResourceKindWire, ResourcePermissionBody, VisibilityWire, parse_address,
+    parse_visibility,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
@@ -18,6 +19,7 @@ pub(crate) struct PutPermissionRequest {
     /// The complete user grant set that replaces the stored one.
     pub grants: Vec<GrantPayload>,
     /// The visibility the resource takes.
+    #[schema(value_type = VisibilityWire)]
     pub visibility: String,
 }
 
@@ -31,7 +33,7 @@ pub(crate) struct PutPermissionRequest {
     path = "/permission/resource/{kind}/{id}",
     tag = "identity",
     params(
-        ("kind" = String, Path, description = "Kind of the addressed resource"),
+        ("kind" = inline(ResourceKindWire), Path, description = "Kind of the addressed resource"),
         ("id" = NumericID, Path, description = "Identifier of the addressed resource"),
     ),
     request_body = PutPermissionRequest,

@@ -14,15 +14,17 @@ use crate::application::port::{
 use crate::application::use_case::media_path;
 use crate::domain::NumericID;
 use crate::domain::model::{
-    Audio, File, GalleryItemMedia, Image, ProbedAudio, ProbedImage, ProbedVideo, Video,
+    Audio, File, GalleryItemMedia, Image, ProbedAudio, ProbedImage, ProbedVideo, ResourceKind,
+    Video, Visibility,
 };
 use crate::domain::port::{
     AssetUnitOfWork, AudioFilter, AudioRepository as _, ContentTypeSniffer, EpisodeFilter,
-    FileFilter, FileRepository as _, GalleryItemFilter, GalleryRepository as _, ImageFilter,
-    ImageRepository as _, LibraryUnitOfWork, MediaEntry, MediaProbe, MediaSource, MimeTypeFilter,
-    MimeTypeRepository as _, MovieFilter, MovieRepository as _, MusicAlbumRepository as _,
-    MusicRecordingFilter, RepositoryError, SeriesRepository as _, UnitOfWork, UnitOfWorkFactory,
-    UserFilter, UserRepository as _, UserUnitOfWork, VideoFilter, VideoRepository as _,
+    FileFilter, FileRepository as _, GalleryItemFilter, GalleryRepository as _, IdentityUnitOfWork,
+    ImageFilter, ImageRepository as _, LibraryUnitOfWork, MediaEntry, MediaProbe, MediaSource,
+    MimeTypeFilter, MimeTypeRepository as _, MovieFilter, MovieRepository as _,
+    MusicAlbumRepository as _, MusicRecordingFilter, NewResource, RepositoryError,
+    ResourceRepository as _, SeriesRepository as _, UnitOfWork, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork, VideoFilter, VideoRepository as _,
 };
 
 /// Identifier of the Root Admin, who owns a file the server did not store.
@@ -135,7 +137,7 @@ pub(crate) struct IngestMedia<F, N, P, S> {
 impl<F, N, P, S> IngestMedia<F, N, P, S>
 where
     F: UnitOfWorkFactory,
-    F::Uow: AssetUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: AssetUnitOfWork + IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
     N: ContentTypeSniffer,
     P: MediaProbe,
     S: MediaSource,
@@ -530,6 +532,29 @@ where
             }
         };
 
+        // A scanned file is a resource exactly as an uploaded one is: the scan
+        // registers the `PRIVATE`, Root-Admin-owned `FILE` resource that
+        // `complete_upload` writes, at the file's own identifier, so the file
+        // becomes discoverable by the identifier its link promises
+        // (`REQ-AUTHORIZATION-025`). A concurrent driver's row is tolerated.
+        let resource = unit_of_work
+            .resources()
+            .create(NewResource {
+                auth_parent: None,
+                entity_id: file.id(),
+                kind: ResourceKind::File,
+                owner_id: Some(root_admin.id()),
+                visibility: Visibility::Private,
+            })
+            .await;
+        match resource {
+            Ok(_) | Err(RepositoryError::AlreadyExist) => {}
+            Err(error) => {
+                discard(unit_of_work).await;
+                return Err(IngestMediaError::Unknown(error.into()));
+            }
+        }
+
         match self.insert_media_row(&mut unit_of_work, &file, media).await {
             Ok(()) => {
                 unit_of_work
@@ -743,7 +768,7 @@ where
 impl<F, N, P, S> IngestMediaUseCase for IngestMedia<F, N, P, S>
 where
     F: UnitOfWorkFactory,
-    F::Uow: AssetUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: AssetUnitOfWork + IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
     N: ContentTypeSniffer,
     P: MediaProbe,
     S: MediaSource,
@@ -842,11 +867,14 @@ fn media_kind(mime_type_id: &str) -> Option<MediaKind> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::{AudioError, FileError, MimeType, Orientation, Origin, Role, User};
+    use crate::domain::model::{
+        AudioError, FileError, MimeType, Orientation, Origin, Resource, ResourceKind, Role, User,
+        Visibility,
+    };
 
     use crate::domain::port::{
         ContentTypeSnifferError, MediaProbeError, MockContentTypeSniffer, MockMediaProbe,
-        MockMediaSource,
+        MockMediaSource, MockResourceRepository,
     };
 
     use crate::test_helpers::*;
@@ -899,6 +927,7 @@ mod tests {
         path: &'static str,
         mime_type_id: &'static str,
         size_bytes: i64,
+        resource_exists: bool,
     ) -> Result<(TestUow, Arc<AtomicBool>), Box<dyn Error>> {
         let root = User::try_new(0, "root".to_owned(), None, 0, Role::Admin)?;
         let mut uow = TestUow::default();
@@ -922,8 +951,46 @@ mod tests {
                     .map_err(|_| RepositoryError::OperationFailed);
                 Box::pin(async move { stored })
             });
+        expect_file_resource(&mut uow, resource_exists);
         let committed = Arc::clone(&uow.committed);
         Ok((uow, committed))
+    }
+
+    /// Expect the scanned file's `FILE` resource, which is what makes the
+    /// stored identifier addressable by `get_file`'s authorization.
+    ///
+    /// The registered fixture is file `7` owned by the Root Admin, so the
+    /// resource must carry exactly that identifier, owner and visibility. The
+    /// double answers `AlreadyExist` when `already_exists` is set, which is the
+    /// row a concurrent driver or an earlier scan left behind.
+    fn expect_file_resource(unit_of_work: &mut TestUow, already_exists: bool) {
+        let mut resources = MockResourceRepository::new();
+        resources
+            .expect_create()
+            .times(1)
+            .withf(|resource| {
+                resource.kind == ResourceKind::File
+                    && resource.entity_id == 7
+                    && resource.owner_id == Some(0)
+                    && resource.visibility == Visibility::Private
+                    && resource.auth_parent.is_none()
+            })
+            .return_once(move |resource| {
+                let stored = if already_exists {
+                    Err(RepositoryError::AlreadyExist)
+                } else {
+                    Ok(Resource::from_stored(
+                        1,
+                        resource.kind,
+                        resource.entity_id,
+                        resource.owner_id,
+                        None,
+                        resource.visibility,
+                    ))
+                };
+                Box::pin(async move { stored })
+            });
+        unit_of_work.resources = resources;
     }
 
     /// Build a reading unit of work returning `files`.
@@ -1022,7 +1089,7 @@ mod tests {
     #[tokio::test]
     async fn scan_registers_an_image_with_its_file_and_media_row() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (mut storing, committed) = storing_uow("photo.png", "image/png", 3)?;
+        let (mut storing, committed) = storing_uow("photo.png", "image/png", 3, false)?;
         storing
             .images
             .expect_create()
@@ -1062,7 +1129,7 @@ mod tests {
     #[tokio::test]
     async fn scan_registers_a_video_with_its_media_row() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (mut storing, committed) = storing_uow("clip.mp4", "video/mp4", 4)?;
+        let (mut storing, committed) = storing_uow("clip.mp4", "video/mp4", 4, false)?;
         storing
             .videos
             .expect_create()
@@ -1099,7 +1166,7 @@ mod tests {
     #[tokio::test]
     async fn scan_registers_an_audio_file_with_absent_measurements() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (mut storing, committed) = storing_uow("track.mp3", "audio/mpeg", 5)?;
+        let (mut storing, committed) = storing_uow("track.mp3", "audio/mpeg", 5, false)?;
         storing
             .audios
             .expect_create()
@@ -1223,7 +1290,7 @@ mod tests {
     async fn scan_skips_an_unsupported_mime_type_without_probing() -> Result<(), Box<dyn Error>> {
         // Arrange: the sniffer recognises the content, but the datastore's
         // supported set does not contain `audio/x-flac`.
-        let (mut storing, committed) = storing_uow("photo.png", "image/png", 3)?;
+        let (mut storing, committed) = storing_uow("photo.png", "image/png", 3, false)?;
         storing
             .images
             .expect_create()
@@ -1268,7 +1335,7 @@ mod tests {
     #[tokio::test]
     async fn scan_skips_a_file_the_sniffer_cannot_read() -> Result<(), Box<dyn Error>> {
         // Arrange: one file cannot be read, its neighbour can.
-        let (mut storing, committed) = storing_uow("photo.png", "image/png", 3)?;
+        let (mut storing, committed) = storing_uow("photo.png", "image/png", 3, false)?;
         storing
             .images
             .expect_create()
@@ -1326,7 +1393,7 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
-        let (mut storing, committed) = storing_uow("good.png", "image/png", 3)?;
+        let (mut storing, committed) = storing_uow("good.png", "image/png", 3, false)?;
         storing
             .images
             .expect_create()
@@ -1366,9 +1433,14 @@ mod tests {
 
     #[tokio::test]
     async fn scan_reports_a_matching_file_as_untouched() -> Result<(), Box<dyn Error>> {
-        // Arrange
+        // Arrange: the file is already recorded, so this pass is a rescan and
+        // the same state a restarted server finds.
         let file = registered_file("photo.png", "image/png", 3)?;
-        let mut media = TestUow::default();
+        let mut media = TestUow {
+            resources: MockResourceRepository::new(),
+            ..TestUow::default()
+        };
+        media.resources.expect_create().times(0);
         media
             .images
             .expect_search()
@@ -1405,6 +1477,43 @@ mod tests {
         // Assert
         assert_eq!(report.untouched(), 1);
         assert_eq!(report.registered(), 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn scan_tolerates_an_existing_file_resource() -> Result<(), Box<dyn Error>> {
+        // Arrange: the file row is new but its resource already exists, which a
+        // concurrent driver can leave behind.
+        let (mut storing, committed) = storing_uow("photo.png", "image/png", 3, true)?;
+        storing
+            .images
+            .expect_create()
+            .times(1)
+            .returning(|image| Box::pin(async move { Ok(image) }));
+        let mut source = MockMediaSource::new();
+        expect_walk(&mut source, vec![entry("photo.png", 3)]);
+        let mut sniffer = MockContentTypeSniffer::new();
+        expect_sniff(&mut sniffer, "image/png");
+        let mut probe = MockMediaProbe::new();
+        probe
+            .expect_probe_image()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
+        let use_case = use_case(
+            factory(vec![snapshot_uow(Vec::new()), storing]),
+            source,
+            sniffer,
+            probe,
+        );
+
+        // Act
+        let report = use_case
+            .execute(IngestMediaCommand::new(IngestRequest::Scan))
+            .await?;
+
+        // Assert: the file is still registered and the transaction commits.
+        assert_eq!(report.registered(), 1);
+        assert!(committed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -1528,7 +1637,7 @@ mod tests {
     #[tokio::test]
     async fn path_request_registers_a_file_that_appeared() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (mut storing, committed) = storing_uow("new.png", "image/png", 3)?;
+        let (mut storing, committed) = storing_uow("new.png", "image/png", 3, false)?;
         storing
             .images
             .expect_create()

@@ -11,7 +11,7 @@ use crate::infrastructure::inbound::rest::handler::library::{
     TrackResponse, parse_album_id, parse_write_index,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
 /// Payload to place a recording at a medium track address.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -45,7 +45,7 @@ pub(crate) struct PutAlbumTrackRequest {
             body = TrackResponse,
             content_type = "application/hal+json",
             headers(
-                ("Location" = String, description = "URI of the new track placement"),
+                ("Location" = inline(UriReference), description = "URI of the new track placement"),
             ),
             description = "Recording placed"
         ),

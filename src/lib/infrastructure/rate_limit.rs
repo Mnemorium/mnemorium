@@ -57,20 +57,20 @@ type KeyedLimiter = RateLimiter<AccountKey, DefaultKeyedStateStore<AccountKey>, 
 /// Hashable key one login attempt is counted under.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum AccountKey {
-    /// An account the submitted username resolved to.
+    /// The digest of an identifier that resolved to no account.
+    IdentifierDigest([u8; 32]),
+    /// An account the submitted identifier resolved to.
     User(NumericID),
-    /// The digest of a username that resolved to no account.
-    UsernameDigest([u8; 32]),
 }
 
 impl From<LoginAttemptKey> for AccountKey {
     fn from(key: LoginAttemptKey) -> Self {
         match key {
             LoginAttemptKey::User(id) => Self::User(id),
-            LoginAttemptKey::Username(username) => {
+            LoginAttemptKey::Identifier(identifier) => {
                 let mut digest = [0u8; 32];
-                digest.copy_from_slice(&Sha256::digest(username.as_bytes()));
-                Self::UsernameDigest(digest)
+                digest.copy_from_slice(&Sha256::digest(identifier.as_bytes()));
+                Self::IdentifierDigest(digest)
             }
         }
     }

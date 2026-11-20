@@ -6,10 +6,10 @@ use crate::domain::NumericID;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub(crate) enum LoginAttemptKey {
-    /// An account the submitted username resolved to.
+    /// A submitted username or email address that resolved to no account.
+    Identifier(String),
+    /// An account the submitted identifier resolved to.
     User(NumericID),
-    /// A submitted username that resolved to no account.
-    Username(String),
 }
 
 /// Outbound port limiting login attempts per account.

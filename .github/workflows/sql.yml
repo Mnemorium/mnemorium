@@ -7,7 +7,9 @@ on:
       - main
     paths:
       - 'migrations/**/*.sql'
-      - 'test/seed/**/*.sql'
+      - 'test/api/seed/**/*.sql'
+      - 'test/performance/seed/**/*.sql'
+      - 'test/system/seed/**/*.sql'
       - '.sqlfluff'
       - 'requirements.txt'
 
@@ -32,4 +34,4 @@ jobs:
       - name: Install sqlfluff
         run: pip install -r requirements.txt
       - name: Lint SQL
-        run: sqlfluff lint --dialect sqlite migrations test/seed/api test/seed/perf
+        run: sqlfluff lint --dialect sqlite migrations test/api/seed/sql test/performance/seed/sql test/system/seed/sql

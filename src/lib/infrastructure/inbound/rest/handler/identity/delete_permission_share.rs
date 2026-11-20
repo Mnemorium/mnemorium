@@ -4,7 +4,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::application::port::RevokeShareCommand;
 use crate::domain::NumericID;
-use crate::infrastructure::inbound::rest::handler::identity::parse_address;
+use crate::infrastructure::inbound::rest::handler::identity::{ResourceKindWire, parse_address};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
 
@@ -18,7 +18,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
     path = "/permission/resource/{kind}/{id}/share/{grant_id}",
     tag = "identity",
     params(
-        ("kind" = String, Path, description = "Kind of the addressed resource"),
+        ("kind" = inline(ResourceKindWire), Path, description = "Kind of the addressed resource"),
         ("id" = NumericID, Path, description = "Identifier of the addressed resource"),
         ("grant_id" = NumericID, Path, description = "Identifier of the grant to revoke"),
     ),

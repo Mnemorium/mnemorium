@@ -1717,10 +1717,12 @@ actor "Standard User" as StandardUser
 package "Asset" {
   usecase "UC-006 - Upload a media file" as UC006
   usecase "UC-031 - Read an asset's content" as UC031
+  usecase "UC-032 - Browse stored files" as UC032
 }
 
 StandardUser --> UC006
 StandardUser --> UC031
+StandardUser --> UC032
 @enduml
 ```
 
@@ -1848,3 +1850,47 @@ Download for a file.
 - The caller receives the requested content, or an outcome that tells unchanged, unsatisfiable, gone and
   storage-unavailable apart.
 - No content is assembled whole in memory.
+
+### UC-032 - Browse stored files
+
+#### Description
+
+Allow a caller to browse the stored files it may discover, optionally narrowed to exactly one root-relative path. The
+listing returns a page of the records the caller's action on each file admits, with the navigation links of the page; a
+record the caller may not discover is absent from the page rather than reported as a refusal.
+
+#### Primary actor
+
+- Standard User
+
+#### Parameters
+
+- path — the exact root-relative path whose record is requested; optional.
+- page — the page size and the offset into the collection; optional.
+
+#### Pre condition(s)
+
+- The caller is authenticated.
+- The media library is available.
+
+#### Trigger
+
+- The caller lists the stored files.
+
+#### Happy path
+
+1. The caller lists the stored-file collection, optionally naming one exact path and a page.
+2. The system decides discovery on each stored file's resource and keeps the records the caller may discover.
+3. The system returns the page's records with the collection's navigation links.
+4. Naming an exact path returns at most the one record that path addresses.
+
+#### Alternative flow
+
+- 1a. The path only starts like a stored path and addresses no record; the system returns an empty page.
+- 1b. No stored file is discoverable by the caller; the system returns an empty page with its links.
+- 2a. A stored file exists but the caller may not discover it; the system omits it from the page and reports no denial.
+
+#### Post condition(s)
+
+- The caller holds only the records it may discover, in the order the collection defines.
+- No content bytes are read and no record is changed.

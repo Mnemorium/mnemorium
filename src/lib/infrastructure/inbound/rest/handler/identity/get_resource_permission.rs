@@ -4,7 +4,7 @@ use axum::response::Response;
 use crate::application::port::GetResourcePermissionCommand;
 use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::identity::{
-    ResourcePermissionBody, parse_address,
+    ResourceKindWire, ResourcePermissionBody, parse_address,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
@@ -18,7 +18,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
     path = "/permission/resource/{kind}/{id}",
     tag = "identity",
     params(
-        ("kind" = String, Path, description = "Kind of the addressed resource"),
+        ("kind" = inline(ResourceKindWire), Path, description = "Kind of the addressed resource"),
         ("id" = NumericID, Path, description = "Identifier of the addressed resource"),
     ),
     responses(

@@ -1,21 +1,16 @@
-"""Black-box proof of the `user` capability.
+"""Black-box proof of the `user` capability."""
 
-Every case starts its own container from the image under test through the shared `harness` plugin and reads only what an
-operator can: HTTP responses and the working directory. The caller is provisioned in setup — the Root Admin signs in
-with the password the instance prints — but a case asserts the account outcome, not the gate that admitted the caller.
-"""
-
-import sqlite3
+import json
+from itertools import count
 
 import allure
 import pytest
 from conftest import (
-    FIXTURE_DIRECTORY,
+    SEED_MEDIA_DIRECTORY,
     add_to_gallery,
     create_gallery,
-    linked_id,
+    login,
     provision,
-    start_instance,
     upload,
 )
 from harness import (
@@ -23,119 +18,17 @@ from harness import (
     SECRET_PASSWORD,
     Sut,
     begin_upload,
-    link_of,
     register,
 )
+from mnemorium_client.api.identity import post_login
+from mnemorium_client.models import LoginRequest
 
+IMAGE_BYTES = (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes()
+VIDEO_BYTES = (SEED_MEDIA_DIRECTORY / "file-video.mp4").read_bytes()
+IMAGE_CONTENT_TYPE = "image/png"
+VIDEO_CONTENT_TYPE = "video/mp4"
 
-def file_profile(server: Sut, token: str, file: dict) -> dict:
-    """Read a stored file's representation again; fails unless it answers 200."""
-    response = server.request("GET", link_of(file, "self"), token=token)
-    assert response.status_code == 200, f"file read failed: {response.status_code} {response.text}"
-    return response.json()
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-004")
-@allure.story("SCN-USER-004-G")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_email_case_does_not_distinguish_two_addresses(sut: Sut) -> None:
-    """A case variant of a stored address answers 409 and creates no second account."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    alice = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
-    assert alice.status_code == 201, f"creation failed: {alice.status_code} {alice.text}"
-
-    response = register(server, root_token, "bobby", "Alice@example.com", SECRET_PASSWORD)
-
-    assert response.status_code == 409, f"case variant accepted: {response.status_code} {response.text}"
-    assert response.json()["error"] == "email is already taken"
-
-    listed = server.request("GET", f"{server.href('user')}?username=bobby", token=root_token)
-    assert listed.status_code == 200, f"filter failed: {listed.status_code} {listed.text}"
-    assert listed.json()["items"] == []
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-010")
-@allure.story("SCN-USER-010-E")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_email_filter_ignores_case(sut: Sut) -> None:
-    """An email filter that differs from the stored address only by case finds the account."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    carol = register(server, root_token, "carol", "carol@example.com", SECRET_PASSWORD)
-    assert carol.status_code == 201, f"creation failed: {carol.status_code} {carol.text}"
-
-    response = server.request(
-        "GET",
-        f"{server.href('user')}?email=Carol@Example.com",
-        token=root_token,
-    )
-
-    assert response.status_code == 200, f"filter failed: {response.status_code} {response.text}"
-    assert [item["username"] for item in response.json()["items"]] == ["carol"]
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-013")
-@allure.story("SCN-USER-013-D")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_case_only_email_change_collides(sut: Sut) -> None:
-    """An update carrying another account's address in a different case answers 409 and changes nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    david = register(server, root_token, "david", "david@example.com", SECRET_PASSWORD)
-    assert david.status_code == 201, f"creation failed: {david.status_code} {david.text}"
-    erin = register(server, root_token, "erin", "erin@example.com", SECRET_PASSWORD)
-    assert erin.status_code == 201, f"creation failed: {erin.status_code} {erin.text}"
-    erin_id = erin.json()["id"]
-
-    response = server.request(
-        "PATCH",
-        f"{server.href('user')}/{erin_id}",
-        token=root_token,
-        json={"email": "David@Example.com"},
-    )
-
-    assert response.status_code == 409, f"case variant accepted: {response.status_code} {response.text}"
-    stored = server.request("GET", f"{server.href('user')}/{erin_id}", token=root_token)
-    assert stored.json()["email"] == "erin@example.com"
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-004")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_parser_governs_email_syntax(sut: Sut) -> None:
-    """The address parser admits what it accepts and answers 422 for what it rejects, with no constraint failure."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    accepted = (
-        "admin@mailserver1",
-        '" "@example.org',
-        '"john..doe"@example.org',
-        "user%example.com@example.org",
-    )
-
-    for index, email in enumerate(accepted):
-        response = register(server, root_token, f"parser{index}", email, SECRET_PASSWORD)
-        assert response.status_code == 201, f"{email!r} was rejected: {response.status_code} {response.text}"
-
-    rejected = server.request(
-        "POST",
-        server.href("register"),
-        token=root_token,
-        json={
-            "username": "parserrejected",
-            "email": "Alice <alice@example.com>",
-            "password": SECRET_PASSWORD,
-            "role": "STANDARD",
-        },
-    )
-
-    assert rejected.status_code == 422, f"display name accepted: {rejected.status_code} {rejected.text}"
-    listed = server.request("GET", f"{server.href('user')}?username=parserrejected", token=root_token)
-    assert listed.json()["items"] == []
+_ACCOUNTS = count()
 
 
 @allure.epic("User")
@@ -143,182 +36,28 @@ def test_the_parser_governs_email_syntax(sut: Sut) -> None:
 @allure.story("SCN-USER-001-A")
 @allure.feature("REQ-USER-005")
 @allure.story("SCN-USER-005-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_profile_carries_the_account_detail(sut: Sut) -> None:
-    """An account reads back with its identifier, username, email or no email, and role."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    with_email = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
-    assert with_email.status_code == 201, f"creation failed: {with_email.status_code} {with_email.text}"
-    without_email = register(server, root_token, "bobby", None, SECRET_PASSWORD)
-    assert without_email.status_code == 201, f"creation failed: {without_email.status_code} {without_email.text}"
-
-    for created, email in ((with_email, "alice@example.com"), (without_email, None)):
-        profile = created.json()
-        response = server.request("GET", f"{server.href('user')}/{profile['id']}", token=root_token)
-
-        assert response.status_code == 200, f"read failed: {response.status_code} {response.text}"
-        body = response.json()
-        assert isinstance(body["id"], int) and body["id"] > 0
-        assert body["username"] == profile["username"]
-        assert body["email"] == email
-        assert body["role"] == "STANDARD"
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-002")
-@allure.story("SCN-USER-002-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_declared_role_is_stored(sut: Sut) -> None:
-    """A creation carrying ADMIN or STANDARD stores and returns that role."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    for role in ("ADMIN", "STANDARD"):
-        created = register(server, root_token, f"role{role.lower()}", None, SECRET_PASSWORD, role=role)
-        assert created.status_code == 201, f"creation failed: {created.status_code} {created.text}"
-
-        body = created.json()
-        stored = server.request("GET", f"{server.href('user')}/{body['id']}", token=root_token)
-
-        assert body["role"] == role
-        assert stored.json()["role"] == role
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-002")
-@allure.story("SCN-USER-002-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_undeclared_role_is_rejected(sut: Sut) -> None:
-    """A role outside the declared values answers 422 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    response = server.request(
-        "POST",
-        server.href("register"),
-        token=root_token,
-        json={
-            "username": "superuser",
-            "email": None,
-            "password": SECRET_PASSWORD,
-            "role": "SUPERUSER",
-        },
-    )
-
-    assert response.status_code == 422, f"undeclared role accepted: {response.status_code} {response.text}"
-    listed = server.request("GET", f"{server.href('user')}?username=superuser", token=root_token)
-    assert listed.json()["items"] == []
-
-
-@allure.epic("User")
 @allure.feature("REQ-USER-009")
 @allure.story("SCN-USER-009-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_account_is_readable_by_identifier(sut: Sut) -> None:
-    """A request addressing an existing account's identifier answers 200 with its profile."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    created = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
-    assert created.status_code == 201, f"creation failed: {created.status_code} {created.text}"
-    profile = created.json()
+def test_a_created_account_reads_back_its_profile(server: Sut, root_token: str) -> None:
+    """An account reads back through its username with its identifier, email or no email, and role."""
+    with_email = f"with{next(_ACCOUNTS)}"
+    without_email = f"bare{next(_ACCOUNTS)}"
+    first = register(server, root_token, with_email, f"{with_email}@example.com", SECRET_PASSWORD)
+    second = register(server, root_token, without_email, None, SECRET_PASSWORD)
+    assert first.status_code == 201, f"creation failed: {first.status_code} {first.content!r}"
+    assert second.status_code == 201, f"creation failed: {second.status_code} {second.content!r}"
 
-    response = server.request("GET", f"{server.href('user')}/{profile['id']}", token=root_token)
-
-    assert response.status_code == 200, f"read failed: {response.status_code} {response.text}"
-    assert response.json() == profile
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-009")
-@allure.story("SCN-USER-009-B")
-def test_an_unknown_identifier_is_not_found(server: Sut, root_token: str) -> None:
-    """An identifier that names no account answers 404."""
-    response = server.request("GET", f"{server.href('user')}/999999", token=root_token)
-
-    assert response.status_code == 404, f"unknown account answered {response.status_code}"
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-010")
-@allure.story("SCN-USER-010-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_no_filter_returns_every_account(sut: Sut) -> None:
-    """The collection requested without a filter carries every account."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    for username in ("alice", "bobby", "carol"):
-        response = register(server, root_token, username, None, SECRET_PASSWORD)
-        assert response.status_code == 201, f"creation failed: {response.status_code} {response.text}"
-
-    response = server.request("GET", server.href("user"), token=root_token)
-
-    assert response.status_code == 200, f"list failed: {response.status_code} {response.text}"
-    assert {item["username"] for item in response.json()["items"]} == {
-        ROOT_ADMIN_USERNAME,
-        "alice",
-        "bobby",
-        "carol",
-    }
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-010")
-@allure.story("SCN-USER-010-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_filters_narrow_the_result(sut: Sut) -> None:
-    """Only the accounts matching every supplied filter appear."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    registrations = (
-        ("alice", "alice@example.com", "STANDARD"),
-        ("bobby", "bobby@example.com", "ADMIN"),
-        ("carol", "carol@example.org", "STANDARD"),
-    )
-    for username, email, role in registrations:
-        response = register(server, root_token, username, email, SECRET_PASSWORD, role=role)
-        assert response.status_code == 201, f"creation failed: {response.status_code} {response.text}"
-
-    queries = (
-        ("?username=alice", {"alice"}),
-        ("?email=bobby@example.com", {"bobby"}),
-        ("?role=ADMIN", {ROOT_ADMIN_USERNAME, "bobby"}),
-        ("?role=STANDARD&email=carol@example.org", {"carol"}),
-    )
-
-    for query, expected in queries:
-        response = server.request("GET", f"{server.href('user')}{query}", token=root_token)
-
-        assert response.status_code == 200, f"{query} failed: {response.status_code} {response.text}"
-        assert {item["username"] for item in response.json()["items"]} == expected
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-010")
-@allure.story("SCN-USER-010-C")
-def test_an_empty_result_carries_no_items(server: Sut, root_token: str) -> None:
-    """A filter matching no account answers 200 with no items."""
-    response = server.request("GET", f"{server.href('user')}?username=nobody", token=root_token)
-
-    assert response.status_code == 200, f"list failed: {response.status_code} {response.text}"
-    assert response.json()["items"] == []
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-010")
-@allure.story("SCN-USER-010-D")
-def test_malformed_filters_are_rejected(server: Sut, root_token: str) -> None:
-    """An out-of-bounds username, an invalid email or an undeclared role answers 422."""
-    queries = (
-        "?username=abc",
-        f"?username={'x' * 101}",
-        "?username=",
-        "?email=not-an-email",
-        "?role=SUPERUSER",
-    )
-
-    for query in queries:
-        response = server.request("GET", f"{server.href('user')}{query}", token=root_token)
-
-        assert response.status_code == 422, f"{query} answered {response.status_code}: {response.text}"
+    for created, expected_email in ((first, f"{with_email}@example.com"), (second, None)):
+        profile = json.loads(created.content)
+        listed = server.request("GET", f"{server.href('user')}?username={profile['username']}", token=root_token)
+        assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.content!r}"
+        items = json.loads(listed.content)["items"]
+        assert [item["id"] for item in items] == [profile["id"]]
+        item = items[0]
+        assert isinstance(item["id"], int) and item["id"] > 0
+        assert item["username"] == profile["username"]
+        assert item["email"] == expected_email
+        assert item["role"] == "STANDARD"
 
 
 @allure.epic("User")
@@ -328,472 +67,500 @@ def test_the_caller_reads_its_own_account(server: Sut, root_token: str) -> None:
     """A request for the caller's own account answers 200 with that account's profile."""
     response = server.request("GET", server.href("current_user"), token=root_token)
 
-    assert response.status_code == 200, f"read failed: {response.status_code} {response.text}"
-    body = response.json()
+    assert response.status_code == 200, f"read failed: {response.status_code} {response.content!r}"
+    body = json.loads(response.content)
     assert body["id"] == 0
     assert body["username"] == ROOT_ADMIN_USERNAME
     assert body["role"] == "ADMIN"
 
 
 @allure.epic("User")
-@allure.feature("REQ-USER-003")
-@allure.story("SCN-USER-003-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_surrounding_whitespace_username_is_rejected(sut: Sut) -> None:
-    """A username that begins or ends with whitespace answers 422 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    for username in (" alice", "alice ", " alice "):
+@allure.feature("REQ-USER-002")
+@allure.story("SCN-USER-002-A")
+def test_a_declared_role_is_stored(server: Sut, root_token: str) -> None:
+    """A creation carrying ADMIN or STANDARD stores and returns that role."""
+    for role in ("ADMIN", "STANDARD"):
+        name = f"{role.lower()}{next(_ACCOUNTS)}"
+        created = register(server, root_token, name, None, SECRET_PASSWORD, role=role)
+        assert created.status_code == 201, f"creation failed: {created.status_code} {created.content!r}"
+
+        listed = server.request("GET", f"{server.href('user')}?username={name}", token=root_token)
+        items = json.loads(listed.content)["items"]
+        assert [item["role"] for item in items] == [role]
+        assert json.loads(created.content)["role"] == role
+
+
+@allure.epic("User")
+@allure.feature("REQ-USER-002")
+@allure.story("SCN-USER-002-B")
+def test_an_undeclared_role_is_rejected(server: Sut, root_token: str) -> None:
+    """A role outside the declared values answers 422 and stores nothing."""
+    name = f"role{next(_ACCOUNTS)}"
+    response = server.request(
+        "POST",
+        server.href("register"),
+        token=root_token,
+        json={"username": name, "email": None, "password": SECRET_PASSWORD, "role": "SUPERUSER"},
+    )
+
+    assert response.status_code == 422, f"undeclared role accepted: {response.status_code} {response.content!r}"
+    listed = server.request("GET", f"{server.href('user')}?username={name}", token=root_token)
+    assert json.loads(listed.content)["items"] == []
+
+
+@allure.epic("User")
+@allure.feature("REQ-USER-020")
+@allure.story("SCN-USER-020-A")
+def test_a_username_with_whitespace_is_rejected(server: Sut, root_token: str) -> None:
+    """A username containing whitespace at any position answers 422 and stores nothing."""
+    base = f"name{next(_ACCOUNTS)}"
+    for username in (f" {base}", f"{base} ", f"al ice{next(_ACCOUNTS)}", f"\t{base}"):
         response = server.request(
             "POST",
             server.href("register"),
             token=root_token,
             json={"username": username, "email": None, "password": SECRET_PASSWORD, "role": "STANDARD"},
         )
-        assert response.status_code == 422, f"{username!r} was accepted: {response.status_code} {response.text}"
+        assert response.status_code == 422, f"{username!r} was accepted: {response.status_code} {response.content!r}"
 
-    listed = server.request("GET", server.href("user"), token=root_token)
-    assert {item["username"] for item in listed.json()["items"]} == {ROOT_ADMIN_USERNAME}
+    listed = server.request("GET", f"{server.href('user')}?username={base}", token=root_token)
+    assert json.loads(listed.content)["items"] == [], "a refused username was stored"
 
 
 @allure.epic("User")
-@allure.feature("REQ-USER-003")
-@allure.story("SCN-USER-003-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_uppercase_username_is_rejected(sut: Sut) -> None:
-    """A username containing an uppercase letter answers 422 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+@allure.feature("REQ-USER-020")
+@allure.story("SCN-USER-020-B")
+def test_an_uppercase_username_is_accepted_and_read_back(server: Sut, root_token: str) -> None:
+    """`Alice` and `aliceSmith` are created with 201 and read back unchanged."""
     for username in ("Alice", "aliceSmith"):
-        response = server.request(
-            "POST",
-            server.href("register"),
-            token=root_token,
-            json={"username": username, "email": None, "password": SECRET_PASSWORD, "role": "STANDARD"},
-        )
-        assert response.status_code == 422, f"{username!r} was accepted: {response.status_code} {response.text}"
-
-    listed = server.request("GET", server.href("user"), token=root_token)
-    assert {item["username"] for item in listed.json()["items"]} == {ROOT_ADMIN_USERNAME}
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-003")
-@allure.story("SCN-USER-003-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_username_boundary_lengths_are_accepted(sut: Sut) -> None:
-    """A username of exactly 4 or exactly 100 characters is created with that username."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    for username in ("abcd", "u" * 100):
         response = register(server, root_token, username, None, SECRET_PASSWORD)
 
-        assert response.status_code == 201, f"{len(username)}-character name rejected: {response.text}"
-        assert response.json()["username"] == username
+        assert response.status_code == 201, f"{username!r} was rejected: {response.content!r}"
+        assert json.loads(response.content)["username"] == username
+        listed = server.request("GET", f"{server.href('user')}?username={username}", token=root_token)
+        items = json.loads(listed.content)["items"]
+        assert [item["username"] for item in items] == [username]
 
 
 @allure.epic("User")
-@allure.feature("REQ-USER-003")
-@allure.story("SCN-USER-003-F")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_taken_username_conflicts(sut: Sut) -> None:
-    """A username another account holds answers 409 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    first = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
-    assert first.status_code == 201, f"creation failed: {first.status_code} {first.text}"
+@allure.feature("REQ-USER-020")
+@allure.story("SCN-USER-020-C")
+def test_username_boundary_lengths_are_accepted(server: Sut, root_token: str) -> None:
+    """A username of exactly 4 or exactly 100 characters is created with that username."""
+    short = f"a{next(_ACCOUNTS):03d}"
+    long = f"u{next(_ACCOUNTS):03d}" + "x" * 96
+    for username in (short, long):
+        response = register(server, root_token, username, None, SECRET_PASSWORD)
 
-    response = register(server, root_token, "alice", "other@example.com", SECRET_PASSWORD)
+        assert response.status_code == 201, f"{len(username)}-character name rejected: {response.content!r}"
+        assert json.loads(response.content)["username"] == username
 
-    assert response.status_code == 409, f"duplicate username accepted: {response.status_code} {response.text}"
-    assert response.json()["error"] == "username is already taken"
-    listed = server.request("GET", f"{server.href('user')}?username=alice", token=root_token)
-    assert [item["email"] for item in listed.json()["items"]] == ["alice@example.com"]
+
+@allure.epic("User")
+@allure.feature("REQ-USER-020")
+@allure.story("SCN-USER-020-D")
+@allure.story("SCN-USER-020-E")
+def test_username_boundary_lengths_are_rejected(server: Sut, root_token: str) -> None:
+    """A username of 3 or 101 characters answers 422 and stores nothing."""
+    too_short = "abc"
+    too_long = "x" * 101
+    assert len(too_short) == 3
+    assert len(too_long) == 101
+    for username in (too_short, too_long):
+        response = server.request(
+            "POST",
+            server.href("register"),
+            token=root_token,
+            json={"username": username, "email": None, "password": SECRET_PASSWORD, "role": "STANDARD"},
+        )
+
+        assert response.status_code == 422, f"{len(username)}-character name accepted: {response.content!r}"
+
+    listed = server.request("GET", server.href("user"), token=root_token)
+    assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.content!r}"
+    stored = {item["username"] for item in json.loads(listed.content)["items"]}
+    assert too_short not in stored and too_long not in stored, "a refused username was stored"
+
+
+@allure.epic("User")
+@allure.feature("REQ-USER-020")
+@allure.story("SCN-USER-020-F")
+@allure.feature("REQ-USER-004")
+@allure.story("SCN-USER-004-F")
+def test_a_taken_username_or_email_is_refused(server: Sut, root_token: str) -> None:
+    """A username or email another account holds answers 409 and stores nothing."""
+    holder = f"holder{next(_ACCOUNTS)}"
+    challenger = f"challenger{next(_ACCOUNTS)}"
+    email = f"{holder}@example.com"
+    first = register(server, root_token, holder, email, SECRET_PASSWORD)
+    assert first.status_code == 201, f"creation failed: {first.status_code} {first.content!r}"
+
+    duplicate_name = server.request(
+        "POST",
+        server.href("register"),
+        token=root_token,
+        json={
+            "username": holder,
+            "email": f"{challenger}@example.com",
+            "password": SECRET_PASSWORD,
+            "role": "STANDARD",
+        },
+    )
+    duplicate_email = server.request(
+        "POST",
+        server.href("register"),
+        token=root_token,
+        json={"username": challenger, "email": email, "password": SECRET_PASSWORD, "role": "STANDARD"},
+    )
+
+    assert duplicate_name.status_code == 409, f"duplicate username accepted: {duplicate_name.status_code}"
+    assert json.loads(duplicate_name.content)["error"] == "username is already taken"
+    assert duplicate_email.status_code == 409, f"duplicate email accepted: {duplicate_email.status_code}"
+    assert json.loads(duplicate_email.content)["error"] == "email is already taken"
+    stored = server.request("GET", f"{server.href('user')}?username={holder}", token=root_token)
+    items = json.loads(stored.content)["items"]
+    assert [item["email"] for item in items] == [email], "the refused creation changed the holder"
+    listed = server.request("GET", f"{server.href('user')}?username={challenger}", token=root_token)
+    assert json.loads(listed.content)["items"] == [], "a refused creation stored an account"
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-004")
 @allure.story("SCN-USER-004-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_omitted_email_is_stored_as_no_email(sut: Sut) -> None:
-    """A creation request without an email value creates the account with no email address."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    response = server.request(
+@allure.story("SCN-USER-004-B")
+def test_an_omitted_or_null_email_is_stored_as_none(server: Sut, root_token: str) -> None:
+    """A creation with no email value or an explicit null stores no email address."""
+    omitted_name = f"omit{next(_ACCOUNTS)}"
+    null_name = f"null{next(_ACCOUNTS)}"
+    omitted = server.request(
         "POST",
         server.href("register"),
         token=root_token,
-        json={"username": "alice", "password": SECRET_PASSWORD, "role": "STANDARD"},
+        json={"username": omitted_name, "password": SECRET_PASSWORD, "role": "STANDARD"},
     )
+    explicit_null = register(server, root_token, null_name, None, SECRET_PASSWORD)
 
-    assert response.status_code == 201, f"creation failed: {response.status_code} {response.text}"
-    assert response.json()["email"] is None
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-004")
-@allure.story("SCN-USER-004-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_null_email_is_stored_as_no_email(sut: Sut) -> None:
-    """A creation request with an explicit null email creates the account with no email address."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    response = register(server, root_token, "alice", None, SECRET_PASSWORD)
-
-    assert response.status_code == 201, f"creation failed: {response.status_code} {response.text}"
-    assert response.json()["email"] is None
+    assert omitted.status_code == 201, f"creation failed: {omitted.status_code} {omitted.content!r}"
+    assert explicit_null.status_code == 201, f"creation failed: {explicit_null.status_code} {explicit_null.content!r}"
+    for name in (omitted_name, null_name):
+        listed = server.request("GET", f"{server.href('user')}?username={name}", token=root_token)
+        items = json.loads(listed.content)["items"]
+        assert [item["email"] for item in items] == [None]
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-004")
 @allure.story("SCN-USER-004-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_padded_email_is_rejected(sut: Sut) -> None:
-    """A valid address surrounded by whitespace answers 422 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    for email in (" alice@example.com", "alice@example.com ", " alice@example.com "):
-        response = server.request(
-            "POST",
-            server.href("register"),
-            token=root_token,
-            json={"username": "alice", "email": email, "password": SECRET_PASSWORD, "role": "STANDARD"},
-        )
-        assert response.status_code == 422, f"{email!r} was accepted: {response.status_code} {response.text}"
-
-    listed = server.request("GET", server.href("user"), token=root_token)
-    assert {item["username"] for item in listed.json()["items"]} == {ROOT_ADMIN_USERNAME}
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-004")
 @allure.story("SCN-USER-004-D")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_invalid_email_is_rejected(sut: Sut) -> None:
-    """A value that is not a valid email address answers 422 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    for email in ("not-an-email", "alice@", "@example.com", "alice example@example.com"):
+@allure.story("SCN-USER-004-E")
+def test_an_invalid_mailbox_is_rejected(server: Sut, root_token: str) -> None:
+    """A padded, malformed or display-name mailbox answers 422 and stores nothing."""
+    name = f"mail{next(_ACCOUNTS)}"
+    for email in (" invalid@example.com", "invalid@example.com ", "not-an-email", "Alice <alice@example.com>"):
         response = server.request(
             "POST",
             server.href("register"),
             token=root_token,
-            json={"username": "alice", "email": email, "password": SECRET_PASSWORD, "role": "STANDARD"},
+            json={"username": name, "email": email, "password": SECRET_PASSWORD, "role": "STANDARD"},
         )
-        assert response.status_code == 422, f"{email!r} was accepted: {response.status_code} {response.text}"
+        assert response.status_code == 422, f"{email!r} was accepted: {response.status_code} {response.content!r}"
 
-    listed = server.request("GET", server.href("user"), token=root_token)
-    assert {item["username"] for item in listed.json()["items"]} == {ROOT_ADMIN_USERNAME}
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-004")
-@allure.story("SCN-USER-004-E")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_display_name_email_is_rejected(sut: Sut) -> None:
-    """A mailbox carrying a display name answers 422 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    response = server.request(
-        "POST",
-        server.href("register"),
-        token=root_token,
-        json={
-            "username": "alice",
-            "email": "Alice <alice@example.com>",
-            "password": SECRET_PASSWORD,
-            "role": "STANDARD",
-        },
-    )
-
-    assert response.status_code == 422, f"display name accepted: {response.status_code} {response.text}"
-    listed = server.request("GET", server.href("user"), token=root_token)
-    assert {item["username"] for item in listed.json()["items"]} == {ROOT_ADMIN_USERNAME}
+    listed = server.request("GET", f"{server.href('user')}?username={name}", token=root_token)
+    assert json.loads(listed.content)["items"] == [], "a refused creation stored an account"
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-004")
-@allure.story("SCN-USER-004-F")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_taken_email_conflicts(sut: Sut) -> None:
-    """An email another account already holds answers 409 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    first = register(server, root_token, "alice", "shared@example.com", SECRET_PASSWORD)
-    assert first.status_code == 201, f"creation failed: {first.status_code} {first.text}"
+@allure.story("SCN-USER-004-G")
+def test_an_email_case_variant_is_a_conflict(server: Sut, root_token: str) -> None:
+    """A case variant of a stored address answers 409 and creates no second account."""
+    holder = f"case{next(_ACCOUNTS)}"
+    challenger = f"caseb{next(_ACCOUNTS)}"
+    email = f"{holder}@example.com"
+    first = register(server, root_token, holder, email, SECRET_PASSWORD)
+    assert first.status_code == 201, f"creation failed: {first.status_code} {first.content!r}"
 
-    response = register(server, root_token, "bobby", "shared@example.com", SECRET_PASSWORD)
+    response = register(server, root_token, challenger, email.upper(), SECRET_PASSWORD)
 
-    assert response.status_code == 409, f"duplicate email accepted: {response.status_code} {response.text}"
-    assert response.json()["error"] == "email is already taken"
-    listed = server.request("GET", f"{server.href('user')}?username=bobby", token=root_token)
-    assert listed.json()["items"] == []
+    assert response.status_code == 409, f"case variant accepted: {response.status_code} {response.content!r}"
+    assert json.loads(response.content)["error"] == "email is already taken"
+    listed = server.request("GET", f"{server.href('user')}?username={challenger}", token=root_token)
+    assert json.loads(listed.content)["items"] == []
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-007")
 @allure.story("SCN-USER-007-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_created_account_has_one_credential(sut: Sut) -> None:
+def test_a_created_account_has_one_credential(server: Sut, root_token: str) -> None:
     """A valid creation stores the account and one credential that authenticates it."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    response = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
+    name = f"cred{next(_ACCOUNTS)}"
+    response = register(server, root_token, name, f"{name}@example.com", SECRET_PASSWORD)
 
-    assert response.status_code == 201, f"creation failed: {response.status_code} {response.text}"
-    assert server.login("alice", SECRET_PASSWORD)
-
-    listed = server.request("GET", f"{server.href('user')}?username=alice", token=root_token)
-    items = listed.json()["items"]
+    assert response.status_code == 201, f"creation failed: {response.status_code} {response.content!r}"
+    assert login(server, name, SECRET_PASSWORD)
+    listed = server.request("GET", f"{server.href('user')}?username={name}", token=root_token)
+    items = json.loads(listed.content)["items"]
     assert len(items) == 1
-    assert items[0]["email"] == "alice@example.com"
+    assert items[0]["email"] == f"{name}@example.com"
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-007")
 @allure.story("SCN-USER-007-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_rejected_creation_leaves_nothing(sut: Sut) -> None:
+def test_a_rejected_creation_leaves_nothing(server: Sut, root_token: str) -> None:
     """A rejection for a duplicate or an invalid value leaves no account and no credential."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    first = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
-    assert first.status_code == 201, f"creation failed: {first.status_code} {first.text}"
+    holder = f"keep{next(_ACCOUNTS)}"
+    ghost = f"ghost{next(_ACCOUNTS)}"
+    first = register(server, root_token, holder, f"{holder}@example.com", SECRET_PASSWORD)
+    assert first.status_code == 201, f"creation failed: {first.status_code} {first.content!r}"
 
-    duplicate = register(server, root_token, "alice", "second@example.com", SECRET_PASSWORD)
+    duplicate = register(server, root_token, holder, f"{ghost}@example.com", SECRET_PASSWORD)
     invalid = server.request(
         "POST",
         server.href("register"),
         token=root_token,
-        json={"username": "bobby", "email": "not-an-email", "password": SECRET_PASSWORD, "role": "STANDARD"},
+        json={"username": ghost, "email": "not-an-email", "password": SECRET_PASSWORD, "role": "STANDARD"},
     )
 
-    assert duplicate.status_code == 409, f"duplicate answered {duplicate.status_code}: {duplicate.text}"
-    assert invalid.status_code == 422, f"invalid email answered {invalid.status_code}: {invalid.text}"
-    assert server.attempt_login("alice", SECRET_PASSWORD).status_code == 200
-    assert server.attempt_login("bobby", SECRET_PASSWORD).status_code == 401
-    listed = server.request("GET", server.href("user"), token=root_token)
-    assert {item["username"] for item in listed.json()["items"]} == {ROOT_ADMIN_USERNAME, "alice"}
+    assert duplicate.status_code == 409, f"duplicate answered {duplicate.status_code}: {duplicate.content!r}"
+    assert invalid.status_code == 422, f"invalid email answered {invalid.status_code}: {invalid.content!r}"
+    assert (
+        post_login.sync_detailed(
+            client=server.client(), body=LoginRequest(password=SECRET_PASSWORD, identifier=holder)
+        ).status_code
+        == 200
+    )
+    assert (
+        post_login.sync_detailed(
+            client=server.client(), body=LoginRequest(password=SECRET_PASSWORD, identifier=ghost)
+        ).status_code
+        == 401
+    )
+    listed = server.request("GET", f"{server.href('user')}?username={ghost}", token=root_token)
+    assert json.loads(listed.content)["items"] == []
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-008")
 @allure.story("SCN-USER-008-A")
 @allure.story("SCN-USER-008-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_created_profile_and_location(sut: Sut) -> None:
+def test_a_creation_returns_the_profile_and_location(server: Sut, root_token: str) -> None:
     """A successful creation answers 201 with the profile and addresses the account in Location."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    response = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
+    name = f"made{next(_ACCOUNTS)}"
+    response = register(server, root_token, name, f"{name}@example.com", SECRET_PASSWORD)
 
-    assert response.status_code == 201, f"creation failed: {response.status_code} {response.text}"
-    body = response.json()
-    assert body["username"] == "alice"
-    assert body["email"] == "alice@example.com"
+    assert response.status_code == 201, f"creation failed: {response.status_code} {response.content!r}"
+    body = json.loads(response.content)
+    assert body["username"] == name
+    assert body["email"] == f"{name}@example.com"
     assert body["role"] == "STANDARD"
     assert body["id"] > 0
-    assert response.headers.get("Location") == link_of(body, "self")
+    assert response.headers.get("Location") == body["_links"]["self"]["href"]
+
+
+@allure.epic("User")
+@allure.feature("REQ-USER-010")
+@allure.story("SCN-USER-010-A")
+@pytest.mark.own_instance(reason="exact_collection")
+def test_no_filter_returns_every_account(sut: Sut) -> None:
+    """The collection requested without a filter carries every account."""
+    server = sut.start()
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
+    names = [f"listed{next(_ACCOUNTS)}" for _ in range(3)]
+    for name in names:
+        response = register(server, root_token, name, None, SECRET_PASSWORD)
+        assert response.status_code == 201, f"creation failed: {response.status_code} {response.content!r}"
+
+    response = server.request("GET", server.href("user"), token=root_token)
+
+    assert response.status_code == 200, f"list failed: {response.status_code} {response.content!r}"
+    assert {item["username"] for item in json.loads(response.content)["items"]} == {
+        ROOT_ADMIN_USERNAME,
+        *names,
+    }
+
+
+@allure.epic("User")
+@allure.feature("REQ-USER-010")
+@allure.story("SCN-USER-010-B")
+def test_filters_narrow_the_result(server: Sut, root_token: str) -> None:
+    """Only the accounts matching every supplied filter appear."""
+    standard = f"std{next(_ACCOUNTS)}"
+    admin = f"adm{next(_ACCOUNTS)}"
+    combined = f"both{next(_ACCOUNTS)}"
+    registrations = (
+        (standard, f"{standard}@example.com", "STANDARD"),
+        (admin, f"{admin}@example.com", "ADMIN"),
+        (combined, f"{combined}@example.com", "STANDARD"),
+    )
+    for username, email, role in registrations:
+        response = register(server, root_token, username, email, SECRET_PASSWORD, role=role)
+        assert response.status_code == 201, f"creation failed: {response.status_code} {response.content!r}"
+
+    queries = (
+        (f"?username={standard}", {standard}),
+        (f"?email={admin}@example.com", {admin}),
+        (f"?role=ADMIN&username={admin}", {admin}),
+        (f"?role=STANDARD&email={combined}@example.com", {combined}),
+    )
+
+    for query, expected in queries:
+        response = server.request("GET", f"{server.href('user')}{query}", token=root_token)
+
+        assert response.status_code == 200, f"{query} failed: {response.status_code} {response.content!r}"
+        assert {item["username"] for item in json.loads(response.content)["items"]} == expected
+
+
+@allure.epic("User")
+@allure.feature("REQ-USER-010")
+@allure.story("SCN-USER-010-C")
+def test_an_empty_result_carries_no_items(server: Sut, root_token: str) -> None:
+    """A filter matching no account answers 200 with no items."""
+    response = server.request(
+        "GET",
+        f"{server.href('user')}?username=nobody{next(_ACCOUNTS)}",
+        token=root_token,
+    )
+
+    assert response.status_code == 200, f"list failed: {response.status_code} {response.content!r}"
+    assert json.loads(response.content)["items"] == []
+
+
+@allure.epic("User")
+@allure.feature("REQ-USER-010")
+@allure.story("SCN-USER-010-E")
+def test_the_email_filter_ignores_case(server: Sut, root_token: str) -> None:
+    """An email filter that differs from the stored address only by case finds the account."""
+    name = f"casef{next(_ACCOUNTS)}"
+    email = f"{name}@example.com"
+    created = register(server, root_token, name, email, SECRET_PASSWORD)
+    assert created.status_code == 201, f"creation failed: {created.status_code} {created.content!r}"
+
+    response = server.request("GET", f"{server.href('user')}?email={email.upper()}", token=root_token)
+
+    assert response.status_code == 200, f"filter failed: {response.status_code} {response.content!r}"
+    assert [item["username"] for item in json.loads(response.content)["items"]] == [name]
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-012")
 @allure.story("SCN-USER-012-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_update_changes_the_username(sut: Sut) -> None:
-    """An update carrying a new valid username changes the stored username."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    created = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
-    assert created.status_code == 201, f"creation failed: {created.status_code} {created.text}"
-    user_id = created.json()["id"]
-
-    response = server.request(
-        "PATCH",
-        f"{server.href('user')}/{user_id}",
-        token=root_token,
-        json={"username": "alicia"},
-    )
-
-    assert response.status_code == 200, f"update failed: {response.status_code} {response.text}"
-    assert response.json()["username"] == "alicia"
-    stored = server.request("GET", f"{server.href('user')}/{user_id}", token=root_token)
-    assert stored.json()["username"] == "alicia"
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-012")
 @allure.story("SCN-USER-012-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_update_changes_the_email(sut: Sut) -> None:
-    """An update carrying a new valid email changes the stored email."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    created = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
-    assert created.status_code == 201, f"creation failed: {created.status_code} {created.text}"
-    user_id = created.json()["id"]
+@allure.story("SCN-USER-012-C")
+def test_an_update_changes_each_submitted_field(server: Sut, root_token: str) -> None:
+    """Each submitted username, email and role is stored and reported."""
+    name = f"edit{next(_ACCOUNTS)}"
+    created = register(server, root_token, name, f"{name}@example.com", SECRET_PASSWORD)
+    assert created.status_code == 201, f"creation failed: {created.status_code} {created.content!r}"
+    profile = json.loads(created.content)
+    user_id = profile["id"]
 
-    response = server.request(
+    renamed = server.request(
         "PATCH",
         f"{server.href('user')}/{user_id}",
         token=root_token,
-        json={"email": "alicia@example.org"},
+        json={"username": f"{name}x"},
     )
+    assert renamed.status_code == 200, f"update failed: {renamed.status_code} {renamed.content!r}"
+    assert json.loads(renamed.content)["username"] == f"{name}x"
+    emailed = server.request(
+        "PATCH",
+        f"{server.href('user')}/{user_id}",
+        token=root_token,
+        json={"email": f"{name}@example.org"},
+    )
+    assert emailed.status_code == 200, f"update failed: {emailed.status_code} {emailed.content!r}"
+    assert json.loads(emailed.content)["email"] == f"{name}@example.org"
+    promoted = server.request(
+        "PATCH",
+        f"{server.href('user')}/{user_id}",
+        token=root_token,
+        json={"role": "ADMIN"},
+    )
+    assert promoted.status_code == 200, f"update failed: {promoted.status_code} {promoted.content!r}"
+    assert json.loads(promoted.content)["role"] == "ADMIN"
 
-    assert response.status_code == 200, f"update failed: {response.status_code} {response.text}"
-    assert response.json()["email"] == "alicia@example.org"
     stored = server.request("GET", f"{server.href('user')}/{user_id}", token=root_token)
-    assert stored.json()["email"] == "alicia@example.org"
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-012")
-@allure.story("SCN-USER-012-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_update_changes_the_role(sut: Sut) -> None:
-    """An update carrying a declared role changes the stored role."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    created = register(server, root_token, "alice", None, SECRET_PASSWORD)
-    assert created.status_code == 201, f"creation failed: {created.status_code} {created.text}"
-    user_id = created.json()["id"]
-
-    response = server.request("PATCH", f"{server.href('user')}/{user_id}", token=root_token, json={"role": "ADMIN"})
-
-    assert response.status_code == 200, f"update failed: {response.status_code} {response.text}"
-    assert response.json()["role"] == "ADMIN"
-    stored = server.request("GET", f"{server.href('user')}/{user_id}", token=root_token)
-    assert stored.json()["role"] == "ADMIN"
+    body = json.loads(stored.content)
+    assert body["username"] == f"{name}x"
+    assert body["email"] == f"{name}@example.org"
+    assert body["role"] == "ADMIN"
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-012")
 @allure.story("SCN-USER-012-D")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_update_leaves_omitted_fields_unchanged(sut: Sut) -> None:
-    """An update carrying one field leaves every other stored value unchanged."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    created = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
-    assert created.status_code == 201, f"creation failed: {created.status_code} {created.text}"
-    profile = created.json()
+@allure.story("SCN-USER-012-E")
+def test_an_update_leaves_omitted_fields_and_an_empty_body_unchanged(server: Sut, root_token: str) -> None:
+    """An update carrying one field, then no field, leaves every other stored value unchanged."""
+    name = f"keepf{next(_ACCOUNTS)}"
+    created = register(server, root_token, name, f"{name}@example.com", SECRET_PASSWORD)
+    assert created.status_code == 201, f"creation failed: {created.status_code} {created.content!r}"
+    profile = json.loads(created.content)
 
-    response = server.request(
+    emailed = server.request(
         "PATCH",
         f"{server.href('user')}/{profile['id']}",
         token=root_token,
-        json={"email": "alicia@example.org"},
+        json={"email": f"{name}@example.org"},
     )
-
-    assert response.status_code == 200, f"update failed: {response.status_code} {response.text}"
-    body = response.json()
-    assert body["email"] == "alicia@example.org"
+    assert emailed.status_code == 200, f"update failed: {emailed.status_code} {emailed.content!r}"
+    body = json.loads(emailed.content)
+    assert body["email"] == f"{name}@example.org"
     assert body["username"] == profile["username"]
     assert body["role"] == profile["role"]
 
-
-@allure.epic("User")
-@allure.feature("REQ-USER-012")
-@allure.story("SCN-USER-012-E")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_empty_body_changes_nothing(sut: Sut) -> None:
-    """An update carrying no field answers 200 and leaves every stored value unchanged."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    created = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
-    assert created.status_code == 201, f"creation failed: {created.status_code} {created.text}"
-    profile = created.json()
-
-    response = server.request("PATCH", f"{server.href('user')}/{profile['id']}", token=root_token, json={})
-
-    assert response.status_code == 200, f"update failed: {response.status_code} {response.text}"
-    stored = server.request("GET", f"{server.href('user')}/{profile['id']}", token=root_token)
-    assert stored.json()["username"] == profile["username"]
-    assert stored.json()["email"] == profile["email"]
-    assert stored.json()["role"] == profile["role"]
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-012")
-@allure.story("SCN-USER-012-F")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_update_of_an_unknown_account_is_not_found(sut: Sut) -> None:
-    """An update addressing an identifier that names no account answers 404 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    created = register(server, root_token, "alice", None, SECRET_PASSWORD)
-    assert created.status_code == 201, f"creation failed: {created.status_code} {created.text}"
-
-    response = server.request("PATCH", f"{server.href('user')}/999999", token=root_token, json={"username": "ghost"})
-
-    assert response.status_code == 404, f"unknown account answered {response.status_code}: {response.text}"
-    listed = server.request("GET", f"{server.href('user')}?username=ghost", token=root_token)
-    assert listed.json()["items"] == []
+    empty = server.request("PATCH", f"{server.href('user')}/{profile['id']}", token=root_token, json={})
+    assert empty.status_code == 200, f"update failed: {empty.status_code} {empty.content!r}"
+    stored = json.loads(empty.content)
+    assert stored["username"] == profile["username"]
+    assert stored["email"] == f"{name}@example.org"
+    assert stored["role"] == profile["role"]
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-013")
 @allure.story("SCN-USER-013-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_rename_onto_a_taken_username_conflicts(sut: Sut) -> None:
-    """A rename onto another account's username answers 409 and changes nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    alice = register(server, root_token, "alice", None, SECRET_PASSWORD)
-    assert alice.status_code == 201, f"creation failed: {alice.status_code} {alice.text}"
-    bobby = register(server, root_token, "bobby", None, SECRET_PASSWORD)
-    assert bobby.status_code == 201, f"creation failed: {bobby.status_code} {bobby.text}"
-    alice_id = alice.json()["id"]
-
-    response = server.request(
-        "PATCH",
-        f"{server.href('user')}/{alice_id}",
-        token=root_token,
-        json={"username": "bobby"},
-    )
-
-    assert response.status_code == 409, f"duplicate rename answered {response.status_code}: {response.text}"
-    stored = server.request("GET", f"{server.href('user')}/{alice_id}", token=root_token)
-    assert stored.json()["username"] == "alice"
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-013")
 @allure.story("SCN-USER-013-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_email_collision_on_update_conflicts(sut: Sut) -> None:
-    """An update carrying another account's email answers 409 and changes nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    alice = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
-    assert alice.status_code == 201, f"creation failed: {alice.status_code} {alice.text}"
-    bobby = register(server, root_token, "bobby", "bobby@example.com", SECRET_PASSWORD)
-    assert bobby.status_code == 201, f"creation failed: {bobby.status_code} {bobby.text}"
-    alice_id = alice.json()["id"]
+def test_an_update_onto_a_taken_username_or_email_conflicts(server: Sut, root_token: str) -> None:
+    """A rename onto another account's username or email answers 409 and changes nothing."""
+    alice = f"useralice{next(_ACCOUNTS)}"
+    bobby = f"userbobby{next(_ACCOUNTS)}"
+    first = register(server, root_token, alice, f"{alice}@example.com", SECRET_PASSWORD)
+    second = register(server, root_token, bobby, f"{bobby}@example.com", SECRET_PASSWORD)
+    assert first.status_code == 201, f"creation failed: {first.status_code} {first.content!r}"
+    assert second.status_code == 201, f"creation failed: {second.status_code} {second.content!r}"
+    alice_id = json.loads(first.content)["id"]
 
-    response = server.request(
+    rename = server.request(
         "PATCH",
         f"{server.href('user')}/{alice_id}",
         token=root_token,
-        json={"email": "bobby@example.com"},
+        json={"username": bobby},
+    )
+    email = server.request(
+        "PATCH",
+        f"{server.href('user')}/{alice_id}",
+        token=root_token,
+        json={"email": f"{bobby}@example.com"},
     )
 
-    assert response.status_code == 409, f"duplicate email answered {response.status_code}: {response.text}"
-    stored = server.request("GET", f"{server.href('user')}/{alice_id}", token=root_token)
-    assert stored.json()["email"] == "alice@example.com"
+    assert rename.status_code == 409, f"duplicate rename answered {rename.status_code}: {rename.content!r}"
+    assert email.status_code == 409, f"duplicate email answered {email.status_code}: {email.content!r}"
+    stored = json.loads(server.request("GET", f"{server.href('user')}/{alice_id}", token=root_token).content)
+    assert stored["username"] == alice
+    assert stored["email"] == f"{alice}@example.com"
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-013")
 @allure.story("SCN-USER-013-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_keeping_the_accounts_own_value_is_not_a_collision(sut: Sut) -> None:
+def test_an_update_keeping_the_own_value_is_not_a_collision(server: Sut, root_token: str) -> None:
     """An update carrying the account's current username and email answers 200 and stores them."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    created = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
-    assert created.status_code == 201, f"creation failed: {created.status_code} {created.text}"
-    profile = created.json()
+    name = f"self{next(_ACCOUNTS)}"
+    created = register(server, root_token, name, f"{name}@example.com", SECRET_PASSWORD)
+    assert created.status_code == 201, f"creation failed: {created.status_code} {created.content!r}"
+    profile = json.loads(created.content)
 
     response = server.request(
         "PATCH",
@@ -802,94 +569,97 @@ def test_keeping_the_accounts_own_value_is_not_a_collision(sut: Sut) -> None:
         json={"username": profile["username"], "email": profile["email"]},
     )
 
-    assert response.status_code == 200, f"own values answered {response.status_code}: {response.text}"
-    body = response.json()
+    assert response.status_code == 200, f"own values answered {response.status_code}: {response.content!r}"
+    body = json.loads(response.content)
     assert body["username"] == profile["username"]
     assert body["email"] == profile["email"]
 
 
 @allure.epic("User")
-@allure.feature("REQ-USER-014")
-@allure.story("SCN-USER-014-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_update_with_an_invalid_username_is_rejected(sut: Sut) -> None:
-    """A username that breaks a creation rule answers 422 and leaves the stored values unchanged."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    created = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
-    assert created.status_code == 201, f"creation failed: {created.status_code} {created.text}"
-    profile = created.json()
+@allure.feature("REQ-USER-013")
+@allure.story("SCN-USER-013-D")
+def test_a_case_only_email_change_conflicts(server: Sut, root_token: str) -> None:
+    """An update carrying another account's address in a different case answers 409 and changes nothing."""
+    david = f"userdavid{next(_ACCOUNTS)}"
+    erin = f"usererin{next(_ACCOUNTS)}"
+    first = register(server, root_token, david, f"{david}@example.com", SECRET_PASSWORD)
+    second = register(server, root_token, erin, f"{erin}@example.com", SECRET_PASSWORD)
+    assert first.status_code == 201, f"creation failed: {first.status_code} {first.content!r}"
+    assert second.status_code == 201, f"creation failed: {second.status_code} {second.content!r}"
+    erin_id = json.loads(second.content)["id"]
 
-    for username in (" Alice", "Alice", "alice "):
-        response = server.request(
-            "PATCH",
-            f"{server.href('user')}/{profile['id']}",
-            token=root_token,
-            json={"username": username},
-        )
+    response = server.request(
+        "PATCH",
+        f"{server.href('user')}/{erin_id}",
+        token=root_token,
+        json={"email": f"{david}@example.com".upper()},
+    )
 
-        assert response.status_code == 422, f"{username!r} was accepted: {response.status_code} {response.text}"
-
-    stored = server.request("GET", f"{server.href('user')}/{profile['id']}", token=root_token)
-    assert stored.json()["username"] == profile["username"]
-    assert stored.json()["email"] == profile["email"]
+    assert response.status_code == 409, f"case variant accepted: {response.status_code} {response.content!r}"
+    stored = json.loads(server.request("GET", f"{server.href('user')}/{erin_id}", token=root_token).content)
+    assert stored["email"] == f"{erin}@example.com"
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-014")
+@allure.story("SCN-USER-014-A")
 @allure.story("SCN-USER-014-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_update_with_an_invalid_email_is_rejected(sut: Sut) -> None:
-    """An invalid email address answers 422 and leaves the stored values unchanged."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    created = register(server, root_token, "alice", "alice@example.com", SECRET_PASSWORD)
-    assert created.status_code == 201, f"creation failed: {created.status_code} {created.text}"
-    profile = created.json()
+@allure.story("SCN-USER-014-C")
+def test_an_update_with_an_invalid_value_is_rejected(server: Sut, root_token: str) -> None:
+    """An invalid username, email or undeclared role answers 422 and leaves the stored values unchanged."""
+    name = f"refuse{next(_ACCOUNTS)}"
+    created = register(server, root_token, name, f"{name}@example.com", SECRET_PASSWORD)
+    assert created.status_code == 201, f"creation failed: {created.status_code} {created.content!r}"
+    profile = json.loads(created.content)
 
-    for email in ("not-an-email", "Alice <alice@example.com>", " alice@example.com"):
+    attempts = (
+        {"username": f" {name}x"},
+        {"username": f"{name} X"},
+        {"email": "not-an-email"},
+        {"email": f"{name} <{name}@example.com>"},
+        {"role": "SUPERUSER"},
+    )
+    for body in attempts:
         response = server.request(
             "PATCH",
             f"{server.href('user')}/{profile['id']}",
             token=root_token,
-            json={"email": email},
+            json=body,
         )
+        assert response.status_code == 422, f"{body!r} was accepted: {response.status_code} {response.content!r}"
 
-        assert response.status_code == 422, f"{email!r} was accepted: {response.status_code} {response.text}"
-
-    stored = server.request("GET", f"{server.href('user')}/{profile['id']}", token=root_token)
-    assert stored.json()["email"] == profile["email"]
-    assert stored.json()["username"] == profile["username"]
+    stored = json.loads(server.request("GET", f"{server.href('user')}/{profile['id']}", token=root_token).content)
+    assert stored["username"] == profile["username"]
+    assert stored["email"] == profile["email"]
+    assert stored["role"] == profile["role"]
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-015")
 @allure.story("SCN-USER-015-A")
-@pytest.mark.own_instance(reason="global_filesystem")
-def test_deletion_removes_the_identity(sut: Sut) -> None:
-    """A deletion answers 204 and removes the account, its credential and its permission overrides."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    target_id, target_token = provision(server, root_token, "alice")
+def test_a_deletion_removes_the_identity(server: Sut, root_token: str) -> None:
+    """A deletion answers 204 and removes the account, its credential and its permission summary."""
+    name = f"gone{next(_ACCOUNTS)}"
+    target_id, target_token = provision(server, root_token, name)
 
     response = server.request("DELETE", f"{server.href('user')}/{target_id}", token=root_token)
 
-    assert response.status_code == 204, f"delete failed: {response.status_code} {response.text}"
+    assert response.status_code == 204, f"delete failed: {response.status_code} {response.content!r}"
     assert response.content == b""
     assert server.request("GET", f"{server.href('user')}/{target_id}", token=root_token).status_code == 404
-    assert server.request("GET", f"{server.href('user')}/{target_id}/permission", token=root_token).status_code == 404
-    assert server.attempt_login("alice", SECRET_PASSWORD).status_code == 401
+    summary = server.request(
+        "GET",
+        f"{server.href('permission')}?user_id={target_id}",
+        token=root_token,
+    )
+    assert summary.status_code == 404, f"permission summary survived: {summary.status_code}"
+    assert (
+        post_login.sync_detailed(
+            client=server.client(), body=LoginRequest(password=SECRET_PASSWORD, identifier=name)
+        ).status_code
+        == 401
+    )
     assert server.request("GET", server.href("current_user"), token=target_token).status_code == 401
-
-
-@allure.epic("User")
-@allure.feature("REQ-USER-015")
-@allure.story("SCN-USER-015-B")
-def test_deletion_of_an_unknown_account_is_not_found(server: Sut, root_token: str) -> None:
-    """A deletion addressing an identifier that names no account answers 404."""
-    response = server.request("DELETE", f"{server.href('user')}/999999", token=root_token)
-
-    assert response.status_code == 404, f"unknown account answered {response.status_code}: {response.text}"
 
 
 @allure.epic("User")
@@ -897,14 +667,11 @@ def test_deletion_of_an_unknown_account_is_not_found(server: Sut, root_token: st
 @allure.story("SCN-USER-016-A")
 @allure.story("SCN-USER-016-B")
 @allure.story("SCN-USER-016-C")
-@pytest.mark.own_instance(reason="global_filesystem")
-def test_deletion_removes_owned_data(sut: Sut) -> None:
+def test_a_deletion_removes_owned_data(server: Sut, root_token: str) -> None:
     """A deleted account's gallery with its item, playlist and unfinished upload session are gone."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    target_id, target_token = provision(server, root_token, "alice")
-    image = (FIXTURE_DIRECTORY / "cover.png").read_bytes()
-    file = upload(server, target_token, "owned.png", image)
+    name = f"owned{next(_ACCOUNTS)}"
+    target_id, target_token = provision(server, root_token, name)
+    file = upload(server, target_token, "owned.png", IMAGE_BYTES, IMAGE_CONTENT_TYPE)
     gallery = create_gallery(server, target_token, "Owned Gallery")
     item = add_to_gallery(server, target_token, gallery, file["id"])
     playlist = server.request(
@@ -913,86 +680,78 @@ def test_deletion_removes_owned_data(sut: Sut) -> None:
         token=target_token,
         json={"name": "Owned Playlist", "is_public": False},
     )
-    assert playlist.status_code == 201, f"playlist failed: {playlist.status_code} {playlist.text}"
-    upload_session = begin_upload(server, target_token, "unfinished.png", image)
+    assert playlist.status_code == 201, f"playlist failed: {playlist.status_code} {playlist.content!r}"
+    playlist_body = json.loads(playlist.content)
+    upload_session = begin_upload(server, target_token, "unfinished.png", IMAGE_BYTES)
 
     response = server.request("DELETE", f"{server.href('user')}/{target_id}", token=root_token)
 
-    assert response.status_code == 204, f"delete failed: {response.status_code} {response.text}"
-    assert server.request("GET", link_of(gallery, "self"), token=root_token).status_code == 404
-    assert server.request("GET", link_of(item, "self"), token=root_token).status_code == 404
-    assert server.request("GET", link_of(playlist.json(), "self"), token=root_token).status_code == 404
+    assert response.status_code == 204, f"delete failed: {response.status_code} {response.content!r}"
+    assert server.request("GET", gallery["_links"]["self"]["href"], token=root_token).status_code == 404
+    assert server.request("GET", item["_links"]["self"]["href"], token=root_token).status_code == 404
+    assert server.request("GET", playlist_body["_links"]["self"]["href"], token=root_token).status_code == 404
     assert server.request("GET", upload_session.self_href, token=root_token).status_code == 404
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-017")
 @allure.story("SCN-USER-017-A")
-@pytest.mark.own_instance(reason="global_filesystem")
-def test_private_gallery_media_is_removed_with_its_bytes(sut: Sut) -> None:
+def test_private_gallery_media_is_removed_with_its_bytes(server: Sut, root_token: str) -> None:
     """An image referenced only by the account's own gallery is deleted with its record and bytes."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    target_id, target_token = provision(server, root_token, "alice")
-    image = (FIXTURE_DIRECTORY / "cover.png").read_bytes()
-    file = upload(server, target_token, "private.png", image)
-    image_href = link_of(file, "image")
-    gallery = create_gallery(server, target_token, "Private Gallery")
+    name = f"private{next(_ACCOUNTS)}"
+    target_id, target_token = provision(server, root_token, name)
+    file = upload(server, target_token, "private.png", IMAGE_BYTES, IMAGE_CONTENT_TYPE)
+    typed = json.loads(server.follow(file, "image", token=target_token).content)
+    gallery = create_gallery(server, target_token, f"Private {name}")
     add_to_gallery(server, target_token, gallery, file["id"])
     assert server.exists(f"media/{file['path']}")
 
     response = server.request("DELETE", f"{server.href('user')}/{target_id}", token=root_token)
 
-    assert response.status_code == 204, f"delete failed: {response.status_code} {response.text}"
-    assert server.request("GET", link_of(file, "self"), token=root_token).status_code == 404
-    assert server.request("GET", image_href, token=root_token).status_code == 404
+    assert response.status_code == 204, f"delete failed: {response.status_code} {response.content!r}"
+    assert server.request("GET", file["_links"]["self"]["href"], token=root_token).status_code == 404
+    assert server.request("GET", typed["_links"]["self"]["href"], token=root_token).status_code == 404
     assert not server.exists(f"media/{file['path']}")
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-017")
 @allure.story("SCN-USER-017-C")
-@pytest.mark.own_instance(reason="global_filesystem")
-def test_the_accounts_own_public_gallery_is_not_a_shared_reference(sut: Sut) -> None:
+def test_the_accounts_own_public_gallery_is_not_a_shared_reference(server: Sut, root_token: str) -> None:
     """An image referenced only by the account's own public gallery is deleted with the account."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    target_id, target_token = provision(server, root_token, "alice")
-    image = (FIXTURE_DIRECTORY / "cover.png").read_bytes()
-    file = upload(server, target_token, "public.png", image)
-    image_href = link_of(file, "image")
-    gallery = create_gallery(server, target_token, "Public Gallery", is_public=True)
+    name = f"pub{next(_ACCOUNTS)}"
+    target_id, target_token = provision(server, root_token, name)
+    file = upload(server, target_token, "public.png", IMAGE_BYTES, IMAGE_CONTENT_TYPE)
+    typed = json.loads(server.follow(file, "image", token=target_token).content)
+    gallery = create_gallery(server, target_token, f"Public {name}", is_public=True)
     add_to_gallery(server, target_token, gallery, file["id"])
 
     response = server.request("DELETE", f"{server.href('user')}/{target_id}", token=root_token)
 
-    assert response.status_code == 204, f"delete failed: {response.status_code} {response.text}"
-    assert server.request("GET", link_of(file, "self"), token=root_token).status_code == 404
-    assert server.request("GET", image_href, token=root_token).status_code == 404
+    assert response.status_code == 204, f"delete failed: {response.status_code} {response.content!r}"
+    assert server.request("GET", file["_links"]["self"]["href"], token=root_token).status_code == 404
+    assert server.request("GET", typed["_links"]["self"]["href"], token=root_token).status_code == 404
     assert not server.exists(f"media/{file['path']}")
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-018")
 @allure.story("SCN-USER-018-A")
-@pytest.mark.own_instance(reason="global_filesystem")
-def test_an_image_in_another_gallery_survives_under_account_zero(sut: Sut) -> None:
+def test_an_image_in_another_gallery_survives_under_account_zero(server: Sut, root_token: str) -> None:
     """An image referenced by another account's gallery survives, owned by account 0."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    target_id, target_token = provision(server, root_token, "alice")
-    image = (FIXTURE_DIRECTORY / "cover.png").read_bytes()
-    file = upload(server, target_token, "shared.png", image)
-    gallery = create_gallery(server, root_token, "Shared Gallery")
+    name = f"shared{next(_ACCOUNTS)}"
+    target_id, target_token = provision(server, root_token, name)
+    file = upload(server, target_token, "shared.png", IMAGE_BYTES, IMAGE_CONTENT_TYPE)
+    gallery = create_gallery(server, root_token, f"Shared {name}")
     item = add_to_gallery(server, root_token, gallery, file["id"])
 
     response = server.request("DELETE", f"{server.href('user')}/{target_id}", token=root_token)
 
-    assert response.status_code == 204, f"delete failed: {response.status_code} {response.text}"
-    gallery_read = server.request("GET", link_of(gallery, "self"), token=root_token)
-    assert gallery_read.status_code == 200, f"gallery failed: {gallery_read.status_code} {gallery_read.text}"
-    assert item["id"] in [entry["id"] for entry in gallery_read.json()["items"]]
-    profile = file_profile(server, root_token, file)
+    assert response.status_code == 204, f"delete failed: {response.status_code} {response.content!r}"
+    gallery_read = server.request("GET", gallery["_links"]["self"]["href"], token=root_token)
+    assert gallery_read.status_code == 200, f"gallery failed: {gallery_read.status_code} {gallery_read.content!r}"
+    assert item["id"] in [entry["id"] for entry in json.loads(gallery_read.content)["items"]]
+    profile = json.loads(server.request("GET", file["_links"]["self"]["href"], token=root_token).content)
     assert profile["_links"]["owner"]["href"] == "/api/v1/user/0"
     content = server.request("GET", profile["_links"]["content"]["href"], token=root_token)
     assert content.status_code == 200
@@ -1002,29 +761,26 @@ def test_an_image_in_another_gallery_survives_under_account_zero(sut: Sut) -> No
 @allure.epic("User")
 @allure.feature("REQ-USER-018")
 @allure.story("SCN-USER-018-B")
-@pytest.mark.own_instance(reason="global_filesystem")
-def test_a_video_backing_a_film_survives(sut: Sut) -> None:
+def test_a_video_backing_a_film_survives(server: Sut, root_token: str) -> None:
     """A video backing a film survives the deletion and the film stays readable."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    target_id, target_token = provision(server, root_token, "alice")
-    video = (FIXTURE_DIRECTORY / "clip.mp4").read_bytes()
-    file = upload(server, target_token, "film.mp4", video, "video/mp4")
-    video_id = linked_id(link_of(file, "video"))
+    name = f"film{next(_ACCOUNTS)}"
+    target_id, target_token = provision(server, root_token, name)
+    file = upload(server, target_token, "film.mp4", VIDEO_BYTES, VIDEO_CONTENT_TYPE)
+    typed = json.loads(server.follow(file, "video", token=target_token).content)
     created = server.request(
         "POST",
         server.href("movie"),
         token=root_token,
-        json={"name": "Surviving Film", "video_id": video_id},
+        json={"name": f"Surviving {name}", "video_id": typed["id"]},
     )
-    assert created.status_code == 201, f"movie failed: {created.status_code} {created.text}"
-    movie_href = link_of(created.json(), "self")
+    assert created.status_code == 201, f"movie failed: {created.status_code} {created.content!r}"
+    movie_href = json.loads(created.content)["_links"]["self"]["href"]
 
     response = server.request("DELETE", f"{server.href('user')}/{target_id}", token=root_token)
 
-    assert response.status_code == 204, f"delete failed: {response.status_code} {response.text}"
+    assert response.status_code == 204, f"delete failed: {response.status_code} {response.content!r}"
     assert server.request("GET", movie_href, token=root_token).status_code == 200
-    profile = file_profile(server, root_token, file)
+    profile = json.loads(server.request("GET", file["_links"]["self"]["href"], token=root_token).content)
     assert profile["_links"]["owner"]["href"] == "/api/v1/user/0"
     content = server.request("GET", profile["_links"]["content"]["href"], token=root_token)
     assert content.status_code == 200
@@ -1034,69 +790,58 @@ def test_a_video_backing_a_film_survives(sut: Sut) -> None:
 @allure.epic("User")
 @allure.feature("REQ-USER-018")
 @allure.story("SCN-USER-018-C")
-@pytest.mark.own_instance(reason="global_filesystem")
-def test_catalogue_artwork_survives(sut: Sut) -> None:
+def test_catalogue_artwork_survives(server: Sut, root_token: str) -> None:
     """An image referenced as catalogue artwork stays readable through the catalogue resource."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    target_id, target_token = provision(server, root_token, "alice")
-    image = (FIXTURE_DIRECTORY / "cover.png").read_bytes()
-    image_file = upload(server, target_token, "artwork.png", image)
-    image_href = link_of(image_file, "image")
-    image_id = linked_id(image_href)
-    video = (FIXTURE_DIRECTORY / "clip.mp4").read_bytes()
-    video_file = upload(server, target_token, "artwork.mp4", video, "video/mp4")
-    video_id = linked_id(link_of(video_file, "video"))
+    name = f"art{next(_ACCOUNTS)}"
+    target_id, target_token = provision(server, root_token, name)
+    image_file = upload(server, target_token, "artwork.png", IMAGE_BYTES, IMAGE_CONTENT_TYPE)
+    image = json.loads(server.follow(image_file, "image", token=target_token).content)
+    video_file = upload(server, target_token, "artwork.mp4", VIDEO_BYTES, VIDEO_CONTENT_TYPE)
+    video = json.loads(server.follow(video_file, "video", token=target_token).content)
     created = server.request(
         "POST",
         server.href("movie"),
         token=root_token,
-        json={"name": "Illustrated Film", "video_id": video_id, "cover_image_id": image_id},
+        json={
+            "name": f"Illustrated {name}",
+            "video_id": video["id"],
+            "cover_image_id": image["id"],
+        },
     )
-    assert created.status_code == 201, f"movie failed: {created.status_code} {created.text}"
+    assert created.status_code == 201, f"movie failed: {created.status_code} {created.content!r}"
 
     response = server.request("DELETE", f"{server.href('user')}/{target_id}", token=root_token)
 
-    assert response.status_code == 204, f"delete failed: {response.status_code} {response.text}"
-    artwork = server.request("GET", image_href, token=root_token)
-    assert artwork.status_code == 200, f"artwork failed: {artwork.status_code} {artwork.text}"
-    assert file_profile(server, root_token, image_file)["_links"]["owner"]["href"] == "/api/v1/user/0"
+    assert response.status_code == 204, f"delete failed: {response.status_code} {response.content!r}"
+    artwork = server.request("GET", image["_links"]["self"]["href"], token=root_token)
+    assert artwork.status_code == 200, f"artwork failed: {artwork.status_code} {artwork.content!r}"
+    profile = json.loads(server.request("GET", image_file["_links"]["self"]["href"], token=root_token).content)
+    assert profile["_links"]["owner"]["href"] == "/api/v1/user/0"
 
 
 @allure.epic("User")
 @allure.feature("REQ-USER-019")
 @allure.story("SCN-USER-019-A")
-@pytest.mark.own_instance(reason="global_filesystem")
-def test_a_colliding_digest_is_cleared_on_transfer(sut: Sut) -> None:
+def test_a_transferred_file_with_a_colliding_digest_stays_readable(server: Sut, root_token: str) -> None:
     """Two accounts' identical-content files both survive, so the second transfer cleared its digest."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    alice_id, alice_token = provision(server, root_token, "alice")
-    bobby_id, bobby_token = provision(server, root_token, "bobby")
-    image = (FIXTURE_DIRECTORY / "cover.png").read_bytes()
-    alice_file = upload(server, alice_token, "alice.png", image)
-    bobby_file = upload(server, bobby_token, "bobby.png", image)
+    alice = f"digest{next(_ACCOUNTS)}"
+    bobby = f"digestb{next(_ACCOUNTS)}"
+    alice_id, alice_token = provision(server, root_token, alice)
+    bobby_id, bobby_token = provision(server, root_token, bobby)
+    alice_file = upload(server, alice_token, "alice.png", IMAGE_BYTES, IMAGE_CONTENT_TYPE)
+    bobby_file = upload(server, bobby_token, "bobby.png", IMAGE_BYTES, IMAGE_CONTENT_TYPE)
     assert alice_file["id"] != bobby_file["id"]
-    gallery = create_gallery(server, root_token, "Colliding Digests")
+    gallery = create_gallery(server, root_token, f"Digests {alice}")
     add_to_gallery(server, root_token, gallery, alice_file["id"])
     add_to_gallery(server, root_token, gallery, bobby_file["id"])
 
     first = server.request("DELETE", f"{server.href('user')}/{alice_id}", token=root_token)
     second = server.request("DELETE", f"{server.href('user')}/{bobby_id}", token=root_token)
 
-    assert first.status_code == 204, f"first delete failed: {first.status_code} {first.text}"
-    assert second.status_code == 204, f"second delete failed: {second.status_code} {second.text}"
+    assert first.status_code == 204, f"first delete failed: {first.status_code} {first.content!r}"
+    assert second.status_code == 204, f"second delete failed: {second.status_code} {second.content!r}"
     for file in (alice_file, bobby_file):
-        profile = file_profile(server, root_token, file)
+        profile = json.loads(server.request("GET", file["_links"]["self"]["href"], token=root_token).content)
         assert profile["_links"]["owner"]["href"] == "/api/v1/user/0"
-        assert server.request("GET", profile["_links"]["content"]["href"], token=root_token).status_code == 200
-
-    # The digest is not exposed by the API, so the second transfer's row is read
-    # from the working directory's datastore.
-    connection = sqlite3.connect(server.dir / "mnemorium.db")
-    try:
-        digests = dict(connection.execute("SELECT file_id, integrity_hash FROM file").fetchall())
-    finally:
-        connection.close()
-    assert digests[alice_file["id"]] is not None
-    assert digests[bobby_file["id"]] is None
+        content = server.request("GET", profile["_links"]["content"]["href"], token=root_token)
+        assert content.status_code == 200

@@ -140,7 +140,7 @@ pub(crate) enum RegisterUserError {
     InvalidPassword,
     /// The username does not satisfy the username policy.
     #[error(
-        "username must be between {MIN_USERNAME_LENGTH} and {MAX_USERNAME_LENGTH} characters long, contain no uppercase letter, and not begin or end with whitespace"
+        "username must be between {MIN_USERNAME_LENGTH} and {MAX_USERNAME_LENGTH} characters long, and contain no whitespace or NUL character"
     )]
     InvalidUsername,
     /// The authenticated caller does not exist anymore.

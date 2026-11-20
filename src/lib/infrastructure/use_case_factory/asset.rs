@@ -3,11 +3,11 @@ use std::sync::Arc;
 use crate::application::port::{
     AssetUseCaseFactory, BeginUploadUseCase, CancelUploadUseCase, CompleteUploadUseCase,
     GetAssetContentUseCase, GetAudioUseCase, GetFileUseCase, GetImageUseCase, GetUploadUseCase,
-    GetVideoUseCase, ReapUploadsUseCase, WriteUploadChunkUseCase,
+    GetVideoUseCase, ListFilesUseCase, ReapUploadsUseCase, WriteUploadChunkUseCase,
 };
 use crate::application::use_case::{
     BeginUpload, CancelUpload, CompleteUpload, GetAssetContent, GetAudio, GetFile, GetImage,
-    GetUpload, GetVideo, ReapUploads, WriteUploadChunk,
+    GetUpload, GetVideo, ListFiles, ReapUploads, WriteUploadChunk,
 };
 use crate::domain::model::Configuration;
 use crate::infrastructure::outbound::LocalMediaProbe;
@@ -120,6 +120,10 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
 
     fn get_video(&self) -> Arc<dyn GetVideoUseCase> {
         Arc::new(GetVideo::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn list_files(&self) -> Arc<dyn ListFilesUseCase> {
+        Arc::new(ListFiles::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn reap_uploads(&self) -> Arc<dyn ReapUploadsUseCase> {

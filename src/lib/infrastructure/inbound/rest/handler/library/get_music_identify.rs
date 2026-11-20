@@ -7,37 +7,16 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::application::port::{IdentifyMusicCommand, IdentifyMusicError};
 use crate::domain::model::{MusicCandidate, MusicKind, MusicQuery};
+use crate::infrastructure::inbound::rest::handler::library::MusicKindRequest;
 use crate::infrastructure::inbound::rest::handler::library::{
     MusicMediumResponse, MusicReferenceResponse,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLinks, hal_json};
 
-/// Kind of music work to search for.
-#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
-#[serde(rename_all = "lowercase")]
-#[non_exhaustive]
-pub(crate) enum MusicKindRequest {
-    /// The abstract album, independent of any one edition.
-    Album,
-    /// One performance, independent of the release it appears on.
-    Recording,
-    /// One edition of an album.
-    Release,
-}
-
-impl From<MusicKindRequest> for MusicKind {
-    fn from(kind: MusicKindRequest) -> Self {
-        match kind {
-            MusicKindRequest::Album => Self::Album,
-            MusicKindRequest::Recording => Self::Recording,
-            MusicKindRequest::Release => Self::Release,
-        }
-    }
-}
-
 /// Evidence a caller knows about the music work it wants identified.
 #[derive(Debug, Deserialize, IntoParams)]
+#[serde(deny_unknown_fields)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
 pub(crate) struct IdentifyMusicQuery {

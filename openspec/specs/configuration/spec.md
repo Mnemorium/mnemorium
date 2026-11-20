@@ -34,6 +34,11 @@ built-in default, so an absent, empty or partial file still yields a complete co
 - **WHEN** the configuration file names only some settings
 - **THEN** the settings it omits take their built-in default
 
+#### Scenario: SCN-CONFIGURATION-001-E — The resolved value reaches the artefact its consumer emits
+
+- **WHEN** a setting is resolved from a layer and the capability that consumes it derives an artefact from it
+- **THEN** the artefact carries the resolved value
+
 ### Requirement: REQ-CONFIGURATION-002 — The configuration file is a fixed location holding a sparse document
 
 The configuration file SHALL be named `config.yaml` and live at a fixed location that is not itself a setting, and SHALL

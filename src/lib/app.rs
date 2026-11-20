@@ -1,5 +1,3 @@
-#[cfg(feature = "test-seed")]
-use std::env;
 use std::future::pending;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -24,6 +22,8 @@ use crate::application::use_case::{
     EnsureStorageDirectories, InitializeRootAdmin, LoadConfiguration, LoadState, MEDIA_ROOT,
 };
 use crate::infrastructure::LoginAttemptLimit;
+#[cfg(feature = "test-seed")]
+use crate::infrastructure::apply;
 use crate::infrastructure::inbound::rest::middleware::LoginRateLimiter;
 use crate::infrastructure::inbound::rest::{AppState, handler};
 use crate::infrastructure::inbound::{MediaIngestRunner, UploadReaperRunner};
@@ -40,8 +40,6 @@ use crate::infrastructure::use_case_factory::{
     RuntimeAssetUseCaseFactory, RuntimeIdentityUseCaseFactory, RuntimeLibraryUseCaseFactory,
     RuntimeUserUseCaseFactory,
 };
-#[cfg(feature = "test-seed")]
-use crate::infrastructure::{SeedProfile, apply};
 
 /// Run the Mnemorium server until a shutdown signal arrives.
 ///
@@ -184,22 +182,14 @@ pub async fn run() -> anyhow::Result<()> {
             Arc::clone(&configuration),
         ));
 
-    // The API fixture is the default: the volume library exists for the
-    // black-box performance suite, and a boot that fuzzes or exercises the API
-    // stays small unless the measurement asks otherwise.
-    #[cfg(feature = "test-seed")]
-    let seed_profile = if env::var("MNEMORIUM_SEED_PROFILE").as_deref() == Ok("perf") {
-        SeedProfile::Perf
-    } else {
-        SeedProfile::Api
-    };
-
+    // The seed applies only when the configuration names a profile: a boot
+    // that names none starts unseeded (`REQ-CONFIGURATION-001`).
     #[cfg(feature = "test-seed")]
     apply(
         &seed_pool,
         instance_state.pepper(),
         &media_root(),
-        seed_profile,
+        configuration.seed().profile(),
     )
     .await?;
 

@@ -12,19 +12,24 @@ the request schema — is validated by Schemathesis from the served document. Ev
 (`Sut.href`), from a representation's named link or from the response's own `_links.self`, so the suite keeps its single
 `/api/v1` base literal in `harness.Sut.index`.
 
-The image and video helpers come from the feature modules that own them, so this module uploads real media and never
-fabricates a typed identifier.
+The image helper comes from the feature module that owns it; the video helpers are this module's own, so it uploads real
+media and never fabricates a typed identifier.
 """
 
 import time
+from datetime import UTC, datetime
+from itertools import count
 
 import allure
 import pytest
 from conftest import (
+    FIXTURE_DIRECTORY,
     add_to_gallery,
     create_gallery,
+    login,
     provision,
     start_instance,
+    upload,
 )
 from gallery import image_file
 from harness import (
@@ -32,7 +37,6 @@ from harness import (
     Sut,
     link_of,
 )
-from video import assert_summary, typed_video, upload_video
 
 # The show resource kind the resource-policy route addresses.
 SERIES = "SERIES"
@@ -42,6 +46,57 @@ UNKNOWN_GENRE = "Telenovela"
 
 # The largest index a 32-bit unsigned position admits.
 MAX_U32_INDEX = 4_294_967_295
+
+VIDEO_CONTENT_TYPE = "video/mp4"
+
+# The fixture the module uploads: a real H.264 stream the container's probe reads.
+VIDEO_FIXTURE = "clip.mp4"
+
+# What the fixture's stream declares: a 16x16 progressive H.264 clip of two frames at 200 ms.
+CODEC = "h264"
+DURATION_MS = 200.0
+WIDTH = 16
+HEIGHT = 16
+SCAN_TYPE = "PROGRESSIVE"
+
+# The summary an episode embeds: the identifier, the backing file, the codec, the duration, the dimensions and the scan
+# type, and none of the colour identifier, the frame count or any link.
+SUMMARY_FIELDS = {"id", "file_id", "codec", "duration_ms", "width", "height", "scan_type"}
+
+# Each generated video carries a per-call trailing `free` box, so two uploads never share a file through deduplication.
+_VIDEO_NONCE = count(datetime.now(UTC).toordinal())
+
+
+def video_bytes(fixture: str = VIDEO_FIXTURE) -> bytes:
+    """Return a fixture's bytes with a unique trailing `free` box the probe ignores."""
+    padding = (_VIDEO_NONCE.__next__() & 0xFFFF).to_bytes(4, "big")
+    return (FIXTURE_DIRECTORY / fixture).read_bytes() + (8 + len(padding)).to_bytes(4, "big") + b"free" + padding
+
+
+def upload_video(server: Sut, token: str, name: str, fixture: str = VIDEO_FIXTURE) -> dict:
+    """Upload one video and return the file representation."""
+    return upload(server, token, name, video_bytes(fixture), VIDEO_CONTENT_TYPE)
+
+
+def typed_video(server: Sut, token: str, file: dict) -> dict:
+    """Follow a file's `video` link and return the typed representation."""
+    response = server.follow(file, "video", token=token)
+    assert response.status_code == 200, f"video read failed: {response.status_code} {response.text}"
+    return response.json()
+
+
+def assert_summary(representation: dict, file: dict, video: dict) -> None:
+    """Assert the embedded video summary carries the declared subset and nothing else."""
+    summary = representation["video"]
+
+    assert set(summary) == SUMMARY_FIELDS
+    assert summary["id"] == video["id"]
+    assert summary["file_id"] == file["id"]
+    assert summary["codec"].lower() == CODEC
+    assert abs(summary["duration_ms"] - DURATION_MS) <= 1.0
+    assert summary["width"] == WIDTH
+    assert summary["height"] == HEIGHT
+    assert summary["scan_type"] == SCAN_TYPE
 
 
 def show_body(**overrides: object) -> dict[str, object]:
@@ -238,7 +293,7 @@ def deny_viewer(server: Sut, token: str, user_id: int, series_id: int) -> None:
 def test_a_new_show_is_created(sut: Sut) -> None:
     """A show is created from its metadata and answers 201 with a Location and no seasons."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
 
     response = post_show(
@@ -278,7 +333,7 @@ def test_a_new_show_is_created(sut: Sut) -> None:
 def test_a_repeated_name_creates_a_second_show(sut: Sut) -> None:
     """A name another show already uses creates a second show rather than returning the first."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     first = create_show(server, root_token, name="Twin Peaks")
 
     second = create_show(server, root_token, name="Twin Peaks")
@@ -296,7 +351,7 @@ def test_a_repeated_name_creates_a_second_show(sut: Sut) -> None:
 def test_an_unknown_genre_is_stored_and_linked(sut: Sut) -> None:
     """A genre the catalogue does not hold is stored and the show reports it."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     created = create_show(server, root_token, genres=[UNKNOWN_GENRE])
 
     assert created["genres"] == [UNKNOWN_GENRE.upper()]
@@ -310,11 +365,13 @@ def test_an_unknown_genre_is_stored_and_linked(sut: Sut) -> None:
 @allure.story("SCN-SERIES-008-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_unusable_creation_input_is_refused(sut: Sut) -> None:
-    """An empty name or genre, malformed date or non-two-letter country answers 422 and stores nothing."""
+    """An empty or padded name, empty genre, malformed date or bad country answers 422."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     bodies = [
         show_body(name=""),
+        show_body(name=" Padded Show"),
+        show_body(name="Padded Show "),
         show_body(genres=[""]),
         show_body(first_air_date="08/04/1990"),
         show_body(country_of_origin="U.S.A."),
@@ -336,7 +393,7 @@ def test_unusable_creation_input_is_refused(sut: Sut) -> None:
 def test_a_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
     """An image already used as gallery media answers 409 and creates no show."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     attached = gallery_image(server, alice)
 
@@ -355,7 +412,7 @@ def test_a_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
 def test_a_standard_user_cannot_create_a_show(sut: Sut) -> None:
     """A Standard user's creation answers 403 and stores nothing."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
 
     response = post_show(server, alice, show_body())
@@ -376,7 +433,7 @@ def test_a_standard_user_cannot_create_a_show(sut: Sut) -> None:
 def test_the_collection_lists_partial_shows_in_identifier_order(sut: Sut) -> None:
     """Two shows list as partial items by ascending identifier, with their cover links."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
     first = create_show(server, root_token, name="First", cover_image_id=cover)
     second = create_show(server, root_token, name="Second")
@@ -408,7 +465,7 @@ def test_the_collection_lists_partial_shows_in_identifier_order(sut: Sut) -> Non
 def test_the_name_filter_and_page_are_applied(sut: Sut) -> None:
     """The name filter narrows the collection and limit/offset select one page."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     ids = [create_show(server, root_token, name=name)["id"] for name in ("Alpha", "Beta", "Gamma")]
 
     filtered = list_shows(server, root_token, "?name=Beta")
@@ -427,7 +484,7 @@ def test_the_name_filter_and_page_are_applied(sut: Sut) -> None:
 def test_a_caller_that_discovers_no_show_lists_an_empty_collection(sut: Sut) -> None:
     """A caller denied the only show discovers none and receives an empty collection."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token)
     deny_viewer(server, root_token, alice_id, show["id"])
@@ -519,7 +576,7 @@ def test_a_show_without_a_date_or_country_reports_null(server: Sut, root_token: 
 def test_an_unknown_or_unviewable_show_is_not_found(sut: Sut) -> None:
     """An unknown show and one the caller may not view both answer 404."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token)
     deny_viewer(server, root_token, alice_id, show["id"])
@@ -679,7 +736,7 @@ def test_a_malformed_index_or_identifier_is_refused(server: Sut, root_token: str
 def test_the_episodes_of_a_season_are_listed_with_their_fields(sut: Sut) -> None:
     """The episode collection carries each episode's index, fields, video summary and links."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     show = create_show(server, root_token)
     create_season(server, root_token, show["id"])
     dated_file, dated_video = episode_video(server, root_token, "dated.mp4")
@@ -812,7 +869,7 @@ def test_an_episode_outside_the_season_is_not_found(server: Sut, root_token: str
 def test_seasons_and_episodes_are_listed_in_ascending_index_order(sut: Sut) -> None:
     """Seasons and episodes list by ascending index whatever order they were written in."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     show = create_show(server, root_token)
     for season_index in (3, 1, 2):
         create_season(server, root_token, show["id"], season_index, name=f"Season {season_index}")
@@ -934,7 +991,7 @@ def test_null_clears_a_show_optional_value(server: Sut, root_token: str) -> None
 def test_a_standard_user_may_read_but_not_edit_a_show(sut: Sut) -> None:
     """A Standard user reads the show but its patch answers 403 and stores nothing."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token, name="Untouched")
 
@@ -948,12 +1005,26 @@ def test_a_standard_user_may_read_but_not_edit_a_show(sut: Sut) -> None:
 
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-009")
+@allure.story("SCN-SERIES-009-F")
+def test_a_padded_show_name_is_refused_on_update(server: Sut, root_token: str) -> None:
+    """A patch name that begins or ends with whitespace answers 422 and applies nothing."""
+    show = create_show(server, root_token, name="Kept Show")
+
+    for name in (" Padded Show", "Padded Show ", " Padded Show "):
+        response = patch_show(server, root_token, show["id"], {"name": name})
+        assert response.status_code == 422, f"{name!r} accepted: {response.status_code} {response.text}"
+
+    assert read_show(server, root_token, show["id"]).json()["name"] == "Kept Show"
+
+
+@allure.epic("Series")
+@allure.feature("REQ-SERIES-009")
 @allure.story("SCN-SERIES-009-E")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unknown_or_unviewable_show_cannot_be_patched(sut: Sut) -> None:
     """An unknown show and one the caller may not view both answer 404 and apply nothing."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token, name="Untouched")
     deny_viewer(server, root_token, alice_id, show["id"])
@@ -975,7 +1046,7 @@ def test_an_unknown_or_unviewable_show_cannot_be_patched(sut: Sut) -> None:
 def test_a_season_is_created_then_replaced_keeping_its_episodes(sut: Sut) -> None:
     """A free index creates a season with 201; the same index replaces it with 200 and keeps the episodes."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     cover = library_image(server, root_token)
     show = create_show(server, root_token)
 
@@ -1018,7 +1089,7 @@ def test_a_season_is_created_then_replaced_keeping_its_episodes(sut: Sut) -> Non
 def test_a_season_write_of_an_unknown_show_or_malformed_index_is_refused(sut: Sut) -> None:
     """An unknown show answers 404 and an index that is not a 32-bit unsigned integer answers 400."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     show = create_show(server, root_token)
 
     unknown_show = put_season(server, root_token, show["id"] + 1_000_000, 1, {"name": "Season One"})
@@ -1036,7 +1107,7 @@ def test_a_season_write_of_an_unknown_show_or_malformed_index_is_refused(sut: Su
 def test_a_season_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
     """An image already used as gallery media answers 409 and creates no season."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     attached = gallery_image(server, alice)
     show = create_show(server, root_token)
@@ -1054,7 +1125,7 @@ def test_a_season_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None
 def test_a_standard_user_cannot_write_a_season(sut: Sut) -> None:
     """A Standard user's season write answers 403 and creates no season."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token)
 
@@ -1134,7 +1205,7 @@ def test_an_unknown_or_malformed_season_cannot_be_patched(server: Sut, root_toke
 def test_a_standard_user_may_read_but_not_edit_a_season(sut: Sut) -> None:
     """A Standard user reads the season but its patch answers 403 and stores nothing."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token)
     create_season(server, root_token, show["id"], 1, name="Season One")
@@ -1183,7 +1254,7 @@ def test_an_episode_is_created_at_a_free_index(server: Sut, root_token: str) -> 
 def test_an_episode_is_replaced_keeping_its_address(sut: Sut) -> None:
     """A second write at an existing index stores the new metadata, keeps the address and answers 200."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     show = create_show(server, root_token)
     create_season(server, root_token, show["id"])
     _file, video = episode_video(server, root_token)
@@ -1260,6 +1331,8 @@ def test_unusable_episode_input_is_refused(server: Sut, root_token: str) -> None
     responses = [
         put_episode(server, root_token, show["id"], unknown_video),
         put_episode(server, root_token, show["id"], video["id"], name=""),
+        put_episode(server, root_token, show["id"], video["id"], name=" Padded Episode"),
+        put_episode(server, root_token, show["id"], video["id"], name="Padded Episode "),
         put_episode(server, root_token, show["id"], video["id"], air_date="08/04/1990"),
     ]
 
@@ -1302,7 +1375,7 @@ def test_an_episode_write_of_an_unknown_parent_or_malformed_index_is_refused(ser
 def test_a_standard_user_cannot_write_an_episode(sut: Sut) -> None:
     """A Standard user's episode write answers 403 and creates no episode."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token)
     create_season(server, root_token, show["id"])
@@ -1322,7 +1395,7 @@ def test_a_standard_user_cannot_write_an_episode(sut: Sut) -> None:
 def test_the_episode_metadata_is_updated_partially(sut: Sut) -> None:
     """A patch stores each submitted field and leaves the backing video unchanged."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     show = create_show(server, root_token)
     create_season(server, root_token, show["id"])
     _file, video = episode_video(server, root_token)
@@ -1375,12 +1448,29 @@ def test_null_clears_the_air_date(server: Sut, root_token: str) -> None:
 
 @allure.epic("Series")
 @allure.feature("REQ-SERIES-013")
+@allure.story("SCN-SERIES-013-F")
+def test_a_padded_episode_name_is_refused_on_update(server: Sut, root_token: str) -> None:
+    """A patch name that begins or ends with whitespace answers 422 and applies nothing."""
+    show = create_show(server, root_token)
+    create_season(server, root_token, show["id"])
+    _file, video = episode_video(server, root_token)
+    create_episode(server, root_token, show["id"], video["id"], name="Pilot")
+
+    for name in (" Padded Episode", "Padded Episode ", " Padded Episode "):
+        response = patch_episode(server, root_token, show["id"], 1, {"name": name})
+        assert response.status_code == 422, f"{name!r} accepted: {response.status_code} {response.text}"
+
+    assert read_episode(server, root_token, show["id"], 1, 1).json()["name"] == "Pilot"
+
+
+@allure.epic("Series")
+@allure.feature("REQ-SERIES-013")
 @allure.story("SCN-SERIES-013-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unknown_episode_or_denied_caller_cannot_be_patched(sut: Sut) -> None:
     """An unknown episode answers 404, a Standard user answers 403 and the stored episode survives."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     show = create_show(server, root_token)
     create_season(server, root_token, show["id"])

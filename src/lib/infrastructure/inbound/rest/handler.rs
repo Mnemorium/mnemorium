@@ -14,7 +14,7 @@ pub(crate) mod library;
 /// The User context endpoints.
 pub(crate) mod user;
 
-#[cfg(any(feature = "api-docs", test))]
+#[cfg(feature = "api-docs")]
 pub(crate) use self::get_health::{__path_get_health, get_health};
 
 use axum::extract::{FromRequest, Request};
@@ -40,6 +40,18 @@ use crate::infrastructure::inbound::rest::handler::user::user_routes;
 use crate::infrastructure::inbound::rest::middleware::{LoginRateLimiter, hal_errors, tracing};
 use crate::infrastructure::inbound::rest::{ApiError, AppState, Link, SelfLinks, hal_json};
 
+/// Wire format of every timestamp representation: RFC 3339 UTC (`API-046`).
+///
+/// The database columns store naive UTC, so appending `Z` states the truth
+/// without a timezone conversion.
+pub(crate) const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%SZ";
+
+/// Default number of items a listing returns when `limit` is omitted.
+pub(crate) const DEFAULT_LIMIT: usize = 20;
+
+/// Largest number of items a listing may return.
+pub(crate) const MAX_LIMIT: usize = 100;
+
 /// HAL links exposed by the API index.
 ///
 /// The `self` link addresses the index itself; every other relation reaches one
@@ -54,6 +66,8 @@ pub(crate) struct ApiIndexLinks {
     pub credential: Link,
     /// Link to the current caller's account.
     pub current_user: Link,
+    /// Link to the stored-file collection.
+    pub file: Link,
     /// Link to the gallery collection.
     pub gallery: Link,
     /// Link to the liveness probe.
@@ -176,6 +190,7 @@ pub(crate) async fn get_api_index() -> Response {
             credential: Link::templated("/api/v1/identity/credential/{id}"),
             user: Link::new("/api/v1/user"),
             current_user: Link::new("/api/v1/user/me"),
+            file: Link::new("/api/v1/asset/file"),
             gallery: Link::new("/api/v1/library/gallery"),
             permission: Link::new("/api/v1/identity/permission"),
             playlist: Link::new("/api/v1/library/music/playlist"),

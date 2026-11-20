@@ -1,17 +1,4 @@
-"""Black-box proof of the `gallery` capability.
-
-A gallery is an owned, ordered collection of images and videos. This module proves what the collection and its items
-report and the effects an operator can observe: creation and its refusals, the seeded default gallery, browse and its
-filters, an ordered read, adding and removing one item at a time, the advanced last-modified time, and the
-byte-preserving removal policy.
-
-The declarative contract — the media types, the status of each operation, the representation's fields and its
-`_links` — is validated by Schemathesis from the served document. These cases prove only what a schema cannot: which
-gallery a caller may discover, that a refused change stores nothing, that items read back in position order, that the
-removed medium is gone while its bytes survive, and that every change advances the last-modified time. Every route comes
-from the API index (`Sut.href`), from a representation's named link, or from the response's own `_links.self`, so the
-suite keeps its single `/api/v1` base literal in `harness.Sut.index`.
-"""
+"""Black-box proof of the `gallery` capability."""
 
 import struct
 import time
@@ -24,6 +11,7 @@ from conftest import (
     FIXTURE_DIRECTORY,
     create_gallery,
     linked_id,
+    login,
     provision,
     start_instance,
     upload,
@@ -133,7 +121,7 @@ def gallery_ids(response) -> list[int]:
 def test_a_gallery_reads_its_items_in_position_order(sut: Sut) -> None:
     """The read lists each item after the previous one."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     gallery = create_gallery(server, alice, "Ordered")
 
@@ -162,7 +150,7 @@ def test_a_gallery_reads_its_items_in_position_order(sut: Sut) -> None:
 def test_the_default_gallery_is_ownerless_public_and_empty(sut: Sut) -> None:
     """The seeded gallery is readable by any caller, ownerless, public and empty."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
 
     response = read_gallery(server, alice, DEFAULT_GALLERY_ID)
@@ -183,7 +171,7 @@ def test_the_default_gallery_is_ownerless_public_and_empty(sut: Sut) -> None:
 def test_the_default_gallery_cannot_be_deleted(sut: Sut) -> None:
     """Deleting the seeded gallery answers 409 and deletes nothing."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
 
     response = server.request(
@@ -204,7 +192,7 @@ def test_the_default_gallery_cannot_be_deleted(sut: Sut) -> None:
 def test_a_created_gallery_is_owned_and_private(sut: Sut) -> None:
     """Creation answers 201 with a Location; the gallery is owned and private."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
 
     response = create_gallery_response(server, alice, "Holidays")
@@ -217,12 +205,15 @@ def test_a_created_gallery_is_owned_and_private(sut: Sut) -> None:
     assert body["is_public"] is False
     assert body["item_count"] == 0
     assert body["items"] == []
+    assert body["created_at"].endswith("Z"), f"created_at is not RFC 3339 UTC: {body['created_at']!r}"
+    assert body["last_modified_at"].endswith("Z"), f"last_modified_at is not RFC 3339 UTC: {body['last_modified_at']!r}"
     assert response.headers["Location"] == body["_links"]["self"]["href"]
 
     stored = server.follow(body, "self", token=alice)
     assert stored.status_code == 200, f"read failed: {stored.status_code} {stored.text}"
     assert stored.json()["owner_id"] == alice_id
     assert stored.json()["is_public"] is False
+    assert stored.json()["created_at"] == body["created_at"]
 
 
 @allure.epic("Gallery")
@@ -232,7 +223,7 @@ def test_a_created_gallery_is_owned_and_private(sut: Sut) -> None:
 def test_a_public_gallery_is_created_and_readable_by_another_caller(sut: Sut) -> None:
     """`is_public` selects a public gallery another authenticated caller may read."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     _bob_id, bob = provision(server, root_token, "bobby")
 
@@ -254,11 +245,11 @@ def test_a_public_gallery_is_created_and_readable_by_another_caller(sut: Sut) ->
 def test_a_duplicate_name_is_refused_and_stores_nothing(sut: Sut) -> None:
     """A second gallery with the same trimmed name answers 409 and creates nothing."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     created = create_gallery(server, alice, "Duplicates")
 
-    response = create_gallery_response(server, alice, "  Duplicates  ")
+    response = create_gallery_response(server, alice, "Duplicates")
 
     assert response.status_code == 409, f"duplicate accepted: {response.status_code} {response.text}"
     listed = list_galleries(server, alice, f"?name=Duplicates&owner_id={alice_id}")
@@ -273,10 +264,10 @@ def test_a_duplicate_name_is_refused_and_stores_nothing(sut: Sut) -> None:
 def test_an_unusable_name_is_refused_and_stores_nothing(sut: Sut) -> None:
     """Empty, whitespace-only and overlong names answer 422 and create nothing."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
 
-    for name in ("", "   ", "x" * 101):
+    for name in ("", "   ", " Holidays ", "Holidays ", "x" * 101):
         response = create_gallery_response(server, alice, name)
         assert response.status_code == 422, f"name accepted: {response.status_code} {response.text}"
 
@@ -293,7 +284,7 @@ def test_an_unusable_name_is_refused_and_stores_nothing(sut: Sut) -> None:
 def test_the_collection_lists_what_a_caller_may_discover_and_filters_it(sut: Sut) -> None:
     """The listing carries item counts and narrows by name, public flag and owner."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     bob_id, bob = provision(server, root_token, "bobby")
 
@@ -336,7 +327,7 @@ def test_the_collection_lists_what_a_caller_may_discover_and_filters_it(sut: Sut
 def test_a_caller_with_no_discoverable_gallery_gets_an_empty_collection(sut: Sut) -> None:
     """A filter matching only another caller's private gallery answers an empty collection."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
     _bob_id, bob = provision(server, root_token, "bobby")
     create_gallery(server, alice, "Secret")
@@ -350,17 +341,20 @@ def test_a_caller_with_no_discoverable_gallery_gets_an_empty_collection(sut: Sut
 @allure.epic("Gallery")
 @allure.feature("REQ-GALLERY-004")
 @allure.story("SCN-GALLERY-004-D")
+@allure.feature("REQ-API-022")
+@allure.story("SCN-API-022-A")
 @pytest.mark.own_instance(reason="exact_collection")
-def test_a_malformed_query_is_rejected(sut: Sut) -> None:
-    """A query value that cannot be decoded answers 400 with a stable message."""
+def test_a_malformed_or_undeclared_query_is_rejected(sut: Sut) -> None:
+    """A query value that cannot be decoded, or a parameter the operation does not declare, answers 400."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
 
-    response = list_galleries(server, alice, "?is_public=not-a-flag")
+    for query in ("?is_public=not-a-flag", "?undeclared=1"):
+        response = list_galleries(server, alice, query)
 
-    assert response.status_code == 400, f"malformed query accepted: {response.status_code} {response.text}"
-    assert response.json()["error"] == "the request query string is invalid"
+        assert response.status_code == 400, f"{query} accepted: {response.status_code} {response.text}"
+        assert response.json()["error"] == "the request query string is invalid"
 
 
 @allure.epic("Gallery")
@@ -370,7 +364,7 @@ def test_a_malformed_query_is_rejected(sut: Sut) -> None:
 def test_an_unknown_or_unreadable_gallery_is_not_found(sut: Sut) -> None:
     """An unknown gallery and another caller's private one answer 404 alike."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     _bob_id, bob = provision(server, root_token, "bobby")
     private = create_gallery(server, alice, "Secret")
@@ -389,7 +383,7 @@ def test_an_unknown_or_unreadable_gallery_is_not_found(sut: Sut) -> None:
 def test_a_malformed_gallery_identifier_is_rejected(sut: Sut) -> None:
     """A non-numeric gallery identifier answers 400 with a stable message."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
 
     response = server.request("GET", f"{server.href('gallery')}/not-a-number", token=alice)
@@ -408,7 +402,7 @@ def test_a_malformed_gallery_identifier_is_rejected(sut: Sut) -> None:
 def test_adding_an_image_and_a_video_appends_them_and_advances_time(sut: Sut) -> None:
     """Both media are appended by their file identifier and each change advances the time."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     image_gallery = create_gallery(server, alice, "Images")
     video_gallery = create_gallery(server, alice, "Videos")
@@ -450,7 +444,7 @@ def test_adding_an_image_and_a_video_appends_them_and_advances_time(sut: Sut) ->
 def test_a_medium_already_in_a_gallery_is_refused(sut: Sut) -> None:
     """A medium assigned to one gallery answers 409 in another and creates nothing."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     first = create_gallery(server, alice, "First")
     second = create_gallery(server, alice, "Second")
@@ -471,7 +465,7 @@ def test_a_medium_already_in_a_gallery_is_refused(sut: Sut) -> None:
 def test_a_missing_or_unowned_medium_is_refused(sut: Sut) -> None:
     """An unknown file and another caller's file answer 422 and create nothing."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     _bob_id, bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "Mine")
@@ -492,7 +486,7 @@ def test_a_missing_or_unowned_medium_is_refused(sut: Sut) -> None:
 def test_an_image_item_carries_the_image_name(sut: Sut) -> None:
     """An image item reports its medium, file, added instant and the name intake assigned."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     gallery = create_gallery(server, alice, "Images")
     image = image_file(server, alice, "sunset.png", (5, 4))
@@ -520,7 +514,7 @@ def test_an_image_item_carries_the_image_name(sut: Sut) -> None:
 def test_a_video_item_carries_the_file_path(sut: Sut) -> None:
     """A video item carries the backing file's path as its display name."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     gallery = create_gallery(server, alice, "Videos")
     video = video_file(server, alice, "clip.mp4")
@@ -545,7 +539,7 @@ def test_a_video_item_carries_the_file_path(sut: Sut) -> None:
 def test_an_item_of_another_gallery_is_not_found(sut: Sut) -> None:
     """An item is scoped to its gallery for both the read and the removal."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     holding = create_gallery(server, alice, "Holding")
     other = create_gallery(server, alice, "Other")
@@ -575,7 +569,7 @@ def test_an_item_of_another_gallery_is_not_found(sut: Sut) -> None:
 def test_removing_an_item_removes_its_medium_but_keeps_the_bytes(sut: Sut) -> None:
     """Removal answers 204, deletes the medium row, keeps the bytes and advances the time."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     gallery = create_gallery(server, alice, "Removals")
     image = image_file(server, alice, "remove-me.png")
@@ -610,7 +604,7 @@ def test_removing_an_item_removes_its_medium_but_keeps_the_bytes(sut: Sut) -> No
 def test_removing_an_unknown_item_is_not_found(sut: Sut) -> None:
     """An item identifier the gallery never issued answers 404 and removes nothing."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     gallery = create_gallery(server, alice, "Empty")
 
@@ -632,7 +626,7 @@ def test_removing_an_unknown_item_is_not_found(sut: Sut) -> None:
 def test_adding_to_and_removing_from_an_unreadable_gallery_is_not_found(sut: Sut) -> None:
     """Adding to and removing from another caller's private gallery answer 404 and change nothing."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
     _bob_id, bob = provision(server, root_token, "bobby")
     gallery = create_gallery(server, alice, "Secret")

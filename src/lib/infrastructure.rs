@@ -14,4 +14,4 @@ pub(crate) mod use_case_factory;
 pub(crate) use self::logging::setup;
 pub(crate) use self::rate_limit::LoginAttemptLimit;
 #[cfg(feature = "test-seed")]
-pub(crate) use self::seed::{SeedProfile, apply};
+pub(crate) use self::seed::apply;

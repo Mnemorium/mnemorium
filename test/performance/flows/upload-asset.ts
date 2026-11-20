@@ -10,7 +10,7 @@ import { trailingId } from "../lib/data.ts";
 import type { FlowFn } from "./types.ts";
 
 // `open` is init-context only and resolves against this file's directory.
-const FIXTURE = new Uint8Array(open("../../seed/media/cover.png", "b"));
+const FIXTURE = new Uint8Array(open("../../api/seed/media/cover.png", "b"));
 const COUNTER_BYTES = 8;
 
 /** A fixture image made unique per iteration without changing its media type. */

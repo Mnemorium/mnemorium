@@ -60,10 +60,12 @@ jobs:
         run: |
           work="${RUNNER_TEMP}/perf-client"
           mkdir -p "${work}/media"
+          # The seed reads its fixture from the working directory, so the checkout's tree is linked beside it.
+          ln -sfn "${GITHUB_WORKSPACE}/test" "${work}/test"
           cp test/performance/server/config.yaml "${work}/config.yaml"
           (
             cd "${work}"
-            exec "${GITHUB_WORKSPACE}/target/debug/server"
+            exec env MNEMORIUM_SEED_PROFILE=api "${GITHUB_WORKSPACE}/target/debug/server"
           ) >"${work}/server.log" 2>&1 &
           server_pid=$!
           trap 'kill "${server_pid}" 2>/dev/null || true' EXIT

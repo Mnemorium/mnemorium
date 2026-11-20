@@ -10,20 +10,29 @@ or restarts a container; no test touches the repository working tree.
 Operator prose lives in this module only (TEST-057): a test matches a message through the constants below and never
 inlines one. The structured `event=`/`component=` fields a lifecycle message carries are matched where the server emits
 them.
+
+A case drives a declared operation through the generated client (`Sut.client`), which `script/openapi_client.sh` builds
+from the image's own `/doc/openapi.json`: the operation, its parameters and its body are the served document's, so a
+case declares no route and no payload shape of its own. Three requests stay hand-built through `request`, and each says
+why in the case: a link the scenario names is followed by the href the representation publishes (`link_of`, `follow`),
+a request the document cannot declare is sent directly (a `HEAD` on a content route), and `/health` sits outside the
+`/api/v1` base the client is bound to. A request the client cannot express is a missing declaration: add it to the
+handler's `#[utoipa::path(...)]`/`ToSchema` rather than working around it here.
 """
 
-import base64
 import hashlib
+import json
 import os
 import re
 import shutil
 import subprocess
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_IMODE
+from typing import Any
 from urllib.parse import quote
 
 import pytest
@@ -33,7 +42,6 @@ import yaml
 IMAGE_ENV = "MNEMORIUM_IMAGE"
 DEFAULT_IMAGE = "mnemorium:latest"
 CONTAINER_PREFIX = os.environ.get("MNEMORIUM_CONTAINER_PREFIX", "mnemorium-config-")
-CONTAINER_LEDGER_ENV = "MNEMORIUM_CONTAINER_LEDGER"
 CONTAINER_PORT = 4080
 HEALTH_PATH = "/health"
 API_PREFIX = "/api/v1"
@@ -42,11 +50,19 @@ CONFIG_PATH = "config.yaml"
 STATE_PATH = "state.yaml"
 DATABASE_PATH = "mnemorium.db"
 LOG_DIRECTORY = "logs"
+# The staging area an upload session's bytes are written to, relative to the working directory.
+STAGING_DIRECTORY = "data/uploads"
 
 # The library root is the operator's mount, relative to the server's working directory. The server never creates it, so
 # the harness supplies it for every case: the upload cases need a writable root, and the remaining cases must observe a
 # correctly deployed server rather than the absent-root refusal.
 MEDIA_DIRECTORY = "media"
+# The seed fixtures are data, not part of the image: a seeded instance reads them from the checkout. The tree mount
+# supplies the scripts, and the system profile's media is mounted at the directory its `file` rows name, which is the
+# writable `media/` root's own `system/` subdirectory — so a case never copies the fixture into its instance.
+SEED_PROFILE_ENV = "MNEMORIUM_SEED_PROFILE"
+TEST_ROOT = Path(__file__).resolve().parents[1]
+SYSTEM_SEED = "system"
 
 # Operator prose: the one home for messages asserted by the suite (TEST-057).
 MSG_CONFIG_GENERATED = "the configuration file did not exist; wrote the built-in defaults"
@@ -55,6 +71,7 @@ MSG_PASSWORD_LOGGED = re.compile(
     r"Root admin initialized; use the default password to authenticate and change it: '([^']+)'"
 )
 MSG_PASSWORD_HIDDEN = "the default password logging is disabled"
+MSG_MEDIA_ROOT_ABSENT = f"the library root '{MEDIA_DIRECTORY}' is absent"
 
 SECRET_PASSWORD = "C0rrect!Horse"
 WRONG_PASSWORD = "Wr0ng!pass"
@@ -62,25 +79,15 @@ ROOT_ADMIN_USERNAME = "root"
 STARTUP_TIMEOUT_S = 20.0
 POLL_INTERVAL_S = 0.1
 REQUEST_TIMEOUT_S = 10
+# How long a case waits for the server to reach an outcome it started.
+WAIT_TIMEOUT_S = 20.0
 
 # A container in any other state is still on its way: `created` and `restarting` are transient, and an empty read means
 # `docker inspect` itself failed, so each is polled rather than read as a terminal outcome (TEST-058).
 TERMINAL_STATUSES = frozenset({"exited", "dead", "removing"})
 
-# Every container this process starts, in start order. The terminal summary reports the count, and the ledger below
-# carries it across `pytest-xdist` workers, each of which has its own copy of this list.
-CONTAINERS_STARTED: list[tuple[str, str]] = []
-
-
-def _record_container(name: str, kind: str) -> None:
-    """Append one started container to the in-process list and to the run-wide ledger."""
-    CONTAINERS_STARTED.append((name, kind))
-    ledger = os.environ.get(CONTAINER_LEDGER_ENV)
-    if ledger is None:
-        return
-    worker = os.environ.get("PYTEST_XDIST_WORKER", "controller")
-    with (Path(ledger) / f"{worker}.tsv").open("a", encoding="utf-8") as handle:
-        handle.write(f"{kind}\t{name}\n")
+# One structured field of a tracing line: `key="quoted value"` or `key=bare_value`.
+FIELD_PATTERN = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)=(?:"((?:[^"\\]|\\.)*)"|(\S+))')
 
 
 class StartupFailed(AssertionError):
@@ -106,13 +113,13 @@ class StartupFailure:
 class Sut:
     """One containerised server with its own writable working directory."""
 
-    def __init__(self, image: str, tmp_root: Path, *, shared: bool = False) -> None:
+    def __init__(self, image: str, tmp_root: Path) -> None:
         self.image = image
         self.dir = Path(tmp_root)
         self.name = f"{CONTAINER_PREFIX}{uuid.uuid4().hex[:8]}"
         self.base_url = ""
-        self.shared = shared
         self._created = False
+        self._clients: dict[tuple[str | None, tuple[tuple[str, str], ...]], Any] = {}
 
     # lifecycle
 
@@ -203,6 +210,7 @@ class Sut:
         subprocess.run(["docker", "rm", "-f", self.name], capture_output=True, text=True, check=False)
         self._created = False
         self.base_url = ""
+        self._clients.clear()
 
     # observation
 
@@ -218,6 +226,28 @@ class Sut:
     def log_text(self) -> str:
         """Every log file's contents; complete only after `stop()` has flushed the sink."""
         return "".join(self.read(f"{LOG_DIRECTORY}/{name}") for name in self.listing(LOG_DIRECTORY))
+
+    def events(self, name: str) -> list[dict[str, str]]:
+        """Every record the standard-output sink emitted for `event="name"`, parsed into its fields."""
+        return _records(self.logs(), name)
+
+    def written_events(self, name: str) -> list[dict[str, str]]:
+        """Every record the file sink emitted for `event="name"`; complete only after `stop()`."""
+        return _records(self.log_text(), name)
+
+    def wait_for_events(self, name: str) -> list[dict[str, str]]:
+        """Wait until the standard-output sink holds an `event="name"` record and return every such record."""
+        self.wait_until(lambda: bool(self.events(name)), f"the sink recorded an {name!r} event")
+        return self.events(name)
+
+    def wait_until(self, condition: Callable[[], bool], description: str, *, timeout: float = WAIT_TIMEOUT_S) -> None:
+        """Poll `condition` up to `timeout`, failing with `description` when it never holds."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if condition():
+                return
+            time.sleep(POLL_INTERVAL_S)
+        raise AssertionError(f"{description} within {timeout:g}s")
 
     def read(self, relative: str) -> str:
         return (self.dir / relative).read_text(encoding="utf-8")
@@ -244,6 +274,31 @@ class Sut:
         return hashlib.sha256((self.dir / relative).read_bytes()).hexdigest()
 
     # interaction
+
+    def client(self, token: str | None = None, *, headers: dict[str, str] | None = None) -> Any:
+        """The generated client for this instance, authenticated when `token` is given.
+
+        One client is cached per token and header set, so a case that logs in once reuses its connection pool.
+        `client()` without a token talks to the operations that declare no security, which is how a case proves a
+        missing token is refused; an unusable token gets its own cached client the same way. `headers` reach every
+        request the client makes, which is how a case sets the operator-configured client-address header.
+        """
+        key = (token, tuple(sorted((headers or {}).items())))
+        if key not in self._clients:
+            from mnemorium_client import AuthenticatedClient, Client
+
+            base_url = f"{self.base_url}{API_PREFIX}"
+            self._clients[key] = (
+                Client(base_url=base_url, timeout=REQUEST_TIMEOUT_S, headers=headers or {})
+                if token is None
+                else AuthenticatedClient(
+                    base_url=base_url,
+                    token=token,
+                    timeout=REQUEST_TIMEOUT_S,
+                    headers=headers or {},
+                )
+            )
+        return self._clients[key]
 
     def request(
         self,
@@ -293,26 +348,6 @@ class Sut:
     def follow(self, representation: dict, rel: str, *, token: str | None = None) -> requests.Response:
         """GET the named link of `representation`."""
         return self.request("GET", link_of(representation, rel), token=token)
-
-    def attempt_login(
-        self,
-        username: str,
-        password: str,
-        *,
-        headers: dict[str, str] | None = None,
-    ) -> requests.Response:
-        """Post a login attempt without asserting its outcome; the limiter counts it."""
-        return self.request(
-            "POST",
-            self.href("login"),
-            json={"username": username, "password": password},
-            headers=headers,
-        )
-
-    def login(self, username: str, password: str) -> str:
-        response = self.attempt_login(username, password)
-        assert response.status_code == 200, f"login failed: {response.status_code} {response.text}"
-        return response.json()["access_token"]
 
     def root_password(self) -> str:
         """The one-time Root Admin password the server prints to stdout on first boot."""
@@ -377,6 +412,16 @@ class Sut:
             "-p",
             f"127.0.0.1::{CONTAINER_PORT}",
         ]
+        # A seeded instance reads its fixture from the checkout, so the tree is mounted where the seed resolves it and,
+        # for the system profile, the media at the directory its file rows declare. Both are read-only: the instance
+        # directory stays the only writable tree, and a case never mutates the fixtures.
+        profile = (env or {}).get(SEED_PROFILE_ENV)
+        if profile is not None:
+            args.extend(["-v", f"{TEST_ROOT}:/app/test:ro"])
+        if profile == SYSTEM_SEED:
+            seed_media = self.dir / MEDIA_DIRECTORY / SYSTEM_SEED
+            seed_media.mkdir(parents=True, exist_ok=True)
+            args.extend(["-v", f"{TEST_ROOT / SYSTEM_SEED / 'seed' / 'media'}:/app/{MEDIA_DIRECTORY}/{SYSTEM_SEED}:ro"])
         for key, value in (env or {}).items():
             args.extend(["-e", f"{key}={value}"])
         args.append(self.image)
@@ -384,7 +429,6 @@ class Sut:
         self.base_url = ""
         subprocess.run(args, capture_output=True, text=True, check=True)
         self._created = True
-        _record_container(self.name, "shared" if self.shared else "own")
 
         deadline = time.monotonic() + STARTUP_TIMEOUT_S
         while time.monotonic() < deadline:
@@ -459,6 +503,32 @@ def sut(image: str, tmp_path: Path) -> Iterator[Sut]:
         shutil.rmtree(server.dir, ignore_errors=True)
 
 
+def _records(text: str, name: str) -> list[dict[str, str]]:
+    """Every record in `text` whose `event` field is `name`."""
+    return [record for record in map(parse_record, text.splitlines()) if record.get("event") == name]
+
+
+def parse_record(line: str) -> dict[str, str]:
+    """The structured fields one tracing line carries, with quoted values unescaped.
+
+    The message is free text; every structured field is the `key=value` form the server emits, so a case reads a
+    field by name instead of matching the rendered line.
+    """
+    record = {}
+    for match in FIELD_PATTERN.finditer(line):
+        key, quoted, bare = match.group(1), match.group(2), match.group(3)
+        record[key] = _unquote(quoted) if quoted is not None else bare
+    return record
+
+
+def _unquote(value: str) -> str:
+    """Undo the escaping a quoted field value carries."""
+    try:
+        return json.loads(f'"{value}"')
+    except json.JSONDecodeError:
+        return value
+
+
 def hex64(seed: str) -> str:
     """A 64-character hexadecimal value built by repeating `seed`."""
     if not re.fullmatch(r"[0-9a-f]+", seed):
@@ -507,6 +577,17 @@ def link_of(representation: dict, rel: str, *, templated: bool = False) -> str:
     return href
 
 
+def payload(response: Any) -> dict:
+    """The JSON object a response carried, read without the generated models.
+
+    A generated model exposes the fields the document declares and drops the rest, so a case whose subject is the field
+    set — a value the representation must omit, a name it must not publish — asserts on this mapping instead. A field
+    the document declares keeps the model's own `None`/`UNSET` distinction, which is how an omitted optional value is
+    told apart from a cleared one.
+    """
+    return json.loads(response.content)
+
+
 def register(
     sut: Sut,
     token: str,
@@ -528,12 +609,28 @@ def register(
 
 @dataclass(frozen=True)
 class UploadSession:
-    """An upload session's identifier and the links its `201` representation published."""
+    """An upload session's identifier, its links and the chunk size its `201` representation declared."""
 
     id: int
     chunk_template: str
     complete_href: str
     self_href: str
+    chunk_size: int
+
+    @classmethod
+    def from_body(cls, body: dict) -> UploadSession:
+        """Read a session from the `201` representation a begin returns.
+
+        The begin reports the session's identifier, its links and the chunk size it fixed; the bitmap, the expiry and
+        the chunk count belong to the session's own representation, which a case reads through the `self` link.
+        """
+        return cls(
+            id=int(body["upload_id"]),
+            chunk_template=link_of(body, "chunk", templated=True),
+            complete_href=link_of(body, "complete"),
+            self_href=link_of(body, "self"),
+            chunk_size=int(body["chunk_size"]),
+        )
 
 
 def begin_upload(
@@ -556,40 +653,4 @@ def begin_upload(
         },
     )
     assert response.status_code == 201, f"begin failed: {response.status_code} {response.text}"
-    body = response.json()
-    return UploadSession(
-        id=int(body["upload_id"]),
-        chunk_template=link_of(body, "chunk", templated=True),
-        complete_href=link_of(body, "complete"),
-        self_href=link_of(body, "self"),
-    )
-
-
-def put_chunk(
-    sut: Sut,
-    token: str,
-    session: UploadSession,
-    chunk_number: int,
-    data: bytes,
-    total: int,
-) -> requests.Response:
-    """Send one chunk of an upload session, with its size and digest headers."""
-    start = chunk_number * len(data)
-    end = start + len(data) - 1
-    digest = base64.b64encode(hashlib.sha256(data).digest()).decode()
-    return sut.request(
-        "PUT",
-        expand_template(session.chunk_template, chunk_number=chunk_number),
-        token=token,
-        data=data,
-        headers={
-            "Content-Type": "application/octet-stream",
-            "Content-Range": f"bytes {start}-{end}/{total}",
-            "Content-Digest": f"sha-256=:{digest}:",
-        },
-    )
-
-
-def complete_upload(sut: Sut, token: str, session: UploadSession) -> requests.Response:
-    """Complete an upload session, registering its medium."""
-    return sut.request("POST", session.complete_href, token=token)
+    return UploadSession.from_body(response.json())

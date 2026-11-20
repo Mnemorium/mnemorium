@@ -9,7 +9,8 @@ use crate::domain::model::{
     Edition, ExternalRef, MusicKind, MusicMetadata, MusicTarget, ProductionType, ProviderId,
 };
 use crate::infrastructure::inbound::rest::handler::library::{
-    ArtistCreditResponse, MusicMediumResponse, MusicReferenceResponse, format_date,
+    ArtistCreditResponse, MusicKindRequest, MusicMediumResponse, MusicProviderRequest,
+    MusicReferenceResponse, encode_path_segment, format_date,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLinks, hal_json};
@@ -25,6 +26,7 @@ struct MusicEditionResponse {
     /// Opaque reference the provider issued for the edition.
     pub reference: MusicReferenceResponse,
     /// Date of release, in `YYYY-MM-DD` form, when the provider reports one.
+    #[schema(format = "date")]
     pub release_date: Option<String>,
     /// Status the provider reports, when it reports a mappable one.
     pub status: Option<String>,
@@ -63,6 +65,7 @@ enum MusicMetadataResponse {
         /// Editions the provider lists, ordered by the edition rule.
         editions: Vec<MusicEditionResponse>,
         /// Date of first release, in `YYYY-MM-DD` form, when known.
+        #[schema(format = "date")]
         first_release_date: Option<String>,
         /// Genres from the provider's curated vocabulary.
         genres: Vec<String>,
@@ -211,8 +214,8 @@ impl MusicMetadataDocumentResponse {
     path = "/music/identify/{provider}/{kind}/{reference}",
     tag = "library",
     params(
-        ("provider" = String, Path, description = "Provider that issued the reference"),
-        ("kind" = String, Path, description = "Kind of work: album, release or recording"),
+        ("provider" = inline(MusicProviderRequest), Path, description = "Provider that issued the reference"),
+        ("kind" = inline(MusicKindRequest), Path, description = "Kind of work: album, release or recording"),
         ("reference" = String, Path, description = "Identifier the provider issued"),
     ),
     responses(
@@ -271,9 +274,10 @@ pub(crate) async fn get_music_identify_metadata(
         })?;
     let kind = MusicKind::parse(&kind_value).ok_or_else(|| ApiError::reject_enum("kind"))?;
     let href = format!(
-        "/api/v1/library/music/identify/{}/{}/{reference_value}",
+        "/api/v1/library/music/identify/{}/{}/{}",
         provider.as_str(),
-        kind.as_wire()
+        kind.as_wire(),
+        encode_path_segment(&reference_value)
     );
     let reference = ExternalRef::new(provider, reference_value);
     let target = match kind {

@@ -98,6 +98,16 @@ where
                                 );
                                 CreateMusicAlbumError::InvalidName
                             }
+                            NamePolicyError::SurroundingWhitespace => {
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"surrounding_whitespace",
+                                    "rejected a client-supplied value"
+                                );
+                                CreateMusicAlbumError::InvalidName
+                            }
                             NamePolicyError::TooLong => {
                                 warn!(
                                     target: "security",
@@ -317,7 +327,7 @@ mod tests {
         let response = use_case
             .execute(CreateMusicAlbumCommand::new(
                 1,
-                "  Kind of Blue  ".to_owned(),
+                "Kind of Blue".to_owned(),
                 0,
                 None,
                 None,

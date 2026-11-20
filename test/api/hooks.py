@@ -1,106 +1,77 @@
-"""Schemathesis hooks for the fixture API run.
+"""Schemathesis hooks and checks for the fixture API run.
 
-The generator can produce values the served schema does not describe precisely
-enough: a header *name* that is not an HTTP token, a date that is not a calendar
-date, a username that breaks the lowercase rule, a blank resource name, or one
-half of the paired season/episode query. The server correctly rejects each one;
-drop those cases so the run reports only requests the schema actually models.
+One carve-out remains: the *header name* the generator draws is a valid JSON
+string but not always a valid HTTP token, and `requests` (the transport
+Schemathesis uses) refuses to send such a header at all. That is a transport
+limitation, not a server behaviour, so the cases carrying it are dropped.
+
+The two custom checks are thin wrappers over the pure bodies in `checks.py`, so
+`pytest test/api` runs them without Schemathesis installed.
 """
 
-import datetime
 import re
+import sys
+from pathlib import Path
+
+# Schemathesis loads this file by path, so the sibling pure module is not on
+# `sys.path` yet.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import schemathesis
+from checks import HAL_CONTENT_TYPE, valid_collection_links, valid_hal_links
 
 _HTTP_TOKEN = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
-_COUNTRY = re.compile(r"^[A-Za-z]{2}$")
-
-
-def _valid_date(value):
-    """Return whether `value` is a calendar date in the API's `YYYY-MM-DD` form."""
-    if not isinstance(value, str):
-        return True
-    try:
-        datetime.date.fromisoformat(value)
-    except ValueError:
-        return False
-    return True
-
-
-def _valid_username(value):
-    """Return whether `value` satisfies the username policy."""
-    if not isinstance(value, str):
-        return True
-    return value == value.strip() and not any(character.isupper() for character in value)
-
-
-def _valid_name(value):
-    """Return whether `value` is the trimmed name the resource name policy keeps.
-
-    The policy trims surrounding whitespace, rejects a value that is then
-    empty, and applies the maximum length to the trimmed value, while the
-    schema's `minLength`/`maxLength` count the raw value. A surrounding
-    whitespace name is therefore a blank `422` or a `maxLength` deviation the
-    server correctly accepts, so only a value that is already trimmed can be
-    compared with the schema.
-    """
-    if not isinstance(value, str):
-        return True
-    return value != "" and value == value.strip()
-
-
-def _valid_body(value):
-    """Return whether a JSON value carries no value the server must reject."""
-    if isinstance(value, dict):
-        for key, item in value.items():
-            if key.endswith("_date") and not _valid_date(item):
-                return False
-            if (
-                key == "country_of_origin"
-                and item is not None
-                and (not isinstance(item, str) or not _COUNTRY.fullmatch(item))
-            ):
-                return False
-            if key == "username" and not _valid_username(item):
-                return False
-            if key in ("name", "stage_name") and not _valid_name(item):
-                return False
-            if not _valid_body(item):
-                return False
-        return True
-    if isinstance(value, list):
-        return all(_valid_body(item) for item in value)
-    return True
-
-
-def _usable_position(value):
-    """Return whether a position value is a non-negative integer."""
-    if isinstance(value, bool):
-        return False
-    if isinstance(value, int):
-        return value >= 0
-    return isinstance(value, str) and value.isdigit()
-
-
-def _valid_position(query):
-    """Return whether a season/episode pair is either fully absent or fully usable."""
-    season = query.get("season")
-    episode = query.get("episode")
-    if season is None and episode is None:
-        return True
-    if season is None or episode is None:
-        return False
-    return _usable_position(season) and _usable_position(episode)
 
 
 @schemathesis.hook
 def filter_case(ctx, case):
-    """Drop a case whose generated values are outside the served contract."""
+    """Drop a case whose generated header name is not an HTTP token.
+
+    `requests` rejects a header name outside the token grammar before it reaches
+    the server, so the case proves nothing about the served document.
+    """
     headers = case.headers or {}
-    if any(not _HTTP_TOKEN.fullmatch(str(name)) for name in headers):
-        return False
-    if not _valid_body(case.body):
-        return False
-    if case.operation.path == "/library/series/identify/{provider}/{reference}":
-        return _valid_position(case.query or {})
-    return True
+    return all(_HTTP_TOKEN.fullmatch(str(name)) for name in headers)
+
+
+def _content_type(response) -> str | None:
+    """Return the response's content type from the lowercase, list-valued header."""
+    values = response.headers.get("content-type")
+    return values[0] if values else None
+
+
+def _hal_body(response, content_type: str | None):
+    """Return the decoded body of a HAL response, or `None` for any other type."""
+    if not content_type or content_type.split(";", 1)[0].strip().lower() != HAL_CONTENT_TYPE:
+        return None
+    try:
+        return response.json()
+    except ValueError:
+        return None
+
+
+@schemathesis.check
+def valid_hal_links_check(ctx, response, case) -> None:
+    """A HAL representation carries `_links.self`, and every link is non-empty (`REQ-API-003`, `004`, `008`)."""
+    content_type = _content_type(response)
+    problems = valid_hal_links(
+        content_type=content_type,
+        status_code=response.status_code,
+        request_url=str(response.request.url),
+        body=_hal_body(response, content_type),
+    )
+    if problems:
+        raise AssertionError("\n".join(problems))
+
+
+@schemathesis.check
+def valid_collection_links_check(ctx, response, case) -> None:
+    """A paginated collection's links preserve the view (`REQ-API-007`)."""
+    content_type = _content_type(response)
+    problems = valid_collection_links(
+        content_type=content_type,
+        request_url=str(response.request.url),
+        body=_hal_body(response, content_type),
+    )
+    if problems:
+        raise AssertionError("\n".join(problems))

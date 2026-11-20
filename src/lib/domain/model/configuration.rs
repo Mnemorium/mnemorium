@@ -1,3 +1,5 @@
+#[cfg(feature = "test-seed")]
+use serde::de::Error as SerdeError;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::net::IpAddr;
 use std::str::FromStr as _;
@@ -1221,6 +1223,110 @@ impl Library {
     }
 }
 
+/// Error returned when a configuration layer names an unsupported seed profile.
+///
+/// The message names the setting; it never carries the value the layer wrote
+/// (`OBS-004`).
+#[cfg(feature = "test-seed")]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub(crate) enum SeedError {
+    /// The layer named a profile this build does not carry.
+    #[error("seed.profile must name a supported seed profile")]
+    UnknownProfile,
+}
+
+/// Which fixture a `test-seed` boot applies.
+///
+/// The vocabulary is test-only: the type exists behind the `test-seed` feature,
+/// so a shipped build rejects a `seed` key as unknown like any other.
+#[cfg(feature = "test-seed")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub(crate) enum SeedProfile {
+    /// The small demo library the API fixture and Schemathesis address.
+    Api,
+    /// The API fixture plus the volume library the performance suite measures.
+    Perf,
+    /// The browsable catalogue the system suite addresses.
+    System,
+}
+
+#[cfg(feature = "test-seed")]
+impl SeedProfile {
+    /// Parse a profile name a configuration layer declares.
+    ///
+    /// The comparison ignores case and surrounding whitespace, so `SYSTEM` and
+    /// ` system ` name the same fixture.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SeedError::UnknownProfile`] when `value` names no profile this
+    /// build carries.
+    pub(crate) fn parse(value: &str) -> Result<Self, SeedError> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "api" => Ok(Self::Api),
+            "perf" => Ok(Self::Perf),
+            "system" => Ok(Self::System),
+            _ => Err(SeedError::UnknownProfile),
+        }
+    }
+}
+
+#[cfg(feature = "test-seed")]
+impl<'de> serde::Deserialize<'de> for SeedProfile {
+    /// Parse the profile from the layer's string, case-insensitively.
+    ///
+    /// A derived `Deserialize` would compare the declared spelling exactly
+    /// (`rename_all = "lowercase"` is case-sensitive), so every layer reads
+    /// through [`SeedProfile::parse`] instead (`STY-RUST-077`).
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Self::parse(&value).map_err(SerdeError::custom)
+    }
+
+    /// Replace `place` with the profile the layer's string names.
+    fn deserialize_in_place<D>(deserializer: D, place: &mut Self) -> Result<(), D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        *place = <Self as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(())
+    }
+}
+
+/// Seed settings.
+///
+/// The section is test-only: a shipped build has no `seed` key, so the file
+/// layer rejects it as unknown. An absent profile means the boot applies no
+/// fixture at all.
+#[cfg(feature = "test-seed")]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[non_exhaustive]
+pub(crate) struct Seed {
+    /// Fixture a `test-seed` boot applies; `None` applies none.
+    profile: Option<SeedProfile>,
+}
+
+#[cfg(feature = "test-seed")]
+impl Seed {
+    /// Initialise a new `Seed`.
+    #[must_use]
+    pub(crate) fn new(profile: Option<SeedProfile>) -> Self {
+        Self { profile }
+    }
+
+    /// Return the fixture a `test-seed` boot applies; `None` applies none.
+    #[must_use]
+    pub(crate) fn profile(&self) -> Option<SeedProfile> {
+        self.profile
+    }
+}
+
 /// The application configuration.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
@@ -1235,6 +1341,13 @@ pub(crate) struct Configuration {
     persistence: Persistence,
     /// Security-related settings.
     security: Security,
+    /// Seed-related settings; test-only.
+    ///
+    /// Never serialized: the checked-in default template carries no `seed` key,
+    /// so a shipped build keeps rejecting it as unknown.
+    #[cfg(feature = "test-seed")]
+    #[serde(skip)]
+    seed: Seed,
 }
 
 impl Configuration {
@@ -1271,6 +1384,8 @@ impl Configuration {
             logging,
             persistence,
             security,
+            #[cfg(feature = "test-seed")]
+            seed: Seed::default(),
         }
     }
 
@@ -1284,6 +1399,21 @@ impl Configuration {
     #[must_use]
     pub(crate) fn security(&self) -> &Security {
         &self.security
+    }
+
+    /// Return the seed-related settings.
+    #[cfg(feature = "test-seed")]
+    #[must_use]
+    pub(crate) fn seed(&self) -> &Seed {
+        &self.seed
+    }
+
+    /// Return this configuration carrying `seed`.
+    #[cfg(feature = "test-seed")]
+    #[must_use]
+    pub(crate) fn with_seed(mut self, seed: Seed) -> Self {
+        self.seed = seed;
+        self
     }
 }
 

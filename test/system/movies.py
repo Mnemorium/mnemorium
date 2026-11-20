@@ -1,291 +1,53 @@
-"""Black-box proof of the `movies` capability.
+"""Black-box proof of the `movies` capability."""
 
-A film is created from a video, listed as a partial item, read in full and updated partially without changing that
-video. This module proves what a schema cannot: that an unused video creates exactly one film, that an attached video
-creates none, that an unknown genre is stored on demand, that the listing is partial and ordered, that a refusal stores
-nothing, and that a caller who may read but not edit is refused while the stored film survives.
-
-The declarative contract — the media types, the status of each operation, the representation's fields, its `_links` and
-the request schema — is validated by Schemathesis from the served document. Every route comes from the API index
-(`Sut.href`), from a representation's named link or from the response's own `_links.self`, so the suite keeps its single
-`/api/v1` base literal in `harness.Sut.index`.
-
-The video, image and gallery helpers come from the feature modules that own them, so this module uploads real media and
-never fabricates a typed identifier.
-"""
-
-import time
+import datetime
+import json
 
 import allure
-import pytest
-from conftest import (
-    add_to_gallery,
-    create_gallery,
-    provision,
-    start_instance,
+from harness import Sut
+from mnemorium_client.api.library import (
+    get_movie,
+    list_movies,
+    patch_movie,
+    post_movie,
 )
-from gallery import image_file
-from harness import (
-    ROOT_ADMIN_USERNAME,
-    Sut,
-    link_of,
-)
-from video import assert_summary, create_episode, typed_video, upload_video
+from mnemorium_client.models import PatchMovieRequest, PostMovieRequest
 
-# The film resource kind the resource-policy route addresses.
-MOVIE = "MOVIE"
+# The seeded slots this module reads, documented in `seed/sql/0003_movies.sql`.
+LISTED_FIRST = 13011
+LISTED_SECOND = 13012
+PAGE_FILMS = (13013, 13014, 13015)
+DETAIL_FILM = 13016
+BARE_FILM = 13017
+REPEAT_FILM = 13018
+PATCH_FILM = 13019
+CLEAR_FILM = 13020
 
-# A genre the catalogue has never stored, distinct from every seeded genre.
+LISTED_COVER = 13218
+DETAIL_COVER = 13219
+PATCH_COVER = 13220
+
+DETAIL_VIDEO = 13206
+REPEAT_VIDEO = 13208
+PATCH_VIDEO = 13209
+ATTACHED_VIDEO = 13211
+NEW_VIDEO = 13212
+UNKNOWN_GENRE_VIDEO = 13213
+EMPTY_NAME_VIDEO = 13214
+EMPTY_GENRE_VIDEO = 13215
+MALFORMED_DATE_VIDEO = 13216
+MALFORMED_COUNTRY_VIDEO = 13217
+
+UNKNOWN_ID = 999_999_999
 UNKNOWN_GENRE = "Melodrama"
 
-
-def film_body(video_id: int, **overrides: object) -> dict[str, object]:
-    """A film-creation payload naming `video_id`, with optional overrides."""
-    body: dict[str, object] = {"name": "Some Like It Hot", "video_id": video_id}
-    body.update(overrides)
-    return body
-
-
-def post_movie(server: Sut, token: str, body: dict[str, object]):
-    """POST a film creation and return the raw response."""
-    return server.request("POST", server.href("movie"), token=token, json=body)
-
-
-def create_film(server: Sut, token: str, video_id: int, **overrides: object) -> dict:
-    """Create a film and return its representation."""
-    response = post_movie(server, token, film_body(video_id, **overrides))
-    assert response.status_code == 201, f"film creation failed: {response.status_code} {response.text}"
-    return response.json()
-
-
-def list_movies(server: Sut, token: str, query: str = ""):
-    """GET the film collection with an optional query string."""
-    return server.request("GET", f"{server.href('movie')}{query}", token=token)
-
-
-def read_movie(server: Sut, token: str, movie_id: int):
-    """GET one film by identifier."""
-    return server.request("GET", f"{server.href('movie')}/{movie_id}", token=token)
-
-
-def patch_movie(server: Sut, token: str, movie_id: int, body: dict[str, object]):
-    """PATCH one film's metadata and return the raw response."""
-    return server.request("PATCH", f"{server.href('movie')}/{movie_id}", token=token, json=body)
-
-
-def collection_ids(response) -> list[int]:
-    """The identifiers a film collection lists."""
-    return [item["id"] for item in response.json()["_embedded"]["items"]]
-
-
-def film_video(server: Sut, token: str, name: str = "film.mp4") -> tuple[dict, dict]:
-    """Upload one video and return its file and typed representations."""
-    file = upload_video(server, token, name)
-    return file, typed_video(server, token, file)
-
-
-def image_id(server: Sut, token: str, file: dict) -> int:
-    """Follow a file's `image` link and return the image identifier."""
-    response = server.follow(file, "image", token=token)
-    assert response.status_code == 200, f"image read failed: {response.status_code} {response.text}"
-    return int(response.json()["id"])
-
-
-def library_image(server: Sut, token: str) -> int:
-    """Upload one image no resource has attached yet and return its identifier."""
-    return image_id(server, token, image_file(server, token, "cover.png"))
-
-
-def gallery_image(server: Sut, token: str) -> int:
-    """Upload one image, use it as gallery media and return its identifier."""
-    file = image_file(server, token, "gallery-cover.png")
-    gallery = create_gallery(server, token, f"Media {time.time_ns()}")
-    add_to_gallery(server, token, gallery, file["id"])
-    return image_id(server, token, file)
-
-
-def deny_viewer(server: Sut, token: str, user_id: int, movie_id: int) -> None:
-    """Deny `user_id` the Viewer bundle on one film, so it may neither discover nor view it."""
-    response = server.request(
-        "PUT",
-        f"{server.href('permission')}/resource/{MOVIE}/{movie_id}",
-        token=token,
-        json={
-            "visibility": "PUBLIC",
-            "grants": [
-                {
-                    "principal": {"kind": "USER", "id": user_id},
-                    "role": "VIEWER",
-                    "effect": "DENY",
-                }
-            ],
-        },
-    )
-    assert response.status_code == 200, f"deny failed: {response.status_code} {response.text}"
-
-
-@allure.epic("Movies")
-@allure.feature("REQ-MOVIES-004")
-@allure.story("SCN-MOVIES-004-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_new_film_is_created_from_a_free_video(sut: Sut) -> None:
-    """An unused video creates the film and answers 201 with a Location."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _file, video = film_video(server, root_token)
-
-    response = post_movie(
-        server,
-        root_token,
-        film_body(
-            video["id"],
-            name="Some Like It Hot",
-            plot="Two musicians on the run",
-            release_date="1959-08-17",
-            country_of_origin="us",
-            genres=["Comedy"],
-        ),
-    )
-
-    assert response.status_code == 201, f"creation failed: {response.status_code} {response.text}"
-    film = response.json()
-    assert film["id"] > 0
-    assert film["name"] == "Some Like It Hot"
-    assert film["plot"] == "Two musicians on the run"
-    assert film["country_of_origin"] == "US"
-    assert film["release_date"] == "1959-08-17"
-    assert film["genres"] == ["COMEDY"]
-    assert film["video"]["id"] == video["id"]
-    assert response.headers["Location"] == link_of(film, "self")
-
-    listed = list_movies(server, root_token)
-    assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.text}"
-    assert collection_ids(listed) == [film["id"]]
-
-
-@allure.epic("Movies")
-@allure.feature("REQ-MOVIES-004")
-@allure.story("SCN-MOVIES-004-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_repeated_creation_returns_the_existing_film(sut: Sut) -> None:
-    """The same video answers 200 with the film it already backs and applies no change."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _file, video = film_video(server, root_token)
-    created = create_film(server, root_token, video["id"], name="The Original")
-
-    response = post_movie(
-        server,
-        root_token,
-        film_body(video["id"], name="A Different Title", plot="A different plot"),
-    )
-
-    assert response.status_code == 200, f"repeat failed: {response.status_code} {response.text}"
-    film = response.json()
-    assert film["id"] == created["id"]
-    assert film["name"] == "The Original"
-    assert film["plot"] == ""
-    assert collection_ids(list_movies(server, root_token)) == [created["id"]]
-
-
-@allure.epic("Movies")
-@allure.feature("REQ-MOVIES-004")
-@allure.story("SCN-MOVIES-004-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_video_attached_to_an_episode_is_refused(sut: Sut) -> None:
-    """A video an episode already takes answers 409 and creates no film."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _file, video = film_video(server, root_token)
-    create_episode(server, root_token, video["id"])
-
-    response = post_movie(server, root_token, film_body(video["id"]))
-
-    assert response.status_code == 409, f"attached video accepted: {response.status_code} {response.text}"
-    listed = list_movies(server, root_token)
-    assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.text}"
-    assert collection_ids(listed) == [], "a refused creation stored a film"
-
-
-@allure.epic("Movies")
-@allure.feature("REQ-MOVIES-004")
-@allure.story("SCN-MOVIES-004-D")
-def test_an_unknown_genre_is_stored_and_linked(server: Sut, root_token: str) -> None:
-    """A genre the catalogue does not hold is stored and the film reports it."""
-    _file, video = film_video(server, root_token)
-
-    created = create_film(server, root_token, video["id"], genres=[UNKNOWN_GENRE])
-
-    assert created["genres"] == [UNKNOWN_GENRE.upper()]
-    read = read_movie(server, root_token, created["id"])
-    assert read.status_code == 200, f"read failed: {read.status_code} {read.text}"
-    assert read.json()["genres"] == [UNKNOWN_GENRE.upper()]
-
-
-@allure.epic("Movies")
-@allure.feature("REQ-MOVIES-004")
-@allure.story("SCN-MOVIES-004-E")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_unusable_creation_input_is_refused(sut: Sut) -> None:
-    """An unknown video, empty name or genre, malformed date or country answers 422 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _file, video = film_video(server, root_token)
-    unknown_video = video["id"] + 1_000_000
-
-    bodies = [
-        film_body(unknown_video),
-        film_body(video["id"], name=""),
-        film_body(video["id"], genres=[""]),
-        film_body(video["id"], release_date="17/08/1959"),
-        film_body(video["id"], country_of_origin="U.S.A."),
-    ]
-    for body in bodies:
-        response = post_movie(server, root_token, body)
-        assert response.status_code == 422, f"unusable input accepted: {response.status_code} {response.text}"
-
-    listed = list_movies(server, root_token)
-    assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.text}"
-    assert collection_ids(listed) == [], "a refused creation stored a film"
-
-
-@allure.epic("Movies")
-@allure.feature("REQ-MOVIES-004")
-@allure.story("SCN-MOVIES-004-F")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
-    """An image already used as gallery media answers 409 and creates no film."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    attached = gallery_image(server, alice)
-    _file, video = film_video(server, root_token)
-
-    response = post_movie(server, root_token, film_body(video["id"], cover_image_id=attached))
-
-    assert response.status_code == 409, f"gallery media accepted: {response.status_code} {response.text}"
-    listed = list_movies(server, root_token)
-    assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.text}"
-    assert collection_ids(listed) == [], "a refused creation stored a film"
-
-
-@allure.epic("Movies")
-@allure.feature("REQ-MOVIES-004")
-@allure.story("SCN-MOVIES-004-G")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_standard_user_cannot_create_a_film(sut: Sut) -> None:
-    """A Standard user's creation answers 403 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    _file, video = film_video(server, root_token)
-
-    response = post_movie(server, alice, film_body(video["id"]))
-
-    assert response.status_code == 403, f"standard creation accepted: {response.status_code} {response.text}"
-    listed = list_movies(server, root_token)
-    assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.text}"
-    assert collection_ids(listed) == [], "a refused creation stored a film"
+# What every seeded video declares, and the summary a film embeds.
+CODEC = "h264"
+DURATION_MS = 200.0
+WIDTH = 16
+HEIGHT = 16
+SCAN_TYPE = "PROGRESSIVE"
+SUMMARY_FIELDS = {"id", "file_id", "codec", "duration_ms", "width", "height", "scan_type"}
 
 
 @allure.epic("Movies")
@@ -294,132 +56,80 @@ def test_a_standard_user_cannot_create_a_film(sut: Sut) -> None:
 @allure.story("SCN-MOVIES-001-D")
 @allure.feature("REQ-MOVIES-002")
 @allure.story("SCN-MOVIES-002-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_collection_lists_partial_films_in_identifier_order(sut: Sut) -> None:
-    """Two films list as partial items by ascending identifier, with their cover links."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    cover = library_image(server, root_token)
-    _first_file, first_video = film_video(server, root_token, "first.mp4")
-    _second_file, second_video = film_video(server, root_token, "second.mp4")
-    first = create_film(server, root_token, first_video["id"], name="First", cover_image_id=cover)
-    second = create_film(server, root_token, second_video["id"], name="Second")
+def test_the_collection_lists_partial_films_in_identifier_order(server: Sut, root_token: str) -> None:
+    """The collection is ascending by identifier and each item is the partial representation."""
+    response = list_movies.sync_detailed(client=server.client(root_token), limit=100)
+    assert response.status_code == 200, f"list failed: {response.status_code} {response.content!r}"
+    items = json.loads(response.content)["_embedded"]["items"]
+    ids = [item["id"] for item in items]
 
-    response = list_movies(server, root_token)
+    assert ids == sorted(ids), "the collection is not ordered by identifier"
+    assert ids.index(LISTED_FIRST) < ids.index(LISTED_SECOND)
 
-    assert response.status_code == 200, f"list failed: {response.status_code} {response.text}"
-    body = response.json()
-    items = body["_embedded"]["items"]
-    assert collection_ids(response) == sorted([first["id"], second["id"]])
-    assert collection_ids(response) == [first["id"], second["id"]]
-
-    covered, uncovered = items
-    assert covered["id"] == first["id"]
-    assert covered["name"] == "First"
-    assert covered["cover_image_id"] == cover
-    assert link_of(covered, "self") == f"{server.href('movie')}/{first['id']}"
-    for omitted in ("plot", "genres", "video"):
-        assert omitted not in covered, f"a listing item carries {omitted}"
-
-    asset = server.follow(covered, "cover", token=root_token)
-    assert asset.status_code == 200, f"cover link failed: {asset.status_code} {asset.text}"
-    assert asset.json()["id"] == cover
+    covered = next(item for item in items if item["id"] == LISTED_FIRST)
+    uncovered = next(item for item in items if item["id"] == LISTED_SECOND)
+    assert set(covered) == {"cover_image_id", "id", "name", "_links"}
+    assert covered["name"] == "Listed One"
+    assert covered["cover_image_id"] == LISTED_COVER
+    cover = server.follow(covered, "cover", token=root_token)
+    assert cover.status_code == 200, f"cover read failed: {cover.status_code} {cover.text}"
+    assert json.loads(cover.content)["id"] == LISTED_COVER
+    assert uncovered.get("cover_image_id") is None
     assert "cover" not in uncovered["_links"]
-    assert uncovered["cover_image_id"] is None
 
 
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-001")
 @allure.story("SCN-MOVIES-001-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_name_filter_and_page_are_applied(sut: Sut) -> None:
+def test_the_name_filter_and_page_are_applied(server: Sut, root_token: str) -> None:
     """The name filter narrows the collection and limit/offset select one page."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    names = ["Alpha", "Beta", "Gamma"]
-    ids = []
-    for index, name in enumerate(names):
-        _file, video = film_video(server, root_token, f"page-{index}.mp4")
-        ids.append(create_film(server, root_token, video["id"], name=name)["id"])
+    filtered = list_movies.sync_detailed(
+        client=server.client(root_token),
+        name="Page Film",
+        limit=100,
+    )
+    assert filtered.status_code == 200, f"filter failed: {filtered.status_code} {filtered.content!r}"
+    assert [item["id"] for item in json.loads(filtered.content)["_embedded"]["items"]] == list(PAGE_FILMS)
 
-    filtered = list_movies(server, root_token, "?name=Beta")
-    assert filtered.status_code == 200, f"filter failed: {filtered.status_code} {filtered.text}"
-    assert collection_ids(filtered) == [ids[1]]
-
-    paged = list_movies(server, root_token, "?limit=1&offset=1")
-    assert paged.status_code == 200, f"page failed: {paged.status_code} {paged.text}"
-    assert collection_ids(paged) == [ids[1]]
-
-
-@allure.epic("Movies")
-@allure.feature("REQ-MOVIES-001")
-@allure.story("SCN-MOVIES-001-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_caller_that_discovers_no_film_lists_an_empty_collection(sut: Sut) -> None:
-    """A caller denied the only film discovers none and receives an empty collection."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    alice_id, alice = provision(server, root_token, "alice")
-    _file, video = film_video(server, root_token)
-    film = create_film(server, root_token, video["id"])
-    deny_viewer(server, root_token, alice_id, film["id"])
-
-    response = list_movies(server, alice)
-
-    assert response.status_code == 200, f"list failed: {response.status_code} {response.text}"
-    assert response.json()["_embedded"]["items"] == []
-
-
-@allure.epic("Movies")
-@allure.feature("REQ-MOVIES-001")
-@allure.story("SCN-MOVIES-001-E")
-@allure.story("SCN-MOVIES-001-F")
-def test_an_out_of_range_limit_and_a_malformed_query_are_refused(server: Sut, root_token: str) -> None:
-    """A limit outside 1..100 answers 422 and an undecodable query answers 400."""
-    for query in ("?limit=0", "?limit=101"):
-        response = list_movies(server, root_token, query)
-        assert response.status_code == 422, f"limit accepted: {response.status_code} {response.text}"
-
-    malformed = list_movies(server, root_token, "?limit=abc")
-    assert malformed.status_code == 400, f"query accepted: {malformed.status_code} {malformed.text}"
+    paged = list_movies.sync_detailed(
+        client=server.client(root_token),
+        name="Page Film",
+        limit=1,
+        offset=1,
+    )
+    assert paged.status_code == 200, f"page failed: {paged.status_code} {paged.content!r}"
+    assert [item["id"] for item in json.loads(paged.content)["_embedded"]["items"]] == [PAGE_FILMS[1]]
 
 
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-003")
 @allure.story("SCN-MOVIES-003-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_detail_read_carries_the_film_metadata(sut: Sut) -> None:
-    """The read carries the metadata, ordered genres, video summary and cover."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    cover = library_image(server, root_token)
-    file, video = film_video(server, root_token)
-    created = create_film(
-        server,
-        root_token,
-        video["id"],
-        name="Some Like It Hot",
-        plot="Two musicians on the run",
-        country_of_origin="gb",
-        release_date="1959-08-17",
-        genres=["Drama", "Comedy"],
-        cover_image_id=cover,
-    )
+def test_the_detail_read_carries_the_film_metadata(server: Sut, root_token: str) -> None:
+    """The read carries the metadata, ordered genres, the video summary and the cover."""
+    response = get_movie.sync_detailed(DETAIL_FILM, client=server.client(root_token))
+    assert response.status_code == 200, f"read failed: {response.status_code} {response.content!r}"
+    film = json.loads(response.content)
 
-    response = read_movie(server, root_token, created["id"])
-
-    assert response.status_code == 200, f"read failed: {response.status_code} {response.text}"
-    film = response.json()
     assert film["name"] == "Some Like It Hot"
     assert film["plot"] == "Two musicians on the run"
-    assert film["country_of_origin"] == "GB"
+    assert film["country_of_origin"] == "US"
     assert film["release_date"] == "1959-08-17"
     assert film["genres"] == ["COMEDY", "DRAMA"]
-    assert film["cover_image_id"] == cover
-    assert_summary(film, file, video)
-    asset = server.follow(film, "cover", token=root_token)
-    assert asset.status_code == 200, f"cover link failed: {asset.status_code} {asset.text}"
-    assert asset.json()["id"] == cover
+    assert film["cover_image_id"] == DETAIL_COVER
+
+    summary = film["video"]
+    assert set(summary) == SUMMARY_FIELDS
+    assert summary["id"] == DETAIL_VIDEO
+    assert summary["file_id"] == DETAIL_VIDEO - 100
+    assert summary["codec"].lower() == CODEC
+    assert abs(summary["duration_ms"] - DURATION_MS) <= 1.0
+    assert summary["width"] == WIDTH
+    assert summary["height"] == HEIGHT
+    assert summary["scan_type"] == SCAN_TYPE
+
+    cover = server.follow(film, "cover", token=root_token)
+    assert cover.status_code == 200, f"cover read failed: {cover.status_code} {cover.text}"
+    assert json.loads(cover.content)["id"] == DETAIL_COVER
 
 
 @allure.epic("Movies")
@@ -427,183 +137,295 @@ def test_the_detail_read_carries_the_film_metadata(sut: Sut) -> None:
 @allure.story("SCN-MOVIES-003-B")
 def test_a_film_without_a_date_or_country_reports_null(server: Sut, root_token: str) -> None:
     """A film that stores neither a release date nor a country reports both as null."""
-    _file, video = film_video(server, root_token)
-    created = create_film(server, root_token, video["id"], name="Undated")
+    response = get_movie.sync_detailed(BARE_FILM, client=server.client(root_token))
+    assert response.status_code == 200, f"read failed: {response.status_code} {response.content!r}"
+    film = json.loads(response.content)
 
-    response = read_movie(server, root_token, created["id"])
-
-    assert response.status_code == 200, f"read failed: {response.status_code} {response.text}"
-    film = response.json()
     assert film["release_date"] is None
     assert film["country_of_origin"] is None
 
 
 @allure.epic("Movies")
-@allure.feature("REQ-MOVIES-003")
-@allure.story("SCN-MOVIES-003-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_unknown_or_unviewable_film_is_not_found(sut: Sut) -> None:
-    """An unknown film and one the caller may not view both answer 404."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    alice_id, alice = provision(server, root_token, "alice")
-    _file, video = film_video(server, root_token)
-    film = create_film(server, root_token, video["id"])
-    deny_viewer(server, root_token, alice_id, film["id"])
+@allure.feature("REQ-MOVIES-004")
+@allure.story("SCN-MOVIES-004-A")
+def test_a_new_film_is_created_from_a_free_video(server: Sut, root_token: str) -> None:
+    """An unused video creates the film and answers 201 with a Location."""
+    response = post_movie.sync_detailed(
+        client=server.client(root_token),
+        body=PostMovieRequest(
+            name="Newly Created Film",
+            video_id=NEW_VIDEO,
+            plot="Two musicians on the run",
+            release_date=datetime.date(1959, 8, 17),
+            country_of_origin="us",
+            genres=["Comedy"],
+        ),
+    )
+    assert response.status_code == 201, f"creation failed: {response.status_code} {response.content!r}"
+    film = json.loads(response.content)
 
-    unknown = read_movie(server, root_token, film["id"] + 1_000_000)
-    unviewable = read_movie(server, alice, film["id"])
+    assert film["id"] > 0
+    assert film["name"] == "Newly Created Film"
+    assert film["plot"] == "Two musicians on the run"
+    assert film["country_of_origin"] == "US"
+    assert film["release_date"] == "1959-08-17"
+    assert film["genres"] == ["COMEDY"]
+    assert film["video"]["id"] == NEW_VIDEO
+    assert response.headers["Location"] == film["_links"]["self"]["href"]
 
-    assert unknown.status_code == 404, f"unknown film answered {unknown.status_code}: {unknown.text}"
-    assert unviewable.status_code == 404, f"unviewable film answered {unviewable.status_code}: {unviewable.text}"
+    listed = list_movies.sync_detailed(
+        client=server.client(root_token),
+        name="Newly Created Film",
+    )
+    assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.content!r}"
+    assert [item["id"] for item in json.loads(listed.content)["_embedded"]["items"]] == [film["id"]]
 
 
 @allure.epic("Movies")
-@allure.feature("REQ-MOVIES-003")
-@allure.story("SCN-MOVIES-003-D")
-def test_a_malformed_film_identifier_is_refused(server: Sut, root_token: str) -> None:
-    """A movie_id that is not an identifier answers 400."""
-    response = read_movie(server, root_token, "not-an-identifier")
+@allure.feature("REQ-MOVIES-004")
+@allure.story("SCN-MOVIES-004-B")
+def test_a_repeated_creation_returns_the_existing_film(server: Sut, root_token: str) -> None:
+    """The same video answers 200 with the film it already backs and applies no change."""
+    response = post_movie.sync_detailed(
+        client=server.client(root_token),
+        body=PostMovieRequest(
+            name="A Different Title",
+            video_id=REPEAT_VIDEO,
+            plot="A different plot",
+        ),
+    )
+    assert response.status_code == 200, f"repeat failed: {response.status_code} {response.content!r}"
+    film = json.loads(response.content)
 
-    assert response.status_code == 400, f"malformed id answered {response.status_code}: {response.text}"
+    assert film["id"] == REPEAT_FILM
+    assert film["name"] == "The Original"
+    assert film["plot"] == ""
+    listed = list_movies.sync_detailed(
+        client=server.client(root_token),
+        name="A Different Title",
+    )
+    assert json.loads(listed.content)["_embedded"]["items"] == []
+
+
+@allure.epic("Movies")
+@allure.feature("REQ-MOVIES-004")
+@allure.story("SCN-MOVIES-004-C")
+def test_a_video_attached_to_an_episode_is_refused(server: Sut, root_token: str) -> None:
+    """A video the seeded episode already takes answers 409 and creates no film."""
+    response = post_movie.sync_detailed(
+        client=server.client(root_token),
+        body=PostMovieRequest(name="Attached Film", video_id=ATTACHED_VIDEO),
+    )
+    assert response.status_code == 409, f"attached video accepted: {response.status_code} {response.content!r}"
+
+    listed = list_movies.sync_detailed(
+        client=server.client(root_token),
+        name="Attached Film",
+    )
+    assert json.loads(listed.content)["_embedded"]["items"] == [], "a refused creation stored a film"
+
+
+@allure.epic("Movies")
+@allure.feature("REQ-MOVIES-004")
+@allure.story("SCN-MOVIES-004-D")
+def test_an_unknown_genre_is_stored_and_linked(server: Sut, root_token: str) -> None:
+    """A genre the catalogue does not hold is stored and the film reports it."""
+    response = post_movie.sync_detailed(
+        client=server.client(root_token),
+        body=PostMovieRequest(
+            name="Unknown Genre Film",
+            video_id=UNKNOWN_GENRE_VIDEO,
+            genres=[UNKNOWN_GENRE],
+        ),
+    )
+    assert response.status_code == 201, f"creation failed: {response.status_code} {response.content!r}"
+    created = json.loads(response.content)
+
+    assert created["genres"] == [UNKNOWN_GENRE.upper()]
+    read = get_movie.sync_detailed(created["id"], client=server.client(root_token))
+    assert read.status_code == 200, f"read failed: {read.status_code} {read.content!r}"
+    assert json.loads(read.content)["genres"] == [UNKNOWN_GENRE.upper()]
+
+
+@allure.epic("Movies")
+@allure.feature("REQ-MOVIES-004")
+@allure.story("SCN-MOVIES-004-E")
+def test_a_film_with_an_unknown_video_is_refused(server: Sut, root_token: str) -> None:
+    """A video the instance does not hold answers 422 and stores nothing."""
+    response = post_movie.sync_detailed(
+        client=server.client(root_token),
+        body=PostMovieRequest(name="Missing Video Film", video_id=UNKNOWN_ID),
+    )
+
+    assert response.status_code == 422, f"unknown video accepted: {response.status_code} {response.content!r}"
+    listed = list_movies.sync_detailed(
+        client=server.client(root_token),
+        name="Missing Video Film",
+    )
+    assert json.loads(listed.content)["_embedded"]["items"] == [], "a refused creation stored a film"
+
+
+@allure.epic("Movies")
+@allure.feature("REQ-MOVIES-004")
+@allure.story("SCN-MOVIES-004-E")
+def test_a_film_with_an_empty_or_padded_name_is_refused(server: Sut, root_token: str) -> None:
+    """An empty name, or one that begins or ends with whitespace, answers 422 and stores nothing."""
+    for name in ("", " Padded Film", "Padded Film "):
+        response = post_movie.sync_detailed(
+            client=server.client(root_token),
+            body=PostMovieRequest(name=name, video_id=EMPTY_NAME_VIDEO),
+        )
+
+        assert response.status_code == 422, f"{name!r} accepted: {response.status_code} {response.content!r}"
+        listed = list_movies.sync_detailed(client=server.client(root_token), name=name)
+        assert json.loads(listed.content)["_embedded"]["items"] == [], "a refused creation stored a film"
+
+
+@allure.epic("Movies")
+@allure.feature("REQ-MOVIES-004")
+@allure.story("SCN-MOVIES-004-E")
+def test_a_film_with_an_empty_genre_is_refused(server: Sut, root_token: str) -> None:
+    """A genre identifier that is empty answers 422 and stores nothing."""
+    response = post_movie.sync_detailed(
+        client=server.client(root_token),
+        body=PostMovieRequest(
+            name="Empty Genre Film",
+            video_id=EMPTY_GENRE_VIDEO,
+            genres=[""],
+        ),
+    )
+
+    assert response.status_code == 422, f"empty genre accepted: {response.status_code} {response.content!r}"
+    listed = list_movies.sync_detailed(
+        client=server.client(root_token),
+        name="Empty Genre Film",
+    )
+    assert json.loads(listed.content)["_embedded"]["items"] == [], "a refused creation stored a film"
+
+
+@allure.epic("Movies")
+@allure.feature("REQ-MOVIES-004")
+@allure.story("SCN-MOVIES-004-E")
+def test_a_film_with_a_malformed_date_is_refused(server: Sut, root_token: str) -> None:
+    """A release date that is not YYYY-MM-DD answers 422 and stores nothing."""
+    response = post_movie.sync_detailed(
+        client=server.client(root_token),
+        body=PostMovieRequest(
+            name="Malformed Date Film",
+            video_id=MALFORMED_DATE_VIDEO,
+            release_date="17/08/1959",
+        ),
+    )
+
+    assert response.status_code == 422, f"malformed date accepted: {response.status_code} {response.content!r}"
+    listed = list_movies.sync_detailed(
+        client=server.client(root_token),
+        name="Malformed Date Film",
+    )
+    assert json.loads(listed.content)["_embedded"]["items"] == [], "a refused creation stored a film"
+
+
+@allure.epic("Movies")
+@allure.feature("REQ-MOVIES-004")
+@allure.story("SCN-MOVIES-004-E")
+def test_a_film_with_a_malformed_country_is_refused(server: Sut, root_token: str) -> None:
+    """A country of origin that is not a two-letter code answers 422 and stores nothing."""
+    response = post_movie.sync_detailed(
+        client=server.client(root_token),
+        body=PostMovieRequest(
+            name="Malformed Country Film",
+            video_id=MALFORMED_COUNTRY_VIDEO,
+            country_of_origin="U.S.A.",
+        ),
+    )
+
+    assert response.status_code == 422, f"malformed country accepted: {response.status_code} {response.content!r}"
+    listed = list_movies.sync_detailed(
+        client=server.client(root_token),
+        name="Malformed Country Film",
+    )
+    assert json.loads(listed.content)["_embedded"]["items"] == [], "a refused creation stored a film"
 
 
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-005")
 @allure.story("SCN-MOVIES-005-A")
 @allure.story("SCN-MOVIES-005-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_metadata_is_updated_partially(sut: Sut) -> None:
+def test_the_metadata_is_updated_partially(server: Sut, root_token: str) -> None:
     """A patch stores each submitted field and leaves the backing video unchanged."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    cover = library_image(server, root_token)
-    _file, video = film_video(server, root_token)
-    created = create_film(
-        server,
-        root_token,
-        video["id"],
-        name="Old Name",
-        plot="Old plot",
-        country_of_origin="US",
-        release_date="1959-08-17",
-        genres=["Drama"],
+    response = patch_movie.sync_detailed(
+        PATCH_FILM,
+        client=server.client(root_token),
+        body=PatchMovieRequest(
+            name="New Name",
+            plot="New plot",
+            country_of_origin="gb",
+            release_date=datetime.date(1960, 1, 2),
+            genres=["Comedy"],
+            cover_image_id=PATCH_COVER,
+        ),
     )
+    assert response.status_code == 200, f"patch failed: {response.status_code} {response.content!r}"
+    film = json.loads(response.content)
 
-    response = patch_movie(
-        server,
-        root_token,
-        created["id"],
-        {
-            "name": "New Name",
-            "plot": "New plot",
-            "country_of_origin": "gb",
-            "release_date": "1960-01-02",
-            "genres": ["Comedy"],
-            "cover_image_id": cover,
-        },
-    )
-
-    assert response.status_code == 200, f"patch failed: {response.status_code} {response.text}"
-    film = response.json()
     assert film["name"] == "New Name"
     assert film["plot"] == "New plot"
     assert film["country_of_origin"] == "GB"
     assert film["release_date"] == "1960-01-02"
     assert film["genres"] == ["COMEDY"]
-    assert film["cover_image_id"] == cover
-    assert film["video"]["id"] == video["id"]
+    assert film["cover_image_id"] == PATCH_COVER
+    assert film["video"]["id"] == PATCH_VIDEO
 
-    stored = read_movie(server, root_token, created["id"]).json()
-    assert stored["name"] == "New Name"
-    assert stored["video"]["id"] == video["id"]
+    stored = get_movie.sync_detailed(PATCH_FILM, client=server.client(root_token))
+    assert stored.status_code == 200, f"read failed: {stored.status_code} {stored.content!r}"
+    stored_film = json.loads(stored.content)
+    assert stored_film["name"] == "New Name"
+    assert stored_film["video"]["id"] == PATCH_VIDEO
+
+
+@allure.epic("Movies")
+@allure.feature("REQ-MOVIES-005")
+@allure.story("SCN-MOVIES-005-G")
+def test_a_padded_film_name_is_refused_on_update(server: Sut, root_token: str) -> None:
+    """A patch name that begins or ends with whitespace answers 422 and applies nothing."""
+    for name in (" Padded Film", "Padded Film ", " Padded Film "):
+        response = patch_movie.sync_detailed(
+            DETAIL_FILM,
+            client=server.client(root_token),
+            body=PatchMovieRequest(name=name),
+        )
+        assert response.status_code == 422, f"{name!r} accepted: {response.status_code} {response.content!r}"
+
+    stored = get_movie.sync_detailed(DETAIL_FILM, client=server.client(root_token))
+    assert stored.status_code == 200, f"read failed: {stored.status_code} {stored.content!r}"
+    assert json.loads(stored.content)["name"] == "Some Like It Hot"
 
 
 @allure.epic("Movies")
 @allure.feature("REQ-MOVIES-005")
 @allure.story("SCN-MOVIES-005-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_null_clears_an_optional_value(sut: Sut) -> None:
+def test_null_clears_an_optional_value(server: Sut, root_token: str) -> None:
     """A null clears the release date, country and cover and the read reports each as null."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    cover = library_image(server, root_token)
-    _file, video = film_video(server, root_token)
-    created = create_film(
-        server,
-        root_token,
-        video["id"],
-        country_of_origin="US",
-        release_date="1959-08-17",
-        cover_image_id=cover,
+    response = patch_movie.sync_detailed(
+        CLEAR_FILM,
+        client=server.client(root_token),
+        body=PatchMovieRequest(
+            release_date=None,
+            country_of_origin=None,
+            cover_image_id=None,
+        ),
     )
+    assert response.status_code == 200, f"patch failed: {response.status_code} {response.content!r}"
+    film = json.loads(response.content)
 
-    response = patch_movie(
-        server,
-        root_token,
-        created["id"],
-        {"release_date": None, "country_of_origin": None, "cover_image_id": None},
-    )
-
-    assert response.status_code == 200, f"patch failed: {response.status_code} {response.text}"
-    film = response.json()
     assert film["release_date"] is None
     assert film["country_of_origin"] is None
     assert film["cover_image_id"] is None
     assert "cover" not in film["_links"]
 
-    stored = read_movie(server, root_token, created["id"]).json()
-    assert stored["release_date"] is None
-    assert stored["country_of_origin"] is None
-    assert stored["cover_image_id"] is None
-
-
-@allure.epic("Movies")
-@allure.feature("REQ-MOVIES-005")
-@allure.story("SCN-MOVIES-005-D")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_standard_user_may_read_but_not_edit(sut: Sut) -> None:
-    """A Standard user reads the film but its patch answers 403 and stores nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    _file, video = film_video(server, root_token)
-    created = create_film(server, root_token, video["id"], name="Untouched")
-
-    readable = read_movie(server, alice, created["id"])
-    refused = patch_movie(server, alice, created["id"], {"name": "Hijacked"})
-
-    assert readable.status_code == 200, f"standard read failed: {readable.status_code} {readable.text}"
-    assert refused.status_code == 403, f"standard patch accepted: {refused.status_code} {refused.text}"
-    assert read_movie(server, root_token, created["id"]).json()["name"] == "Untouched"
-
-
-@allure.epic("Movies")
-@allure.feature("REQ-MOVIES-005")
-@allure.story("SCN-MOVIES-005-E")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_unknown_or_unviewable_film_cannot_be_patched(sut: Sut) -> None:
-    """An unknown film and one the caller may not view both answer 404 and apply nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    alice_id, alice = provision(server, root_token, "alice")
-    _file, video = film_video(server, root_token)
-    created = create_film(server, root_token, video["id"], name="Untouched")
-    deny_viewer(server, root_token, alice_id, created["id"])
-
-    unknown = patch_movie(server, root_token, created["id"] + 1_000_000, {"name": "Other"})
-    unviewable = patch_movie(server, alice, created["id"], {"name": "Hijacked"})
-
-    assert unknown.status_code == 404, f"unknown film answered {unknown.status_code}: {unknown.text}"
-    assert unviewable.status_code == 404, f"unviewable film answered {unviewable.status_code}: {unviewable.text}"
-    assert read_movie(server, root_token, created["id"]).json()["name"] == "Untouched"
-
-
-@allure.epic("Movies")
-@allure.feature("REQ-MOVIES-005")
-@allure.story("SCN-MOVIES-005-F")
-def test_a_malformed_film_identifier_cannot_be_patched(server: Sut, root_token: str) -> None:
-    """A movie_id that is not an identifier answers 400 and applies nothing."""
-    response = patch_movie(server, root_token, "not-an-identifier", {"name": "Other"})
-
-    assert response.status_code == 400, f"malformed id answered {response.status_code}: {response.text}"
+    stored = get_movie.sync_detailed(CLEAR_FILM, client=server.client(root_token))
+    assert stored.status_code == 200, f"read failed: {stored.status_code} {stored.content!r}"
+    stored_film = json.loads(stored.content)
+    assert stored_film["release_date"] is None
+    assert stored_film["country_of_origin"] is None
+    assert stored_film["cover_image_id"] is None

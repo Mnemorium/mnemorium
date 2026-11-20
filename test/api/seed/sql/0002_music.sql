@@ -1,5 +1,5 @@
 -- Seeded music library: one group, one album with one medium and track, and
--- three playlists owned by the demo account `alice` (user 9001).
+-- four playlists owned by the demo account `alice` (user 9001).
 --
 -- Image 9001 becomes LIBRARY through the group cover; image 9003 becomes USER
 -- through the first playlist's cover. The second playlist has no cover, because
@@ -7,7 +7,9 @@
 --
 -- The second playlist gives the fixture API run a different target for its
 -- track delete, so the read it also performs keeps its track. The third,
--- empty playlist is the delete-playlist target.
+-- empty playlist is the delete-playlist target. The fourth is the reorder
+-- target: the reorder rewrites the stored indices, so it must not share a
+-- playlist whose track another operation reads by index.
 
 INSERT INTO music_group (music_group_id, stage_name, cover_image_id)
 VALUES (9001, 'Seed Band', 9001);
@@ -121,3 +123,31 @@ VALUES (
     1,
     NULL
 );
+
+INSERT INTO music_playlist (
+    music_playlist_id,
+    name,
+    created_at,
+    last_modified_at,
+    user_id,
+    is_public,
+    cover_image_id
+)
+VALUES (
+    9004,
+    'Seed Playlist Four',
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP,
+    9001,
+    1,
+    NULL
+);
+
+INSERT INTO music_track (
+    music_track_id,
+    track_index,
+    music_playlist_id,
+    music_medium_id,
+    music_recording_id
+)
+VALUES (9004, 0, 9004, NULL, 9001);

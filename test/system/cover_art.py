@@ -1,221 +1,235 @@
-"""Black-box proof of the `cover-art` capability.
+"""Black-box proof of the `cover-art` capability."""
 
-A resource that owns artwork stores an optional cover and reports it as a nullable image identifier, with a link to the
-image it references. An episode and a recording own no artwork: their representations carry no cover, and a client reads
-the cover of the album, season or show it fetched beside them. The server never resolves or inherits a cover.
-
-This module proves what a schema cannot: that the stored cover is the only cover field, that `_links.cover` follows it,
-that a resource with no cover reports `null` and no link, that a track and an episode carry no artwork of their own, and
-that attaching or clearing a playlist's artwork stores nothing when the image is unusable.
-
-The declarative contract — the media types, the status of each operation, the representation's fields and its `_links` —
-is validated by Schemathesis from the served document. Every route comes from the API index (`Sut.href`), from a
-representation's named link or from the response's own `_links.self`, so the suite keeps its single `/api/v1` base
-literal in `harness.Sut.index`.
-
-The catalogue fixtures, the image helpers and the show helpers come from the feature modules that own them, so this
-module uploads real media and never fabricates a typed identifier.
-"""
+import json
 
 import allure
-import pytest
-from conftest import (
-    start_instance,
-)
-from harness import (
-    ROOT_ADMIN_USERNAME,
-    Sut,
-)
-from music import (
-    create_album,
-    create_group,
-    create_playlist,
-    create_recording,
-    library_image,
+from harness import Sut
+from mnemorium_client.api.library import (
+    get_album,
+    get_album_track,
+    get_music_group,
+    get_playlist,
+    get_playlist_track,
+    get_series_episode,
+    get_series_season,
+    list_playlists,
     patch_playlist,
-    place_recording,
-    playlist_body,
     post_playlist,
-    put_medium,
-    read_album,
-    read_playlist_track,
-    read_track,
 )
-from series import (
-    create_episode,
-    create_season,
-    create_show,
-    episode_video,
-    read_episode,
-    read_season,
-)
+from mnemorium_client.models import PatchPlaylistRequest, PostPlaylistRequest
 
-
-def cover_link(representation: dict) -> str | None:
-    """The `_links.cover` href a representation carries, when it carries one."""
-    link = representation["_links"].get("cover")
-    return None if link is None else link["href"]
-
-
-def cover_href(image_id: int) -> str:
-    """The Asset image route a cover link names, read from the image it addresses."""
-    return f"/api/v1/asset/image/{image_id}"
-
-
-def placed_recording(server: Sut, token: str, album_id: int, name: str = "Song") -> int:
-    """Stage one recording, place it in an album medium and return its identifier."""
-    recording_id = create_recording(server, token, name=name)
-    placed = place_recording(server, token, album_id, recording_id)
-    assert placed.status_code in {200, 201}, f"placement failed: {placed.status_code} {placed.text}"
-    return recording_id
-
-
-def covered_album(server: Sut, token: str, cover: int) -> dict:
-    """Create a group and an album carrying `cover`, and return them."""
-    group = create_group(server, token)
-    album = create_album(server, token, group["id"], cover_image_id=cover)
-    put_medium(server, token, album["id"])
-    return {"group": group, "album": album}
+# The seeded slots this module reads, documented in `seed/sql/0001_cover_art.sql`.
+COVERED_GROUP = 11001
+BARE_GROUP = 11002
+COVERED_ALBUM = 11003
+BARE_ALBUM = 11004
+ALBUM_MEDIUM_INDEX = 1
+ALBUM_TRACK_INDEX = 0
+PLAYLIST_TRACK_CASE = 11008
+REPLACE_PLAYLIST = 11010
+CLEAR_PLAYLIST = 11011
+SERIES = 11014
+SEASON_INDEX = 1
+EPISODE_INDEX = 0
+COVERED_GROUP_COVER = 11201
+COVERED_ALBUM_COVER = 11202
+SEASON_COVER = 11204
+NEW_PLAYLIST_COVER = 11205
+REPLACEMENT_COVER = 11207
+GALLERY_IMAGE = 11209
+LIBRARY_IMAGE = 11210
+UNKNOWN_IMAGE = 999_999_999
 
 
 @allure.epic("Cover art")
 @allure.feature("REQ-COVER-ART-001")
 @allure.story("SCN-COVER-ART-001-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_resource_with_its_own_artwork_reports_it(sut: Sut) -> None:
+@allure.feature("REQ-COVER-ART-004")
+@allure.story("SCN-COVER-ART-004-A")
+def test_a_resource_with_its_own_artwork_reports_it(server: Sut, seed_token: str) -> None:
     """A group that stores a cover reports it as its only cover field."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    cover = library_image(server, root_token)
-    group = create_group(server, root_token, cover_image_id=cover)
+    response = get_music_group.sync_detailed(COVERED_GROUP, client=server.client(seed_token))
+    assert response.status_code == 200, f"group read failed: {response.status_code} {response.content!r}"
+    body = json.loads(response.content)
 
-    body = server.follow(group, "self", token=root_token).json()
-
-    assert body["cover_image_id"] == cover
+    assert body["cover_image_id"] == COVERED_GROUP_COVER
     assert "effective_cover_image_id" not in body
-    assert cover_link(body) == cover_href(cover)
+    cover = server.follow(body, "cover", token=seed_token)
+    assert cover.status_code == 200, f"cover read failed: {cover.status_code} {cover.text}"
+    assert cover.json()["id"] == COVERED_GROUP_COVER
 
 
 @allure.epic("Cover art")
 @allure.feature("REQ-COVER-ART-001")
 @allure.story("SCN-COVER-ART-001-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_resource_without_artwork_reports_null(sut: Sut) -> None:
+@allure.feature("REQ-COVER-ART-004")
+@allure.story("SCN-COVER-ART-004-B")
+def test_a_resource_without_artwork_reports_null(server: Sut, seed_token: str) -> None:
     """A group with no cover reports null and no cover link."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    group = create_group(server, root_token)
+    response = get_music_group.sync_detailed(BARE_GROUP, client=server.client(seed_token))
+    assert response.status_code == 200, f"group read failed: {response.status_code} {response.content!r}"
+    body = json.loads(response.content)
 
-    body = server.follow(group, "self", token=root_token).json()
-
-    assert body["cover_image_id"] is None
+    assert body.get("cover_image_id") is None
     assert "effective_cover_image_id" not in body
-    assert cover_link(body) is None
+    assert body["_links"].get("cover") is None
 
 
 @allure.epic("Cover art")
 @allure.feature("REQ-COVER-ART-004")
 @allure.story("SCN-COVER-ART-004-A")
+def test_a_covered_album_links_its_cover(server: Sut, seed_token: str) -> None:
+    """An album with a cover exposes the link to that image."""
+    response = get_album.sync_detailed(COVERED_ALBUM, client=server.client(seed_token))
+    assert response.status_code == 200, f"album read failed: {response.status_code} {response.content!r}"
+    body = json.loads(response.content)
+
+    assert body["cover_image_id"] == COVERED_ALBUM_COVER
+    cover = server.follow(body, "cover", token=seed_token)
+    assert cover.status_code == 200, f"cover read failed: {cover.status_code} {cover.text}"
+    assert cover.json()["id"] == COVERED_ALBUM_COVER
+
+
+@allure.epic("Cover art")
+@allure.feature("REQ-COVER-ART-004")
 @allure.story("SCN-COVER-ART-004-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_the_cover_link_follows_the_stored_cover(sut: Sut) -> None:
-    """An album with a cover exposes the link to that image, and an album without one exposes none."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    cover = library_image(server, root_token)
-    covered = covered_album(server, root_token, cover)
-    bare_group = create_group(server, root_token, name="Bare Band")
-    bare = create_album(server, root_token, bare_group["id"])
+def test_a_bare_album_links_no_cover(server: Sut, seed_token: str) -> None:
+    """An album without a cover exposes none."""
+    response = get_album.sync_detailed(BARE_ALBUM, client=server.client(seed_token))
+    assert response.status_code == 200, f"album read failed: {response.status_code} {response.content!r}"
+    body = json.loads(response.content)
 
-    with_cover = read_album(server, root_token, covered["album"]["id"]).json()
-    without_cover = read_album(server, root_token, bare["id"]).json()
-
-    assert cover_link(with_cover) == cover_href(cover)
-    assert cover_link(without_cover) is None
+    assert body.get("cover_image_id") is None
+    assert body["_links"].get("cover") is None
 
 
 @allure.epic("Cover art")
 @allure.feature("REQ-COVER-ART-006")
 @allure.story("SCN-COVER-ART-006-A")
 @allure.story("SCN-COVER-ART-006-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_track_reports_no_artwork(sut: Sut) -> None:
-    """An album track and a playlist track carry no cover; the album it belongs to reports one."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    cover = library_image(server, root_token)
-    catalogue = covered_album(server, root_token, cover)
-    recording_id = placed_recording(server, root_token, catalogue["album"]["id"])
-    playlist = create_playlist(server, root_token)
-    appended = patch_playlist(server, root_token, playlist["id"], {"add_track": {"recording_id": recording_id}})
-    assert appended.status_code == 200, f"append failed: {appended.status_code} {appended.text}"
-
-    track = read_track(server, root_token, catalogue["album"]["id"]).json()
-    entry = read_playlist_track(server, root_token, playlist["id"], 0).json()
-    album = read_album(server, root_token, catalogue["album"]["id"]).json()
+def test_an_album_track_reports_no_artwork(server: Sut, seed_token: str) -> None:
+    """An album track carries no cover; the album it belongs to reports one."""
+    response = get_album_track.sync_detailed(
+        COVERED_ALBUM, ALBUM_MEDIUM_INDEX, ALBUM_TRACK_INDEX, client=server.client(seed_token)
+    )
+    assert response.status_code == 200, f"track read failed: {response.status_code} {response.content!r}"
+    track = json.loads(response.content)
+    album_response = get_album.sync_detailed(COVERED_ALBUM, client=server.client(seed_token))
+    assert album_response.status_code == 200, f"album read failed: {album_response.status_code}"
+    album = json.loads(album_response.content)
 
     assert "cover_image_id" not in track
-    assert cover_link(track) is None
-    assert "cover_image_id" not in entry
-    assert cover_link(entry) is None
-    assert album["cover_image_id"] == cover
-    assert cover_link(album) == cover_href(cover)
+    assert track["_links"].get("cover") is None
+    assert album["cover_image_id"] == COVERED_ALBUM_COVER
+    cover = server.follow(album, "cover", token=seed_token)
+    assert cover.status_code == 200, f"cover read failed: {cover.status_code} {cover.text}"
+    assert cover.json()["id"] == COVERED_ALBUM_COVER
+
+
+@allure.epic("Cover art")
+@allure.feature("REQ-COVER-ART-006")
+@allure.story("SCN-COVER-ART-006-D")
+def test_a_playlist_track_reports_no_artwork(server: Sut, seed_token: str) -> None:
+    """A playlist track carries no cover; the album its recording belongs to still reports one."""
+    response = get_playlist_track.sync_detailed(PLAYLIST_TRACK_CASE, 0, client=server.client(seed_token))
+    assert response.status_code == 200, f"track read failed: {response.status_code} {response.content!r}"
+    track = json.loads(response.content)
+    album_response = get_album.sync_detailed(COVERED_ALBUM, client=server.client(seed_token))
+    assert album_response.status_code == 200, f"album read failed: {album_response.status_code}"
+    album = json.loads(album_response.content)
+
+    assert "cover_image_id" not in track
+    assert track["_links"].get("cover") is None
+    assert album["cover_image_id"] == COVERED_ALBUM_COVER
+    cover = server.follow(album, "cover", token=seed_token)
+    assert cover.status_code == 200, f"cover read failed: {cover.status_code} {cover.text}"
+    assert cover.json()["id"] == COVERED_ALBUM_COVER
 
 
 @allure.epic("Cover art")
 @allure.feature("REQ-COVER-ART-006")
 @allure.story("SCN-COVER-ART-006-B")
 @allure.story("SCN-COVER-ART-006-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_episode_reports_no_artwork(sut: Sut) -> None:
+def test_an_episode_reports_no_artwork(server: Sut, seed_token: str) -> None:
     """An episode carries no cover; the season that sequences it reports its own."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    season_cover = library_image(server, root_token)
-    show = create_show(server, root_token, cover_image_id=library_image(server, root_token))
-    season = create_season(server, root_token, show["id"], 1, cover_image_id=season_cover)
-    _file, video = episode_video(server, root_token)
-    episode = create_episode(server, root_token, show["id"], video["id"], 1, 1)
+    response = get_series_episode.sync_detailed(SERIES, SEASON_INDEX, EPISODE_INDEX, client=server.client(seed_token))
+    assert response.status_code == 200, f"episode read failed: {response.status_code} {response.content!r}"
+    episode = json.loads(response.content)
+    season_response = get_series_season.sync_detailed(SERIES, SEASON_INDEX, client=server.client(seed_token))
+    assert season_response.status_code == 200, f"season read failed: {season_response.status_code}"
+    season = json.loads(season_response.content)
 
-    episode_body = read_episode(server, root_token, show["id"], 1, episode["id"]).json()
-    season_body = read_season(server, root_token, show["id"], season["index"]).json()
-
-    assert "cover_image_id" not in episode_body
-    assert cover_link(episode_body) is None
-    assert season_body["cover_image_id"] == season_cover
-    assert cover_link(season_body) == cover_href(season_cover)
+    assert "cover_image_id" not in episode
+    assert episode["_links"].get("cover") is None
+    assert season["cover_image_id"] == SEASON_COVER
+    cover = server.follow(season, "cover", token=seed_token)
+    assert cover.status_code == 200, f"cover read failed: {cover.status_code} {cover.text}"
+    assert cover.json()["id"] == SEASON_COVER
 
 
 @allure.epic("Cover art")
 @allure.feature("REQ-COVER-ART-003")
 @allure.story("SCN-COVER-ART-003-B")
+@allure.feature("REQ-COVER-ART-005")
+@allure.story("SCN-COVER-ART-005-A")
 @allure.feature("REQ-COVER-ART-007")
 @allure.story("SCN-COVER-ART-007-A")
+def test_a_new_playlist_stores_its_cover(server: Sut, seed_token: str) -> None:
+    """A playlist stores the cover it was created with, reports it and exposes its link."""
+    response = post_playlist.sync_detailed(
+        client=server.client(seed_token),
+        body=PostPlaylistRequest(name="Created Cover", cover_image_id=NEW_PLAYLIST_COVER),
+    )
+    assert response.status_code == 201, f"playlist creation failed: {response.status_code} {response.content!r}"
+    created = json.loads(response.content)
+
+    assert created["cover_image_id"] == NEW_PLAYLIST_COVER
+    cover = server.follow(created, "cover", token=seed_token)
+    assert cover.status_code == 200, f"cover read failed: {cover.status_code} {cover.text}"
+    assert cover.json()["id"] == NEW_PLAYLIST_COVER
+    stored_response = get_playlist.sync_detailed(created["id"], client=server.client(seed_token))
+    assert stored_response.status_code == 200, f"playlist read failed: {stored_response.status_code}"
+    assert json.loads(stored_response.content)["cover_image_id"] == NEW_PLAYLIST_COVER
+
+
+@allure.epic("Cover art")
+@allure.feature("REQ-COVER-ART-005")
+@allure.story("SCN-COVER-ART-005-B")
+@allure.feature("REQ-COVER-ART-007")
 @allure.story("SCN-COVER-ART-007-B")
-@allure.story("SCN-COVER-ART-007-C")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_playlist_attaches_replaces_and_clears_its_cover(sut: Sut) -> None:
-    """A playlist stores a cover on creation, replaces it, reports it and clears it with null."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    first = library_image(server, root_token)
-    second = library_image(server, root_token)
+def test_a_playlist_replaces_its_cover(server: Sut, seed_token: str) -> None:
+    """A playlist metadata update replaces the stored cover."""
+    response = patch_playlist.sync_detailed(
+        REPLACE_PLAYLIST,
+        client=server.client(seed_token),
+        body=PatchPlaylistRequest(cover_image_id=REPLACEMENT_COVER),
+    )
+    assert response.status_code == 200, f"playlist update failed: {response.status_code} {response.content!r}"
+    body = json.loads(response.content)
 
-    created = create_playlist(server, root_token, cover_image_id=first)
-    assert created["cover_image_id"] == first, "a playlist must store the cover it was created with"
-    assert cover_link(created) == cover_href(first)
+    assert body["cover_image_id"] == REPLACEMENT_COVER
+    cover = server.follow(body, "cover", token=seed_token)
+    assert cover.status_code == 200, f"cover read failed: {cover.status_code} {cover.text}"
+    assert cover.json()["id"] == REPLACEMENT_COVER
 
-    replaced = patch_playlist(server, root_token, created["id"], {"cover_image_id": second})
-    assert replaced.status_code == 200, f"replace failed: {replaced.status_code} {replaced.text}"
-    assert replaced.json()["cover_image_id"] == second
 
-    kept = patch_playlist(server, root_token, created["id"], {"name": "Renamed"})
-    assert kept.json()["cover_image_id"] == second, "an absent field must keep the cover"
+@allure.epic("Cover art")
+@allure.feature("REQ-COVER-ART-005")
+@allure.story("SCN-COVER-ART-005-C")
+@allure.feature("REQ-COVER-ART-007")
+@allure.story("SCN-COVER-ART-007-B")
+def test_a_playlist_clears_its_cover_with_null(server: Sut, seed_token: str) -> None:
+    """A playlist metadata update clears the stored cover with null and drops its link."""
+    response = patch_playlist.sync_detailed(
+        CLEAR_PLAYLIST,
+        client=server.client(seed_token),
+        body=PatchPlaylistRequest(cover_image_id=None),
+    )
+    assert response.status_code == 200, f"playlist update failed: {response.status_code} {response.content!r}"
+    body = json.loads(response.content)
 
-    cleared = patch_playlist(server, root_token, created["id"], {"cover_image_id": None})
-    assert cleared.status_code == 200, f"clear failed: {cleared.status_code} {cleared.text}"
-    assert cleared.json()["cover_image_id"] is None
-    assert cover_link(cleared.json()) is None
+    assert body.get("cover_image_id") is None
+    assert body["_links"].get("cover") is None
 
 
 @allure.epic("Cover art")
@@ -223,16 +237,48 @@ def test_a_playlist_attaches_replaces_and_clears_its_cover(sut: Sut) -> None:
 @allure.story("SCN-COVER-ART-003-C")
 @allure.feature("REQ-COVER-ART-007")
 @allure.story("SCN-COVER-ART-007-D")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_playlist_refuses_an_unusable_image(sut: Sut) -> None:
-    """A library image and an unknown image are both refused and store nothing."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    library_cover = library_image(server, root_token)
-    create_group(server, root_token, cover_image_id=library_cover)
+def test_a_playlist_refuses_library_artwork(server: Sut, seed_token: str) -> None:
+    """A library image cannot back a playlist, and the refused creation stores nothing."""
+    name = "Library Artwork Refused"
+    refused = post_playlist.sync_detailed(
+        client=server.client(seed_token),
+        body=PostPlaylistRequest(name=name, cover_image_id=LIBRARY_IMAGE),
+    )
+    listing = list_playlists.sync_detailed(client=server.client(seed_token), name=name, owner_id=10000)
 
-    conflict = post_playlist(server, root_token, playlist_body("Lit", cover_image_id=library_cover))
-    unknown = post_playlist(server, root_token, playlist_body("Unknown", cover_image_id=999_999_999))
+    assert refused.status_code == 409, f"library image accepted: {refused.status_code} {refused.content!r}"
+    assert json.loads(listing.content)["items"] == []
 
-    assert conflict.status_code == 409, f"library image accepted: {conflict.status_code} {conflict.text}"
-    assert unknown.status_code in {409, 422}, f"unknown image accepted: {unknown.status_code}"
+
+@allure.epic("Cover art")
+@allure.feature("REQ-COVER-ART-002")
+@allure.story("SCN-COVER-ART-002-B")
+@allure.feature("REQ-COVER-ART-007")
+@allure.story("SCN-COVER-ART-007-D")
+def test_a_playlist_refuses_an_unknown_image(server: Sut, seed_token: str) -> None:
+    """A cover that names no image is refused, and the refused creation stores nothing."""
+    name = "Unknown Artwork Refused"
+    refused = post_playlist.sync_detailed(
+        client=server.client(seed_token),
+        body=PostPlaylistRequest(name=name, cover_image_id=UNKNOWN_IMAGE),
+    )
+    listing = list_playlists.sync_detailed(client=server.client(seed_token), name=name, owner_id=10000)
+
+    assert refused.status_code in {409, 422}, f"unknown image accepted: {refused.status_code}"
+    assert json.loads(listing.content)["items"] == []
+
+
+@allure.epic("Cover art")
+@allure.feature("REQ-COVER-ART-003")
+@allure.story("SCN-COVER-ART-003-D")
+def test_gallery_media_is_refused_as_artwork(server: Sut, seed_token: str) -> None:
+    """An image already used as gallery media cannot back a playlist, and nothing is stored."""
+    name = "Gallery Artwork Refused"
+    refused = post_playlist.sync_detailed(
+        client=server.client(seed_token),
+        body=PostPlaylistRequest(name=name, cover_image_id=GALLERY_IMAGE),
+    )
+    listing = list_playlists.sync_detailed(client=server.client(seed_token), name=name, owner_id=10000)
+
+    assert refused.status_code == 409, f"gallery image accepted: {refused.status_code} {refused.content!r}"
+    assert json.loads(listing.content)["items"] == []

@@ -29,6 +29,23 @@ pub(crate) struct PartialConfiguration {
     pub persistence: PartialPersistence,
     /// Security-related settings named by the layer.
     pub security: PartialSecurity,
+    /// Seed-related settings named by the layer; test-only.
+    #[cfg(feature = "test-seed")]
+    pub seed: PartialSeed,
+}
+
+/// Seed-related settings named by the layer.
+///
+/// The profile is deserialized into its domain type, so a layer naming an
+/// unsupported profile is rejected where it is read; a shipped build has no
+/// such section and rejects the key as unknown.
+#[cfg(feature = "test-seed")]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+#[non_exhaustive]
+pub(crate) struct PartialSeed {
+    /// Fixture a `test-seed` boot applies, when the layer names one.
+    pub profile: Option<super::configuration::SeedProfile>,
 }
 
 /// Asset-related settings named by the layer.

@@ -13,7 +13,9 @@ use crate::infrastructure::inbound::rest::handler::asset::{
     asset_file_href, asset_image_href, content_href, format_date, parse_asset_id,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, Link, hal_json};
+use crate::infrastructure::inbound::rest::{
+    ApiError, AppState, CacheControlHeader, ErrorBody, Link, hal_json,
+};
 
 /// HAL links exposed by a typed-image representation.
 ///
@@ -37,7 +39,8 @@ struct ImageLinks {
 struct ImageResponse {
     /// Date at which the image was created, as `YYYY-MM-DD`.
     #[schema(example = json!("2026-01-01"))]
-    pub created_at: String,
+    #[schema(format = "date", example = json!("2026-01-01"))]
+    pub created_date: String,
     /// Identifier of the stored file backing the image.
     pub file_id: NumericID,
     /// Height of the image, in pixels.
@@ -61,7 +64,7 @@ impl ImageResponse {
     #[must_use]
     pub(crate) fn from_response(response: &GetImageResponseData) -> Self {
         Self {
-            created_at: format_date(response.created_at()),
+            created_date: format_date(response.created_at()),
             file_id: response.file_id(),
             height_px: response.height_px(),
             id: response.id(),
@@ -106,7 +109,7 @@ impl From<GetImageError> for ApiError {
             body = ImageResponse,
             content_type = "application/hal+json",
             description = "Image found",
-            headers(("Cache-Control" = String, description = "Always `private, max-age=60`"))
+            headers(("Cache-Control" = inline(CacheControlHeader), description = "Always `private, max-age=60`"))
         ),
         (
             status = BAD_REQUEST,

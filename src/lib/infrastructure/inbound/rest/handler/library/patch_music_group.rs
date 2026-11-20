@@ -25,15 +25,21 @@ pub(crate) struct PatchMusicGroupRequest {
     #[serde(default, deserialize_with = "deserialize_field_update")]
     #[schema(value_type = Option<NumericID>, nullable = true, example = 1)]
     pub cover_image_id: FieldUpdate<NumericID>,
-    /// New stage name of the group.
-    #[schema(min_length = 1, max_length = 100)]
+    /// New stage name of the group; must not begin or end with whitespace. The
+    /// submitted value is stored unchanged.
+    #[schema(
+        min_length = 1,
+        max_length = 100,
+        pattern = r"^[^\s\u0085](?:[\s\S]*[^\s\u0085])?$"
+    )]
     pub name: Option<String>,
 }
 
 /// Update a music group.
 ///
-/// Updating a group requires `View` and then `EditMetadata` on it. The name is
-/// trimmed and must be unique; the cover must be a `LIBRARY` image. The seeded
+/// Updating a group requires `View` and then `EditMetadata` on it. The name
+/// must not begin or end with whitespace and must be unique; the cover must be a
+/// `LIBRARY` image. The seeded
 /// default group is protected and refuses every update with `409 Conflict`.
 #[utoipa::path(
     patch,

@@ -4,7 +4,9 @@ use tracing::warn;
 
 use crate::application::port::{ResolveVideoMetadataCommand, ResolveVideoMetadataError};
 use crate::domain::model::{ExternalRef, ProviderId, Target};
-use crate::infrastructure::inbound::rest::handler::library::VideoMetadataDocumentResponse;
+use crate::infrastructure::inbound::rest::handler::library::{
+    VideoMetadataDocumentResponse, VideoProviderRequest, encode_path_segment,
+};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
@@ -20,7 +22,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
     path = "/movie/identify/{provider}/{reference}",
     tag = "library",
     params(
-        ("provider" = String, Path, description = "Provider that issued the reference"),
+        ("provider" = inline(VideoProviderRequest), Path, description = "Provider that issued the reference"),
         ("reference" = String, Path, description = "Identifier the provider issued"),
     ),
     responses(
@@ -78,8 +80,9 @@ pub(crate) async fn get_movie_identify_metadata(
             ApiError::NotFound("the video metadata provider is not configured".to_owned())
         })?;
     let href = format!(
-        "/api/v1/library/movie/identify/{}/{reference_value}",
-        provider.as_str()
+        "/api/v1/library/movie/identify/{}/{}",
+        provider.as_str(),
+        encode_path_segment(&reference_value)
     );
     let target = Target::Movie(ExternalRef::new(provider, reference_value));
     let result = state

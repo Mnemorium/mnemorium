@@ -9,7 +9,7 @@ use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistResponse;
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
-use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
 /// Payload to create a playlist owned by the caller.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -21,16 +21,21 @@ pub(crate) struct PostPlaylistRequest {
     /// Whether any authenticated user may read and moderate the playlist.
     #[serde(default)]
     pub is_public: bool,
-    /// Name of the playlist.
-    #[schema(min_length = 1, max_length = 100)]
+    /// Name of the playlist; must not begin or end with whitespace. The
+    /// submitted value is stored unchanged.
+    #[schema(
+        min_length = 1,
+        max_length = 100,
+        pattern = r"^[^\s\u0085](?:[\s\S]*[^\s\u0085])?$"
+    )]
     pub name: String,
 }
 
 /// Create a playlist owned by the caller.
 ///
 /// Creating a playlist requires `CreateChild` for a music playlist on the
-/// **Playlist collection**. The name is required, trimmed and at most 100
-/// characters long; `is_public` defaults to `false` and the optional cover must
+/// **Playlist collection**. The name is required, at most 100 characters long and must not begin or
+/// end with whitespace; `is_public` defaults to `false` and the optional cover must
 /// be a `USER` image.
 #[utoipa::path(
     post,
@@ -44,7 +49,7 @@ pub(crate) struct PostPlaylistRequest {
             body = PlaylistResponse,
             content_type = "application/hal+json",
             headers(
-                ("Location" = String, description = "URI of the newly created playlist"),
+                ("Location" = inline(UriReference), description = "URI of the newly created playlist"),
             ),
             description = "Playlist created",
         ),

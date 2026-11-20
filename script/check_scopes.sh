@@ -131,7 +131,9 @@ main() {
 		ignore_globs+=("$ignore_glob")
 	done <<<"$ignore_output"
 
-	while IFS= read -r file; do
+	# `-z` keeps a path with a quote or a newline intact; `git ls-files`'s default
+	# quoting would hide it behind an escaped, quoted form no glob matches.
+	while IFS= read -r -d '' file; do
 		skip=0
 		for i in "${!ignore_globs[@]}"; do
 			# The glob on the right is intentional: match as a pattern.
@@ -176,7 +178,7 @@ main() {
 			continue
 		fi
 		owner_count["$best"]=$((${owner_count["$best"]:-0} + 1))
-	done < <(git ls-files)
+	done < <(git ls-files -z)
 
 	local scope_name
 	for scope_name in "${table_set[@]}"; do

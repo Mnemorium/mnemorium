@@ -150,26 +150,60 @@ use crate::application::port::{
 use crate::domain::NumericID;
 use crate::domain::model::{
     ArtistCredit, Candidate, Episode, ExternalRef, GalleryItemMedia, MediaMetadata, MediumFormat,
-    MediumSummary, Movie, MusicAlbum, MusicPlaylist, MusicRecording, ProductionType, ScanType,
-    Series, Video, VideoKind,
+    MediumSummary, Movie, MusicAlbum, MusicKind, MusicPlaylist, MusicRecording, ProductionType,
+    ScanType, Series, Video, VideoKind,
 };
+use crate::infrastructure::inbound::rest::handler::TIMESTAMP_FORMAT;
 use crate::infrastructure::inbound::rest::handler::asset::asset_image_href;
 use crate::infrastructure::inbound::rest::middleware::authenticate;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, Link, SelfLinks};
 use crate::infrastructure::outbound::jwt::JwtTokenProvider;
 
-/// Default number of items a listing returns when `limit` is omitted.
-pub(crate) const DEFAULT_LIMIT: usize = 20;
-
-/// Largest number of items a listing may return.
-pub(crate) const MAX_LIMIT: usize = 100;
-
-/// Date and time format of the gallery representations, per the asset
-/// representations.
-const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S";
-
 /// Date format of the release dates the album and track representations carry.
 pub(crate) const DATE_FORMAT: &str = "%Y-%m-%d";
+
+/// The video metadata providers the video routes serve (`API-047`).
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub(crate) enum VideoProviderRequest {
+    /// The Open Movie Database.
+    Omdb,
+    /// The Movie Database.
+    Tmdb,
+}
+
+/// Kind of music work a query or a route names (`API-047`).
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub(crate) enum MusicKindRequest {
+    /// The abstract album, independent of any one edition.
+    Album,
+    /// One performance, independent of the release it appears on.
+    Recording,
+    /// One edition of an album.
+    Release,
+}
+
+impl From<MusicKindRequest> for MusicKind {
+    fn from(kind: MusicKindRequest) -> Self {
+        match kind {
+            MusicKindRequest::Album => Self::Album,
+            MusicKindRequest::Recording => Self::Recording,
+            MusicKindRequest::Release => Self::Release,
+        }
+    }
+}
+
+/// The music metadata provider the music routes serve (`API-047`).
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub(crate) enum MusicProviderRequest {
+    /// `MusicBrainz`, which serves music metadata.
+    MusicBrainz,
+}
 
 /// A production type named by an album create or update body.
 #[derive(Debug, Clone, Copy, serde::Deserialize, utoipa::ToSchema)]
@@ -292,6 +326,7 @@ impl From<GalleryItemMedia> for GalleryItemType {
 #[non_exhaustive]
 pub(crate) struct GalleryItemResponse {
     /// Date and time at which the item was added.
+    #[schema(format = "date-time")]
     pub added_at: String,
     /// Identifier of the backing file.
     pub file_id: NumericID,
@@ -330,6 +365,7 @@ impl From<&GalleryItemSummary> for GalleryItemResponse {
 #[non_exhaustive]
 pub(crate) struct GalleryItemDetailResponse {
     /// Date and time at which the item was added.
+    #[schema(format = "date-time")]
     pub added_at: String,
     /// Identifier of the backing file.
     pub file_id: NumericID,
@@ -403,6 +439,7 @@ impl From<AddGalleryItemResponse> for GalleryItemDetailResponse {
 #[non_exhaustive]
 pub(crate) struct GalleryResponse {
     /// Date and time at which the gallery was created.
+    #[schema(format = "date-time")]
     pub created_at: String,
     /// Unique identifier of the gallery.
     pub id: NumericID,
@@ -413,6 +450,7 @@ pub(crate) struct GalleryResponse {
     /// Items of the gallery, ordered by position.
     pub items: Vec<GalleryItemResponse>,
     /// Date and time of the last modification of the gallery.
+    #[schema(format = "date-time")]
     pub last_modified_at: String,
     /// Links to the gallery and its item collection.
     #[serde(rename = "_links")]
@@ -711,6 +749,7 @@ pub(crate) struct AlbumResponse {
     pub production_type: Option<String>,
     /// Date of the release of the album, in `YYYY-MM-DD` form, or `null` when
     /// the provider reports none.
+    #[schema(format = "date")]
     pub release_date: Option<String>,
     /// Number of tracks the album contains.
     pub track_count: usize,
@@ -1375,6 +1414,7 @@ pub(crate) enum VideoMetadataResponse {
     /// One episode.
     Episode {
         /// Date the episode first aired, in `YYYY-MM-DD` form, when known.
+        #[schema(format = "date")]
         air_date: Option<String>,
         /// Index of the episode within its season.
         episode: u32,
@@ -1394,6 +1434,7 @@ pub(crate) enum VideoMetadataResponse {
         /// Plot summary the provider reports.
         plot: String,
         /// Date the film was released, in `YYYY-MM-DD` form, when known.
+        #[schema(format = "date")]
         release_date: Option<String>,
         /// Title the provider reports.
         title: String,
@@ -1403,6 +1444,7 @@ pub(crate) enum VideoMetadataResponse {
         /// Country of origin as an uppercase ISO 3166-1 alpha-2 code, when known.
         country_of_origin: Option<String>,
         /// Date the show first aired, in `YYYY-MM-DD` form, when known.
+        #[schema(format = "date")]
         first_air_date: Option<String>,
         /// Genres from the shared vocabulary.
         genres: Vec<String>,
@@ -1520,7 +1562,7 @@ pub(crate) struct VideoApplyReferenceRequest {
     #[schema(example = "27205")]
     pub id: String,
     /// Provider that issued the identifier (`tmdb` or `omdb`).
-    #[schema(example = "tmdb")]
+    #[schema(value_type = VideoProviderRequest, example = "tmdb")]
     pub provider: String,
 }
 
@@ -1552,6 +1594,7 @@ pub(crate) struct MovieResponse {
     /// Plot of the film.
     pub plot: String,
     /// Date of the release of the film, in `YYYY-MM-DD` form, when known.
+    #[schema(format = "date")]
     pub release_date: Option<String>,
     /// Video backing the film.
     pub video: VideoResponse,
@@ -1862,6 +1905,7 @@ pub(crate) struct SeriesResponse {
     /// Identifier of the image holding the show's artwork, when set.
     pub cover_image_id: Option<NumericID>,
     /// Date of the first airing of the show, in `YYYY-MM-DD` form, when known.
+    #[schema(format = "date")]
     pub first_air_date: Option<String>,
     /// Genres of the show, ordered by genre identifier.
     pub genres: Vec<String>,
@@ -2040,6 +2084,7 @@ pub(crate) struct SeriesListResponse {
 pub(crate) struct EpisodeResponse {
     /// Date of the first airing of the episode, in `YYYY-MM-DD` form, when
     /// known.
+    #[schema(format = "date")]
     pub air_date: Option<String>,
     /// Season-scoped index of the episode.
     pub id: u32,
@@ -2227,12 +2272,14 @@ pub(crate) struct PlaylistResponse {
     /// Identifier of the image holding the playlist's artwork, when set.
     pub cover_image_id: Option<NumericID>,
     /// Date and time of the creation of the playlist.
+    #[schema(format = "date-time")]
     pub created_at: String,
     /// Unique identifier of the playlist.
     pub id: NumericID,
     /// Whether the playlist is visible to every user.
     pub is_public: bool,
     /// Date and time of the last modification of the playlist.
+    #[schema(format = "date-time")]
     pub last_modified_at: String,
     /// Links to the playlist and its track alias.
     #[serde(rename = "_links")]
@@ -3416,6 +3463,67 @@ pub(crate) fn parse_playlist_track_index(value: &str) -> Result<u32, ApiError> {
         );
         ApiError::UnprocessableEntity("invalid playlist track index".to_owned())
     })
+}
+
+/// Percent-encode `value` for one URI path segment (`API-050`).
+///
+/// A provider reference is client-supplied and may carry a character a path
+/// segment does not allow; encoding it keeps the `self` link a valid relative
+/// URI reference without changing the reference the use case resolves.
+pub(crate) fn encode_path_segment(value: &str) -> String {
+    use std::fmt::Write as _;
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric()
+            || matches!(
+                byte,
+                b'-' | b'.'
+                    | b'_'
+                    | b'~'
+                    | b'!'
+                    | b'$'
+                    | b'&'
+                    | b'\''
+                    | b'('
+                    | b')'
+                    | b'*'
+                    | b'+'
+                    | b','
+                    | b';'
+                    | b'='
+                    | b':'
+                    | b'@'
+            )
+        {
+            encoded.push(char::from(byte));
+        } else {
+            let _ignored = write!(encoded, "%{byte:02X}");
+        }
+    }
+    encoded
+}
+
+/// Parse a wire date, requiring the exact `YYYY-MM-DD` form (`API-046`).
+///
+/// `chrono` accepts a non-padded month or day, so the shape is checked first:
+/// the published `format: date` and the ten-character bound promise the padded
+/// form, and a value outside it is the same `422` as an unparseable one.
+pub(crate) fn parse_wire_date(value: &str) -> Result<NaiveDate, ()> {
+    if value.len() != 10 {
+        return Err(());
+    }
+    let bytes = value.as_bytes();
+    for (index, byte) in bytes.iter().enumerate() {
+        let valid = if matches!(index, 4 | 7) {
+            *byte == b'-'
+        } else {
+            byte.is_ascii_digit()
+        };
+        if !valid {
+            return Err(());
+        }
+    }
+    NaiveDate::parse_from_str(value, DATE_FORMAT).map_err(|_error| ())
 }
 
 /// Render `value` with the representation's date format.

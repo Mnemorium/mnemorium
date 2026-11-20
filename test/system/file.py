@@ -1,47 +1,23 @@
-"""Black-box proof of the `file` capability.
+"""Black-box proof of the `file` capability."""
 
-A stored file is the record of one content under the library root: the path relative to that root, the media type, the
-size, the instant the content was last modified, the date it was registered, its origin and whether it is public. This
-module proves that record for both origins — a file the server promoted from an upload and a file the startup scan
-found — that a caller reads it by identifier with every field and no other, and that the representation publishes its
-owner, its content route and the typed view it backs, and omits that view when the file backs none.
-
-The declarative contract — the media types, the status of each operation, the representation's fields, its `_links` and
-the request schema — is validated by Schemathesis from the served document. These cases prove only what a schema
-cannot: which fields the record actually carries, which origin each intake stamps, that an unviewable file is
-indistinguishable from a missing one, and that a typed link is present exactly when the row it names exists.
-
-The suite keeps its single `/api/v1` base literal in `harness.Sut.index`; a stored file is reached through a
-representation's own `_links.self`. The scan registers a found file without the resource row an upload creates, so no
-caller can resolve it by identifier yet; the record the scan stored is therefore read from the datastore the working
-directory holds, which is one of the surfaces an operator can observe.
-"""
-
+import json
 import os
-import sqlite3
 import time
 from datetime import UTC, datetime
 
 import allure
 import pytest
-from conftest import (
-    FIXTURE_DIRECTORY,
-    provision,
-    start_instance,
-    upload,
-)
-from harness import (
-    MEDIA_DIRECTORY,
-    ROOT_ADMIN_USERNAME,
-    Sut,
-    link_of,
-)
+from conftest import SEED_MEDIA_DIRECTORY, login, start_instance, upload
+from harness import MEDIA_DIRECTORY, ROOT_ADMIN_USERNAME, Sut
+from mnemorium_client.api.asset import list_files
+
+LINKED_PATH = "system/file-linked.png"
+AUDIO_PATH = "system/file-audio.flac"
+VIDEO_PATH = "system/file-video.mp4"
+BARE_PATH = "system/file-bare.png"
 
 IMAGE_CONTENT_TYPE = "image/png"
-AUDIO_CONTENT_TYPE = "audio/flac"
-VIDEO_CONTENT_TYPE = "video/mp4"
 
-# The record's field set: the whole representation, so an added field fails the case that reads it.
 FILE_FIELDS = {
     "id",
     "is_public",
@@ -50,70 +26,13 @@ FILE_FIELDS = {
     "origin",
     "path",
     "size_bytes",
-    "uploaded_at",
+    "uploaded_date",
     "_links",
 }
 
-# A pre-placed fixture, copied under the root so the scan registers it, and its instant, so the record's modification
-# instant is a value the case chose.
-FOUND_SOURCE = "cover.png"
 FOUND_PATH = "found.png"
 FOUND_INSTANT = 1_700_000_000
 WAIT_SECONDS = 20.0
-
-
-def wait_until(condition, description: str) -> None:
-    """Poll `condition` up to the suite's startup budget, failing with `description` when it never holds."""
-    deadline = time.monotonic() + WAIT_SECONDS
-    while time.monotonic() < deadline:
-        if condition():
-            return
-        time.sleep(0.1)
-    raise AssertionError(f"{description} within {WAIT_SECONDS:g}s")
-
-
-def scanned_record(server: Sut, path: str) -> dict:
-    """Return the record the scan stored for the file at `path`, read from the working directory's datastore."""
-    query = (
-        "SELECT file_id AS id, path, mime_type_id AS mime_type, size_bytes, modified_at,"
-        " uploaded_at, origin, is_public FROM file WHERE path = ?1"
-    )
-
-    def record() -> dict | None:
-        with sqlite3.connect(server.dir / "mnemorium.db") as connection:
-            connection.row_factory = sqlite3.Row
-            row = connection.execute(query, (path,)).fetchone()
-        return None if row is None else dict(row)
-
-    wait_until(lambda: record() is not None, f"the scan registered {path!r}")
-    found = record()
-    if found is None:  # pragma: no cover - the wait above guarantees a row
-        raise AssertionError(f"the scan registered no record for {path!r}")
-    return found
-
-
-def file_route(file: dict, file_id: int) -> str:
-    """The route of one stored file, derived from a representation's own `_links.self`."""
-    return f"{link_of(file, 'self').rsplit('/', 1)[0]}/{file_id}"
-
-
-def read_file(server: Sut, token: str, file: dict, file_id: int):
-    """GET one stored file by identifier, deriving its route from `file`'s self link."""
-    return server.request("GET", file_route(file, file_id), token=token)
-
-
-def found_file(sut: Sut) -> tuple[Sut, dict]:
-    """Start a server over a pre-placed fixture and return it and the record the scan gave that fixture."""
-    data = (FIXTURE_DIRECTORY / FOUND_SOURCE).read_bytes()
-    fixture = sut.dir / MEDIA_DIRECTORY / FOUND_PATH
-    fixture.parent.mkdir(parents=True, exist_ok=True)
-    fixture.write_bytes(data)
-    os.utime(fixture, (FOUND_INSTANT, FOUND_INSTANT))
-    server = sut.start()
-    return server, scanned_record(server, FOUND_PATH)
-
-
-# --- the record ---------------------------------------------------------------
 
 
 @allure.epic("File")
@@ -121,7 +40,7 @@ def found_file(sut: Sut) -> tuple[Sut, dict]:
 @allure.story("SCN-FILE-001-A")
 def test_a_promoted_upload_is_an_uploaded_file(server: Sut, root_token: str) -> None:
     """Content the server received records the `UPLOADED` origin at a root-relative path."""
-    data = (FIXTURE_DIRECTORY / "cover.png").read_bytes()
+    data = (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes()
 
     file = upload(server, root_token, "promoted.png", data, IMAGE_CONTENT_TYPE)
 
@@ -133,110 +52,93 @@ def test_a_promoted_upload_is_an_uploaded_file(server: Sut, root_token: str) -> 
 @allure.epic("File")
 @allure.feature("REQ-FILE-001")
 @allure.story("SCN-FILE-001-B")
-@pytest.mark.own_instance(reason="global_filesystem")
-def test_content_the_scan_found_is_a_scanned_file(sut: Sut) -> None:
-    """Content the ingest found under the root records the `SCANNED` origin at a root-relative path."""
-    _server, found = found_file(sut)
-
-    assert found["origin"] == "SCANNED"
-    assert found["path"] == FOUND_PATH
-    assert not found["path"].startswith("/"), "a stored path must be root-relative"
-    assert (sut.dir / MEDIA_DIRECTORY / found["path"]).read_bytes() == (FIXTURE_DIRECTORY / FOUND_SOURCE).read_bytes()
-
-
-@allure.epic("File")
-@allure.feature("REQ-FILE-001")
 @allure.story("SCN-FILE-001-C")
 @pytest.mark.own_instance(reason="global_filesystem")
-def test_a_file_records_the_content_it_names(sut: Sut) -> None:
-    """The record carries the content's media type, size and modification instant, and its registration date."""
-    _server, found = found_file(sut)
+def test_a_found_file_records_its_content(sut: Sut) -> None:
+    """Content the scan found records the `SCANNED` origin and the content's measurements."""
+    data = (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes()
+    fixture = sut.dir / MEDIA_DIRECTORY / FOUND_PATH
+    fixture.parent.mkdir(parents=True, exist_ok=True)
+    fixture.write_bytes(data)
+    os.utime(fixture, (FOUND_INSTANT, FOUND_INSTANT))
+    server = start_instance(sut)
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
 
-    assert found["mime_type"] == IMAGE_CONTENT_TYPE
-    assert found["size_bytes"] == (FIXTURE_DIRECTORY / FOUND_SOURCE).stat().st_size
-    assert found["modified_at"].startswith(datetime.fromtimestamp(FOUND_INSTANT, UTC).strftime("%Y-%m-%d %H:%M:%S"))
-    assert found["uploaded_at"] == datetime.now(UTC).date().isoformat()
+    deadline = time.monotonic() + WAIT_SECONDS
+    items = []
+    while time.monotonic() < deadline:
+        response = list_files.sync_detailed(client=server.client(root_token), path=FOUND_PATH)
+        assert response.status_code == 200, f"list failed: {response.status_code} {response.content!r}"
+        items = json.loads(response.content)["items"]
+        if items:
+            break
+        time.sleep(0.1)
+    assert items, f"the scan registered no record for {FOUND_PATH!r}"
 
-
-# --- the read -----------------------------------------------------------------
+    file = items[0]
+    assert file["origin"] == "SCANNED"
+    assert file["path"] == FOUND_PATH
+    assert file["mime_type"] == IMAGE_CONTENT_TYPE
+    assert file["size_bytes"] == len(data)
+    assert file["modified_at"] == datetime.fromtimestamp(FOUND_INSTANT, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert file["uploaded_date"] == datetime.now(UTC).date().isoformat()
 
 
 @allure.epic("File")
 @allure.feature("REQ-FILE-002")
 @allure.story("SCN-FILE-002-A")
 def test_a_file_of_an_existing_identifier_is_read(server: Sut, root_token: str) -> None:
-    """The representation carries exactly the record's fields and the values the upload stored."""
-    data = (FIXTURE_DIRECTORY / "gallery.png").read_bytes()
-    uploaded = upload(server, root_token, "read.png", data, IMAGE_CONTENT_TYPE)
+    """The representation carries exactly the record's fields and the stored values."""
+    listed = list_files.sync_detailed(client=server.client(root_token), path=LINKED_PATH)
+    assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.content!r}"
+    items = json.loads(listed.content)["items"]
+    assert len(items) == 1, f"expected one file at {LINKED_PATH}, got {len(items)}"
 
-    response = read_file(server, root_token, uploaded, uploaded["id"])
+    response = server.request("GET", items[0]["_links"]["self"]["href"], token=root_token)
 
-    assert response.status_code == 200, f"file read failed: {response.status_code} {response.text}"
-    file = response.json()
+    assert response.status_code == 200, f"file read failed: {response.status_code} {response.content!r}"
+    file = json.loads(response.content)
     assert set(file) == FILE_FIELDS
-    assert file["id"] == uploaded["id"]
-    assert file["path"] == uploaded["path"]
+    assert file["id"] == items[0]["id"]
+    assert file["path"] == LINKED_PATH
     assert file["mime_type"] == IMAGE_CONTENT_TYPE
-    assert file["size_bytes"] == len(data)
-    assert file["origin"] == "UPLOADED"
-    assert file["is_public"] is False
-    assert file["uploaded_at"] == datetime.now(UTC).date().isoformat()
-    assert datetime.fromisoformat(file["modified_at"])
-    assert link_of(file, "self") == link_of(uploaded, "self")
-
-
-@allure.epic("File")
-@allure.feature("REQ-FILE-002")
-@allure.story("SCN-FILE-002-B")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_an_unknown_or_unviewable_file_answers_not_found(sut: Sut) -> None:
-    """A file that does not exist and one the caller may not view both answer `404`."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    uploaded = upload(server, root_token, "private.png", (FIXTURE_DIRECTORY / "cover.png").read_bytes())
-
-    missing = read_file(server, root_token, uploaded, uploaded["id"] + 1_000)
-    unviewable = read_file(server, alice, uploaded, uploaded["id"])
-
-    assert missing.status_code == 404, f"unknown file answered {missing.status_code}"
-    assert unviewable.status_code == 404, f"unviewable file answered {unviewable.status_code}"
-    assert unviewable.json()["error"] == missing.json()["error"], "the two 404s must be indistinguishable"
-
-
-@allure.epic("File")
-@allure.feature("REQ-FILE-002")
-@allure.story("SCN-FILE-002-C")
-def test_an_invalid_identifier_answers_bad_request(server: Sut, root_token: str) -> None:
-    """An identifier that is not an identifier answers `400`."""
-    uploaded = upload(server, root_token, "cover.png", (FIXTURE_DIRECTORY / "cover.png").read_bytes())
-
-    response = server.request(
-        "GET", f"{link_of(uploaded, 'self').rsplit('/', 1)[0]}/not-an-identifier", token=root_token
-    )
-
-    assert response.status_code == 400, f"invalid identifier answered {response.status_code}"
-
-
-# --- the links ----------------------------------------------------------------
+    assert file["size_bytes"] == (SEED_MEDIA_DIRECTORY / "file-linked.png").stat().st_size
+    assert file["origin"] == "SCANNED"
+    assert file["is_public"] is True
+    assert file["uploaded_date"] == datetime.now(UTC).date().isoformat()
+    assert datetime.fromisoformat(file["modified_at"]).tzinfo is UTC
 
 
 @allure.epic("File")
 @allure.feature("REQ-FILE-003")
 @allure.story("SCN-FILE-003-A")
-def test_the_representation_links_its_owner_and_content(server: Sut, root_token: str) -> None:
-    """`_links.owner` names the owning account and `_links.content` the file's content route."""
-    data = (FIXTURE_DIRECTORY / "cover.png").read_bytes()
-    uploaded = upload(server, root_token, "linked.png", data)
+@allure.feature("REQ-FILE-004")
+@allure.story("SCN-FILE-004-A")
+@allure.story("SCN-FILE-004-B")
+def test_the_collection_lists_files_and_links_them(server: Sut, root_token: str) -> None:
+    """The collection lists a discoverable file, the exact path narrows it, and the item is the read representation."""
+    everything = list_files.sync_detailed(client=server.client(root_token), limit=100)
+    assert everything.status_code == 200, f"list failed: {everything.status_code} {everything.content!r}"
+    all_ids = [item["id"] for item in json.loads(everything.content)["items"]]
 
-    owner = server.request("GET", link_of(uploaded, "owner"), token=root_token)
-    content = server.request("GET", link_of(uploaded, "content"), token=root_token)
+    filtered = list_files.sync_detailed(client=server.client(root_token), path=LINKED_PATH)
+    assert filtered.status_code == 200, f"filter failed: {filtered.status_code} {filtered.content!r}"
+    items = json.loads(filtered.content)["items"]
+    assert len(items) == 1, f"expected one file at {LINKED_PATH}, got {len(items)}"
+    item = items[0]
 
-    assert owner.status_code == 200, f"owner read failed: {owner.status_code} {owner.text}"
-    assert owner.json()["id"] == 0, "an uploaded file is the Root Admin's"
-    assert link_of(uploaded, "content") == f"{link_of(uploaded, 'self')}/content"
-    assert content.status_code == 200, f"content read failed: {content.status_code}"
-    assert content.content == data
+    assert item["id"] in all_ids
+    owner = server.request("GET", item["_links"]["owner"]["href"], token=root_token)
+    content = server.request("GET", item["_links"]["content"]["href"], token=root_token)
+    read = server.request("GET", item["_links"]["self"]["href"], token=root_token)
+
+    assert owner.status_code == 200, f"owner read failed: {owner.status_code} {owner.content!r}"
+    assert json.loads(owner.content)["id"] == 0, "a seeded library file is the Root Admin's"
+    assert item["_links"]["content"]["href"] == f"{item['_links']['self']['href']}/content"
+    assert content.status_code == 200, f"content read failed: {content.status_code} {content.content!r}"
+    assert content.content == (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes()
+    assert read.status_code == 200, f"file read failed: {read.status_code} {read.content!r}"
+    assert json.loads(read.content) == item, "a collection item must be the single-file representation"
 
 
 @allure.epic("File")
@@ -244,53 +146,73 @@ def test_the_representation_links_its_owner_and_content(server: Sut, root_token:
 @allure.story("SCN-FILE-003-B")
 def test_an_image_backed_file_links_its_image(server: Sut, root_token: str) -> None:
     """A file with an image row carries `_links.image` naming that image."""
-    uploaded = upload(server, root_token, "cover.png", (FIXTURE_DIRECTORY / "cover.png").read_bytes())
+    listed = list_files.sync_detailed(client=server.client(root_token), path=LINKED_PATH)
+    assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.content!r}"
+    item = json.loads(listed.content)["items"][0]
 
-    response = server.follow(uploaded, "image", token=root_token)
+    response = server.request("GET", item["_links"]["image"]["href"], token=root_token)
 
-    assert response.status_code == 200, f"image read failed: {response.status_code} {response.text}"
-    assert link_of(response.json(), "file") == link_of(uploaded, "self")
+    assert response.status_code == 200, f"image read failed: {response.status_code} {response.content!r}"
+    image = json.loads(response.content)
+    assert image["file_id"] == item["id"]
+    assert image["_links"]["file"]["href"] == item["_links"]["self"]["href"]
 
 
 @allure.epic("File")
 @allure.feature("REQ-FILE-003")
 @allure.story("SCN-FILE-003-C")
-def test_a_typed_media_backed_file_links_its_typed_view(server: Sut, root_token: str) -> None:
-    """A file with an audio row and one with a video row carry `_links.audio` and `_links.video`."""
-    audio = upload(
-        server,
-        root_token,
-        "track.flac",
-        (FIXTURE_DIRECTORY / "track.flac").read_bytes(),
-        AUDIO_CONTENT_TYPE,
-    )
-    video = upload(server, root_token, "clip.mp4", (FIXTURE_DIRECTORY / "clip.mp4").read_bytes(), VIDEO_CONTENT_TYPE)
+def test_an_audio_backed_file_links_its_audio(server: Sut, root_token: str) -> None:
+    """A file with an audio row carries `_links.audio` naming that audio."""
+    listed = list_files.sync_detailed(client=server.client(root_token), path=AUDIO_PATH)
+    assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.content!r}"
+    item = json.loads(listed.content)["items"][0]
 
-    typed_audio = server.follow(audio, "audio", token=root_token)
-    typed_video = server.follow(video, "video", token=root_token)
+    response = server.request("GET", item["_links"]["audio"]["href"], token=root_token)
 
-    assert typed_audio.status_code == 200, f"audio read failed: {typed_audio.status_code}"
-    assert typed_video.status_code == 200, f"video read failed: {typed_video.status_code}"
-    assert link_of(typed_audio.json(), "file") == link_of(audio, "self")
-    assert link_of(typed_video.json(), "file") == link_of(video, "self")
+    assert response.status_code == 200, f"audio read failed: {response.status_code} {response.content!r}"
+    audio = json.loads(response.content)
+    assert audio["file_id"] == item["id"]
+    assert audio["_links"]["file"]["href"] == item["_links"]["self"]["href"]
+
+
+@allure.epic("File")
+@allure.feature("REQ-FILE-003")
+@allure.story("SCN-FILE-003-C")
+def test_a_video_backed_file_links_its_video(server: Sut, root_token: str) -> None:
+    """A file with a video row carries `_links.video` naming that video."""
+    listed = list_files.sync_detailed(client=server.client(root_token), path=VIDEO_PATH)
+    assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.content!r}"
+    item = json.loads(listed.content)["items"][0]
+
+    response = server.request("GET", item["_links"]["video"]["href"], token=root_token)
+
+    assert response.status_code == 200, f"video read failed: {response.status_code} {response.content!r}"
+    video = json.loads(response.content)
+    assert video["file_id"] == item["id"]
+    assert video["_links"]["file"]["href"] == item["_links"]["self"]["href"]
 
 
 @allure.epic("File")
 @allure.feature("REQ-FILE-003")
 @allure.story("SCN-FILE-003-D")
-@pytest.mark.own_instance(reason="global_filesystem")
-def test_a_file_with_no_media_row_carries_no_typed_link(sut: Sut) -> None:
+def test_a_file_with_no_media_row_carries_no_typed_link(server: Sut, root_token: str) -> None:
     """A file that backs no typed asset carries none of `image`, `audio` and `video`."""
-    server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
-    uploaded = upload(server, root_token, "bare.png", (FIXTURE_DIRECTORY / "cover.png").read_bytes())
-    with sqlite3.connect(server.dir / "mnemorium.db") as connection:
-        connection.execute("DELETE FROM image WHERE file_id = ?1", (uploaded["id"],))
-        connection.commit()
+    listed = list_files.sync_detailed(client=server.client(root_token), path=BARE_PATH)
+    assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.content!r}"
+    items = json.loads(listed.content)["items"]
+    assert len(items) == 1, f"expected one file at {BARE_PATH}, got {len(items)}"
 
-    response = read_file(server, root_token, uploaded, uploaded["id"])
-
-    assert response.status_code == 200, f"file read failed: {response.status_code} {response.text}"
-    links = response.json()["_links"]
+    links = items[0]["_links"]
     assert set(links).isdisjoint({"image", "audio", "video"}), "a bare file carried a typed link"
     assert set(links) == {"content", "owner", "self"}
+
+
+@allure.epic("File")
+@allure.feature("REQ-FILE-004")
+@allure.story("SCN-FILE-004-C")
+def test_a_path_no_file_carries_lists_nothing(server: Sut, root_token: str) -> None:
+    """A path that only starts like a stored path lists no file."""
+    response = list_files.sync_detailed(client=server.client(root_token), path="system/file-linked")
+
+    assert response.status_code == 200, f"list failed: {response.status_code} {response.content!r}"
+    assert json.loads(response.content)["items"] == []

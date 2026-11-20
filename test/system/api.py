@@ -1,17 +1,11 @@
-"""Black-box proof of the `api` capability's hypermedia semantics.
-
-The declarative contract — media types, statuses, the error envelope and the
-required `_links`/`_embedded` fields — is validated by Schemathesis from the
-served document. These cases prove only what a schema cannot: that the entry
-point is public and caller independent, that every link it publishes resolves,
-and that following a representation's links reaches the resource it names.
-"""
+"""Black-box proof of the `api` capability's hypermedia semantics."""
 
 import allure
 import pytest
 from conftest import (
     FIXTURE_DIRECTORY,
     linked_id,
+    login,
     provision,
     start_instance,
     upload,
@@ -24,6 +18,10 @@ from harness import (
     expand_template,
     link_of,
 )
+from mnemorium_client.api.library import list_movies, post_movie
+from mnemorium_client.api.system import get_api_index
+from mnemorium_client.api.user import get_me
+from mnemorium_client.models import Link, MovieResponse, PostMovieRequest
 
 VIDEO_FIXTURES = ("clip.mp4", "episode.mp4")
 
@@ -31,19 +29,31 @@ VIDEO_FIXTURES = ("clip.mp4", "episode.mp4")
 PUBLIC_INDEX_RELATIONS = frozenset({"self", "login", "register", "token", "health"})
 
 
-def create_movie(server: Sut, token: str, name: str, fixture: str = "clip.mp4", variant: int = 0) -> dict:
+def plain_href(link: Link) -> str:
+    """The href of a link a representation publishes as a reference rather than a URI template."""
+    assert link.templated is not True, f"the link {link.href!r} is a URI template"
+    return link.href
+
+
+def create_movie(
+    server: Sut,
+    token: str,
+    name: str,
+    fixture: str = "clip.mp4",
+    variant: int = 0,
+) -> MovieResponse:
     """Upload a video, create a film on it and return the created representation."""
     video = (FIXTURE_DIRECTORY / fixture).read_bytes() + b"\x00" * variant
     file = upload(server, token, f"{name}-{fixture}-{variant}", video, "video/mp4")
     video_id = linked_id(link_of(file, "video"))
-    created = server.request(
-        "POST",
-        server.href("movie"),
-        token=token,
-        json={"name": name, "video_id": video_id},
+    created = post_movie.sync_detailed(
+        client=server.client(token),
+        body=PostMovieRequest(name=name, video_id=video_id),
     )
-    assert created.status_code == 201, f"movie failed: {created.status_code} {created.text}"
-    return created.json()
+    assert created.status_code == 201, f"movie failed: {created.status_code} {created.content!r}"
+    film = created.parsed
+    assert isinstance(film, MovieResponse), f"movie failed: {created.content!r}"
+    return film
 
 
 @allure.epic("API")
@@ -51,10 +61,10 @@ def create_movie(server: Sut, token: str, name: str, fixture: str = "clip.mp4", 
 @allure.story("SCN-API-015-A")
 def test_the_index_is_public_and_names_itself(server: Sut) -> None:
     """An unauthenticated caller reaches the index, whose self link is the API base."""
-    response = server.request("GET", API_PREFIX)
+    response = get_api_index.sync_detailed(client=server.client())
 
-    assert response.status_code == 200, f"index failed: {response.status_code} {response.text}"
-    assert link_of(response.json(), "self") == API_PREFIX
+    assert response.status_code == 200, f"index failed: {response.status_code} {response.content!r}"
+    assert plain_href(response.parsed.field_links.self_) == API_PREFIX
 
 
 @allure.epic("API")
@@ -62,6 +72,7 @@ def test_the_index_is_public_and_names_itself(server: Sut) -> None:
 @allure.story("SCN-API-015-B")
 def test_every_index_link_resolves_to_a_served_route(server: Sut, root_token: str) -> None:
     """Following each published link reaches a route rather than the routing fallback."""
+    # The walk follows the href each relation publishes, so the requests stay hand-built.
     index = server.index()
     credential = link_of(index, "credential", templated=True)
     assert credential.endswith("/credential/{id}")
@@ -78,6 +89,7 @@ def test_every_index_link_resolves_to_a_served_route(server: Sut, root_token: st
 @allure.story("SCN-API-015-C")
 def test_a_protected_index_link_answers_the_401_envelope(server: Sut) -> None:
     """Following an index link to a protected entry unauthenticated answers the 401 envelope."""
+    # The entry points are the ones the index publishes, so each is followed by its own href.
     index = server.index()
     protected = set(index["_links"]) - PUBLIC_INDEX_RELATIONS
     assert protected, "the index publishes no protected entry"
@@ -102,15 +114,15 @@ def test_a_protected_index_link_answers_the_401_envelope(server: Sut) -> None:
 def test_the_index_is_identical_for_two_callers(sut: Sut) -> None:
     """The Root Admin and a Standard User read the same public document."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     provision(server, root_token, "alice")
-    alice_token = server.login("alice", SECRET_PASSWORD)
+    alice_token = login(server, "alice", SECRET_PASSWORD)
 
-    root_index = server.request("GET", API_PREFIX, token=root_token)
-    alice_index = server.request("GET", API_PREFIX, token=alice_token)
+    root_index = get_api_index.sync_detailed(client=server.client(root_token))
+    alice_index = get_api_index.sync_detailed(client=server.client(alice_token))
 
     assert root_index.status_code == alice_index.status_code == 200
-    assert root_index.json() == alice_index.json()
+    assert root_index.parsed.to_dict() == alice_index.parsed.to_dict()
 
 
 @allure.epic("API")
@@ -118,11 +130,11 @@ def test_the_index_is_identical_for_two_callers(sut: Sut) -> None:
 @allure.story("SCN-API-004-B")
 def test_the_current_user_reports_the_canonical_self(server: Sut, root_token: str) -> None:
     """The `/user/me` alias reports the account's canonical user resource."""
-    response = server.request("GET", server.href("current_user"), token=root_token)
+    response = get_me.sync_detailed(client=server.client(root_token))
 
-    assert response.status_code == 200, f"current user failed: {response.status_code} {response.text}"
-    body = response.json()
-    assert link_of(body, "self") == f"{server.href('user')}/{body['id']}"
+    assert response.status_code == 200, f"current user failed: {response.status_code} {response.content!r}"
+    current = response.parsed
+    assert plain_href(current.field_links.self_) == f"{server.href('user')}/{current.id}"
 
 
 @allure.epic("API")
@@ -132,20 +144,20 @@ def test_the_current_user_reports_the_canonical_self(server: Sut, root_token: st
 def test_an_embedded_catalog_item_reaches_its_detail(sut: Sut) -> None:
     """The partial item's self link reaches the full film representation."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     created = create_movie(server, root_token, "Arrival")
-    page = server.request("GET", server.href("movie"), token=root_token)
+    page = list_movies.sync_detailed(client=server.client(root_token), limit=100)
 
-    assert page.status_code == 200, f"catalog failed: {page.status_code} {page.text}"
-    items = page.json()["_embedded"]["items"]
-    item = next(item for item in items if item["id"] == created["id"])
-    detail = server.request("GET", link_of(item, "self"), token=root_token)
+    assert page.status_code == 200, f"catalog failed: {page.status_code} {page.content!r}"
+    item = next(item for item in page.parsed.field_embedded.items if item.id == created.id)
+    # The scenario is the published self link, so it is followed instead of the item route being rebuilt.
+    detail = server.request("GET", plain_href(item.field_links.self_), token=root_token)
 
     assert detail.status_code == 200, f"detail failed: {detail.status_code} {detail.text}"
-    body = detail.json()
-    assert body["id"] == created["id"]
-    assert body["name"] == created["name"]
-    assert body["video"]["id"] == created["video"]["id"]
+    film = MovieResponse.from_dict(detail.json())
+    assert film.id == created.id
+    assert film.name == created.name
+    assert film.video.id == created.video.id
 
 
 @allure.epic("API")
@@ -155,18 +167,26 @@ def test_an_embedded_catalog_item_reaches_its_detail(sut: Sut) -> None:
 def test_a_collection_page_keeps_its_filter_and_page(sut: Sut) -> None:
     """`self`, `next` and `search` describe the filtered page the caller requested."""
     server = start_instance(sut)
-    root_token = server.login(ROOT_ADMIN_USERNAME, server.root_password())
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     create_movie(server, root_token, "Arrival", VIDEO_FIXTURES[0])
     create_movie(server, root_token, "Arrival", VIDEO_FIXTURES[1], variant=1)
     collection = server.href("movie")
 
-    page = server.request("GET", f"{collection}?name=Arrival&limit=1&offset=0", token=root_token)
+    page = list_movies.sync_detailed(
+        client=server.client(root_token),
+        name="Arrival",
+        limit=1,
+        offset=0,
+    )
 
-    assert page.status_code == 200, f"page failed: {page.status_code} {page.text}"
-    body = page.json()
-    self_href = link_of(body, "self")
+    assert page.status_code == 200, f"page failed: {page.status_code} {page.content!r}"
+    links = page.parsed.field_links
+    self_href = plain_href(links.self_)
     assert "name=Arrival" in self_href and "limit=1" in self_href and "offset=0" in self_href
-    search = link_of(body, "search", templated=True)
-    assert search == f"{collection}{{?name,limit,offset}}"
-    next_href = link_of(body, "next")
+    search = links.search
+    assert search.templated is True, "the search link is not declared as a URI template"
+    assert search.href == f"{collection}{{?name,limit,offset}}"
+    next_link = links.next_
+    assert isinstance(next_link, Link), "the first page publishes no next link"
+    next_href = plain_href(next_link)
     assert "name=Arrival" in next_href and "limit=1" in next_href and "offset=1" in next_href

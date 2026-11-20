@@ -7,12 +7,15 @@ use utoipa::IntoParams;
 
 use crate::application::port::{ResolveVideoMetadataCommand, ResolveVideoMetadataError};
 use crate::domain::model::{ExternalRef, ProviderId, Target};
-use crate::infrastructure::inbound::rest::handler::library::VideoMetadataDocumentResponse;
+use crate::infrastructure::inbound::rest::handler::library::{
+    VideoMetadataDocumentResponse, VideoProviderRequest, encode_path_segment,
+};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
 /// The optional episode position a show reference may address.
 #[derive(Debug, Deserialize, IntoParams)]
+#[serde(deny_unknown_fields)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
 pub(crate) struct IdentifySeriesMetadataQuery {
@@ -35,7 +38,7 @@ pub(crate) struct IdentifySeriesMetadataQuery {
     path = "/series/identify/{provider}/{reference}",
     tag = "library",
     params(
-        ("provider" = String, Path, description = "Provider that issued the reference"),
+        ("provider" = inline(VideoProviderRequest), Path, description = "Provider that issued the reference"),
         ("reference" = String, Path, description = "Identifier the provider issued"),
         IdentifySeriesMetadataQuery,
     ),
@@ -148,12 +151,14 @@ pub(crate) async fn get_series_identify_metadata(
     };
     let href = match position {
         Some((season, episode)) => format!(
-            "/api/v1/library/series/identify/{}/{reference_value}?season={season}&episode={episode}",
-            provider.as_str()
+            "/api/v1/library/series/identify/{}/{}?season={season}&episode={episode}",
+            provider.as_str(),
+            encode_path_segment(&reference_value)
         ),
         None => format!(
-            "/api/v1/library/series/identify/{}/{reference_value}",
-            provider.as_str()
+            "/api/v1/library/series/identify/{}/{}",
+            provider.as_str(),
+            encode_path_segment(&reference_value)
         ),
     };
     let reference = ExternalRef::new(provider, reference_value);

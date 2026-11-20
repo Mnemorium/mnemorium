@@ -188,9 +188,10 @@ by ascending index, so repeated reads return a stable order.
 ### Requirement: REQ-SERIES-008 — A show is created
 
 Creating a show SHALL require the `CreateChild` action on the catalogue with the show child kind. The request SHALL name
-a non-empty name and optional plot, first air date, country of origin, genres and cover. An unknown genre SHALL be
-stored on demand. A new show SHALL answer `201 Created` with a `Location`; a repeated name SHALL create a second show.
-Unusable input SHALL answer `422`; a non-library cover `409`; a denied caller `403`.
+a name that is non-empty, at most 100 characters and does not begin or end with whitespace, and optional plot, first air
+date, country of origin, genres and cover; the submitted name is stored unchanged. An unknown genre SHALL be stored on
+demand. A new show SHALL answer `201 Created` with a `Location`; a repeated name SHALL create a second show. Unusable
+input SHALL answer `422`; a non-library cover `409`; a denied caller `403`.
 
 #### Scenario: SCN-SERIES-008-A — A new show
 
@@ -210,8 +211,8 @@ Unusable input SHALL answer `422`; a non-library cover `409`; a denied caller `4
 
 #### Scenario: SCN-SERIES-008-D — The input is unusable
 
-- **WHEN** the name is empty, a genre identifier is empty, the first air date is not `YYYY-MM-DD`, or the country is not
-  a two-letter code
+- **WHEN** the name is empty, too long, or begins or ends with whitespace, a genre identifier is empty, the first air
+  date is not `YYYY-MM-DD`, or the country is not a two-letter code
 - **THEN** the system returns `422 Unprocessable Content` and creates nothing
 
 #### Scenario: SCN-SERIES-008-E — The cover is not a library image
@@ -228,8 +229,9 @@ Unusable input SHALL answer `422`; a non-library cover `409`; a denied caller `4
 
 Updating a show SHALL require `View` and then `EditMetadata` on the show through
 `PATCH /api/v1/library/series/{series_id}`. An absent field SHALL keep its stored value and `null` SHALL clear an
-optional one. The show's seasons and episodes SHALL NOT change. An unknown or unviewable show SHALL answer `404`; a
-readable show the caller may not edit `403`; an unusable value `422` or `409`.
+optional one. A supplied name SHALL be non-empty, at most 100 characters, and SHALL NOT begin or end with whitespace;
+the submitted value is stored unchanged. The show's seasons and episodes SHALL NOT change. An unknown or unviewable show
+SHALL answer `404`; a readable show the caller may not edit `403`; an unusable value `422` or `409`.
 
 #### Scenario: SCN-SERIES-009-A — The metadata changes
 
@@ -255,6 +257,11 @@ readable show the caller may not edit `403`; an unusable value `422` or `409`.
 
 - **WHEN** the show does not exist, or the caller may not view it
 - **THEN** the system returns `404 Not Found` and applies nothing
+
+#### Scenario: SCN-SERIES-009-F — An unusable name is refused
+
+- **WHEN** the supplied name is empty, too long, or begins or ends with whitespace
+- **THEN** the system returns `422 Unprocessable Content` and applies nothing
 
 ### Requirement: REQ-SERIES-010 — A season is created or replaced
 
@@ -328,9 +335,10 @@ or `400`; a denied caller `403`.
 ### Requirement: REQ-SERIES-012 — An episode is created or replaced
 
 Writing an episode SHALL require `CreateChild` on the show with the episode child kind through
-`PUT /api/v1/library/series/{series_id}/season/{season_index}/episode/{episode_index}`. It SHALL take a video, a
-non-empty name and optional plot and air date. A free index SHALL create and answer `201`; an existing index SHALL
-replace and answer `200`.
+`PUT /api/v1/library/series/{series_id}/season/{season_index}/episode/{episode_index}`. It SHALL take a video, a name
+that is non-empty, at most 100 characters and does not begin or end with whitespace, and optional plot and air date; the
+submitted name is stored unchanged. A free index SHALL create and answer `201`; an existing index SHALL replace and
+answer `200`.
 
 #### Scenario: SCN-SERIES-012-A — An episode is created
 
@@ -354,7 +362,8 @@ replace and answer `200`.
 
 #### Scenario: SCN-SERIES-012-E — The video or input is unusable
 
-- **WHEN** the video does not exist, the name is empty, or the air date is not `YYYY-MM-DD`
+- **WHEN** the video does not exist, the name is empty, too long, or begins or ends with whitespace, or the air date is
+  not `YYYY-MM-DD`
 - **THEN** the system returns `422 Unprocessable Content` and applies nothing
 
 #### Scenario: SCN-SERIES-012-F — The show or season is unknown or the index is out of range
@@ -371,8 +380,9 @@ replace and answer `200`.
 
 Updating an episode SHALL require `View` and then `EditMetadata` on the show through
 `PATCH /api/v1/library/series/{series_id}/season/{season_index}/episode/{episode_index}`. An absent field SHALL keep its
-stored value and `null` SHALL clear the air date. The episode's video SHALL NOT change. An unknown episode SHALL answer
-`404`; a malformed index `400`; a denied caller `403`.
+stored value and `null` SHALL clear the air date. A supplied name SHALL be non-empty, at most 100 characters, and SHALL
+NOT begin or end with whitespace; the submitted value is stored unchanged. The episode's video SHALL NOT change. An
+unknown episode SHALL answer `404`; a malformed index `400`; a denied caller `403`; an unusable name `422`.
 
 #### Scenario: SCN-SERIES-013-A — The metadata changes
 
@@ -398,3 +408,8 @@ stored value and `null` SHALL clear the air date. The episode's video SHALL NOT 
 
 - **WHEN** the caller supplies a malformed `season_index` or `episode_index`
 - **THEN** the system returns `400 Bad Request` and applies nothing
+
+#### Scenario: SCN-SERIES-013-F — An unusable name is refused
+
+- **WHEN** the supplied name is empty, too long, or begins or ends with whitespace
+- **THEN** the system returns `422 Unprocessable Content` and applies nothing

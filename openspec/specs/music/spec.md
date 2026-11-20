@@ -147,9 +147,10 @@ its own (`REQ-COVER-ART-006`); a client reads the album's cover.
 ### Requirement: REQ-MUSIC-008 — Create an album as an upsert by name and group
 
 The system SHALL create an album from a name, a group identifier and optional release date, production type, genres and
-cover, requiring `CreateChild` for a music album on the **Catalogue**. An album whose `(name, group)` already exists
-SHALL be returned unchanged with `200 OK`; a new album SHALL answer `201 Created`. A request that names no genre SHALL
-store the `UNKNOWN` genre.
+cover, requiring `CreateChild` for a music album on the **Catalogue**. The name SHALL be non-empty, at most 100
+characters, and SHALL NOT begin or end with whitespace; the submitted value is stored unchanged. An album whose
+`(name, group)` already exists SHALL be returned unchanged with `200 OK`; a new album SHALL answer `201 Created`. A
+request that names no genre SHALL store the `UNKNOWN` genre.
 
 #### Scenario: SCN-MUSIC-008-A — A new album
 
@@ -168,8 +169,9 @@ store the `UNKNOWN` genre.
 
 #### Scenario: SCN-MUSIC-008-D — Invalid name, group or genre
 
-- **WHEN** the name is empty or too long, the group does not exist, or a genre is empty
-- **THEN** the system answers `422 Unprocessable Content` and creates nothing
+- **WHEN** a create names a name that is empty, too long, or begins or ends with whitespace, a group that does not
+  exist, or a genre that is empty
+- **THEN** the system answers `422 Unprocessable Content` and stores nothing
 
 #### Scenario: SCN-MUSIC-008-E — Concurrent duplicate
 
@@ -198,7 +200,7 @@ album. The operation SHALL be idempotent: repeating it with the stored type SHAL
 
 #### Scenario: SCN-MUSIC-009-D — Invalid type or protected album
 
-- **WHEN** the type is outside `CD` and `DIGITAL`, or the album is the seeded default album
+- **WHEN** the type is outside `CD` and `DIGITAL`, or the album is the default album
 - **THEN** the system answers `422 Unprocessable Content` and applies nothing
 
 ### Requirement: REQ-MUSIC-010 — Place a recording at a destination
@@ -229,7 +231,7 @@ remove its previous placement and insert the new one in one transaction.
 
 #### Scenario: SCN-MUSIC-010-E — Occupied destination or protected album
 
-- **WHEN** the destination already holds another recording, or the album is the seeded default album
+- **WHEN** the destination already holds another recording, or the album is the default album
 - **THEN** the system answers `409 Conflict` or `422 Unprocessable Content` respectively and applies nothing
 
 ### Requirement: REQ-MUSIC-011 — Edit a recording through the track position
@@ -254,11 +256,15 @@ clear it.
 - **THEN** the system answers `409 Conflict`
 - **AND** when it is not 12 valid characters, the system answers `422 Unprocessable Content`
 
-#### Scenario: SCN-MUSIC-011-D — Unknown track or protected album
+#### Scenario: SCN-MUSIC-011-D — Unknown track
 
 - **WHEN** the album, medium or position does not exist
 - **THEN** the system answers `404 Not Found`
-- **AND** when the album is the seeded default album, the system answers `422 Unprocessable Content`
+
+#### Scenario: SCN-MUSIC-011-E — Protected album
+
+- **WHEN** the album is the default album
+- **THEN** the system answers `422 Unprocessable Content` and applies nothing
 
 ### Requirement: REQ-MUSIC-012 — List the group collection
 
@@ -293,8 +299,9 @@ or invisible group SHALL answer `404 Not Found`.
 ### Requirement: REQ-MUSIC-014 — Create a group
 
 The system SHALL create a group from a name and optional cover, requiring `CreateChild` for a music group on the
-catalogue. The name SHALL be trimmed, non-empty, at most 100 characters and unique. The cover SHALL reference a
-`LIBRARY` image. A created group SHALL answer `201 Created` with its representation.
+catalogue. The name SHALL be non-empty, at most 100 characters, SHALL NOT begin or end with whitespace, and SHALL be
+unique; the submitted value is stored unchanged. The cover SHALL reference a `LIBRARY` image. A created group SHALL
+answer `201 Created` with its representation.
 
 #### Scenario: SCN-MUSIC-014-A — A new group
 
@@ -313,15 +320,16 @@ catalogue. The name SHALL be trimmed, non-empty, at most 100 characters and uniq
 
 #### Scenario: SCN-MUSIC-014-D — An invalid name or cover
 
-- **WHEN** the name is empty after trimming or too long
+- **WHEN** the name is empty, too long, or begins or ends with whitespace
 - **THEN** the system answers `422 Unprocessable Content`
 - **AND** when the cover is not a usable `LIBRARY` image, the system answers `409 Conflict`
 
 ### Requirement: REQ-MUSIC-015 — Rename a group or change its artwork
 
 A group update SHALL require `EditMetadata` on the group. An absent name or cover SHALL keep its value, a `null` cover
-SHALL clear it, and a supplied cover SHALL replace it. The name SHALL stay trimmed, non-empty, at most 100 characters
-and unique; the cover SHALL reference a `LIBRARY` image.
+SHALL clear it, and a supplied cover SHALL replace it. The name SHALL stay non-empty, at most 100 characters, SHALL NOT
+begin or end with whitespace, and SHALL stay unique; the submitted value is stored unchanged. The cover SHALL reference
+a `LIBRARY` image.
 
 #### Scenario: SCN-MUSIC-015-A — A group is renamed
 
@@ -345,27 +353,27 @@ and unique; the cover SHALL reference a `LIBRARY` image.
 
 #### Scenario: SCN-MUSIC-015-E — An invalid name
 
-- **WHEN** the name is empty after trimming or too long
+- **WHEN** the name is empty, too long, or begins or ends with whitespace
 - **THEN** the system answers `422 Unprocessable Content` and applies nothing
 
 ### Requirement: REQ-MUSIC-016 — Protect the default album and group
 
-The seeded album `0` and group `0` (`Unknown`) SHALL be readable like any other. A write that would modify either SHALL
+The **default album** and the **default group** SHALL be readable like any other. A write that would modify either SHALL
 be refused and SHALL apply nothing.
 
 #### Scenario: SCN-MUSIC-016-A — The default album and group are readable
 
-- **WHEN** a caller reads album `0` or group `0`
+- **WHEN** a caller reads the default album or the default group
 - **THEN** the system answers `200 OK` with its representation
 
 #### Scenario: SCN-MUSIC-016-B — A group write is refused
 
-- **WHEN** a caller renames group `0` or replaces its cover
+- **WHEN** a caller renames the default group or replaces its cover
 - **THEN** the system answers `409 Conflict` and applies nothing
 
 #### Scenario: SCN-MUSIC-016-C — An album write is refused
 
-- **WHEN** a caller updates album `0`, or writes a medium or track of it
+- **WHEN** a caller updates the default album, or writes a medium or track of it
 - **THEN** the system answers `409 Conflict` or `422 Unprocessable Content` and applies nothing
 
 ### Requirement: REQ-MUSIC-017 — Name the group an album belongs to
@@ -406,8 +414,8 @@ playlist the caller may not `Discover` SHALL be absent from the collection.
 ### Requirement: REQ-MUSIC-019 — Create a playlist
 
 The system SHALL create a playlist owned by the caller and visible to it, requiring `CreateChild` for a music playlist
-on the playlist collection. The request SHALL carry a name and MAY carry `is_public`, which SHALL default to `false`. A
-created playlist SHALL answer `201 Created` with its representation.
+on the playlist collection. The request SHALL carry a name satisfying the playlist naming rule, and MAY carry
+`is_public`, which SHALL default to `false`. A created playlist SHALL answer `201 Created` with its representation.
 
 #### Scenario: SCN-MUSIC-019-A — A private playlist
 
@@ -421,28 +429,8 @@ created playlist SHALL answer `201 Created` with its representation.
 
 #### Scenario: SCN-MUSIC-019-C — A malformed request
 
-- **WHEN** the name is empty, only whitespace, or longer than 100 characters
+- **WHEN** the name is empty, only whitespace, longer than 100 characters, or begins or ends with whitespace
 - **THEN** the system answers `422 Unprocessable Content` and creates nothing
-
-### Requirement: REQ-MUSIC-020 — Normalize a playlist name and keep it unique per owner
-
-A playlist name SHALL be trimmed and SHALL be at most 100 characters. Two playlists owned by the same caller SHALL NOT
-share a name; two callers MAY each hold the same name.
-
-#### Scenario: SCN-MUSIC-020-A — Names are trimmed
-
-- **WHEN** a caller creates or renames a playlist with surrounding whitespace
-- **THEN** the stored name is the trimmed value
-
-#### Scenario: SCN-MUSIC-020-B — A duplicate name for one owner
-
-- **WHEN** the caller already owns a playlist with the name
-- **THEN** the system answers `409 Conflict` and creates or applies nothing
-
-#### Scenario: SCN-MUSIC-020-C — The same name for two owners
-
-- **WHEN** two callers each create a playlist with the same name
-- **THEN** both playlists exist
 
 ### Requirement: REQ-MUSIC-021 — Read one playlist
 
@@ -496,7 +484,6 @@ name and ISRC, and a playlist link. A playlist track SHALL carry no artwork of i
 
 - **WHEN** the system returns a playlist track
 - **THEN** it carries its index, `recording_id`, `file_id`, the recording's name and ISRC, and the playlist link
-- **AND** it carries no `cover_image_id` and no `_links.cover`
 
 ### Requirement: REQ-MUSIC-024 — Update playlist metadata
 
@@ -518,7 +505,7 @@ value equal to the old one.
 
 - **WHEN** the name is held by another playlist of the same owner
 - **THEN** the system answers `409 Conflict`
-- **AND** when it is empty or too long, the system answers `422 Unprocessable Content`
+- **AND** when it is empty, too long, or begins or ends with whitespace, the system answers `422 Unprocessable Content`
 
 ### Requirement: REQ-MUSIC-025 — Add a track to a playlist
 
@@ -601,9 +588,10 @@ Playlist deletion SHALL require `Delete` on the playlist, delete the playlist an
 ### Requirement: REQ-MUSIC-029 — An album's metadata is updated partially
 
 The system SHALL update an album a **Caller** may `View`, requiring `EditMetadata` on it. An absent field SHALL keep its
-stored value and a `null` SHALL clear an optional value. A name and group that duplicate another album SHALL answer
-`409 Conflict` and apply nothing; a value that fails validation SHALL answer `422 Unprocessable Content` and apply
-nothing.
+stored value and a `null` SHALL clear an optional value. A supplied name SHALL be non-empty, at most 100 characters, and
+SHALL NOT begin or end with whitespace; the submitted value is stored unchanged. A name and group that duplicate another
+album SHALL answer `409 Conflict` and apply nothing; a value that fails validation SHALL answer
+`422 Unprocessable Content` and apply nothing.
 
 #### Scenario: SCN-MUSIC-029-A — Change the release date and genres
 
@@ -627,5 +615,26 @@ nothing.
 
 #### Scenario: SCN-MUSIC-029-E — An invalid value applies nothing
 
-- **WHEN** the name is empty or too long, a genre is empty, or the group does not exist
+- **WHEN** the name is empty, too long, or begins or ends with whitespace, a genre is empty, or the group does not exist
 - **THEN** the system answers `422 Unprocessable Content` and applies nothing
+
+### Requirement: REQ-MUSIC-030 — A playlist name is stored unchanged and unique per owner
+
+A playlist name SHALL be non-empty, at most 100 characters, and SHALL NOT begin or end with whitespace; such a name
+answers `422` and stores nothing. The submitted value SHALL be stored unchanged, never trimmed, and SHALL be unique per
+owner, compared exactly. Two callers MAY each hold the same name.
+
+#### Scenario: SCN-MUSIC-030-A — Surrounding whitespace is rejected
+
+- **WHEN** a caller creates or renames a playlist with a name that begins or ends with whitespace
+- **THEN** the system answers `422 Unprocessable Content` and stores nothing
+
+#### Scenario: SCN-MUSIC-030-B — A duplicate name for one owner
+
+- **WHEN** the caller already owns a playlist with the name
+- **THEN** the system answers `409 Conflict` and creates or applies nothing
+
+#### Scenario: SCN-MUSIC-030-C — The same name for two owners
+
+- **WHEN** two callers each create a playlist with the same name
+- **THEN** both playlists exist

@@ -9,7 +9,8 @@
 # The binary is built with the `test-seed` feature, so the run also seeds the
 # demo accounts (alice and bobby), the media bytes under `media/seed` and the
 # demo music, video and gallery rows. Schemathesis therefore fuzzes a populated
-# library rather than an empty one.
+# library rather than an empty one. The run names the `api` profile: a
+# `test-seed` boot that names none starts unseeded.
 #
 # The fixture identifiers live in the repository `schemathesis.toml`, so a read
 # addresses an existing row instead of 404ing on a generated one. The
@@ -144,7 +145,7 @@ fi
 # Build the login payload with Python so the generated password never needs
 # shell or JSON escaping.
 login_payload() {
-	python3 -c 'import json, sys; print(json.dumps({"username": sys.argv[1], "password": sys.argv[2]}))' "$1" "$2"
+	python3 -c 'import json, sys; print(json.dumps({"identifier": sys.argv[1], "password": sys.argv[2]}))' "$1" "$2"
 }
 
 # Authenticate as the Root Admin and print the bearer token.
@@ -161,7 +162,7 @@ login() {
 # repeatedly: it returns the caller's file for the same digest every time.
 seed_upload() {
 	local token="$1"
-	local fixture="${REPO_ROOT}/test/seed/media/cover.png"
+	local fixture="${REPO_ROOT}/test/api/seed/media/cover.png"
 	local digest hex response size upload_id
 
 	size="$(stat -c %s "${fixture}")"
@@ -181,6 +182,14 @@ seed_upload() {
 	curl -fsS -o /dev/null -X POST "${BASE_URL}/api/v1/asset/upload/${upload_id}/complete" \
 		-H "Authorization: Bearer ${token}"
 	printf '%s' "${upload_id}"
+}
+
+# Print the completed upload's file identifier: the value the gallery-item
+# operation accepts as the medium's backing file.
+upload_media_id() {
+	curl -fsS "${BASE_URL}/api/v1/asset/upload/$1" \
+		-H "Authorization: Bearer $2" |
+		python3 -c 'import json, sys; print(json.load(sys.stdin)["file_id"])'
 }
 
 if [[ ${MODE} == run ]] && ! command -v schemathesis >/dev/null 2>&1; then
@@ -218,12 +227,15 @@ fi
 
 echo "==> Starting a disposable server in ${DATA_DIR}"
 mkdir -p "${DATA_DIR}/media"
+# The seed reads its fixture from the working directory, so the checkout's tree is linked beside it rather than copied.
+ln -sfn "${REPO_ROOT}/test" "${DATA_DIR}/test"
 # `setsid` puts the server in its own session, so it outlives this shell (the
 # `--start` mode hands it to a later step) and a signal to the shell's process
 # group does not take it down. The exec chain keeps $! as the server's pid.
 (
 	cd "${DATA_DIR}"
 	exec setsid env \
+		MNEMORIUM_SEED_PROFILE=api \
 		MNEMORIUM_SECURITY_LOG_ROOT_ADMIN_PASSWORD=true \
 		MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE=10000 \
 		"${BINARY}"
@@ -272,13 +284,14 @@ fi
 echo "==> Preparing the fixture upload"
 TOKEN="$(login)"
 UPLOAD_ID="$(seed_upload "${TOKEN}")"
-echo "==> Fixture upload ${UPLOAD_ID} is complete"
+MEDIA_ID="$(upload_media_id "${UPLOAD_ID}" "${TOKEN}")"
+echo "==> Fixture upload ${UPLOAD_ID} is complete (file ${MEDIA_ID})"
 
 # The repository config carries the static fixture catalogue. The upload
-# identifier is run-specific and the auth table carries the captured password,
-# so both are appended here. The placeholders stay literal: Schemathesis
-# resolves `${NAME}` from the environment, so the password never needs TOML
-# escaping.
+# identifier, the file that upload completed into and the auth table are
+# run-specific, so they are appended here. The placeholders stay literal:
+# Schemathesis resolves `${NAME}` from the environment, so the password never
+# needs TOML escaping.
 {
 	cat "${REPO_ROOT}/schemathesis.toml"
 	cat <<TOML
@@ -290,12 +303,19 @@ parameters = { upload_id = ${UPLOAD_ID} }
 [[operations]]
 include-operation-id = "get_upload"
 parameters = { upload_id = ${UPLOAD_ID} }
+
+# The upload above is the one unattached medium the fixture leaves for the
+# gallery-item case: every seeded image and video is already a cover, gallery
+# item or playlist artwork.
+[[operations]]
+include-operation-id = "post_gallery_item"
+parameters = { id = 9001, "body.media_id" = ${MEDIA_ID}, "body.type" = "image" }
 TOML
 	cat <<'TOML'
 
 [auth.dynamic.openapi.bearer_auth]
 path = "/identity/login"
-payload = { username = "${LOGIN_USERNAME}", password = "${LOGIN_PASSWORD}" }
+payload = { identifier = "${LOGIN_USERNAME}", password = "${LOGIN_PASSWORD}" }
 extract_selector = "/access_token"
 TOML
 } >"${SCHEMATHESIS_CONFIG}"
