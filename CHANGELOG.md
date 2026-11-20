@@ -1,3 +1,9 @@
+## [0.39.2](https://github.com/Mnemorium/mnemorium/compare/v0.39.1...v0.39.2) (2026-11-20)
+
+### Bug Fixes
+
+* **api:** publish a precise contract and clean fuzz fixtures ([#420](https://github.com/Mnemorium/mnemorium/issues/420)) ([7dc7d6e](https://github.com/Mnemorium/mnemorium/commit/7dc7d6e5c9b9e71ad66b9c8dbc2500c38596da4f))
+
 ## [0.39.1](https://github.com/Mnemorium/mnemorium/compare/v0.39.0...v0.39.1) (2026-11-15)
 
 ### Performance Improvements
