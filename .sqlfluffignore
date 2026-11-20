@@ -8,3 +8,4 @@
 test/performance/seed/sql/0001_library_volume_galleries.sql
 test/performance/seed/sql/0002_library_volume_music.sql
 test/performance/seed/sql/0003_library_volume_video.sql
+.devenv/
