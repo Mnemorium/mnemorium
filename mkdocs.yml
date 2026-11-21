@@ -22,7 +22,7 @@ theme:
         name: Switch to light mode
   features:
     - navigation.tracking
-
+    - navigation.sections
 nav:
   - Home: index.md
   - Permissions: Permissions.md
