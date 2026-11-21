@@ -389,11 +389,6 @@ in
 
   # Tooling
 
-  tasks."setup:allure" = {
-    exec = "npm install -g --prefix \"$NPM_CONFIG_PREFIX\" allure@3.33.0";
-    description = "Install the Allure Report CLI globally into the devenv state prefix";
-  };
-
   tasks."setup:openspec" = {
     exec = "npm install -g --prefix \"$NPM_CONFIG_PREFIX\" @fission-ai/openspec@latest";
     description = "Install the OpenSpec CLI globally into the devenv state prefix";
