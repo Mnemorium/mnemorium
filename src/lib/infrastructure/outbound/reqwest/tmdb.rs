@@ -400,7 +400,6 @@ fn parse_date(value: Option<&str>) -> Option<NaiveDate> {
 mod tests {
     use super::*;
     use crate::domain::model::MediaQueryError;
-    use allure_cargotest::allure_test;
 
     use crate::infrastructure::outbound::reqwest::ARTWORK_MAX_BYTES;
 
@@ -482,12 +481,9 @@ mod tests {
         MediaQuery::try_new(kind, title.to_owned(), year, None)
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-002-B
     #[tokio::test]
     async fn tmdb_search_returns_the_provider_order() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-002");
-        allure.story("SCN-METADATA-ENRICHMENT-002-B");
         // Arrange
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -534,12 +530,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-002-A
     #[tokio::test]
     async fn tmdb_search_maps_a_series_query() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-002");
-        allure.story("SCN-METADATA-ENRICHMENT-002-A");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, "/search/tv", SEARCH_SERIES).await;
@@ -559,12 +552,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-001-B
     #[tokio::test]
     async fn tmdb_search_reports_no_candidate_for_an_empty_result() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-001");
-        allure.story("SCN-METADATA-ENRICHMENT-001-B");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, "/search/movie", SEARCH_EMPTY).await;
@@ -579,12 +569,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-029-A
     #[tokio::test]
     async fn tmdb_adapter_makes_no_request() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-029");
-        allure.story("SCN-METADATA-ENRICHMENT-029-A");
         // Arrange: a provider built against wiremock, with a search answer mounted.
         let server = MockServer::start().await;
         mount_json(&server, "/search/movie", SEARCH_EMPTY).await;
@@ -612,16 +599,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-003-A, SCN-METADATA-ENRICHMENT-007-A, SCN-METADATA-ENRICHMENT-014-A
     #[tokio::test]
     async fn tmdb_lookup_maps_a_film_to_canonical_metadata() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-003");
-        allure.feature("REQ-METADATA-ENRICHMENT-007");
-        allure.feature("REQ-METADATA-ENRICHMENT-014");
-        allure.story("SCN-METADATA-ENRICHMENT-003-A");
-        allure.story("SCN-METADATA-ENRICHMENT-007-A");
-        allure.story("SCN-METADATA-ENRICHMENT-014-A");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, "/movie/27205", MOVIE).await;
@@ -663,13 +643,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-006-A
     #[tokio::test]
     async fn tmdb_lookup_reports_an_unreported_release_date_as_absent() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-006");
-        allure.story("SCN-METADATA-ENRICHMENT-006-A");
         // Arrange: the payload names no release date at all.
         let server = MockServer::start().await;
         mount_json(&server, "/movie/999002", MOVIE_ABSENT_DATE).await;
@@ -690,14 +667,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-014-B, SCN-METADATA-ENRICHMENT-006-C
     #[tokio::test]
     async fn tmdb_lookup_drops_an_unmappable_country() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-014");
-        allure.feature("REQ-METADATA-ENRICHMENT-006");
-        allure.story("SCN-METADATA-ENRICHMENT-014-B");
-        allure.story("SCN-METADATA-ENRICHMENT-006-C");
         // Arrange: the payload's country is not an ISO alpha-2 code.
         let server = MockServer::start().await;
         mount_json(&server, "/movie/999003", MOVIE_UNMAPPABLE_COUNTRY).await;
@@ -721,16 +693,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-003-B, SCN-METADATA-ENRICHMENT-007-A, SCN-METADATA-ENRICHMENT-014-A
     #[tokio::test]
     async fn tmdb_lookup_maps_a_series_to_canonical_metadata() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-003");
-        allure.feature("REQ-METADATA-ENRICHMENT-007");
-        allure.feature("REQ-METADATA-ENRICHMENT-014");
-        allure.story("SCN-METADATA-ENRICHMENT-003-B");
-        allure.story("SCN-METADATA-ENRICHMENT-007-A");
-        allure.story("SCN-METADATA-ENRICHMENT-014-A");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, "/tv/1396", SERIES).await;
@@ -758,12 +723,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-003-C
     #[tokio::test]
     async fn tmdb_lookup_maps_an_episode_to_canonical_metadata() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-003");
-        allure.story("SCN-METADATA-ENRICHMENT-003-C");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, "/tv/1396/season/1/episode/1", EPISODE).await;
@@ -794,12 +756,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-017-G
     #[tokio::test]
     async fn tmdb_lookup_reports_a_missing_item_as_absent() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-017");
-        allure.story("SCN-METADATA-ENRICHMENT-017-G");
         // Arrange: the provider answers 404 for the item.
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -918,12 +877,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-005-A
     #[tokio::test]
     async fn tmdb_lookup_downloads_the_artwork_as_content() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-005");
-        allure.story("SCN-METADATA-ENRICHMENT-005-A");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, "/movie/27205", MOVIE).await;
@@ -948,14 +904,11 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-005-B
     #[tokio::test]
     #[traced_test]
     async fn tmdb_lookup_reports_no_artwork_when_the_download_fails() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-005");
-        allure.story("SCN-METADATA-ENRICHMENT-005-B");
         // Arrange: the poster address answers an error.
         let server = MockServer::start().await;
         mount_json(&server, "/movie/27205", MOVIE).await;
@@ -979,12 +932,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-005-B
     #[tokio::test]
     async fn tmdb_lookup_rejects_oversized_artwork() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-005");
-        allure.story("SCN-METADATA-ENRICHMENT-005-B");
         // Arrange: the poster exceeds the size bound.
         let server = MockServer::start().await;
         mount_json(&server, "/movie/27205", MOVIE).await;
@@ -1010,12 +960,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-005-B
     #[tokio::test]
     async fn tmdb_lookup_does_not_follow_a_redirect() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-005");
-        allure.story("SCN-METADATA-ENRICHMENT-005-B");
         // Arrange: the poster address redirects to another server.
         let origin = MockServer::start().await;
         let target_server = MockServer::start().await;
@@ -1048,13 +995,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-007-B
     #[tokio::test]
     #[traced_test]
     async fn tmdb_lookup_reports_an_unmatched_genre() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-007");
-        allure.story("SCN-METADATA-ENRICHMENT-007-B");
         // Arrange: the payload names a genre outside the vocabulary.
         let server = MockServer::start().await;
         mount_json(&server, "/movie/999001", MOVIE_UNKNOWN_GENRE).await;
@@ -1073,13 +1017,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-016-A
     #[tokio::test]
     #[traced_test]
     async fn tmdb_never_leaks_the_api_key() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-016");
-        allure.story("SCN-METADATA-ENRICHMENT-016-A");
         // Arrange: the key travels in the query string and the provider fails.
         let server = MockServer::start().await;
         Mock::given(method("GET"))

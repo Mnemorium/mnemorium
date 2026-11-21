@@ -231,7 +231,6 @@ where
 mod tests {
     use super::*;
     use crate::domain::NumericID;
-    use allure_cargotest::allure_test;
 
     use crate::domain::model::{Role, User};
 
@@ -301,14 +300,10 @@ mod tests {
         )
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-009-A, SCN-SERIES-009-C
     #[tokio::test]
     async fn update_series_replaces_metadata_keeping_seasons_and_episodes()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-009");
-        allure.story("SCN-SERIES-009-A");
-        allure.story("SCN-SERIES-009-C");
         // Arrange: the stored show holds a season with one episode.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -356,12 +351,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-009-B
     #[tokio::test]
     async fn update_series_null_clears_optional_values() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-009");
-        allure.story("SCN-SERIES-009-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -401,12 +393,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-009-E
     #[tokio::test]
     async fn update_series_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-009");
-        allure.story("SCN-SERIES-009-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -425,12 +414,9 @@ mod tests {
         assert!(matches!(result, Err(UpdateSeriesError::NoSuchSeries)));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-SERIES-009-A
     #[tokio::test]
     async fn update_series_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-009");
-        allure.story("SCN-SERIES-009-A");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -464,12 +450,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-009-A
     #[tokio::test]
     async fn update_series_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-009");
-        allure.story("SCN-SERIES-009-A");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -503,12 +486,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-009-A
     #[tokio::test]
     async fn update_series_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-009");
-        allure.story("SCN-SERIES-009-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;

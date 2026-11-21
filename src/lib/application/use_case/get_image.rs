@@ -132,7 +132,6 @@ mod tests {
     };
 
     use crate::test_helpers::*;
-    use allure_cargotest::allure_test;
     use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;
     use std::sync::atomic::Ordering;
@@ -204,13 +203,9 @@ mod tests {
             .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
     }
 
-    #[allure_test]
+    // proves: SCN-IMAGE-003-A
     #[tokio::test]
     async fn get_image_projects_the_typed_representation() -> Result<(), Box<dyn Error>> {
-        allure.epic("Image");
-        allure.feature("REQ-IMAGE-003");
-        allure.story("SCN-IMAGE-003-A");
-
         // Arrange: a library image readable through `ViewMetadata` on the catalogue.
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9)?;
@@ -234,13 +229,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-IMAGE-003-B
     #[tokio::test]
     async fn get_image_unknown_image_returns_no_such_image() -> Result<(), Box<dyn Error>> {
-        allure.epic("Image");
-        allure.feature("REQ-IMAGE-003");
-        allure.story("SCN-IMAGE-003-B");
-
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9)?;
@@ -259,13 +250,9 @@ mod tests {
         assert!(matches!(result, Err(GetImageError::NoSuchImage)));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-IMAGE-003-B
     #[tokio::test]
     async fn get_image_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
-        allure.epic("Image");
-        allure.feature("REQ-IMAGE-003");
-        allure.story("SCN-IMAGE-003-B");
-
         // Arrange: the image exists, but its caller does not.
         let mut users = MockUserRepository::new();
         users
@@ -283,13 +270,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-IMAGE-003-B
     #[tokio::test]
     async fn get_image_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Image");
-        allure.feature("REQ-IMAGE-003");
-        allure.story("SCN-IMAGE-003-B");
-
         // Arrange: the caller load fails before the image resolves.
         let mut users = MockUserRepository::new();
         users

@@ -271,7 +271,6 @@ mod tests {
     use crate::domain::model::{
         File, Gallery, Image, IntegrityHash, Orientation, Origin, Role, ScanType, User, Video,
     };
-    use allure_cargotest::allure_test;
 
     use crate::domain::port::{
         GalleryItemDetail, MockFileRepository, MockGalleryRepository, MockImageRepository,
@@ -437,12 +436,9 @@ mod tests {
             .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-007-A
     #[tokio::test]
     async fn add_gallery_item_owner_adds_own_image() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-007");
-        allure.story("SCN-GALLERY-007-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -497,13 +493,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-007-B
     #[tokio::test]
     async fn add_gallery_item_owner_adds_own_video_named_after_file_path()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-007");
-        allure.story("SCN-GALLERY-007-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -550,12 +543,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-007-E
     #[tokio::test]
     async fn add_gallery_item_unknown_video_returns_no_such_media() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-007");
-        allure.story("SCN-GALLERY-007-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -592,12 +582,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-007-A
     #[tokio::test]
     async fn add_gallery_item_admin_adds_other_users_media() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-007");
-        allure.story("SCN-GALLERY-007-A");
         // Arrange: `file.use` grants an Admin `ALL`, so an Admin may reference
         // another caller's file (a Standard user may not).
         let mut users = MockUserRepository::new();
@@ -632,12 +619,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-007-A
     #[tokio::test]
     async fn add_gallery_item_root_admin_adds_other_users_media() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-007");
-        allure.story("SCN-GALLERY-007-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 0, Role::Admin)?;
@@ -670,13 +654,10 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-GALLERY-007-D
     #[tokio::test]
     async fn add_gallery_item_duplicate_media_returns_already_assigned()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-007");
-        allure.story("SCN-GALLERY-007-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -718,13 +699,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-007-A
     #[tokio::test]
     async fn add_gallery_item_unknown_gallery_returns_no_such_gallery() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-007");
-        allure.story("SCN-GALLERY-007-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -757,12 +735,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-007-E
     #[tokio::test]
     async fn add_gallery_item_unknown_media_returns_no_such_media() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-007");
-        allure.story("SCN-GALLERY-007-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -799,13 +774,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-007-A
     #[tokio::test]
     async fn add_gallery_item_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-007");
-        allure.story("SCN-GALLERY-007-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -836,12 +808,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-007-D
     #[tokio::test]
     async fn add_gallery_item_scope_conflict_returns_conflict() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-007");
-        allure.story("SCN-GALLERY-007-D");
         // Arrange: the repository guard rejects the item because the medium's
         // scope does not admit a gallery.
         let mut users = MockUserRepository::new();
@@ -881,12 +850,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-007-A
     #[tokio::test]
     async fn add_gallery_item_dependency_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-007");
-        allure.story("SCN-GALLERY-007-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -922,12 +888,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-007-E
     #[tokio::test]
     async fn add_gallery_item_missing_backing_file_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-007");
-        allure.story("SCN-GALLERY-007-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -959,12 +922,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-007-A
     #[tokio::test]
     async fn add_gallery_item_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-007");
-        allure.story("SCN-GALLERY-007-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;

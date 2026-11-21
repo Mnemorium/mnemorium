@@ -234,7 +234,6 @@ mod tests {
     use crate::domain::port::{MockFileStorage, MockUploadRepository, RepositoryError};
 
     use crate::test_helpers::*;
-    use allure_cargotest::allure_test;
     use chrono::NaiveDateTime;
     use std::error::Error;
     use std::path::PathBuf;
@@ -386,13 +385,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-UPLOAD-015-B
     #[tokio::test]
     async fn reap_uploads_unseals_a_stale_verification() -> Result<(), Box<dyn Error>> {
-        allure.epic("Upload");
-        allure.feature("REQ-UPLOAD-015");
-        allure.story("SCN-UPLOAD-015-B");
-
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
         phase_one_uploads
@@ -601,14 +596,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-UPLOAD-015-E
     #[tokio::test]
     #[traced_test]
     async fn reap_uploads_never_logs_a_path_or_a_name() -> Result<(), Box<dyn Error>> {
-        allure.epic("Upload");
-        allure.feature("REQ-UPLOAD-015");
-        allure.story("SCN-UPLOAD-015-E");
-
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
         let mut phase_two_uploads = MockUploadRepository::new();

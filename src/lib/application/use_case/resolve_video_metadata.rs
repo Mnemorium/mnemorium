@@ -153,7 +153,6 @@ where
 mod tests {
     use super::*;
     use crate::domain::model::{ExternalRef, ProviderId};
-    use allure_cargotest::allure_test;
 
     use crate::domain::port::{
         ExternalServiceError, MockResourceRepository, MockUserRepository, MockVideoMetadataProvider,
@@ -245,14 +244,9 @@ mod tests {
         provider
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-003-A, SCN-METADATA-ENRICHMENT-008-A
     #[tokio::test]
     async fn resolve_video_metadata_routes_a_film_lookup() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-003");
-        allure.feature("REQ-METADATA-ENRICHMENT-008");
-        allure.story("SCN-METADATA-ENRICHMENT-003-A");
-        allure.story("SCN-METADATA-ENRICHMENT-008-A");
         // Arrange
         let harness = use_case_with(
             any_caller(),
@@ -273,12 +267,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-017-G
     #[tokio::test]
     async fn resolve_video_metadata_reports_an_unknown_reference() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-017");
-        allure.story("SCN-METADATA-ENRICHMENT-017-G");
         // Arrange: the provider does not know the reference.
         let mut provider = MockVideoMetadataProvider::new();
         provider
@@ -301,13 +292,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-017-F
     #[tokio::test]
     async fn resolve_video_metadata_reports_unavailable_without_a_provider()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-017");
-        allure.story("SCN-METADATA-ENRICHMENT-017-F");
         // Arrange: no provider is configured.
         let harness = use_case_with(any_caller(), no_resources(), None);
 
@@ -326,12 +314,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-008-B
     #[tokio::test]
     async fn resolve_video_metadata_reports_a_provider_failure() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-008");
-        allure.story("SCN-METADATA-ENRICHMENT-008-B");
         // Arrange
         let mut provider = MockVideoMetadataProvider::new();
         provider
@@ -355,13 +340,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-017-K
     #[tokio::test]
     async fn resolve_video_metadata_rejects_another_episode_position() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-017");
-        allure.story("SCN-METADATA-ENRICHMENT-017-K");
         // Arrange: the provider reports episode 3 while the target asks for 2.
         let target = Target::Episode {
             episode: 2,
@@ -389,14 +371,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-003-C, SCN-METADATA-ENRICHMENT-017-H
     #[tokio::test]
     async fn resolve_video_metadata_accepts_the_addressed_episode() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-003");
-        allure.feature("REQ-METADATA-ENRICHMENT-017");
-        allure.story("SCN-METADATA-ENRICHMENT-003-C");
-        allure.story("SCN-METADATA-ENRICHMENT-017-H");
         // Arrange
         let target = Target::Episode {
             episode: 2,
@@ -423,12 +400,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-008-C
     #[tokio::test]
     async fn resolve_video_metadata_rejects_another_kind() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-008");
-        allure.story("SCN-METADATA-ENRICHMENT-008-C");
         // Arrange: the film route resolves a show.
         let harness = use_case_with(
             any_caller(),

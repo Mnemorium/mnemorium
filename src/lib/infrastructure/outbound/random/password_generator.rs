@@ -49,18 +49,12 @@ impl PasswordGenerator for RandomPasswordGenerator {
 mod tests {
     use std::error::Error;
 
-    use allure_cargotest::allure_test;
-
     use super::*;
 
-    #[allure_test]
+    // proves: SCN-AUTHENTICATION-002-A
     #[tokio::test]
     async fn random_password_generator_samples_follow_declared_shape() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Authentication");
-        allure.feature("REQ-AUTHENTICATION-002");
-        allure.story("SCN-AUTHENTICATION-002-A");
-
         // Act & Assert
         assert_samples_follow_declared_shape(&RandomPasswordGenerator::new(), 1_000).await
     }
