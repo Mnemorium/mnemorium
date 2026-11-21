@@ -1,20 +1,13 @@
 ---
 id: sty-rust-041
 language: Rust
-severity: error
-message: >-
-  a unit-of-work accessor must borrow `&mut self` so repositories are requested
-  sequentially, never held two at a time
+severity: hint
+message: extract the trait declarations of the unit-of-work port file
+files:
+  - src/lib/domain/port/unit_of_work.rs
 rule:
-  all:
-    - any:
-        - kind: function_item
-        - kind: function_signature_item
-    - has:
-        field: return_type
-        regex: "^impl .*Repository [+] '_$"
-    - has:
-        field: parameters
-        has:
-          kind: self_parameter
-          regex: '^&self$'
+  kind: trait_item
+  any:
+    - pattern: pub trait $NAME
+    - pattern: pub(crate) trait $NAME
+    - pattern: trait $NAME

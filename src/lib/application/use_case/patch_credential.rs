@@ -169,42 +169,6 @@ mod tests {
         use_case: UseCase,
     }
 
-    /// Build a use case whose outbound dependencies are mocked; `setup` defines
-    /// the mock expectations before the mocks are handed over.
-    fn use_case_with(
-        setup: impl FnOnce(
-            &mut MockUserRepository,
-            &mut MockCredentialRepository,
-            &mut MockPasswordHasher,
-        ) -> Result<(), Box<dyn Error>>,
-    ) -> Result<Harness, Box<dyn Error>> {
-        let mut user_repository = MockUserRepository::new();
-        let mut credential_repository = MockCredentialRepository::new();
-        let mut password_hasher = MockPasswordHasher::new();
-
-        setup(
-            &mut user_repository,
-            &mut credential_repository,
-            &mut password_hasher,
-        )?;
-
-        let unit_of_work = TestUnitOfWork {
-            credentials: credential_repository,
-            resources: no_resources(),
-            users: user_repository,
-            ..TestUnitOfWork::default()
-        };
-        let committed = Arc::clone(&unit_of_work.committed);
-        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
-        let factory = TestFactory::new(unit_of_work);
-
-        Ok(Harness {
-            use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
-            committed,
-            rolled_back,
-        })
-    }
-
     fn user(id: i64, username: &str, role: Role) -> Result<User, UserError> {
         User::try_new(id, username.to_owned(), None, id, role)
     }
@@ -218,54 +182,78 @@ mod tests {
         PatchCredentialCommand::new(caller_id, credential_id, password.to_owned())
     }
 
-    fn expect_caller(user_repository: &mut MockUserRepository, caller: User) {
-        user_repository
-            .expect_search()
-            .times(1)
-            .returning(move |_| {
-                let own_caller = caller.clone();
-                Box::pin(async move { Ok(vec![own_caller]) })
-            });
-    }
-
-    fn expect_credential(
-        credential_repository: &mut MockCredentialRepository,
-        credential: Credential,
-    ) {
-        credential_repository
-            .expect_search()
-            .times(1)
-            .returning(move |_| {
-                let own_credential = credential.clone();
-                Box::pin(async move { Ok(vec![own_credential]) })
-            });
-    }
-
-    fn expect_hashed_password(password_hasher: &mut MockPasswordHasher) {
-        password_hasher
-            .expect_hash_password()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok("new-hash".to_owned()) }));
-    }
-
-    fn expect_saved_credential(credential_repository: &mut MockCredentialRepository) {
-        credential_repository
-            .expect_save()
-            .times(1)
-            .returning(|credential| Box::pin(async { Ok(credential) }));
-    }
-
     #[tokio::test]
     async fn patch_credential_root_admin_changes_own_credential_succeeds()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, credential_repository, password_hasher| {
-            expect_caller(user_repository, user(0, "root", Role::Admin)?);
-            expect_credential(credential_repository, credential(0)?);
-            expect_hashed_password(password_hasher);
-            expect_saved_credential(credential_repository);
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, credential_repository, password_hasher| {
+                (move |user_repository: &mut MockUserRepository, caller: User| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_caller = caller.clone();
+                            Box::pin(async move { Ok(vec![own_caller]) })
+                        });
+                })(user_repository, user(0, "root", Role::Admin)?);
+                (move |credential_repository: &mut MockCredentialRepository,
+                       credential: Credential| {
+                    credential_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_credential = credential.clone();
+                            Box::pin(async move { Ok(vec![own_credential]) })
+                        });
+                })(credential_repository, credential(0)?);
+                (move |password_hasher: &mut MockPasswordHasher| {
+                    password_hasher
+                        .expect_hash_password()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok("new-hash".to_owned()) }));
+                })(password_hasher);
+                (move |credential_repository: &mut MockCredentialRepository| {
+                    credential_repository
+                        .expect_save()
+                        .times(1)
+                        .returning(|credential| Box::pin(async { Ok(credential) }));
+                })(credential_repository);
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                let mut credential_repository = MockCredentialRepository::new();
+                let mut password_hasher = MockPasswordHasher::new();
+
+                setup(
+                    &mut user_repository,
+                    &mut credential_repository,
+                    &mut password_hasher,
+                )?;
+
+                let unit_of_work = TestUnitOfWork {
+                    credentials: credential_repository,
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = command(0, 0, SECRET_PASSWORD);
 
         // Act
@@ -281,13 +269,74 @@ mod tests {
     async fn patch_credential_root_admin_changes_other_user_credential_succeeds()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, credential_repository, password_hasher| {
-            expect_caller(user_repository, user(0, "root", Role::Admin)?);
-            expect_credential(credential_repository, credential(4)?);
-            expect_hashed_password(password_hasher);
-            expect_saved_credential(credential_repository);
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, credential_repository, password_hasher| {
+                (move |user_repository: &mut MockUserRepository, caller: User| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_caller = caller.clone();
+                            Box::pin(async move { Ok(vec![own_caller]) })
+                        });
+                })(user_repository, user(0, "root", Role::Admin)?);
+                (move |credential_repository: &mut MockCredentialRepository,
+                       credential: Credential| {
+                    credential_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_credential = credential.clone();
+                            Box::pin(async move { Ok(vec![own_credential]) })
+                        });
+                })(credential_repository, credential(4)?);
+                (move |password_hasher: &mut MockPasswordHasher| {
+                    password_hasher
+                        .expect_hash_password()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok("new-hash".to_owned()) }));
+                })(password_hasher);
+                (move |credential_repository: &mut MockCredentialRepository| {
+                    credential_repository
+                        .expect_save()
+                        .times(1)
+                        .returning(|credential| Box::pin(async { Ok(credential) }));
+                })(credential_repository);
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                let mut credential_repository = MockCredentialRepository::new();
+                let mut password_hasher = MockPasswordHasher::new();
+
+                setup(
+                    &mut user_repository,
+                    &mut credential_repository,
+                    &mut password_hasher,
+                )?;
+
+                let unit_of_work = TestUnitOfWork {
+                    credentials: credential_repository,
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = command(0, 4, SECRET_PASSWORD);
 
         // Act
@@ -302,10 +351,52 @@ mod tests {
     #[tokio::test]
     async fn patch_credential_standard_caller_forbidden() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, _, _| {
-            expect_caller(user_repository, user(3, "bobby", Role::Standard)?);
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, _, _| {
+                (move |user_repository: &mut MockUserRepository, caller: User| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_caller = caller.clone();
+                            Box::pin(async move { Ok(vec![own_caller]) })
+                        });
+                })(user_repository, user(3, "bobby", Role::Standard)?);
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                let mut credential_repository = MockCredentialRepository::new();
+                let mut password_hasher = MockPasswordHasher::new();
+
+                setup(
+                    &mut user_repository,
+                    &mut credential_repository,
+                    &mut password_hasher,
+                )?;
+
+                let unit_of_work = TestUnitOfWork {
+                    credentials: credential_repository,
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = command(3, 1, SECRET_PASSWORD);
 
         // Act
@@ -320,10 +411,52 @@ mod tests {
     #[tokio::test]
     async fn patch_credential_non_root_admin_caller_forbidden() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, _, _| {
-            expect_caller(user_repository, user(5, "admin", Role::Admin)?);
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, _, _| {
+                (move |user_repository: &mut MockUserRepository, caller: User| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_caller = caller.clone();
+                            Box::pin(async move { Ok(vec![own_caller]) })
+                        });
+                })(user_repository, user(5, "admin", Role::Admin)?);
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                let mut credential_repository = MockCredentialRepository::new();
+                let mut password_hasher = MockPasswordHasher::new();
+
+                setup(
+                    &mut user_repository,
+                    &mut credential_repository,
+                    &mut password_hasher,
+                )?;
+
+                let unit_of_work = TestUnitOfWork {
+                    credentials: credential_repository,
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = command(5, 1, SECRET_PASSWORD);
 
         // Act
@@ -339,13 +472,47 @@ mod tests {
     async fn patch_credential_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>>
     {
         // Arrange
-        let harness = use_case_with(|user_repository, _, _| {
-            user_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, _, _| {
+                user_repository
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                let mut credential_repository = MockCredentialRepository::new();
+                let mut password_hasher = MockPasswordHasher::new();
+
+                setup(
+                    &mut user_repository,
+                    &mut credential_repository,
+                    &mut password_hasher,
+                )?;
+
+                let unit_of_work = TestUnitOfWork {
+                    credentials: credential_repository,
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = command(999, 1, SECRET_PASSWORD);
 
         // Act
@@ -361,7 +528,41 @@ mod tests {
     async fn patch_credential_short_password_returns_invalid_password() -> Result<(), Box<dyn Error>>
     {
         // Arrange
-        let harness = use_case_with(|_, _, _| Ok(()))?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|_, _, _| Ok(()));
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                let mut credential_repository = MockCredentialRepository::new();
+                let mut password_hasher = MockPasswordHasher::new();
+
+                setup(
+                    &mut user_repository,
+                    &mut credential_repository,
+                    &mut password_hasher,
+                )?;
+
+                let unit_of_work = TestUnitOfWork {
+                    credentials: credential_repository,
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = command(0, 0, "xY3!z9w");
 
         // Act
@@ -377,7 +578,41 @@ mod tests {
     async fn patch_credential_password_without_symbol_returns_invalid_password()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|_, _, _| Ok(()))?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|_, _, _| Ok(()));
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                let mut credential_repository = MockCredentialRepository::new();
+                let mut password_hasher = MockPasswordHasher::new();
+
+                setup(
+                    &mut user_repository,
+                    &mut credential_repository,
+                    &mut password_hasher,
+                )?;
+
+                let unit_of_work = TestUnitOfWork {
+                    credentials: credential_repository,
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = command(0, 0, "password123");
 
         // Act
@@ -392,14 +627,56 @@ mod tests {
     async fn patch_credential_unknown_credential_returns_unknown_credential()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, credential_repository, _| {
-            expect_caller(user_repository, user(0, "root", Role::Admin)?);
-            credential_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, credential_repository, _| {
+                (move |user_repository: &mut MockUserRepository, caller: User| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_caller = caller.clone();
+                            Box::pin(async move { Ok(vec![own_caller]) })
+                        });
+                })(user_repository, user(0, "root", Role::Admin)?);
+                credential_repository
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                let mut credential_repository = MockCredentialRepository::new();
+                let mut password_hasher = MockPasswordHasher::new();
+
+                setup(
+                    &mut user_repository,
+                    &mut credential_repository,
+                    &mut password_hasher,
+                )?;
+
+                let unit_of_work = TestUnitOfWork {
+                    credentials: credential_repository,
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = command(0, 42, SECRET_PASSWORD);
 
         // Act
@@ -417,13 +694,47 @@ mod tests {
     #[tokio::test]
     async fn patch_credential_user_search_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, _, _| {
-            user_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, _, _| {
+                user_repository
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                let mut credential_repository = MockCredentialRepository::new();
+                let mut password_hasher = MockPasswordHasher::new();
+
+                setup(
+                    &mut user_repository,
+                    &mut credential_repository,
+                    &mut password_hasher,
+                )?;
+
+                let unit_of_work = TestUnitOfWork {
+                    credentials: credential_repository,
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = command(0, 1, SECRET_PASSWORD);
 
         // Act
@@ -439,14 +750,56 @@ mod tests {
     async fn patch_credential_credential_search_failure_returns_unknown()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, credential_repository, _| {
-            expect_caller(user_repository, user(0, "root", Role::Admin)?);
-            credential_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, credential_repository, _| {
+                (move |user_repository: &mut MockUserRepository, caller: User| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_caller = caller.clone();
+                            Box::pin(async move { Ok(vec![own_caller]) })
+                        });
+                })(user_repository, user(0, "root", Role::Admin)?);
+                credential_repository
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                let mut credential_repository = MockCredentialRepository::new();
+                let mut password_hasher = MockPasswordHasher::new();
+
+                setup(
+                    &mut user_repository,
+                    &mut credential_repository,
+                    &mut password_hasher,
+                )?;
+
+                let unit_of_work = TestUnitOfWork {
+                    credentials: credential_repository,
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = command(0, 1, SECRET_PASSWORD);
 
         // Act
@@ -461,15 +814,66 @@ mod tests {
     #[tokio::test]
     async fn patch_credential_hash_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, credential_repository, password_hasher| {
-            expect_caller(user_repository, user(0, "root", Role::Admin)?);
-            expect_credential(credential_repository, credential(1)?);
-            password_hasher
-                .expect_hash_password()
-                .times(1)
-                .returning(|_| Box::pin(async { Err(PasswordHasherError::OperationFailed) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, credential_repository, password_hasher| {
+                (move |user_repository: &mut MockUserRepository, caller: User| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_caller = caller.clone();
+                            Box::pin(async move { Ok(vec![own_caller]) })
+                        });
+                })(user_repository, user(0, "root", Role::Admin)?);
+                (move |credential_repository: &mut MockCredentialRepository,
+                       credential: Credential| {
+                    credential_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_credential = credential.clone();
+                            Box::pin(async move { Ok(vec![own_credential]) })
+                        });
+                })(credential_repository, credential(1)?);
+                password_hasher
+                    .expect_hash_password()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Err(PasswordHasherError::OperationFailed) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                let mut credential_repository = MockCredentialRepository::new();
+                let mut password_hasher = MockPasswordHasher::new();
+
+                setup(
+                    &mut user_repository,
+                    &mut credential_repository,
+                    &mut password_hasher,
+                )?;
+
+                let unit_of_work = TestUnitOfWork {
+                    credentials: credential_repository,
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = command(0, 1, SECRET_PASSWORD);
 
         // Act
@@ -485,16 +889,72 @@ mod tests {
     async fn patch_credential_credential_save_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
         // Arrange
-        let harness = use_case_with(|user_repository, credential_repository, password_hasher| {
-            expect_caller(user_repository, user(0, "root", Role::Admin)?);
-            expect_credential(credential_repository, credential(1)?);
-            expect_hashed_password(password_hasher);
-            credential_repository
-                .expect_save()
-                .times(1)
-                .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, credential_repository, password_hasher| {
+                (move |user_repository: &mut MockUserRepository, caller: User| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_caller = caller.clone();
+                            Box::pin(async move { Ok(vec![own_caller]) })
+                        });
+                })(user_repository, user(0, "root", Role::Admin)?);
+                (move |credential_repository: &mut MockCredentialRepository,
+                       credential: Credential| {
+                    credential_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_credential = credential.clone();
+                            Box::pin(async move { Ok(vec![own_credential]) })
+                        });
+                })(credential_repository, credential(1)?);
+                (move |password_hasher: &mut MockPasswordHasher| {
+                    password_hasher
+                        .expect_hash_password()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok("new-hash".to_owned()) }));
+                })(password_hasher);
+                credential_repository
+                    .expect_save()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                let mut credential_repository = MockCredentialRepository::new();
+                let mut password_hasher = MockPasswordHasher::new();
+
+                setup(
+                    &mut user_repository,
+                    &mut credential_repository,
+                    &mut password_hasher,
+                )?;
+
+                let unit_of_work = TestUnitOfWork {
+                    credentials: credential_repository,
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = command(0, 1, SECRET_PASSWORD);
 
         // Act

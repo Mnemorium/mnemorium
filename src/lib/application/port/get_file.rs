@@ -194,9 +194,6 @@ pub(crate) enum GetFileError {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait GetFileUseCase: Send + Sync {
     /// Fetch the requested file.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn GetFileUseCase>`.
     fn execute<'future>(
         &'future self,
         command: GetFileCommand,

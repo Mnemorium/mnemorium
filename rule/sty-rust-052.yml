@@ -2,26 +2,21 @@
 id: sty-rust-052
 language: Rust
 severity: error
-message: >-
-  Declare the repository trait second in a repository port file: a
-  non-`*Filter` struct must not precede the `<Aggregate>Repository` trait.
+message: a use-case trait is named `<UseCaseName>UseCase`
 files:
-  - src/lib/domain/port/*_repository.rs
+  - src/lib/application/port/**/*.rs
 rule:
   all:
-    - kind: struct_item
-    - any:
-        - pattern: pub struct $NAME
-        - pattern: pub(crate) struct $NAME
-        - pattern: struct $NAME
-    - inside:
-        kind: source_file
-    - not:
-        regex: '(pub(\(crate\))? )?struct \w*Filter\b'
-    - precedes:
-        kind: trait_item
+    - kind: trait_item
+    - has:
         any:
-          - pattern: 'pub trait $TRAIT: Send + Sync'
-          - pattern: 'pub(crate) trait $TRAIT: Send + Sync'
-          - pattern: 'trait $TRAIT: Send + Sync'
+          - kind: function_signature_item
+          - kind: function_item
+        has:
+          field: name
+          regex: '^execute$'
         stopBy: end
+    - has:
+        field: name
+        not:
+          regex: '^[A-Z][A-Za-z0-9]*UseCase$'

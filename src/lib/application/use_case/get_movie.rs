@@ -126,20 +126,6 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = GetMovie<TestFactory>;
 
-    /// Build a Library test harness around the given mocks.
-    fn harness_with(
-        users: MockUserRepository,
-        movies: MockMovieRepository,
-    ) -> GalleryFactoryHarness {
-        let unit_of_work = TestUnitOfWork {
-            resources: no_resources(),
-            movies,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        GalleryFactoryHarness::new(unit_of_work)
-    }
-
     #[allure_test]
     #[tokio::test]
     async fn get_movie_returns_the_requested_film() -> Result<(), Box<dyn Error>> {
@@ -148,7 +134,23 @@ mod tests {
         allure.story("SCN-MOVIES-003-A");
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let movie = sample_movie(7)?;
         let expected_video = movie.video().clone();
         let mut movies = MockMovieRepository::new();
@@ -157,7 +159,16 @@ mod tests {
             .times(1)
             .withf(|filter| filter.id == Some(7))
             .return_once(move |_| Box::pin(async move { Ok(vec![movie]) }));
-        let harness = harness_with(users, movies);
+        let harness = (move |users: MockUserRepository,
+                             movies: MockMovieRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                movies,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, movies);
         let use_case: UseCase = GetMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -193,7 +204,23 @@ mod tests {
         allure.story("SCN-MOVIES-003-A");
         // Arrange: a film whose artwork is file 19.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let movie = Movie::try_new(
             7,
             "Movie 7".to_owned(),
@@ -214,7 +241,16 @@ mod tests {
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![movie]) }));
-        let harness = harness_with(users, movies);
+        let harness = (move |users: MockUserRepository,
+                             movies: MockMovieRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                movies,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, movies);
         let use_case: UseCase = GetMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -233,13 +269,38 @@ mod tests {
         allure.story("SCN-MOVIES-003-C");
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut movies = MockMovieRepository::new();
         movies
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, movies);
+        let harness = (move |users: MockUserRepository,
+                             movies: MockMovieRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                movies,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, movies);
         let use_case: UseCase = GetMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -268,7 +329,16 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, MockMovieRepository::new());
+        let harness = (move |users: MockUserRepository,
+                             movies: MockMovieRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                movies,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, MockMovieRepository::new());
         let use_case: UseCase = GetMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -290,13 +360,38 @@ mod tests {
         allure.story("SCN-MOVIES-003-A");
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut movies = MockMovieRepository::new();
         movies
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-        let harness = harness_with(users, movies);
+        let harness = (move |users: MockUserRepository,
+                             movies: MockMovieRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                movies,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, movies);
         let use_case: UseCase = GetMovie::new(Arc::clone(&harness.factory));
 
         // Act

@@ -234,28 +234,24 @@ mod tests {
         })
     }
 
-    fn expect_no_root_admin(user_repository: &mut MockUserRepository) {
-        user_repository
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-    }
-
-    fn expect_generated_password(password_generator: &mut MockPasswordGenerator) {
-        password_generator
-            .expect_generate()
-            .times(1)
-            .returning(|| Box::pin(async { Ok("generated-password!".to_owned()) }));
-    }
-
     #[tokio::test]
     async fn initialize_root_admin_missing_creates_and_returns_password()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, password_generator| {
-                expect_no_root_admin(user_repository);
-                expect_generated_password(password_generator);
+                (move |user_repository: &mut MockUserRepository| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                })(user_repository);
+                (move |password_generator: &mut MockPasswordGenerator| {
+                    password_generator
+                        .expect_generate()
+                        .times(1)
+                        .returning(|| Box::pin(async { Ok("generated-password!".to_owned()) }));
+                })(password_generator);
                 password_hasher
                     .expect_hash_password()
                     .times(1)
@@ -340,7 +336,12 @@ mod tests {
     {
         // Arrange
         let harness = use_case_with(|user_repository, _, _, password_generator| {
-            expect_no_root_admin(user_repository);
+            (move |user_repository: &mut MockUserRepository| {
+                user_repository
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            })(user_repository);
             password_generator
                 .expect_generate()
                 .times(1)
@@ -364,8 +365,18 @@ mod tests {
     async fn initialize_root_admin_hash_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository, _, password_hasher, password_generator| {
-            expect_no_root_admin(user_repository);
-            expect_generated_password(password_generator);
+            (move |user_repository: &mut MockUserRepository| {
+                user_repository
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            })(user_repository);
+            (move |password_generator: &mut MockPasswordGenerator| {
+                password_generator
+                    .expect_generate()
+                    .times(1)
+                    .returning(|| Box::pin(async { Ok("generated-password!".to_owned()) }));
+            })(password_generator);
             password_hasher
                 .expect_hash_password()
                 .times(1)
@@ -396,8 +407,18 @@ mod tests {
         // Arrange
         let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, password_generator| {
-                expect_no_root_admin(user_repository);
-                expect_generated_password(password_generator);
+                (move |user_repository: &mut MockUserRepository| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                })(user_repository);
+                (move |password_generator: &mut MockPasswordGenerator| {
+                    password_generator
+                        .expect_generate()
+                        .times(1)
+                        .returning(|| Box::pin(async { Ok("generated-password!".to_owned()) }));
+                })(password_generator);
                 password_hasher
                     .expect_hash_password()
                     .times(1)
@@ -433,8 +454,18 @@ mod tests {
         // Arrange
         let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, password_generator| {
-                expect_no_root_admin(user_repository);
-                expect_generated_password(password_generator);
+                (move |user_repository: &mut MockUserRepository| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                })(user_repository);
+                (move |password_generator: &mut MockPasswordGenerator| {
+                    password_generator
+                        .expect_generate()
+                        .times(1)
+                        .returning(|| Box::pin(async { Ok("generated-password!".to_owned()) }));
+                })(password_generator);
                 password_hasher
                     .expect_hash_password()
                     .times(1)

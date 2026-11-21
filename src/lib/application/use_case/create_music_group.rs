@@ -140,7 +140,7 @@ where
                     .await
                     .map_err(|error| match error {
                         // A concurrent insert won the race for the unique name
-                        // (`STY-RUST-015`).
+                        // (`STY-RUST-014`).
                         RepositoryError::AlreadyExist => CreateMusicGroupError::NameAlreadyExists,
                         RepositoryError::Conflict | RepositoryError::DataIntegrityViolation => {
                             CreateMusicGroupError::InvalidCover
@@ -207,44 +207,36 @@ mod tests {
         Ok(MusicGroup::try_new(id, name.to_owned(), cover_image_id)?)
     }
 
-    /// Expect the caller load to find an administrator.
-    fn expect_admin(
-        users: &mut MockUserRepository,
-        caller_id: NumericID,
-    ) -> Result<(), Box<dyn Error>> {
-        let caller = User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
-        users
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.id == Some(caller_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
-        Ok(())
-    }
-
-    /// Build a Library test harness around the given mocks.
-    fn harness_with(
-        users: MockUserRepository,
-        groups: MockMusicGroupRepository,
-    ) -> GalleryFactoryHarness {
-        let unit_of_work = TestUnitOfWork {
-            music_groups: groups,
-            resources: no_resources(),
-            users,
-            ..TestUnitOfWork::default()
-        };
-        GalleryFactoryHarness::new(unit_of_work)
-    }
-
     #[tokio::test]
     async fn create_music_group_surrounding_whitespace_returns_invalid_name()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups.expect_search().times(0);
         groups.expect_create().times(0);
-        let harness = harness_with(users, groups);
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, groups);
         let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
 
         // Act
@@ -267,14 +259,34 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange: a group already carries the name.
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         let existing = group(3, "The Group", None)?;
         groups.expect_search().times(1).return_once(move |_| {
             let found = vec![existing.clone()];
             Box::pin(async move { Ok(found) })
         });
-        let harness = harness_with(users, groups);
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, groups);
         let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
 
         // Act
@@ -299,8 +311,28 @@ mod tests {
     async fn create_music_group_empty_name_returns_invalid_name() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
-        let harness = harness_with(users, MockMusicGroupRepository::new());
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, MockMusicGroupRepository::new());
         let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
 
         // Act
@@ -319,8 +351,28 @@ mod tests {
     {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
-        let harness = harness_with(users, MockMusicGroupRepository::new());
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, MockMusicGroupRepository::new());
         let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
 
         // Act
@@ -337,7 +389,18 @@ mod tests {
     async fn create_music_group_user_cover_returns_invalid_cover() -> Result<(), Box<dyn Error>> {
         // Arrange: the repository reports the USER image as a trigger conflict.
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups
             .expect_search()
@@ -347,7 +410,16 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
-        let harness = harness_with(users, groups);
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, groups);
         let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
 
         // Act
@@ -370,7 +442,18 @@ mod tests {
     {
         // Arrange: the repository reports the USER image as a trigger conflict.
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups
             .expect_search()
@@ -380,7 +463,16 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
-        let harness = harness_with(users, groups);
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, groups);
         let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
 
         // Act
@@ -403,7 +495,18 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange: the pre-check misses, but the unique constraint wins the race.
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups
             .expect_search()
@@ -413,7 +516,16 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
-        let harness = harness_with(users, groups);
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, groups);
         let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
 
         // Act
@@ -442,7 +554,16 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, MockMusicGroupRepository::new());
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, MockMusicGroupRepository::new());
         let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
 
         // Act
@@ -463,7 +584,18 @@ mod tests {
     async fn create_music_group_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups
             .expect_search()
@@ -474,7 +606,16 @@ mod tests {
             let created = stored.clone();
             Box::pin(async move { Ok(created) })
         });
-        let harness = harness_with(users, groups);
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, groups);
         harness.commit_fails.store(true, Ordering::SeqCst);
         let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
 

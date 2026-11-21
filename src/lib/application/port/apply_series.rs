@@ -105,9 +105,6 @@ pub(crate) enum ApplySeriesError {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait ApplySeriesUseCase: Send + Sync {
     /// Resolve the reference and write the show.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn ApplySeriesUseCase>`.
     fn execute<'future>(
         &'future self,
         command: ApplySeriesCommand,

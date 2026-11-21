@@ -350,6 +350,7 @@ mod tests {
         IngestMediaResponse, IngestMediaUseCase, MockIngestMediaUseCase, MockLibraryUseCaseFactory,
         MockMediaChangeSource,
     };
+    use rstest::fixture;
 
     use crate::domain::port::MockMediaSource;
 
@@ -366,6 +367,7 @@ mod tests {
     }
 
     /// Fixture modification instant.
+    #[fixture]
     fn instant() -> NaiveDateTime {
         NaiveDateTime::parse_from_str("2026-10-28 10:00:00", "%Y-%m-%d %H:%M:%S")
             .unwrap_or_default()
@@ -377,149 +379,6 @@ mod tests {
             modified_at: instant(),
             relative_path: "clip.mp4".to_owned(),
             size_bytes,
-        }
-    }
-
-    /// Build a Library factory whose ingest accessor hands out `ingest`.
-    fn factory(ingest: MockIngestMediaUseCase) -> Arc<dyn LibraryUseCaseFactory> {
-        let use_case: Arc<dyn IngestMediaUseCase> = Arc::new(ingest);
-        let mut library = MockLibraryUseCaseFactory::new();
-        library
-            .expect_ingest_media()
-            .returning(move || Arc::clone(&use_case));
-        Arc::new(library)
-    }
-
-    /// Build a runtime over the given mocks with short windows.
-    fn runtime(
-        ingest: MockIngestMediaUseCase,
-        changes: MockMediaChangeSource,
-        media_source: MockMediaSource,
-    ) -> MediaIngestRuntime<MockMediaSource> {
-        MediaIngestRuntime::with_windows(
-            factory(ingest),
-            Arc::new(changes),
-            Arc::new(media_source),
-            Duration::from_millis(10),
-            Duration::from_secs(5),
-        )
-    }
-
-    /// A source whose file keeps growing for two samples before settling.
-    fn changing_sizes_source() -> MockMediaSource {
-        let mut source = MockMediaSource::new();
-        let mut samples = 0u32;
-        source.expect_stat().returning(move |_| {
-            samples = samples.saturating_add(1);
-            let size = if samples < 3 {
-                i64::from(samples).saturating_mul(3)
-            } else {
-                9
-            };
-            Box::pin(async move { Ok(Some(entry(size))) })
-        });
-        source
-    }
-
-    /// An ingest that records whether it was dispatched.
-    fn dispatch_ingest() -> (MockIngestMediaUseCase, Arc<AtomicBool>) {
-        let dispatched = Arc::new(AtomicBool::new(false));
-        let flag = Arc::clone(&dispatched);
-        let mut ingest = MockIngestMediaUseCase::new();
-        ingest
-            .expect_execute()
-            .times(1)
-            .withf(|command: &IngestMediaCommand| {
-                matches!(command.request(), IngestRequest::Path(path) if path == "clip.mp4")
-            })
-            .returning(move |_| {
-                flag.store(true, Ordering::SeqCst);
-                Box::pin(async { Ok(IngestMediaResponse::default()) })
-            });
-        (ingest, dispatched)
-    }
-
-    /// A source that delivers one creation and then stops.
-    fn created_once_source() -> MockMediaChangeSource {
-        let mut changes = MockMediaChangeSource::new();
-        let mut sent = false;
-        changes.expect_changes().returning(move || {
-            if sent {
-                return Box::pin(async {
-                    Err(MediaChangeSourceError::Unknown(anyhow::anyhow!("stopped")))
-                });
-            }
-            sent = true;
-            Box::pin(async { Ok(MediaChange::Created("clip.mp4".to_owned())) })
-        });
-        changes
-    }
-
-    /// A source that delivers a rename, then a removal, then stops.
-    fn rename_then_remove_source() -> MockMediaChangeSource {
-        let mut changes = MockMediaChangeSource::new();
-        let mut calls = 0u32;
-        changes.expect_changes().returning(move || {
-            calls = calls.saturating_add(1);
-            let change = match calls {
-                1 => Ok(MediaChange::Renamed {
-                    from: "old.mp4".to_owned(),
-                    to: "new.mp4".to_owned(),
-                }),
-                2 => Ok(MediaChange::Removed("new.mp4".to_owned())),
-                _ => Err(MediaChangeSourceError::Unknown(anyhow::anyhow!("stopped"))),
-            };
-            Box::pin(async move { change })
-        });
-        changes
-    }
-
-    /// A source that overflows once and then stops.
-    fn overflow_then_stop_source() -> MockMediaChangeSource {
-        let mut changes = MockMediaChangeSource::new();
-        let mut calls = 0u32;
-        changes.expect_changes().returning(move || {
-            calls = calls.saturating_add(1);
-            let result = match calls {
-                1 => Err(MediaChangeSourceError::Overflow),
-                _ => Err(MediaChangeSourceError::Unknown(anyhow::anyhow!("stopped"))),
-            };
-            Box::pin(async move { result })
-        });
-        changes
-    }
-
-    /// Assert exactly one watcher-error warning was emitted.
-    fn assert_one_watcher_error(lines: &[&str]) -> Result<(), String> {
-        let count = lines
-            .iter()
-            .filter(|line| line.contains("kind=watch_error"))
-            .count();
-        if count == 1 {
-            Ok(())
-        } else {
-            Err(format!("expected one watcher error (found {count})"))
-        }
-    }
-
-    /// Assert exactly one warning names the absent library root.
-    fn assert_one_absent_root_warning(lines: &[&str]) -> Result<(), String> {
-        let warnings: Vec<&str> = lines
-            .iter()
-            .copied()
-            .filter(|line| line.contains("WARN"))
-            .collect();
-        if warnings.len() == 1
-            && warnings
-                .first()
-                .is_some_and(|line| line.contains("media_root=\"media\""))
-        {
-            Ok(())
-        } else {
-            Err(format!(
-                "expected exactly one absent-root warning (found {})",
-                warnings.len()
-            ))
         }
     }
 
@@ -536,11 +395,70 @@ mod tests {
     #[tokio::test]
     async fn a_created_path_is_processed_after_it_stops_changing() -> Result<(), Box<dyn Error>> {
         // Arrange: the file is written in two steps, so its size moves twice.
-        let (ingest, dispatched) = dispatch_ingest();
-        let source = changing_sizes_source();
-        let changes = created_once_source();
+        let (ingest, dispatched) = (move || -> (MockIngestMediaUseCase, Arc<AtomicBool>) {
+            let dispatched = Arc::new(AtomicBool::new(false));
+            let flag = Arc::clone(&dispatched);
+            let mut ingest = MockIngestMediaUseCase::new();
+            ingest
+            .expect_execute()
+            .times(1)
+            .withf(|command: &IngestMediaCommand| {
+                matches!(command.request(), IngestRequest::Path(path) if path == "clip.mp4")
+            })
+            .returning(move |_| {
+                flag.store(true, Ordering::SeqCst);
+                Box::pin(async { Ok(IngestMediaResponse::default()) })
+            });
+            (ingest, dispatched)
+        })();
+        let source = (move || -> MockMediaSource {
+            let mut source = MockMediaSource::new();
+            let mut samples = 0u32;
+            source.expect_stat().returning(move |_| {
+                samples = samples.saturating_add(1);
+                let size = if samples < 3 {
+                    i64::from(samples).saturating_mul(3)
+                } else {
+                    9
+                };
+                Box::pin(async move { Ok(Some(entry(size))) })
+            });
+            source
+        })();
+        let changes = (move || -> MockMediaChangeSource {
+            let mut changes = MockMediaChangeSource::new();
+            let mut sent = false;
+            changes.expect_changes().returning(move || {
+                if sent {
+                    return Box::pin(async {
+                        Err(MediaChangeSourceError::Unknown(anyhow::anyhow!("stopped")))
+                    });
+                }
+                sent = true;
+                Box::pin(async { Ok(MediaChange::Created("clip.mp4".to_owned())) })
+            });
+            changes
+        })();
         let (sender, receiver) = watch::channel(false);
-        let runtime = Arc::new(runtime(ingest, changes, source));
+        let runtime = Arc::new((move |ingest: MockIngestMediaUseCase,
+                                      changes: MockMediaChangeSource,
+                                      media_source: MockMediaSource|
+              -> MediaIngestRuntime<MockMediaSource> {
+            MediaIngestRuntime::with_windows(
+                (move |ingest: MockIngestMediaUseCase| -> Arc<dyn LibraryUseCaseFactory> {
+                    let use_case: Arc<dyn IngestMediaUseCase> = Arc::new(ingest);
+                    let mut library = MockLibraryUseCaseFactory::new();
+                    library
+                        .expect_ingest_media()
+                        .returning(move || Arc::clone(&use_case));
+                    Arc::new(library)
+                })(ingest),
+                Arc::new(changes),
+                Arc::new(media_source),
+                Duration::from_millis(10),
+                Duration::from_secs(5),
+            )
+        })(ingest, changes, source));
 
         // Act
         let observer = Arc::clone(&runtime);
@@ -564,8 +482,42 @@ mod tests {
             .expect_execute()
             .times(2)
             .returning(|_| Box::pin(async { Ok(IngestMediaResponse::default()) }));
-        let changes = rename_then_remove_source();
-        let runtime = runtime(ingest, changes, MockMediaSource::new());
+        let changes = (move || -> MockMediaChangeSource {
+            let mut changes = MockMediaChangeSource::new();
+            let mut calls = 0u32;
+            changes.expect_changes().returning(move || {
+                calls = calls.saturating_add(1);
+                let change = match calls {
+                    1 => Ok(MediaChange::Renamed {
+                        from: "old.mp4".to_owned(),
+                        to: "new.mp4".to_owned(),
+                    }),
+                    2 => Ok(MediaChange::Removed("new.mp4".to_owned())),
+                    _ => Err(MediaChangeSourceError::Unknown(anyhow::anyhow!("stopped"))),
+                };
+                Box::pin(async move { change })
+            });
+            changes
+        })();
+        let runtime = (move |ingest: MockIngestMediaUseCase,
+                             changes: MockMediaChangeSource,
+                             media_source: MockMediaSource|
+              -> MediaIngestRuntime<MockMediaSource> {
+            MediaIngestRuntime::with_windows(
+                (move |ingest: MockIngestMediaUseCase| -> Arc<dyn LibraryUseCaseFactory> {
+                    let use_case: Arc<dyn IngestMediaUseCase> = Arc::new(ingest);
+                    let mut library = MockLibraryUseCaseFactory::new();
+                    library
+                        .expect_ingest_media()
+                        .returning(move || Arc::clone(&use_case));
+                    Arc::new(library)
+                })(ingest),
+                Arc::new(changes),
+                Arc::new(media_source),
+                Duration::from_millis(10),
+                Duration::from_secs(5),
+            )
+        })(ingest, changes, MockMediaSource::new());
         let (sender, receiver) = watch::channel(false);
 
         // Act
@@ -586,8 +538,38 @@ mod tests {
         // Arrange
         let mut ingest = MockIngestMediaUseCase::new();
         ingest.expect_execute().times(0);
-        let changes = overflow_then_stop_source();
-        let runtime = runtime(ingest, changes, MockMediaSource::new());
+        let changes = (move || -> MockMediaChangeSource {
+            let mut changes = MockMediaChangeSource::new();
+            let mut calls = 0u32;
+            changes.expect_changes().returning(move || {
+                calls = calls.saturating_add(1);
+                let result = match calls {
+                    1 => Err(MediaChangeSourceError::Overflow),
+                    _ => Err(MediaChangeSourceError::Unknown(anyhow::anyhow!("stopped"))),
+                };
+                Box::pin(async move { result })
+            });
+            changes
+        })();
+        let runtime = (move |ingest: MockIngestMediaUseCase,
+                             changes: MockMediaChangeSource,
+                             media_source: MockMediaSource|
+              -> MediaIngestRuntime<MockMediaSource> {
+            MediaIngestRuntime::with_windows(
+                (move |ingest: MockIngestMediaUseCase| -> Arc<dyn LibraryUseCaseFactory> {
+                    let use_case: Arc<dyn IngestMediaUseCase> = Arc::new(ingest);
+                    let mut library = MockLibraryUseCaseFactory::new();
+                    library
+                        .expect_ingest_media()
+                        .returning(move || Arc::clone(&use_case));
+                    Arc::new(library)
+                })(ingest),
+                Arc::new(changes),
+                Arc::new(media_source),
+                Duration::from_millis(10),
+                Duration::from_secs(5),
+            )
+        })(ingest, changes, MockMediaSource::new());
         let (_sender, receiver) = watch::channel(false);
 
         // Act
@@ -618,14 +600,42 @@ mod tests {
             .expect_changes()
             .times(1)
             .returning(|| Box::pin(async { Err(MediaChangeSourceError::WatchError) }));
-        let runtime = runtime(ingest, changes, MockMediaSource::new());
+        let runtime = (move |ingest: MockIngestMediaUseCase,
+                             changes: MockMediaChangeSource,
+                             media_source: MockMediaSource|
+              -> MediaIngestRuntime<MockMediaSource> {
+            MediaIngestRuntime::with_windows(
+                (move |ingest: MockIngestMediaUseCase| -> Arc<dyn LibraryUseCaseFactory> {
+                    let use_case: Arc<dyn IngestMediaUseCase> = Arc::new(ingest);
+                    let mut library = MockLibraryUseCaseFactory::new();
+                    library
+                        .expect_ingest_media()
+                        .returning(move || Arc::clone(&use_case));
+                    Arc::new(library)
+                })(ingest),
+                Arc::new(changes),
+                Arc::new(media_source),
+                Duration::from_millis(10),
+                Duration::from_secs(5),
+            )
+        })(ingest, changes, MockMediaSource::new());
         let (_sender, receiver) = watch::channel(false);
 
         // Act
         runtime.observe(receiver).await;
 
         // Assert: one watcher warning, and no overflow misclassification.
-        logs_assert(assert_one_watcher_error);
+        logs_assert(|lines: &[&str]| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("kind=watch_error"))
+                .count();
+            if count == 1 {
+                Ok(())
+            } else {
+                Err(format!("expected one watcher error (found {count})"))
+            }
+        });
         assert!(
             !logs_contain("kind=queue_overflow"),
             "a watcher error is not a queue overflow"
@@ -640,7 +650,25 @@ mod tests {
             .expect_execute()
             .times(1)
             .returning(|_| Box::pin(pending()));
-        let runtime = Arc::new(runtime(
+        let runtime = Arc::new((move |ingest: MockIngestMediaUseCase,
+                                      changes: MockMediaChangeSource,
+                                      media_source: MockMediaSource|
+              -> MediaIngestRuntime<MockMediaSource> {
+            MediaIngestRuntime::with_windows(
+                (move |ingest: MockIngestMediaUseCase| -> Arc<dyn LibraryUseCaseFactory> {
+                    let use_case: Arc<dyn IngestMediaUseCase> = Arc::new(ingest);
+                    let mut library = MockLibraryUseCaseFactory::new();
+                    library
+                        .expect_ingest_media()
+                        .returning(move || Arc::clone(&use_case));
+                    Arc::new(library)
+                })(ingest),
+                Arc::new(changes),
+                Arc::new(media_source),
+                Duration::from_millis(10),
+                Duration::from_secs(5),
+            )
+        })(
             ingest,
             MockMediaChangeSource::new(),
             MockMediaSource::new(),
@@ -665,7 +693,25 @@ mod tests {
         // Arrange: a source with no further change.
         let mut changes = MockMediaChangeSource::new();
         changes.expect_changes().returning(|| Box::pin(pending()));
-        let runtime = Arc::new(runtime(
+        let runtime = Arc::new((move |ingest: MockIngestMediaUseCase,
+                                      changes: MockMediaChangeSource,
+                                      media_source: MockMediaSource|
+              -> MediaIngestRuntime<MockMediaSource> {
+            MediaIngestRuntime::with_windows(
+                (move |ingest: MockIngestMediaUseCase| -> Arc<dyn LibraryUseCaseFactory> {
+                    let use_case: Arc<dyn IngestMediaUseCase> = Arc::new(ingest);
+                    let mut library = MockLibraryUseCaseFactory::new();
+                    library
+                        .expect_ingest_media()
+                        .returning(move || Arc::clone(&use_case));
+                    Arc::new(library)
+                })(ingest),
+                Arc::new(changes),
+                Arc::new(media_source),
+                Duration::from_millis(10),
+                Duration::from_secs(5),
+            )
+        })(
             MockIngestMediaUseCase::new(),
             changes,
             MockMediaSource::new(),
@@ -696,12 +742,42 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(IngestMediaResponse::default()) }));
 
         // Act: the runner starts, the scan finishes, and the mount is absent.
-        let tasks = super::MediaIngestRunner::new(factory(ingest), false, Duration::ZERO).start();
+        let tasks = super::MediaIngestRunner::new(
+            (move |ingest: MockIngestMediaUseCase| -> Arc<dyn LibraryUseCaseFactory> {
+                let use_case: Arc<dyn IngestMediaUseCase> = Arc::new(ingest);
+                let mut library = MockLibraryUseCaseFactory::new();
+                library
+                    .expect_ingest_media()
+                    .returning(move || Arc::clone(&use_case));
+                Arc::new(library)
+            })(ingest),
+            false,
+            Duration::ZERO,
+        )
+        .start();
         tasks.wait().await;
 
         // Assert: exactly one warning names the absent root. The watcher is
         // not registered when the root is absent, so it cannot add a second
         // registration warning.
-        logs_assert(assert_one_absent_root_warning);
+        logs_assert(|lines: &[&str]| {
+            let warnings: Vec<&str> = lines
+                .iter()
+                .copied()
+                .filter(|line| line.contains("WARN"))
+                .collect();
+            if warnings.len() == 1
+                && warnings
+                    .first()
+                    .is_some_and(|line| line.contains("media_root=\"media\""))
+            {
+                Ok(())
+            } else {
+                Err(format!(
+                    "expected exactly one absent-root warning (found {})",
+                    warnings.len()
+                ))
+            }
+        });
     }
 }

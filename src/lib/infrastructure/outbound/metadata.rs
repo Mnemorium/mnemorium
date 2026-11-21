@@ -102,6 +102,7 @@ pub(crate) fn configured_music_provider(
 mod tests {
     use super::*;
     use crate::domain::model::{MediaQueryError, MusicProvider, VideoKind, VideoProvider};
+    use rstest::fixture;
 
     use std::error::Error;
     use std::time::Duration;
@@ -159,6 +160,7 @@ mod tests {
     /// # Errors
     ///
     /// Returns the constructor's error when the title is empty.
+    #[fixture]
     fn query() -> Result<MediaQuery, MediaQueryError> {
         MediaQuery::try_new(VideoKind::Movie, "Inception".to_owned(), None, None)
     }

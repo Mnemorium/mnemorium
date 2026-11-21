@@ -256,7 +256,7 @@ fn normalise_numbers(value: Value) -> Value {
 
 /// Build the application router.
 ///
-/// The composition root (`src/lib/app.rs`, `STY-RUST-067`) builds the
+/// The composition root (`src/lib/app.rs`, `STY-RUST-064`) builds the
 /// process-lifetime adapters and mounts only the router this function returns.
 /// `hal_errors` is applied **last** so it is the outermost layer. It therefore
 /// rewraps every `4xx`/`5xx` the server emits, including the routing fallback

@@ -248,7 +248,7 @@ pub(crate) use self::write_upload_chunk::WriteUploadChunk;
 /// Fixtures shared by the application use-case test modules.
 ///
 /// A fixture declared here is one the use-case tests would otherwise restate in
-/// every module that needs it (`STY-RUST-086`). It is an inline module because a
+/// every module that needs it (`STY-RUST-082`). It is an inline module because a
 /// test module never lives in its own file (`TEST-001`).
 #[cfg(test)]
 mod test_fixtures {

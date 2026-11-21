@@ -32,7 +32,7 @@ pub(crate) async fn hal_errors(request: Request, next: Next) -> Response {
     // reused, and finally the status reason phrase is synthesized. A body that is
     // neither is never reused verbatim, because an unverified plain-text or JSON
     // body may carry extractor or framework wording, an expected type name, or a
-    // rejected value, which `API-040` forbids (`API-040`, § 2.5).
+    // rejected value, which `API-040` forbids (`API-040`, § Error public payload).
     let message = if let Some(message) = parts.extensions.get::<ApiErrorMessage>() {
         message.0.clone()
     } else {
@@ -78,7 +78,7 @@ mod tests {
     use axum::middleware;
     use axum::routing::get;
     use axum::{Json, Router};
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use serde_json::json;
     use std::error::Error;
     use tower::ServiceExt as _;
@@ -86,6 +86,7 @@ mod tests {
     /// Router exercising the middleware over an `ApiError`, a raw JSON error, a
     /// textual error, a framework path rejection, a healthy route and a method
     /// restriction.
+    #[fixture]
     fn router() -> Router {
         Router::new()
             .route(

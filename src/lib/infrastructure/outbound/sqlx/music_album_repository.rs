@@ -780,235 +780,10 @@ fn summary_album(row: &MusicAlbumSummaryRow) -> Result<MusicAlbum, RepositoryErr
 mod tests {
     use super::*;
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
     use rstest::rstest;
     use std::error::Error;
     use tracing_test::traced_test;
-
-    /// Assert the captured output is exactly one `output_validation_failed`
-    /// event with `reason`, carrying neither a stored value nor an `sqlx`
-    /// detail.
-    fn assert_output_validation_failed(lines: &[&str], reason: &str) -> Result<(), String> {
-        let ours: Vec<&str> = lines
-            .iter()
-            .copied()
-            .filter(|line| line.contains("security:"))
-            .collect();
-        let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
-        if warn_count != 1 {
-            return Err(format!(
-                "rejected stored data must emit exactly one warn event (found {warn_count})"
-            ));
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains("event=\"output_validation_failed\""))
-        {
-            return Err("the event must be output_validation_failed".to_owned());
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains(&format!("reason=\"{reason}\"")))
-        {
-            return Err(format!("the event must carry the stable reason `{reason}`"));
-        }
-        if ours.iter().any(|line| line.contains("VINYL")) {
-            return Err("the event must not carry the stored value".to_owned());
-        }
-        if ours.iter().any(|line| line.contains("sqlx")) {
-            return Err("the event must not carry the sqlx detail".to_owned());
-        }
-        Ok(())
-    }
-
-    /// Open a migrated in-memory database and begin one transaction.
-    /// Seed a credential and a standard user so foreign keys resolve.
-    async fn seed_user(
-        transaction: &mut Transaction<'static, Sqlite>,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (?1, ?2)")
-            .bind(user_id)
-            .bind(format!("hash-{user_id}"))
-            .execute(&mut **transaction)
-            .await?;
-        sqlx::query(
-            "INSERT INTO user (user_id, role, username, email, credential_id)
-             VALUES (?1, 'STANDARD', ?2, NULL, ?1)",
-        )
-        .bind(user_id)
-        .bind(format!("user{user_id}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed an audio file owned by `user_id`.
-    async fn seed_file(
-        transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
-        user_id: i64,
-        path: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
-             VALUES (?1, ?2, ?3, 0, 'audio/mpeg', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?4)",
-        )
-        .bind(file_id)
-        .bind(path)
-        .bind(user_id)
-        .bind(format!("{file_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed the audio backing a recording.
-    async fn seed_audio(
-        transaction: &mut Transaction<'static, Sqlite>,
-        audio_id: i64,
-        file_id: i64,
-        name: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO audio (
-                audio_id, name, duration_ms, codec, sample_rate_hz,
-                bit_depth, block_size, file_id
-             )
-             VALUES (?1, ?2, 1000.0, 'MP3', 44100.0, 16, 16, ?3)",
-        )
-        .bind(audio_id)
-        .bind(name)
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a recording on `audio_id`; `name` may be absent.
-    async fn seed_recording(
-        transaction: &mut Transaction<'static, Sqlite>,
-        recording_id: i64,
-        name: Option<&str>,
-        audio_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO music_recording (
-                music_recording_id, name, isrc_code, audio_id
-             )
-             VALUES (?1, ?2, NULL, ?3)",
-        )
-        .bind(recording_id)
-        .bind(name)
-        .bind(audio_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a music album with an optional stored production type.
-    async fn seed_album(
-        transaction: &mut Transaction<'static, Sqlite>,
-        album_id: i64,
-        name: &str,
-        production_type: Option<&str>,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO music_album (music_album_id, name, release_date, production_type, music_group_id)
-             VALUES (?1, ?2, '1959-08-17', ?3, 0)",
-        )
-        .bind(album_id)
-        .bind(name)
-        .bind(production_type)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a genre.
-    async fn seed_genre(
-        transaction: &mut Transaction<'static, Sqlite>,
-        genre_id: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO genre (genre_id) VALUES (?1)")
-            .bind(genre_id)
-            .execute(&mut **transaction)
-            .await?;
-        Ok(())
-    }
-
-    /// Attach `genre_id` to `album_id`.
-    async fn seed_album_genre(
-        transaction: &mut Transaction<'static, Sqlite>,
-        album_id: i64,
-        genre_id: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO music_album_genre (music_album_id, genre_id) VALUES (?1, ?2)")
-            .bind(album_id)
-            .bind(genre_id)
-            .execute(&mut **transaction)
-            .await?;
-        Ok(())
-    }
-
-    /// Seed a `CD` medium of `album_id` at `medium_index`.
-    async fn seed_medium(
-        transaction: &mut Transaction<'static, Sqlite>,
-        medium_id: i64,
-        album_id: i64,
-        medium_index: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO music_medium (music_medium_id, music_album_id, type, medium_index)
-             VALUES (?1, ?2, 'CD', ?3)",
-        )
-        .bind(medium_id)
-        .bind(album_id)
-        .bind(medium_index)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed an album track on `medium_id` at `track_index`.
-    async fn seed_track(
-        transaction: &mut Transaction<'static, Sqlite>,
-        track_id: i64,
-        medium_id: i64,
-        recording_id: i64,
-        track_index: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO music_track (
-                music_track_id, track_index, music_playlist_id, music_medium_id, music_recording_id
-             )
-             VALUES (?1, ?2, NULL, ?3, ?4)",
-        )
-        .bind(track_id)
-        .bind(track_index)
-        .bind(medium_id)
-        .bind(recording_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a playlist owned by `user_id`.
-    async fn seed_playlist(
-        transaction: &mut Transaction<'static, Sqlite>,
-        playlist_id: i64,
-        name: &str,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO music_playlist (music_playlist_id, name, user_id) VALUES (?1, ?2, ?3)",
-        )
-        .bind(playlist_id)
-        .bind(name)
-        .bind(user_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
 
     /// Search the albums the case seeded, excluding the seeded bucket (album 0).
     async fn search_seeded(
@@ -1100,8 +875,8 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
-        seed_file(&mut transaction, 11, 1, "b.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 11, 1, "b.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_audio(&mut transaction, 21, 11, "b.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
@@ -1170,7 +945,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
         seed_album(&mut transaction, 1, "Kind of Blue", Some("STUDIO")).await?;
@@ -1241,9 +1016,9 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
-        seed_file(&mut transaction, 11, 1, "b.mp3").await?;
-        seed_file(&mut transaction, 12, 1, "c.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 11, 1, "b.mp3").await?;
+        seed_file_v2(&mut transaction, 12, 1, "c.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_audio(&mut transaction, 21, 11, "b.mp3").await?;
         seed_audio(&mut transaction, 22, 12, "c.mp3").await?;
@@ -1278,8 +1053,8 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
-        seed_file(&mut transaction, 11, 1, "b.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 11, 1, "b.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_audio(&mut transaction, 21, 11, "b.mp3").await?;
         seed_recording(&mut transaction, 30, Some("First"), 20).await?;
@@ -1318,7 +1093,7 @@ mod tests {
         // Arrange: one recording placed twice in one medium.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_recording(&mut transaction, 30, Some("Reprise"), 20).await?;
         seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
@@ -1363,24 +1138,6 @@ mod tests {
         assert_eq!(by_name.first().map(MusicAlbum::id), Some(2));
         assert_eq!(by_id.len(), 1);
         assert_eq!(by_id.first().map(MusicAlbum::name), Some("Kind of Blue"));
-        Ok(())
-    }
-
-    /// Seed an image row of `image_id` on `file_id`, in a square orientation.
-    async fn seed_image(
-        transaction: &mut Transaction<'static, Sqlite>,
-        image_id: i64,
-        file_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO image (image_id, name, width_px, height_px, orientation, created_at, file_id)
-             VALUES (?1, ?2, 10, 10, 'SQUARE', '2026-10-06', ?3)",
-        )
-        .bind(image_id)
-        .bind(format!("{image_id}.png"))
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
         Ok(())
     }
 
@@ -1624,12 +1381,12 @@ mod tests {
         // Arrange: the recording is sequenced by a playlist, not by a medium.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
         seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
         seed_medium(&mut transaction, 40, 1, 1).await?;
-        seed_playlist(&mut transaction, 1, "Mix", 1).await?;
+        seed_playlist_v2(&mut transaction, 1, "Mix", 1).await?;
         sqlx::query(
             "INSERT INTO music_track (
                 music_track_id, track_index, music_playlist_id, music_medium_id, music_recording_id
@@ -1681,7 +1438,40 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "unknown_medium_type"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("VINYL")) {
+                    return Err("the event must not carry the stored value".to_owned());
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "unknown_medium_type")
+        });
         Ok(())
     }
 
@@ -1705,7 +1495,40 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "medium_index_out_of_range"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("VINYL")) {
+                    return Err("the event must not carry the stored value".to_owned());
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "medium_index_out_of_range")
+        });
         Ok(())
     }
 
@@ -1715,7 +1538,7 @@ mod tests {
         // Arrange: the medium range check is probed by relaxing it for this seed.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
         seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
@@ -1734,7 +1557,40 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "track_index_out_of_range"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("VINYL")) {
+                    return Err("the event must not carry the stored value".to_owned());
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "track_index_out_of_range")
+        });
         Ok(())
     }
 
@@ -1747,7 +1603,7 @@ mod tests {
         // short code.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
         sqlx::query("UPDATE music_recording SET isrc_code = 'SHORT' WHERE music_recording_id = 30")
@@ -1766,7 +1622,40 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "invalid_recording"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("VINYL")) {
+                    return Err("the event must not carry the stored value".to_owned());
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "invalid_recording")
+        });
         Ok(())
     }
 
@@ -1776,7 +1665,7 @@ mod tests {
         // Arrange: the medium range check is probed by relaxing it for this seed.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
         seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
@@ -1795,7 +1684,40 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "track_index_out_of_range"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("VINYL")) {
+                    return Err("the event must not carry the stored value".to_owned());
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "track_index_out_of_range")
+        });
         Ok(())
     }
 
@@ -1816,7 +1738,40 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "invalid_album"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("VINYL")) {
+                    return Err("the event must not carry the stored value".to_owned());
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "invalid_album")
+        });
         Ok(())
     }
 
@@ -1825,8 +1780,8 @@ mod tests {
         // Arrange: two recordings on one medium, with a gap left by the index.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
-        seed_file(&mut transaction, 11, 1, "b.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 11, 1, "b.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_audio(&mut transaction, 21, 11, "b.mp3").await?;
         seed_recording(&mut transaction, 30, Some("One"), 20).await?;
@@ -1858,7 +1813,7 @@ mod tests {
         // its own index shape stays representable by the domain value.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
         seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
@@ -1997,7 +1952,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
         seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
@@ -2052,7 +2007,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
         seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
@@ -2128,8 +2083,8 @@ mod tests {
         // Arrange: the destination already holds another recording.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
-        seed_file(&mut transaction, 11, 1, "b.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 11, 1, "b.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_audio(&mut transaction, 21, 11, "b.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
@@ -2188,8 +2143,8 @@ mod tests {
         // Arrange: each recording already holds the other's destination.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
-        seed_file(&mut transaction, 11, 1, "b.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 11, 1, "b.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_audio(&mut transaction, 21, 11, "b.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
@@ -2230,7 +2185,7 @@ mod tests {
         // Arrange: medium 2 holds a recording and is outside the new structure.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
         seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
@@ -2293,7 +2248,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "a.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
@@ -2352,7 +2307,7 @@ mod tests {
         // Arrange: recording 50 on audio 30 is placed in album 7's medium.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "10.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "10.mp3").await?;
         seed_audio(&mut transaction, 30, 10, "Track").await?;
         seed_recording(&mut transaction, 50, Some("Track"), 30).await?;
         seed_album(&mut transaction, 7, "Album", None).await?;
@@ -2389,7 +2344,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "10.mp3").await?;
+        seed_file_v2(&mut transaction, 10, 1, "10.mp3").await?;
         seed_audio(&mut transaction, 30, 10, "Track").await?;
         seed_recording(&mut transaction, 50, Some("Track"), 30).await?;
         seed_album(&mut transaction, 7, "Album", None).await?;
@@ -2424,6 +2379,316 @@ mod tests {
         assert!(!missing);
         assert_eq!(tracks, 0, "the recording's placements are removed");
         assert_eq!(recordings, 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn music_album_name_is_unique_within_a_group() -> Result<(), Box<dyn Error>> {
+        // Arrange: two distinct groups.
+        let pool = in_memory_pool().await?;
+        sqlx::query(
+            "INSERT INTO music_group (music_group_id, stage_name)
+             VALUES (1, 'First Group'), (2, 'Second Group')",
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, music_group_id)
+             VALUES (1, 'Same', '1990-04-08', 1)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act: the same name is free for another group, but not for the same.
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, music_group_id)
+             VALUES (2, 'Same', '1990-04-08', 2)",
+        )
+        .execute(&pool)
+        .await?;
+        let duplicate = sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, music_group_id)
+             VALUES (3, 'Same', '1990-04-08', 1)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(duplicate, Err(RepositoryError::AlreadyExist)),
+            "a duplicate (name, group) must be refused"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn music_album_release_date_is_nullable() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, music_group_id)
+             VALUES (1, 'Undated', NULL, 0)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Assert
+        let release_date: Option<String> =
+            sqlx::query_scalar("SELECT release_date FROM music_album WHERE music_album_id = 1")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(release_date, None, "an album may carry no release date");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn music_recording_has_no_first_release_date_column() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act
+        let columns: Vec<String> =
+            sqlx::query_scalar("SELECT name FROM pragma_table_info('music_recording')")
+                .fetch_all(&pool)
+                .await?;
+
+        // Assert
+        assert!(
+            !columns.iter().any(|column| column == "first_release_date"),
+            "the recording no longer stores a first release date"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn unknown_bucket_is_seeded_with_one_digital_medium() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act: read the seeded bucket.
+        let album: (String, Option<String>, i64) = sqlx::query_as(
+            "SELECT name, release_date, music_group_id
+             FROM music_album WHERE music_album_id = 0",
+        )
+        .fetch_one(&pool)
+        .await?;
+        let group: String =
+            sqlx::query_scalar("SELECT stage_name FROM music_group WHERE music_group_id = 0")
+                .fetch_one(&pool)
+                .await?;
+        let genres: Vec<String> =
+            sqlx::query_scalar("SELECT genre_id FROM music_album_genre WHERE music_album_id = 0")
+                .fetch_all(&pool)
+                .await?;
+        let mediums: Vec<(String, i64)> =
+            sqlx::query_as("SELECT type, medium_index FROM music_medium WHERE music_album_id = 0")
+                .fetch_all(&pool)
+                .await?;
+        let tracks: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM music_track WHERE music_medium_id = 0")
+                .fetch_one(&pool)
+                .await?;
+
+        // Assert
+        assert_eq!(album.0, "Unknown");
+        assert_eq!(album.1, None, "the bucket carries no release date");
+        assert_eq!(album.2, 0, "the bucket belongs to group 0");
+        assert_eq!(group, "Unknown");
+        assert_eq!(genres, ["UNKNOWN"]);
+        assert_eq!(mediums, [("DIGITAL".to_owned(), 1)]);
+        assert_eq!(tracks, 0, "the bucket medium starts empty");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn unknown_bucket_cannot_be_deleted_or_modified() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act & Assert: each guard refuses a delete and an update.
+        let group_delete = sqlx::query("DELETE FROM music_group WHERE music_group_id = 0")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+        let group_update =
+            sqlx::query("UPDATE music_group SET stage_name = 'Other' WHERE music_group_id = 0")
+                .execute(&pool)
+                .await
+                .map_err(RepositoryError::from);
+        let album_delete = sqlx::query("DELETE FROM music_album WHERE music_album_id = 0")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+        let album_update =
+            sqlx::query("UPDATE music_album SET name = 'Other' WHERE music_album_id = 0")
+                .execute(&pool)
+                .await
+                .map_err(RepositoryError::from);
+        let medium_delete = sqlx::query("DELETE FROM music_medium WHERE music_medium_id = 0")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+        let medium_update =
+            sqlx::query("UPDATE music_medium SET type = 'CD' WHERE music_medium_id = 0")
+                .execute(&pool)
+                .await
+                .map_err(RepositoryError::from);
+
+        assert!(matches!(group_delete, Err(RepositoryError::Conflict)));
+        assert!(matches!(group_update, Err(RepositoryError::Conflict)));
+        assert!(matches!(album_delete, Err(RepositoryError::Conflict)));
+        assert!(matches!(album_update, Err(RepositoryError::Conflict)));
+        assert!(matches!(medium_delete, Err(RepositoryError::Conflict)));
+        assert!(matches!(medium_update, Err(RepositoryError::Conflict)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn genre_insert_normalises_genre_id_uppercase() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act
+        sqlx::query("INSERT INTO genre (genre_id) VALUES ('rock')")
+            .execute(&pool)
+            .await?;
+
+        // Assert
+        let stored: String =
+            sqlx::query_scalar("SELECT genre_id FROM genre WHERE genre_id = 'ROCK'")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(
+            stored, "ROCK",
+            "the insert trigger must normalise genre_id to uppercase"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn genre_update_normalises_genre_id_uppercase() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        sqlx::query("INSERT INTO genre (genre_id) VALUES ('JAZZ')")
+            .execute(&pool)
+            .await?;
+
+        // Act
+        sqlx::query("UPDATE genre SET genre_id = 'jazz' WHERE genre_id = 'JAZZ'")
+            .execute(&pool)
+            .await?;
+
+        // Assert
+        let stored: String =
+            sqlx::query_scalar("SELECT genre_id FROM genre WHERE genre_id = 'JAZZ'")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(
+            stored, "JAZZ",
+            "the update trigger must normalise genre_id to uppercase"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn genre_update_normalises_referenced_genre_id() -> Result<(), Box<dyn Error>> {
+        // Arrange: a genre referenced by a music album.
+        let pool = in_memory_pool().await?;
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, music_group_id)
+             VALUES (1, 'Album', '2026-01-01', 0)",
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query("INSERT INTO genre (genre_id) VALUES ('ROCK')")
+            .execute(&pool)
+            .await?;
+        sqlx::query("INSERT INTO music_album_genre (music_album_id, genre_id) VALUES (1, 'ROCK')")
+            .execute(&pool)
+            .await?;
+
+        // Act
+        sqlx::query("UPDATE genre SET genre_id = 'rock' WHERE genre_id = 'ROCK'")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from)?;
+
+        // Assert: the parent keeps its normalised key and the child still resolves.
+        let stored: String =
+            sqlx::query_scalar("SELECT genre_id FROM genre WHERE genre_id = 'ROCK'")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(
+            stored, "ROCK",
+            "the update must keep the genre key uppercase"
+        );
+        let children: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM music_album_genre WHERE genre_id = 'ROCK'")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(
+            children, 1,
+            "the child row must still resolve to its parent"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn genre_update_colliding_with_existing_key_is_rejected() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        sqlx::query("INSERT INTO genre (genre_id) VALUES ('ROCK')")
+            .execute(&pool)
+            .await?;
+        sqlx::query("INSERT INTO genre (genre_id) VALUES ('POP')")
+            .execute(&pool)
+            .await?;
+
+        // Act: the normalising update collides with the existing uppercase row.
+        let result = sqlx::query("UPDATE genre SET genre_id = 'rock' WHERE genre_id = 'POP'")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn library_cover_is_shared_by_two_albums() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, cover_image_id, music_group_id)
+             VALUES (1, 'First', '1990-04-08', 1, 0)",
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, cover_image_id, music_group_id)
+             VALUES (2, 'Second', '1990-04-08', 1, 0)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Assert
+        let covers: Vec<Option<i64>> = sqlx::query_scalar(
+            "SELECT cover_image_id FROM music_album WHERE music_album_id <> 0 ORDER BY music_album_id",
+        )
+        .fetch_all(&pool)
+        .await?;
+        assert_eq!(
+            covers,
+            vec![Some(1), Some(1)],
+            "a LIBRARY image may back several covers"
+        );
         Ok(())
     }
 }

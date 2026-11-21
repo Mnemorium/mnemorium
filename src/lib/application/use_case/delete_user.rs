@@ -553,103 +553,155 @@ mod tests {
         )
     }
 
-    /// Expect the caller load and then the target load.
-    fn expect_actor(users: &mut MockUserRepository, caller: User, target: Option<User>) {
-        let caller_id = caller.id();
-        users.expect_search().times(2).returning(move |filter| {
-            let found = if filter.id == Some(caller_id) {
-                Some(caller.clone())
-            } else {
-                target
-                    .clone()
-                    .filter(|candidate| filter.id == Some(candidate.id()))
-            };
-            Box::pin(async move { Ok(found.into_iter().collect()) })
-        });
-    }
-
-    /// Expect every owned collection to resolve empty.
-    fn expect_no_owned_content(unit_of_work: &mut TestUnitOfWork) {
-        unit_of_work
-            .galleries
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        unit_of_work
-            .music_playlists
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        unit_of_work
-            .uploads
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        unit_of_work
-            .files
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-    }
-
-    /// Expect the owned file and the Root Admin's digest collision to be found.
-    fn expect_shared_files(files: &mut MockFileRepository, owned: File, root_file: File) {
-        files.expect_search().times(2).returning(move |filter| {
-            let found = if filter.user_id == Some(8) && filter.integrity_hash.is_none() {
-                vec![owned.clone()]
-            } else if filter.user_id == Some(0) && filter.integrity_hash.is_some() {
-                vec![root_file.clone()]
-            } else {
-                Vec::new()
-            };
-            Box::pin(async move { Ok(found) })
-        });
-    }
-
-    /// Expect the user row and its credential to be removed.
-    fn expect_identity_removal(unit_of_work: &mut TestUnitOfWork, target: &User) {
-        let target_id = target.id();
-        unit_of_work
-            .users
-            .expect_delete()
-            .times(1)
-            .withf(move |filter| filter.id == Some(target_id))
-            .returning(|_| Box::pin(async { Ok(true) }));
-        let credential_id = target.credential_id();
-        unit_of_work
-            .credentials
-            .expect_delete()
-            .times(1)
-            .withf(move |filter| filter.id == Some(credential_id))
-            .returning(|_| Box::pin(async { Ok(true) }));
-    }
-
-    /// Build a unit of work with the caller and target stubbed, leaving the
-    /// owned collections and identity removal to the test.
-    fn bare_unit_of_work(caller: &User, target: &User) -> TestUnitOfWork {
-        let mut users = MockUserRepository::new();
-        expect_actor(&mut users, caller.clone(), Some(target.clone()));
-        TestUnitOfWork {
-            resources: no_resources(),
-            users,
-            ..TestUnitOfWork::default()
-        }
-    }
-
-    /// Build a unit of work for a deletion that removes no owned content.
-    fn plain_unit_of_work(caller: &User, target: &User) -> TestUnitOfWork {
-        let mut unit_of_work = bare_unit_of_work(caller, target);
-        expect_no_owned_content(&mut unit_of_work);
-        expect_identity_removal(&mut unit_of_work, target);
-        unit_of_work
-    }
-
     #[tokio::test]
     async fn delete_user_admin_deletes_a_standard_user() -> Result<(), Box<dyn Error>> {
         // Arrange
         let caller = user(7, Role::Admin)?;
         let target = user(8, Role::Standard)?;
-        let harness = harness(plain_unit_of_work(&caller, &target), MockFileStorage::new());
+        let harness = harness(
+            (move |caller: &User, target: &User| -> TestUnitOfWork {
+                let mut unit_of_work = (move |caller: &User, target: &User| -> TestUnitOfWork {
+                    let mut users = MockUserRepository::new();
+                    (move |users: &mut MockUserRepository, caller: User, target: Option<User>| {
+                        let caller_id = caller.id();
+                        users.expect_search().times(2).returning(move |filter| {
+                            let found = if filter.id == Some(caller_id) {
+                                Some(caller.clone())
+                            } else {
+                                target
+                                    .clone()
+                                    .filter(|candidate| filter.id == Some(candidate.id()))
+                            };
+                            Box::pin(async move { Ok(found.into_iter().collect()) })
+                        });
+                    })(&mut users, caller.clone(), Some(target.clone()));
+                    TestUnitOfWork {
+                        resources: (move || -> crate::domain::port::MockResourceRepository {
+                            let mut resources =
+                                (move || -> crate::domain::port::MockResourceRepository {
+                                    let mut resources =
+                                        crate::domain::port::MockResourceRepository::new();
+                                    resources.expect_search().returning(|filter, caller| {
+                                        let user_id = caller.id();
+                                        let resource = crate::domain::model::Resource::from_stored(
+                                            1,
+                                            filter.kind.unwrap_or(
+                                                crate::domain::model::ResourceKind::Library,
+                                            ),
+                                            filter.entity_id.unwrap_or_default(),
+                                            Some(user_id),
+                                            None,
+                                            crate::domain::model::Visibility::Private,
+                                        );
+                                        let grant = crate::domain::model::Grant::from_stored(
+                                            1,
+                                            crate::domain::model::Principal::User(user_id),
+                                            1,
+                                            crate::domain::model::ResourceRole::Downloader,
+                                            crate::domain::model::ChildKind::All,
+                                            crate::domain::model::GrantEffect::Allow,
+                                        );
+                                        Box::pin(async move {
+                                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                                resource,
+                                                Vec::new(),
+                                                vec![grant],
+                                                Vec::new(),
+                                            )])
+                                        })
+                                    });
+                                    resources
+            .expect_search_many()
+            .returning(|addresses, caller| {
+                let user_id = caller.id();
+                let found = addresses
+                    .iter()
+                    .map(|address| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            address.kind(),
+                            address.id(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        crate::domain::model::ResourceAccess::new(resource, Vec::new(), vec![grant], Vec::new())
+                    })
+                    .collect::<Vec<_>>();
+                Box::pin(async move { Ok(found) })
+            });
+                                    resources.expect_create().returning(|new_resource| {
+                                        let resource = crate::domain::model::Resource::from_stored(
+                                            1,
+                                            new_resource.kind,
+                                            new_resource.entity_id,
+                                            new_resource.owner_id,
+                                            None,
+                                            new_resource.visibility,
+                                        );
+                                        Box::pin(async move { Ok(resource) })
+                                    });
+                                    resources
+                                })();
+                            resources
+                                .expect_delete()
+                                .returning(|_| Box::pin(async { Ok(true) }));
+                            resources
+                        })(),
+                        users,
+                        ..TestUnitOfWork::default()
+                    }
+                })(caller, target);
+                (move |unit_of_work: &mut TestUnitOfWork| {
+                    unit_of_work
+                        .galleries
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                    unit_of_work
+                        .music_playlists
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                    unit_of_work
+                        .uploads
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                    unit_of_work
+                        .files
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                })(&mut unit_of_work);
+                (move |unit_of_work: &mut TestUnitOfWork, target: &User| {
+                    let target_id = target.id();
+                    unit_of_work
+                        .users
+                        .expect_delete()
+                        .times(1)
+                        .withf(move |filter| filter.id == Some(target_id))
+                        .returning(|_| Box::pin(async { Ok(true) }));
+                    let credential_id = target.credential_id();
+                    unit_of_work
+                        .credentials
+                        .expect_delete()
+                        .times(1)
+                        .withf(move |filter| filter.id == Some(credential_id))
+                        .returning(|_| Box::pin(async { Ok(true) }));
+                })(&mut unit_of_work, target);
+                unit_of_work
+            })(&caller, &target),
+            MockFileStorage::new(),
+        );
 
         // Act
         let result = harness
@@ -669,10 +721,141 @@ mod tests {
         // Arrange
         let caller = user(7, Role::Admin)?;
         let target = user(8, Role::Standard)?;
-        let mut unit_of_work = bare_unit_of_work(&caller, &target);
-        expect_no_owned_content(&mut unit_of_work);
-        expect_identity_removal(&mut unit_of_work, &target);
-        let mut resources = caller_owned_resources();
+        let mut unit_of_work = (move |caller: &User, target: &User| -> TestUnitOfWork {
+            let mut users = MockUserRepository::new();
+            (move |users: &mut MockUserRepository, caller: User, target: Option<User>| {
+                let caller_id = caller.id();
+                users.expect_search().times(2).returning(move |filter| {
+                    let found = if filter.id == Some(caller_id) {
+                        Some(caller.clone())
+                    } else {
+                        target
+                            .clone()
+                            .filter(|candidate| filter.id == Some(candidate.id()))
+                    };
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+            })(&mut users, caller.clone(), Some(target.clone()));
+            TestUnitOfWork {
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(&caller, &target);
+        (move |unit_of_work: &mut TestUnitOfWork| {
+            unit_of_work
+                .galleries
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            unit_of_work
+                .music_playlists
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            unit_of_work
+                .uploads
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            unit_of_work
+                .files
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut unit_of_work);
+        (move |unit_of_work: &mut TestUnitOfWork, target: &User| {
+            let target_id = target.id();
+            unit_of_work
+                .users
+                .expect_delete()
+                .times(1)
+                .withf(move |filter| filter.id == Some(target_id))
+                .returning(|_| Box::pin(async { Ok(true) }));
+            let credential_id = target.credential_id();
+            unit_of_work
+                .credentials
+                .expect_delete()
+                .times(1)
+                .withf(move |filter| filter.id == Some(credential_id))
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut unit_of_work, &target);
+        let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+            let mut resources = crate::domain::port::MockResourceRepository::new();
+            resources.expect_search().returning(|filter, caller| {
+                let user_id = caller.id();
+                let resource = crate::domain::model::Resource::from_stored(
+                    1,
+                    filter
+                        .kind
+                        .unwrap_or(crate::domain::model::ResourceKind::Library),
+                    filter.entity_id.unwrap_or_default(),
+                    Some(user_id),
+                    None,
+                    crate::domain::model::Visibility::Private,
+                );
+                let grant = crate::domain::model::Grant::from_stored(
+                    1,
+                    crate::domain::model::Principal::User(user_id),
+                    1,
+                    crate::domain::model::ResourceRole::Downloader,
+                    crate::domain::model::ChildKind::All,
+                    crate::domain::model::GrantEffect::Allow,
+                );
+                Box::pin(async move {
+                    Ok(vec![crate::domain::model::ResourceAccess::new(
+                        resource,
+                        Vec::new(),
+                        vec![grant],
+                        Vec::new(),
+                    )])
+                })
+            });
+            resources
+                .expect_search_many()
+                .returning(|addresses, caller| {
+                    let user_id = caller.id();
+                    let found = addresses
+                        .iter()
+                        .map(|address| {
+                            let resource = crate::domain::model::Resource::from_stored(
+                                1,
+                                address.kind(),
+                                address.id(),
+                                Some(user_id),
+                                None,
+                                crate::domain::model::Visibility::Private,
+                            );
+                            let grant = crate::domain::model::Grant::from_stored(
+                                1,
+                                crate::domain::model::Principal::User(user_id),
+                                1,
+                                crate::domain::model::ResourceRole::Downloader,
+                                crate::domain::model::ChildKind::All,
+                                crate::domain::model::GrantEffect::Allow,
+                            );
+                            crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+            resources.expect_create().returning(|new_resource| {
+                let resource = crate::domain::model::Resource::from_stored(
+                    1,
+                    new_resource.kind,
+                    new_resource.entity_id,
+                    new_resource.owner_id,
+                    None,
+                    new_resource.visibility,
+                );
+                Box::pin(async move { Ok(resource) })
+            });
+            resources
+        })();
         resources
             .expect_delete()
             .times(1)
@@ -698,7 +881,26 @@ mod tests {
         // Arrange
         let caller = user(0, Role::Admin)?;
         let target = user(8, Role::Standard)?;
-        let mut unit_of_work = bare_unit_of_work(&caller, &target);
+        let mut unit_of_work = (move |caller: &User, target: &User| -> TestUnitOfWork {
+            let mut users = MockUserRepository::new();
+            (move |users: &mut MockUserRepository, caller: User, target: Option<User>| {
+                let caller_id = caller.id();
+                users.expect_search().times(2).returning(move |filter| {
+                    let found = if filter.id == Some(caller_id) {
+                        Some(caller.clone())
+                    } else {
+                        target
+                            .clone()
+                            .filter(|candidate| filter.id == Some(candidate.id()))
+                    };
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+            })(&mut users, caller.clone(), Some(target.clone()));
+            TestUnitOfWork {
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(&caller, &target);
         unit_of_work
             .galleries
             .expect_search()
@@ -738,7 +940,18 @@ mod tests {
             Some(IntegrityHash::try_new(DIGEST.to_owned())?),
             Some(Origin::Uploaded),
         )?;
-        expect_shared_files(&mut unit_of_work.files, owned, root_file);
+        (move |files: &mut MockFileRepository, owned: File, root_file: File| {
+            files.expect_search().times(2).returning(move |filter| {
+                let found = if filter.user_id == Some(8) && filter.integrity_hash.is_none() {
+                    vec![owned.clone()]
+                } else if filter.user_id == Some(0) && filter.integrity_hash.is_some() {
+                    vec![root_file.clone()]
+                } else {
+                    Vec::new()
+                };
+                Box::pin(async move { Ok(found) })
+            });
+        })(&mut unit_of_work.files, owned, root_file);
         unit_of_work.images.expect_search().times(1).returning(|_| {
             let image = Image::try_new(
                 1,
@@ -774,8 +987,99 @@ mod tests {
             .times(1)
             .withf(|id, owner| *id == 1 && *owner == 0)
             .returning(|_, _| Box::pin(async { Ok(true) }));
-        expect_identity_removal(&mut unit_of_work, &target);
-        let mut resources = caller_owned_resources();
+        (move |unit_of_work: &mut TestUnitOfWork, target: &User| {
+            let target_id = target.id();
+            unit_of_work
+                .users
+                .expect_delete()
+                .times(1)
+                .withf(move |filter| filter.id == Some(target_id))
+                .returning(|_| Box::pin(async { Ok(true) }));
+            let credential_id = target.credential_id();
+            unit_of_work
+                .credentials
+                .expect_delete()
+                .times(1)
+                .withf(move |filter| filter.id == Some(credential_id))
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut unit_of_work, &target);
+        let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+            let mut resources = crate::domain::port::MockResourceRepository::new();
+            resources.expect_search().returning(|filter, caller| {
+                let user_id = caller.id();
+                let resource = crate::domain::model::Resource::from_stored(
+                    1,
+                    filter
+                        .kind
+                        .unwrap_or(crate::domain::model::ResourceKind::Library),
+                    filter.entity_id.unwrap_or_default(),
+                    Some(user_id),
+                    None,
+                    crate::domain::model::Visibility::Private,
+                );
+                let grant = crate::domain::model::Grant::from_stored(
+                    1,
+                    crate::domain::model::Principal::User(user_id),
+                    1,
+                    crate::domain::model::ResourceRole::Downloader,
+                    crate::domain::model::ChildKind::All,
+                    crate::domain::model::GrantEffect::Allow,
+                );
+                Box::pin(async move {
+                    Ok(vec![crate::domain::model::ResourceAccess::new(
+                        resource,
+                        Vec::new(),
+                        vec![grant],
+                        Vec::new(),
+                    )])
+                })
+            });
+            resources
+                .expect_search_many()
+                .returning(|addresses, caller| {
+                    let user_id = caller.id();
+                    let found = addresses
+                        .iter()
+                        .map(|address| {
+                            let resource = crate::domain::model::Resource::from_stored(
+                                1,
+                                address.kind(),
+                                address.id(),
+                                Some(user_id),
+                                None,
+                                crate::domain::model::Visibility::Private,
+                            );
+                            let grant = crate::domain::model::Grant::from_stored(
+                                1,
+                                crate::domain::model::Principal::User(user_id),
+                                1,
+                                crate::domain::model::ResourceRole::Downloader,
+                                crate::domain::model::ChildKind::All,
+                                crate::domain::model::GrantEffect::Allow,
+                            );
+                            crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+            resources.expect_create().returning(|new_resource| {
+                let resource = crate::domain::model::Resource::from_stored(
+                    1,
+                    new_resource.kind,
+                    new_resource.entity_id,
+                    new_resource.owner_id,
+                    None,
+                    new_resource.visibility,
+                );
+                Box::pin(async move { Ok(resource) })
+            });
+            resources
+        })();
         resources
             .expect_reassign_owner()
             .times(1)
@@ -808,7 +1112,150 @@ mod tests {
         // Arrange
         let caller = user(0, Role::Admin)?;
         let target = user(8, Role::Admin)?;
-        let harness = harness(plain_unit_of_work(&caller, &target), MockFileStorage::new());
+        let harness = harness(
+            (move |caller: &User, target: &User| -> TestUnitOfWork {
+                let mut unit_of_work = (move |caller: &User, target: &User| -> TestUnitOfWork {
+                    let mut users = MockUserRepository::new();
+                    (move |users: &mut MockUserRepository, caller: User, target: Option<User>| {
+                        let caller_id = caller.id();
+                        users.expect_search().times(2).returning(move |filter| {
+                            let found = if filter.id == Some(caller_id) {
+                                Some(caller.clone())
+                            } else {
+                                target
+                                    .clone()
+                                    .filter(|candidate| filter.id == Some(candidate.id()))
+                            };
+                            Box::pin(async move { Ok(found.into_iter().collect()) })
+                        });
+                    })(&mut users, caller.clone(), Some(target.clone()));
+                    TestUnitOfWork {
+                        resources: (move || -> crate::domain::port::MockResourceRepository {
+                            let mut resources =
+                                (move || -> crate::domain::port::MockResourceRepository {
+                                    let mut resources =
+                                        crate::domain::port::MockResourceRepository::new();
+                                    resources.expect_search().returning(|filter, caller| {
+                                        let user_id = caller.id();
+                                        let resource = crate::domain::model::Resource::from_stored(
+                                            1,
+                                            filter.kind.unwrap_or(
+                                                crate::domain::model::ResourceKind::Library,
+                                            ),
+                                            filter.entity_id.unwrap_or_default(),
+                                            Some(user_id),
+                                            None,
+                                            crate::domain::model::Visibility::Private,
+                                        );
+                                        let grant = crate::domain::model::Grant::from_stored(
+                                            1,
+                                            crate::domain::model::Principal::User(user_id),
+                                            1,
+                                            crate::domain::model::ResourceRole::Downloader,
+                                            crate::domain::model::ChildKind::All,
+                                            crate::domain::model::GrantEffect::Allow,
+                                        );
+                                        Box::pin(async move {
+                                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                                resource,
+                                                Vec::new(),
+                                                vec![grant],
+                                                Vec::new(),
+                                            )])
+                                        })
+                                    });
+                                    resources
+            .expect_search_many()
+            .returning(|addresses, caller| {
+                let user_id = caller.id();
+                let found = addresses
+                    .iter()
+                    .map(|address| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            address.kind(),
+                            address.id(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        crate::domain::model::ResourceAccess::new(resource, Vec::new(), vec![grant], Vec::new())
+                    })
+                    .collect::<Vec<_>>();
+                Box::pin(async move { Ok(found) })
+            });
+                                    resources.expect_create().returning(|new_resource| {
+                                        let resource = crate::domain::model::Resource::from_stored(
+                                            1,
+                                            new_resource.kind,
+                                            new_resource.entity_id,
+                                            new_resource.owner_id,
+                                            None,
+                                            new_resource.visibility,
+                                        );
+                                        Box::pin(async move { Ok(resource) })
+                                    });
+                                    resources
+                                })();
+                            resources
+                                .expect_delete()
+                                .returning(|_| Box::pin(async { Ok(true) }));
+                            resources
+                        })(),
+                        users,
+                        ..TestUnitOfWork::default()
+                    }
+                })(caller, target);
+                (move |unit_of_work: &mut TestUnitOfWork| {
+                    unit_of_work
+                        .galleries
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                    unit_of_work
+                        .music_playlists
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                    unit_of_work
+                        .uploads
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                    unit_of_work
+                        .files
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                })(&mut unit_of_work);
+                (move |unit_of_work: &mut TestUnitOfWork, target: &User| {
+                    let target_id = target.id();
+                    unit_of_work
+                        .users
+                        .expect_delete()
+                        .times(1)
+                        .withf(move |filter| filter.id == Some(target_id))
+                        .returning(|_| Box::pin(async { Ok(true) }));
+                    let credential_id = target.credential_id();
+                    unit_of_work
+                        .credentials
+                        .expect_delete()
+                        .times(1)
+                        .withf(move |filter| filter.id == Some(credential_id))
+                        .returning(|_| Box::pin(async { Ok(true) }));
+                })(&mut unit_of_work, target);
+                unit_of_work
+            })(&caller, &target),
+            MockFileStorage::new(),
+        );
 
         // Act
         let result = harness
@@ -826,7 +1273,29 @@ mod tests {
         // Arrange
         let caller = user(7, Role::Admin)?;
         let target = user(8, Role::Admin)?;
-        let harness = harness(bare_unit_of_work(&caller, &target), MockFileStorage::new());
+        let harness = harness(
+            (move |caller: &User, target: &User| -> TestUnitOfWork {
+                let mut users = MockUserRepository::new();
+                (move |users: &mut MockUserRepository, caller: User, target: Option<User>| {
+                    let caller_id = caller.id();
+                    users.expect_search().times(2).returning(move |filter| {
+                        let found = if filter.id == Some(caller_id) {
+                            Some(caller.clone())
+                        } else {
+                            target
+                                .clone()
+                                .filter(|candidate| filter.id == Some(candidate.id()))
+                        };
+                        Box::pin(async move { Ok(found.into_iter().collect()) })
+                    });
+                })(&mut users, caller.clone(), Some(target.clone()));
+                TestUnitOfWork {
+                    users,
+                    ..TestUnitOfWork::default()
+                }
+            })(&caller, &target),
+            MockFileStorage::new(),
+        );
 
         // Act
         let result = harness
@@ -845,7 +1314,29 @@ mod tests {
     async fn delete_user_admin_cannot_delete_itself() -> Result<(), Box<dyn Error>> {
         // Arrange
         let caller = user(7, Role::Admin)?;
-        let harness = harness(bare_unit_of_work(&caller, &caller), MockFileStorage::new());
+        let harness = harness(
+            (move |caller: &User, target: &User| -> TestUnitOfWork {
+                let mut users = MockUserRepository::new();
+                (move |users: &mut MockUserRepository, caller: User, target: Option<User>| {
+                    let caller_id = caller.id();
+                    users.expect_search().times(2).returning(move |filter| {
+                        let found = if filter.id == Some(caller_id) {
+                            Some(caller.clone())
+                        } else {
+                            target
+                                .clone()
+                                .filter(|candidate| filter.id == Some(candidate.id()))
+                        };
+                        Box::pin(async move { Ok(found.into_iter().collect()) })
+                    });
+                })(&mut users, caller.clone(), Some(target.clone()));
+                TestUnitOfWork {
+                    users,
+                    ..TestUnitOfWork::default()
+                }
+            })(&caller, &caller),
+            MockFileStorage::new(),
+        );
 
         // Act
         let result = harness
@@ -891,8 +1382,48 @@ mod tests {
         // Arrange
         let caller = user(7, Role::Admin)?;
         let target = user(8, Role::Standard)?;
-        let mut unit_of_work = bare_unit_of_work(&caller, &target);
-        expect_no_owned_content(&mut unit_of_work);
+        let mut unit_of_work = (move |caller: &User, target: &User| -> TestUnitOfWork {
+            let mut users = MockUserRepository::new();
+            (move |users: &mut MockUserRepository, caller: User, target: Option<User>| {
+                let caller_id = caller.id();
+                users.expect_search().times(2).returning(move |filter| {
+                    let found = if filter.id == Some(caller_id) {
+                        Some(caller.clone())
+                    } else {
+                        target
+                            .clone()
+                            .filter(|candidate| filter.id == Some(candidate.id()))
+                    };
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+            })(&mut users, caller.clone(), Some(target.clone()));
+            TestUnitOfWork {
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(&caller, &target);
+        (move |unit_of_work: &mut TestUnitOfWork| {
+            unit_of_work
+                .galleries
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            unit_of_work
+                .music_playlists
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            unit_of_work
+                .uploads
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            unit_of_work
+                .files
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut unit_of_work);
         unit_of_work
             .users
             .expect_delete()
@@ -919,13 +1450,47 @@ mod tests {
         // Arrange
         let caller = user(7, Role::Admin)?;
         let target = user(8, Role::Standard)?;
-        let mut unit_of_work = bare_unit_of_work(&caller, &target);
+        let mut unit_of_work = (move |caller: &User, target: &User| -> TestUnitOfWork {
+            let mut users = MockUserRepository::new();
+            (move |users: &mut MockUserRepository, caller: User, target: Option<User>| {
+                let caller_id = caller.id();
+                users.expect_search().times(2).returning(move |filter| {
+                    let found = if filter.id == Some(caller_id) {
+                        Some(caller.clone())
+                    } else {
+                        target
+                            .clone()
+                            .filter(|candidate| filter.id == Some(candidate.id()))
+                    };
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+            })(&mut users, caller.clone(), Some(target.clone()));
+            TestUnitOfWork {
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(&caller, &target);
         unit_of_work
             .files
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        expect_identity_removal(&mut unit_of_work, &target);
+        (move |unit_of_work: &mut TestUnitOfWork, target: &User| {
+            let target_id = target.id();
+            unit_of_work
+                .users
+                .expect_delete()
+                .times(1)
+                .withf(move |filter| filter.id == Some(target_id))
+                .returning(|_| Box::pin(async { Ok(true) }));
+            let credential_id = target.credential_id();
+            unit_of_work
+                .credentials
+                .expect_delete()
+                .times(1)
+                .withf(move |filter| filter.id == Some(credential_id))
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut unit_of_work, &target);
         let galleries = vec![gallery(2, target.id()), gallery(3, target.id())];
         unit_of_work
             .galleries
@@ -985,7 +1550,67 @@ mod tests {
         // Arrange
         let caller = user(7, Role::Admin)?;
         let target = user(8, Role::Standard)?;
-        let unit_of_work = plain_unit_of_work(&caller, &target);
+        let unit_of_work = (move |caller: &User, target: &User| -> TestUnitOfWork {
+            let mut unit_of_work = (move |caller: &User, target: &User| -> TestUnitOfWork {
+                let mut users = MockUserRepository::new();
+                (move |users: &mut MockUserRepository, caller: User, target: Option<User>| {
+                    let caller_id = caller.id();
+                    users.expect_search().times(2).returning(move |filter| {
+                        let found = if filter.id == Some(caller_id) {
+                            Some(caller.clone())
+                        } else {
+                            target
+                                .clone()
+                                .filter(|candidate| filter.id == Some(candidate.id()))
+                        };
+                        Box::pin(async move { Ok(found.into_iter().collect()) })
+                    });
+                })(&mut users, caller.clone(), Some(target.clone()));
+                TestUnitOfWork {
+                    users,
+                    ..TestUnitOfWork::default()
+                }
+            })(caller, target);
+            (move |unit_of_work: &mut TestUnitOfWork| {
+                unit_of_work
+                    .galleries
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                unit_of_work
+                    .music_playlists
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                unit_of_work
+                    .uploads
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                unit_of_work
+                    .files
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            })(&mut unit_of_work);
+            (move |unit_of_work: &mut TestUnitOfWork, target: &User| {
+                let target_id = target.id();
+                unit_of_work
+                    .users
+                    .expect_delete()
+                    .times(1)
+                    .withf(move |filter| filter.id == Some(target_id))
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                let credential_id = target.credential_id();
+                unit_of_work
+                    .credentials
+                    .expect_delete()
+                    .times(1)
+                    .withf(move |filter| filter.id == Some(credential_id))
+                    .returning(|_| Box::pin(async { Ok(true) }));
+            })(&mut unit_of_work, target);
+            unit_of_work
+        })(&caller, &target);
         unit_of_work.commit_fails.store(true, Ordering::SeqCst);
         let harness = harness(unit_of_work, MockFileStorage::new());
 

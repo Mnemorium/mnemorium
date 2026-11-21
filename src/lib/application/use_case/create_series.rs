@@ -206,6 +206,7 @@ mod tests {
     use super::*;
     use crate::domain::NumericID;
     use allure_cargotest::allure_test;
+    use rstest::fixture;
 
     use crate::domain::model::{Role, User};
 
@@ -218,20 +219,6 @@ mod tests {
 
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = CreateSeries<TestFactory>;
-
-    /// Expect the caller load to find an administrator.
-    fn expect_admin(
-        users: &mut MockUserRepository,
-        caller_id: NumericID,
-    ) -> Result<(), Box<dyn Error>> {
-        let caller = User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
-        users
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.id == Some(caller_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
-        Ok(())
-    }
 
     /// Build a Library test harness around the given mocks.
     fn harness_with(
@@ -249,6 +236,7 @@ mod tests {
     }
 
     /// A valid command.
+    #[fixture]
     fn command() -> CreateSeriesCommand {
         CreateSeriesCommand::new(
             1,
@@ -269,7 +257,18 @@ mod tests {
         allure.story("SCN-SERIES-008-A");
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let stored = sample_series(7, Vec::new())?;
         let mut series = MockSeriesRepository::new();
         series
@@ -286,7 +285,93 @@ mod tests {
                 let created = stored.clone();
                 Box::pin(async move { Ok(created) })
             });
-        let harness = harness_with(users, no_resources(), series);
+        let harness = harness_with(
+            users,
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            series,
+        );
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -321,14 +406,111 @@ mod tests {
         // Arrange: the schema holds no unique show name, so creation never looks
         // one up before inserting.
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let stored = sample_series(8, Vec::new())?;
         let mut series = MockSeriesRepository::new();
         series.expect_create().times(1).return_once(move |_| {
             let created = stored.clone();
             Box::pin(async move { Ok(created) })
         });
-        let harness = harness_with(users, no_resources(), series);
+        let harness = harness_with(
+            users,
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            series,
+        );
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -351,7 +533,18 @@ mod tests {
         allure.story("SCN-SERIES-008-C");
         // Arrange: the genre vocabulary is open on write.
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let stored = sample_series(7, Vec::new())?;
         let mut series = MockSeriesRepository::new();
         series
@@ -362,7 +555,93 @@ mod tests {
                 let created = stored.clone();
                 Box::pin(async move { Ok(created) })
             });
-        let harness = harness_with(users, no_resources(), series);
+        let harness = harness_with(
+            users,
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            series,
+        );
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -391,8 +670,105 @@ mod tests {
         allure.story("SCN-SERIES-008-D");
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
-        let harness = harness_with(users, no_resources(), MockSeriesRepository::new());
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
+        let harness = harness_with(
+            users,
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            MockSeriesRepository::new(),
+        );
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -421,8 +797,105 @@ mod tests {
         allure.story("SCN-SERIES-008-D");
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
-        let harness = harness_with(users, no_resources(), MockSeriesRepository::new());
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
+        let harness = harness_with(
+            users,
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            MockSeriesRepository::new(),
+        );
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -451,8 +924,105 @@ mod tests {
         allure.story("SCN-SERIES-008-D");
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
-        let harness = harness_with(users, no_resources(), MockSeriesRepository::new());
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
+        let harness = harness_with(
+            users,
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            MockSeriesRepository::new(),
+        );
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -480,13 +1050,110 @@ mod tests {
         allure.story("SCN-SERIES-008-E");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut series = MockSeriesRepository::new();
         series
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
-        let harness = harness_with(users, no_resources(), series);
+        let harness = harness_with(
+            users,
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            series,
+        );
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -516,13 +1183,110 @@ mod tests {
         allure.story("SCN-SERIES-008-E");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut series = MockSeriesRepository::new();
         series
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
-        let harness = harness_with(users, no_resources(), series);
+        let harness = harness_with(
+            users,
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            series,
+        );
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act

@@ -689,46 +689,6 @@ mod tests {
     use allure_cargotest::allure_test;
     use rstest::rstest;
 
-    /// Assert every query of one interpreted name keeps the corpus invariants.
-    fn assert_invariants(name: &str) {
-        let queries = MediaNameInterpreter::interpret(name);
-        let release_like = [
-            "1080p", "720p", "2160p", "480p", "bluray", "webdl", "webrip", "x264", "x265", "hevc",
-        ];
-
-        for query in &queries {
-            assert!(
-                !query.title().is_empty(),
-                "every query of {name:?} must carry a title"
-            );
-            assert!(
-                query.episode().is_none() || query.kind() == VideoKind::Series,
-                "an episode of {name:?} must belong to a show"
-            );
-            assert!(
-                query.title().split_whitespace().all(|word| {
-                    let lower = word.to_lowercase();
-                    !super::RELEASE_TOKENS.contains(&lower.as_str())
-                        && !release_like.contains(&lower.as_str())
-                }),
-                "no release token may survive in the title of {name:?}, got: {:?}",
-                query.title()
-            );
-        }
-        assert_eq!(
-            queries,
-            MediaNameInterpreter::interpret(name),
-            "the order of {name:?} must be deterministic"
-        );
-        assert!(
-            queries.iter().enumerate().all(|(index, query)| queries
-                .iter()
-                .skip(index.saturating_add(1))
-                .all(|other| other != query)),
-            "a distinct query of {name:?} must appear once"
-        );
-    }
-
     #[allure_test]
     #[rstest]
     #[case::folder_year(
@@ -863,7 +823,45 @@ mod tests {
         allure.story("SCN-METADATA-ENRICHMENT-009-A");
         allure.story("SCN-METADATA-ENRICHMENT-011-B");
         // Act & Assert
-        assert_invariants(name);
+        (move |name: &str| {
+            let queries = MediaNameInterpreter::interpret(name);
+            let release_like = [
+                "1080p", "720p", "2160p", "480p", "bluray", "webdl", "webrip", "x264", "x265",
+                "hevc",
+            ];
+
+            for query in &queries {
+                assert!(
+                    !query.title().is_empty(),
+                    "every query of {name:?} must carry a title"
+                );
+                assert!(
+                    query.episode().is_none() || query.kind() == VideoKind::Series,
+                    "an episode of {name:?} must belong to a show"
+                );
+                assert!(
+                    query.title().split_whitespace().all(|word| {
+                        let lower = word.to_lowercase();
+                        !super::RELEASE_TOKENS.contains(&lower.as_str())
+                            && !release_like.contains(&lower.as_str())
+                    }),
+                    "no release token may survive in the title of {name:?}, got: {:?}",
+                    query.title()
+                );
+            }
+            assert_eq!(
+                queries,
+                MediaNameInterpreter::interpret(name),
+                "the order of {name:?} must be deterministic"
+            );
+            assert!(
+                queries.iter().enumerate().all(|(index, query)| queries
+                    .iter()
+                    .skip(index.saturating_add(1))
+                    .all(|other| other != query)),
+                "a distinct query of {name:?} must appear once"
+            );
+        })(name);
     }
 
     #[allure_test]

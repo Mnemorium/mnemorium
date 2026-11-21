@@ -1,19 +1,18 @@
 ---
 id: sty-rust-044
 language: Rust
-severity: hint
+severity: error
 message: >-
-  extract the insert statement of a repository adapter `create`, for
-  STY-RUST-044
+  a repository `delete` returns `Result<bool, _>` so a no-match is `Ok(false)`,
+  not an error
+files:
+  - src/lib/domain/port/*_repository.rs
 rule:
-  all:
-    - kind: string_literal
-    - regex: 'INSERT INTO'
-    - inside:
-        kind: function_item
-        pattern: $ENCLOSING
-        has:
-          field: name
-          pattern: $FUNC
-          regex: '^create'
-        stopBy: end
+  kind: function_signature_item
+  has:
+    field: name
+    regex: '^delete(_|$)'
+  not:
+    has:
+      field: return_type
+      regex: 'Result<\s*bool\b'

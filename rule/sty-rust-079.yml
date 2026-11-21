@@ -3,18 +3,11 @@ id: sty-rust-079
 language: Rust
 severity: hint
 message: >-
-  extract a repository-port trait and its `create*` method signatures for STY-RUST-079
-files:
-  - src/lib/domain/port/*_repository.rs
+  extract a bounded-context path an endpoint file reaches
+  (`handler::<context>::<next>`), for STY-RUST-079
 rule:
-  all:
-    - kind: function_signature_item
-    - pattern: 'fn $METHOD(&mut self, $$$PARAMS) -> $RET;'
-    - regex: '^fn create'
-    - inside:
-        kind: trait_item
-        any:
-          - pattern: 'pub trait $TRAIT: $$$BOUNDS { $$$BODY }'
-          - pattern: 'pub(crate) trait $TRAIT: $$$BOUNDS { $$$BODY }'
-          - pattern: 'trait $TRAIT: $$$BOUNDS { $$$BODY }'
-        stopBy: end
+  any:
+    # A flat or bare path: `handler::<context>::<next>` (and deeper).
+    - pattern: crate::infrastructure::inbound::rest::handler::$CTX::$OP
+    # A use tree: `handler::<context>::{ <next>, ... }`.
+    - pattern: use crate::infrastructure::inbound::rest::handler::$CTX::{$$$ITEMS};

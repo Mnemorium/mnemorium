@@ -185,54 +185,11 @@ fn domain_video(row: SqlxVideo) -> Result<Video, RepositoryError> {
 mod tests {
     use super::*;
     use crate::domain::model::AssetScope;
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
 
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use rstest::rstest;
     use std::error::Error;
-
-    /// Open a migrated in-memory database and begin one transaction.
-    /// Seed a credential and a standard user so foreign keys resolve.
-    async fn seed_user(
-        transaction: &mut Transaction<'static, Sqlite>,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (?1, ?2)")
-            .bind(user_id)
-            .bind(format!("hash-{user_id}"))
-            .execute(&mut **transaction)
-            .await?;
-        sqlx::query(
-            "INSERT INTO user (user_id, role, username, email, credential_id)
-             VALUES (?1, 'STANDARD', ?2, NULL, ?1)",
-        )
-        .bind(user_id)
-        .bind(format!("user{user_id}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a file owned by `user_id` with a per-file unique digest.
-    async fn seed_file(
-        transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
-        user_id: i64,
-        path: &str,
-        mime_type_id: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
-             VALUES (?1, ?2, ?3, 0, ?4, 1024, '2026-10-06 00:00:00', 'UPLOADED', ?5)",
-        )
-        .bind(file_id)
-        .bind(path)
-        .bind(user_id)
-        .bind(mime_type_id)
-        .bind(format!("{file_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
 
     /// Build a domain video.
     fn video(video_id: i64, file_id: i64, scan_type: ScanType) -> Result<Video, Box<dyn Error>> {
@@ -573,6 +530,32 @@ mod tests {
         assert!(deleted);
         assert_eq!(videos, 1, "only the targeted video is removed");
         assert_eq!(streams, 1, "only the removed video's stream is gone");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn deleting_video_cascades_its_item() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_gallery(&pool, 1).await?;
+        sqlx::query(
+            "INSERT INTO gallery_item (gallery_item_id, gallery_id, video_id, item_index)
+             VALUES (1, 1, 1, 0)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        sqlx::query("DELETE FROM video WHERE video_id = 1")
+            .execute(&pool)
+            .await?;
+
+        // Assert
+        let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM gallery_item")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(remaining, 0, "deleting a video must cascade its item");
         Ok(())
     }
 }

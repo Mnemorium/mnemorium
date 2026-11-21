@@ -1,9 +1,9 @@
 ---
-id: sty-rust-080
+id: sty-rust-077
 language: Rust
 severity: hint
 message: >-
-  extract filter struct fields and aggregate accessors for STY-RUST-080
+  extract filter struct fields and aggregate accessors for STY-RUST-077
 files:
   - src/lib/domain/port/*.rs
   - src/lib/domain/model/*.rs

@@ -158,16 +158,6 @@ pub(crate) enum CreateMusicAlbumError {
 pub(crate) trait CreateMusicAlbumUseCase: Send + Sync {
     /// Create the album, returning the existing one when its identity is
     /// already stored.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned. `dyn` erases the concrete future type, which is what makes this
-    /// method object-safe so the use case can be stored as
-    /// `Arc<dyn CreateMusicAlbumUseCase>`. `Box` keeps the future on the heap
-    /// at a stable address. `Pin` encodes the guarantee that the future is not
-    /// moved once it has started executing: `async` state machines may hold
-    /// self-referential references across `await` points, and `Future::poll`
-    /// takes `Pin<&mut Self>` precisely because moving a polled future would
-    /// invalidate those references.
     fn execute<'future>(
         &'future self,
         command: CreateMusicAlbumCommand,

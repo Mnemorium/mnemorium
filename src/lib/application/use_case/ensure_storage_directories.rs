@@ -72,7 +72,7 @@ impl<S: FileStorage> EnsureStorageDirectoriesUseCase for EnsureStorageDirectorie
             // domain, so the deadline is representable; `checked_add` keeps the
             // degradation to "decide now" if it ever is not. The wait blocks
             // this worker: the composition root awaits it before the server
-            // binds, and `STY-RUST-075` keeps the async clock out of a use case.
+            // binds, and `STY-RUST-072` keeps the async clock out of a use case.
             if !media_root_present
                 && command.required()
                 && let Some(deadline) =

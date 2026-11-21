@@ -8,7 +8,7 @@ use crate::domain::port::{DatastorePresence, DatastorePresenceError};
 /// The probe tells a genuinely new instance from one whose state file was lost,
 /// so an unreadable path must fail rather than read as absent. `try_exists`
 /// reports a missing path as `Ok(false)`; the `NotFound` arm keeps that
-/// contract explicit (`STY-RUST-016`).
+/// contract explicit (`STY-RUST-015`).
 #[derive(Debug)]
 pub(crate) struct FileDatastorePresence {
     /// Path of the datastore file.

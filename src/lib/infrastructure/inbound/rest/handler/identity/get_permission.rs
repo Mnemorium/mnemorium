@@ -147,12 +147,6 @@ impl PermissionQuery {
     }
 }
 
-/// Return the `_links.self` target of a user's summary.
-#[must_use]
-pub(crate) fn summary_href(user_id: NumericID) -> String {
-    format!("/api/v1/identity/permission?user_id={user_id}")
-}
-
 /// Return one user's effective permissions.
 ///
 /// A caller reads its own summary; another user's summary needs
@@ -220,7 +214,7 @@ pub(crate) async fn get_permission(
         .get_permission_summary()
         .execute(command)
         .await?;
-    let href = summary_href(summary.user_id);
+    let href = format!("/api/v1/identity/permission?user_id={}", summary.user_id);
     Ok(hal_json(PermissionSummaryResponse::from_summary(
         &summary, &href,
     )))

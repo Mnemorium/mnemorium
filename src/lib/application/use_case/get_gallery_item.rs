@@ -169,42 +169,6 @@ mod tests {
         ))
     }
 
-    fn harness_with(
-        users: MockUserRepository,
-        galleries: MockGalleryRepository,
-    ) -> GalleryFactoryHarness {
-        let unit_of_work = TestUnitOfWork {
-            resources: no_resources(),
-            galleries,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        GalleryFactoryHarness::new(unit_of_work)
-    }
-
-    fn expect_caller(
-        users: &mut MockUserRepository,
-        caller_id: i64,
-        role: Role,
-    ) -> Result<(), Box<dyn Error>> {
-        let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
-        users
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.id == Some(caller_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
-        Ok(())
-    }
-
-    fn expect_gallery(galleries: &mut MockGalleryRepository, gallery: Gallery) {
-        let gallery_id = gallery.gallery_id();
-        galleries
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.gallery_id == Some(gallery_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
-    }
-
     #[allure_test]
     #[tokio::test]
     async fn get_gallery_item_owner_reads_item() -> Result<(), Box<dyn Error>> {
@@ -213,9 +177,27 @@ mod tests {
         allure.story("SCN-GALLERY-008-A");
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
         let found = detail(42, 3)?;
         galleries
             .expect_search_items()
@@ -225,7 +207,16 @@ mod tests {
                 let value = found.clone();
                 Box::pin(async move { Ok(vec![value]) })
             });
-        let harness = harness_with(users, galleries);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                galleries,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries);
         let use_case: UseCase = GetGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
@@ -258,9 +249,27 @@ mod tests {
         allure.story("SCN-GALLERY-008-A");
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 0, Role::Admin)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 0, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
         let found = detail(42, 3)?;
         galleries
             .expect_search_items()
@@ -269,7 +278,16 @@ mod tests {
                 let value = found.clone();
                 Box::pin(async move { Ok(vec![value]) })
             });
-        let harness = harness_with(users, galleries);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                galleries,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries);
         let use_case: UseCase = GetGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
@@ -290,14 +308,41 @@ mod tests {
         allure.story("SCN-GALLERY-008-C");
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries
             .expect_search_items()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, galleries);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                galleries,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries);
         let use_case: UseCase = GetGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
@@ -318,13 +363,33 @@ mod tests {
         allure.story("SCN-GALLERY-008-C");
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
         galleries
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, galleries);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                galleries,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries);
         let use_case: UseCase = GetGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
@@ -351,7 +416,16 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, MockGalleryRepository::new());
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                galleries,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, MockGalleryRepository::new());
         let use_case: UseCase = GetGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
@@ -373,14 +447,41 @@ mod tests {
         allure.story("SCN-GALLERY-008-A");
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries
             .expect_search_items()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-        let harness = harness_with(users, galleries);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                galleries,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries);
         let use_case: UseCase = GetGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
@@ -400,9 +501,27 @@ mod tests {
         allure.story("SCN-GALLERY-008-A");
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
         let found = detail(42, 3)?;
         galleries
             .expect_search_items()
@@ -411,7 +530,16 @@ mod tests {
                 let value = found.clone();
                 Box::pin(async move { Ok(vec![value]) })
             });
-        let harness = harness_with(users, galleries);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                galleries,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries);
         harness.commit_fails.store(true, Ordering::SeqCst);
         let use_case: UseCase = GetGalleryItem::new(Arc::clone(&harness.factory));
 

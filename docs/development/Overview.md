@@ -69,7 +69,7 @@ document describes the source layout those rules constrain.
 | `src/bin`                                                                            |                                                                                                                                                                          |
 | `src/bin/server.rs`                                                                  | Server entrypoint; launches the composition root in `src/lib/app.rs`                                                                                                     |
 | `src/lib`                                                                            |                                                                                                                                                                          |
-| `src/lib/app.rs`                                                                     | Composition root: startup order, graceful shutdown and the process-lifetime adapters (`STY-RUST-067`)                                                                    |
+| `src/lib/app.rs`                                                                     | Composition root: startup order, graceful shutdown and the process-lifetime adapters (`STY-RUST-064`)                                                                    |
 | `src/lib/application`                                                                | App Layer                                                                                                                                                                |
 | `src/lib/application/field_update.rs`                                                | Tri-state field a partial-update command leaves alone, clears or replaces                                                                                                |
 | `src/lib/application/port`                                                           | Application use-case interfaces (one application use case per file); the root is the import surface for them                                                             |
@@ -162,7 +162,7 @@ document describes the source layout those rules constrain.
 | `src/lib/infrastructure/logging.rs`                                                  | `tracing` subscriber implementing the `logging` capability: the rotating file sink, the standard-output sink and the security floor (`REQ-LOGGING-001`–`004`)            |
 
 Every module root (`x.rs` beside `x/`) is the import surface for its children: callers import
-`crate::…::<root>::<Item>`, and the root re-exports exactly what they use (`STY-RUST-090`,
+`crate::…::<root>::<Item>`, and the root re-exports exactly what they use (`STY-RUST-086`,
 [TechnicalDesign.md](TechnicalDesign.md) § 6.7).
 
 An **application use case** (`port/<name>.rs` plus `use_case/<name>.rs`) is a technical unit. A **business use case** in

@@ -1,23 +1,32 @@
 ---
 id: sty-rust-058
 language: Rust
-severity: error
+severity: hint
 message: >-
-  declare the error enum third in a use-case port file: after the command and
-  response objects, before the use-case trait
+  extract the use-case-factory traits and their accessor signatures, for
+  STY-RUST-058
 rule:
-  all:
-    - kind: enum_item
-    - regex: '^(pub(\(crate\))? )?enum \w*Error\b'
-    - any:
-        - follows:
+  any:
+    # A use-case-factory trait with supertraits.
+    - all:
+        - kind: trait_item
+        - regex: 'trait \w*UseCaseFactory\b'
+        - any:
+            - pattern: 'pub trait $TRAIT: $$$BOUNDS { $$$BODY }'
+            - pattern: 'pub(crate) trait $TRAIT: $$$BOUNDS { $$$BODY }'
+            - pattern: 'trait $TRAIT: $$$BOUNDS { $$$BODY }'
+    # A use-case-factory trait without supertraits.
+    - all:
+        - kind: trait_item
+        - regex: 'trait \w*UseCaseFactory\b'
+        - any:
+            - pattern: 'pub trait $TRAIT { $$$BODY }'
+            - pattern: 'pub(crate) trait $TRAIT { $$$BODY }'
+            - pattern: 'trait $TRAIT { $$$BODY }'
+    # An accessor signature declared inside a use-case-factory trait.
+    - all:
+        - kind: function_signature_item
+        - inside:
             kind: trait_item
-            stopBy: end
-        - precedes:
-            kind: struct_item
-            regex: 'struct \w*Command\b'
-            stopBy: end
-        - precedes:
-            kind: struct_item
-            regex: 'struct \w*Response\b'
+            regex: 'trait \w*UseCaseFactory\b'
             stopBy: end

@@ -77,6 +77,7 @@ mod tests {
     use super::*;
     use crate::domain::model::{ExternalRef, MediumFormat, MusicCandidate, MusicKind, ProviderId};
     use allure_cargotest::allure_test;
+    use rstest::fixture;
 
     use chrono::NaiveDate;
     use std::error::Error;
@@ -114,11 +115,13 @@ mod tests {
     }
 
     /// Build a compact disc, the format the partition looks for.
+    #[fixture]
     fn cd() -> MediumFormat {
         MediumFormat::Cd
     }
 
     /// Build a vinyl medium, the format the partition sets aside.
+    #[fixture]
     fn vinyl() -> MediumFormat {
         MediumFormat::Other("Vinyl".to_owned())
     }

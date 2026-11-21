@@ -325,7 +325,7 @@ pub(crate) enum StateSeedSourceError {
 
 /// Error returned when the presence of the datastore cannot be decided.
 ///
-/// A missing datastore is a value, never this error (`STY-RUST-016`); the error
+/// A missing datastore is a value, never this error (`STY-RUST-015`); the error
 /// is reserved for a path that cannot be inspected.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

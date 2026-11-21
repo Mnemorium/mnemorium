@@ -56,7 +56,7 @@ pub(crate) trait FileRepository: Send + Sync {
     /// Reassign the file identified by `id` to `new_owner`.
     ///
     /// Returns `Ok(true)` when a row carried the identifier and was updated,
-    /// and `Ok(false)` when none matched (`STY-RUST-046`). The owner is a
+    /// and `Ok(false)` when none matched (`STY-RUST-044`). The owner is a
     /// narrow, explicit mutation rather than part of [`Self::save`], so the
     /// ingest path cannot rewrite it by accident.
     fn reassign_owner(

@@ -6,7 +6,7 @@ use crate::domain::port::InstanceStateStoreError;
 /// Port for reading and persisting the instance identity.
 ///
 /// The store is existence-aware: `load` reports a missing identity as `None`,
-/// which is a valid outcome rather than an error (`STY-RUST-016`). `save`
+/// which is a valid outcome rather than an error (`STY-RUST-015`). `save`
 /// creates the identity and never overwrites one: a concurrent creator makes
 /// the loser fail with [`InstanceStateStoreError::Conflict`] instead of
 /// silently replacing key material another process already persisted.

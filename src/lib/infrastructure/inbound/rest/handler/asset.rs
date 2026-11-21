@@ -572,7 +572,7 @@ pub(crate) fn asset_routes(state: &AppState) -> OpenApiRouter<()> {
     // raised to the configured chunk size; every other route keeps the default.
     // The limit is fixed when the router is built, so
     // `asset.upload.chunk_size_bytes` is a startup-only setting
-    // (`STY-RUST-076`): a change applies after a restart.
+    // (`STY-RUST-073`): a change applies after a restart.
     let chunk_body_limit =
         usize::try_from(state.configuration().asset().upload().chunk_size_bytes())
             .unwrap_or(usize::MAX);

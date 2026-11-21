@@ -106,7 +106,7 @@ impl From<JsonRejection> for ApiError {
         // The client receives a stable, server-authored message only
         // (`API-040`): the framework rejection text carries deserialization and
         // parser detail and the offending value, so only its classification is
-        // logged (`OBS-003`) and it is never echoed (`API-039`, § 2.5). Each
+        // logged (`OBS-003`) and it is never echoed (`API-039`, § Error public payload). Each
         // catalog event carries its declared field set (`OBS-006`): `field` and
         // `reason` for `input_validation_failed`, `source` and `reason` for
         // `deserialization_failed`. `JsonRejection` is `#[non_exhaustive]`, so

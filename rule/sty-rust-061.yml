@@ -1,27 +1,16 @@
 ---
 id: sty-rust-061
 language: Rust
-severity: hint
-message: extract the use-case-factory adapter struct and its fields
+severity: error
+message: >-
+  the use-case factory only supplies the unit-of-work factory; the use case
+  opens, commits and rolls back its own unit of work — the factory must not
+  call begin/commit/rollback
 files:
   - src/lib/infrastructure/use_case_factory/*.rs
 rule:
   any:
-    - all:
-        - kind: struct_item
-        - any:
-            - pattern: 'pub struct $FACTORY { $$$BODY }'
-            - pattern: 'pub(crate) struct $FACTORY { $$$BODY }'
-            - pattern: 'struct $FACTORY { $$$BODY }'
-    - all:
-        - kind: field_declaration
-        - pattern: '$FIELD: $TYPE'
-        - inside:
-            kind: field_declaration_list
-            inside:
-              kind: struct_item
-              any:
-                - pattern: 'pub struct $FACTORY { $$$BODY }'
-                - pattern: 'pub(crate) struct $FACTORY { $$$BODY }'
-                - pattern: 'struct $FACTORY { $$$BODY }'
-              stopBy: end
+    - pattern: $UOW.begin()
+    - pattern: $UOW.commit()
+    - pattern: $UOW.rollback()
+    - pattern: $UOW.begin_write()

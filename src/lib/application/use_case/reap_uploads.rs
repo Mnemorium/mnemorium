@@ -230,6 +230,7 @@ mod tests {
     use super::*;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::{ChunkBitmap, IntegrityHash, Upload};
+    use rstest::fixture;
 
     use crate::domain::port::{MockFileStorage, MockUploadRepository, RepositoryError};
 
@@ -278,6 +279,7 @@ mod tests {
         }
     }
 
+    #[fixture]
     fn timestamp() -> NaiveDateTime {
         chrono::Utc::now().naive_utc()
     }
@@ -305,29 +307,6 @@ mod tests {
         .map_err(|_| RepositoryError::OperationFailed)
     }
 
-    /// Expect a run with no expired session and no stale seal.
-    fn expect_nothing_to_reap(
-        phase_one: &mut MockUploadRepository,
-        phase_two: &mut MockUploadRepository,
-    ) {
-        phase_one
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        phase_two
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-    }
-
-    /// Expect the staging listing to be empty.
-    fn expect_no_staged_content(file_storage: &mut MockFileStorage) {
-        file_storage
-            .expect_list_staged()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-    }
-
     #[tokio::test]
     async fn reap_uploads_removes_an_expired_session_and_its_content() -> Result<(), Box<dyn Error>>
     {
@@ -342,7 +321,83 @@ mod tests {
             .times(1)
             .withf(|filter| filter.upload_id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
-        let mut phase_one_resources = caller_owned_resources();
+        let mut phase_one_resources = (move || -> crate::domain::port::MockResourceRepository {
+            let mut resources = crate::domain::port::MockResourceRepository::new();
+            resources.expect_search().returning(|filter, caller| {
+                let user_id = caller.id();
+                let resource = crate::domain::model::Resource::from_stored(
+                    1,
+                    filter
+                        .kind
+                        .unwrap_or(crate::domain::model::ResourceKind::Library),
+                    filter.entity_id.unwrap_or_default(),
+                    Some(user_id),
+                    None,
+                    crate::domain::model::Visibility::Private,
+                );
+                let grant = crate::domain::model::Grant::from_stored(
+                    1,
+                    crate::domain::model::Principal::User(user_id),
+                    1,
+                    crate::domain::model::ResourceRole::Downloader,
+                    crate::domain::model::ChildKind::All,
+                    crate::domain::model::GrantEffect::Allow,
+                );
+                Box::pin(async move {
+                    Ok(vec![crate::domain::model::ResourceAccess::new(
+                        resource,
+                        Vec::new(),
+                        vec![grant],
+                        Vec::new(),
+                    )])
+                })
+            });
+            resources
+                .expect_search_many()
+                .returning(|addresses, caller| {
+                    let user_id = caller.id();
+                    let found = addresses
+                        .iter()
+                        .map(|address| {
+                            let resource = crate::domain::model::Resource::from_stored(
+                                1,
+                                address.kind(),
+                                address.id(),
+                                Some(user_id),
+                                None,
+                                crate::domain::model::Visibility::Private,
+                            );
+                            let grant = crate::domain::model::Grant::from_stored(
+                                1,
+                                crate::domain::model::Principal::User(user_id),
+                                1,
+                                crate::domain::model::ResourceRole::Downloader,
+                                crate::domain::model::ChildKind::All,
+                                crate::domain::model::GrantEffect::Allow,
+                            );
+                            crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+            resources.expect_create().returning(|new_resource| {
+                let resource = crate::domain::model::Resource::from_stored(
+                    1,
+                    new_resource.kind,
+                    new_resource.entity_id,
+                    new_resource.owner_id,
+                    None,
+                    new_resource.visibility,
+                );
+                Box::pin(async move { Ok(resource) })
+            });
+            resources
+        })();
         phase_one_resources
             .expect_delete()
             .times(1)
@@ -358,7 +413,12 @@ mod tests {
             .expect_delete_upload_file()
             .times(1)
             .returning(|_| Box::pin(async { Ok(()) }));
-        expect_no_staged_content(&mut file_storage);
+        (move |file_storage: &mut MockFileStorage| {
+            file_storage
+                .expect_list_staged()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut file_storage);
         let harness = use_case_with(
             TestUnitOfWork {
                 resources: phase_one_resources,
@@ -409,7 +469,12 @@ mod tests {
             .times(1)
             .returning(|released| Box::pin(async move { Ok(released) }));
         let mut file_storage = MockFileStorage::new();
-        expect_no_staged_content(&mut file_storage);
+        (move |file_storage: &mut MockFileStorage| {
+            file_storage
+                .expect_list_staged()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut file_storage);
         let harness = use_case_with(
             TestUnitOfWork {
                 uploads: phase_one_uploads,
@@ -612,7 +677,16 @@ mod tests {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_nothing_to_reap(&mut phase_one_uploads, &mut phase_two_uploads);
+        (move |phase_one: &mut MockUploadRepository, phase_two: &mut MockUploadRepository| {
+            phase_one
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            phase_two
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut phase_one_uploads, &mut phase_two_uploads);
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_list_staged()

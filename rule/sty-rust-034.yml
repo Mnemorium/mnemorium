@@ -2,25 +2,14 @@
 id: sty-rust-034
 language: Rust
 severity: error
-message: a commit failure must map to the use-case Unknown(_)
+message: >-
+  a repository accessor on a context unit-of-work view must return a
+  short-lived view that borrows the unit of work: `impl <Repository> + '_`
+files:
+  - src/lib/domain/port/**/*_unit_of_work.rs
 rule:
-  pattern: $RECV.commit()
-  not:
-    inside:
-      any:
-        - all:
-            - pattern: $R.commit().await.map_err($C)
-            - has:
-                regex: Unknown
-                stopBy: end
-        - all:
-            - pattern: match $R.commit().await { $$$ARMS }
-            - has:
-                regex: Unknown
-                stopBy: end
-        - all:
-            - pattern: if let $P = $R.commit().await { $$$BODY }
-            - has:
-                regex: Unknown
-                stopBy: end
-      stopBy: end
+  all:
+    - kind: function_signature_item
+    - pattern: 'fn $NAME(&mut self) -> $RET'
+    - not:
+        pattern: "fn $NAME(&mut self) -> impl $TRAIT + '_"

@@ -2,35 +2,19 @@
 id: sty-rust-057
 language: Rust
 severity: error
-message: >-
-  declare the response object second in a use-case port file: after the command
-  object and before the error enum and the use-case trait
+message: the use-case trait $TRAIT must be declared last in a use-case port file
 files:
-  - src/lib/application/port/**/*.rs
+  - src/lib/application/port/*.rs
 rule:
   all:
-    - kind: struct_item
-    - regex: '^(pub(\(crate\))? )?struct \w+Response\b'
-    - not:
-        inside:
-          kind: mod_item
-          stopBy: end
-          follows:
-            kind: attribute_item
-            regex: cfg\(test\)
+    - kind: trait_item
     - any:
-        # A response declared after the error enum is not second.
-        - follows:
-            kind: enum_item
-            regex: '^(pub(\(crate\))? )?enum \w+Error\b'
-            stopBy: end
-        # A response declared after the use-case trait is not second.
-        - follows:
-            kind: trait_item
-            regex: '^(pub(\(crate\))? )?trait \w+UseCase\b'
-            stopBy: end
-        # A response declared before the command object is not second.
-        - precedes:
-            kind: struct_item
-            regex: '^(pub(\(crate\))? )?struct \w+Command\b'
-            stopBy: end
+        - pattern: pub trait $TRAIT
+        - pattern: pub(crate) trait $TRAIT
+        - pattern: trait $TRAIT
+    - regex: '^(pub(\(crate\))? )?trait \w+UseCase\b'
+    - precedes:
+        any:
+          - kind: struct_item
+          - kind: enum_item
+        stopBy: end

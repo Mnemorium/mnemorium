@@ -3,16 +3,17 @@ id: sty-rust-071
 language: Rust
 severity: hint
 message: >-
-  extract every repository-trait method signature for STY-RUST-071
+  extract the logging install call and the LoadConfiguration startup binding
+  for STY-RUST-071
+files:
+  - src/lib/app.rs
 rule:
-  all:
-    - kind: function_signature_item
-    - inside:
-        kind: trait_item
-        has:
-          field: name
-          regex: 'Repository$'
-        stopBy: end
-    - any:
-        - pattern: 'fn $METHOD($$$PARAMS) -> $RET;'
-        - pattern: 'fn $METHOD($$$PARAMS);'
+  any:
+    # The single subscriber install site, through the infrastructure facade.
+    - pattern: 'setup($$$ARGS)'
+    # The composition root binds the LoadConfiguration use case before running it.
+    - all:
+        - pattern: 'let $VAR = $INIT;'
+        - has:
+            pattern: 'LoadConfiguration::new($$$ARGS)'
+            stopBy: end

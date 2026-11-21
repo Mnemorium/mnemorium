@@ -3,19 +3,23 @@ id: sty-rust-089
 language: Rust
 severity: hint
 message: >-
-  extract a pair of adjacent imports that share a parent module, for
-  STY-RUST-089
+  extract every inline module and every function, for STY-RUST-089
+files:
+  - src/**/*.rs
 rule:
-  kind: use_declaration
   any:
-    # The later import of the pair: a plain item or an `as` alias.
-    - pattern: use $P::$A;
-    - pattern: use $P::$A as $ALIAS;
-  follows:
-    kind: use_declaration
-    any:
-      # The earlier import of the pair, under the same `$P` parent.
-      - pattern: use $P::$B;
-      - pattern: use $P::$B as $ALIAS2;
-      # A brace group: `use $P::{...};` sorts before a single import.
-      - pattern: use $P::{$B, $$$REST};
+    - all:
+        - kind: mod_item
+        - has:
+            kind: declaration_list
+            stopBy: neighbor
+        - has:
+            field: name
+            pattern: $MOD
+            stopBy: neighbor
+    - all:
+        - kind: function_item
+        - has:
+            field: name
+            pattern: $FN
+            stopBy: neighbor

@@ -177,82 +177,6 @@ mod tests {
         Ok(pool)
     }
 
-    /// Assert the captured output is the single `warn` `constraint_rejected`
-    /// event for `kind` on the reserved `security` target.
-    fn assert_constraint_rejected(lines: &[&str], kind: &str) -> Result<(), String> {
-        let ours: Vec<&str> = lines
-            .iter()
-            .copied()
-            .filter(|line| line.contains("security:"))
-            .collect();
-        let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
-        if warn_count != 1 {
-            return Err(format!(
-                "an expected constraint must emit exactly one warn event (found {warn_count})"
-            ));
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains("event=\"constraint_rejected\""))
-        {
-            return Err("the event must be constraint_rejected".to_owned());
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains(&format!("kind=\"{kind}\"")))
-        {
-            return Err(format!("the event must carry the stable kind `{kind}`"));
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains("operation=\"repository\""))
-        {
-            return Err("the event must name the repository operation".to_owned());
-        }
-        if !ours.iter().any(|line| line.contains("security")) {
-            return Err("the event must target the reserved security target".to_owned());
-        }
-        Ok(())
-    }
-
-    /// Assert the captured output is the single `error` `port_fault` event for
-    /// `kind` and `operation` on the reserved `security` target.
-    fn assert_port_fault(lines: &[&str], kind: &str, operation: &str) -> Result<(), String> {
-        let ours: Vec<&str> = lines
-            .iter()
-            .copied()
-            .filter(|line| line.contains("security:"))
-            .collect();
-        let error_count = ours.iter().filter(|line| line.contains("ERROR")).count();
-        if error_count != 1 {
-            return Err(format!(
-                "a dependency fault must emit exactly one error event (found {error_count})"
-            ));
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains("event=\"port_fault\""))
-        {
-            return Err("the event must be port_fault".to_owned());
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains(&format!("kind=\"{kind}\"")))
-        {
-            return Err(format!("the event must carry the stable kind `{kind}`"));
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains(&format!("operation=\"{operation}\"")))
-        {
-            return Err("the event must name the owning operation".to_owned());
-        }
-        if !ours.iter().any(|line| line.contains("security")) {
-            return Err("the event must target the reserved security target".to_owned());
-        }
-        Ok(())
-    }
-
     #[tokio::test]
     #[traced_test]
     async fn constraint_trigger_abort_logs_constraint_rejected() -> Result<(), Box<dyn Error>> {
@@ -277,7 +201,43 @@ mod tests {
 
         // Assert: a handled conflict is a `warn` `constraint_rejected` event.
         assert!(matches!(mapped, Err(RepositoryError::Conflict)));
-        logs_assert(|lines| assert_constraint_rejected(lines, "conflict"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], kind: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "an expected constraint must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"constraint_rejected\""))
+                {
+                    return Err("the event must be constraint_rejected".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("kind=\"{kind}\"")))
+                {
+                    return Err(format!("the event must carry the stable kind `{kind}`"));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("operation=\"repository\""))
+                {
+                    return Err("the event must name the repository operation".to_owned());
+                }
+                if !ours.iter().any(|line| line.contains("security")) {
+                    return Err("the event must target the reserved security target".to_owned());
+                }
+                Ok(())
+            })(lines, "conflict")
+        });
         Ok(())
     }
 
@@ -298,28 +258,50 @@ mod tests {
             mapped,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(assert_unrendered_check_failure);
-        Ok(())
-    }
-
-    /// Assert the captured output carries the classification but neither the
-    /// rendered framework message nor the statement text.
-    fn assert_unrendered_check_failure(lines: &[&str]) -> Result<(), String> {
-        assert_port_fault(lines, "check_violation", "repository")?;
-        let ours: Vec<&str> = lines
-            .iter()
-            .copied()
-            .filter(|line| line.contains("security:"))
-            .collect();
-        if ours
-            .iter()
-            .any(|line| line.contains("CHECK constraint failed"))
-        {
-            return Err("the rendered framework message must not reach the sink".to_owned());
-        }
-        if ours.iter().any(|line| line.contains("probe")) {
-            return Err("the statement must not reach the sink".to_owned());
-        }
+        logs_assert(|lines: &[&str]| {
+            let ours: Vec<&str> = lines
+                .iter()
+                .copied()
+                .filter(|line| line.contains("security:"))
+                .collect();
+            let error_count = ours.iter().filter(|line| line.contains("ERROR")).count();
+            if error_count != 1 {
+                return Err(format!(
+                    "a dependency fault must emit exactly one error event (found {error_count})"
+                ));
+            }
+            if !ours
+                .iter()
+                .any(|line| line.contains("event=\"port_fault\""))
+            {
+                return Err("the event must be port_fault".to_owned());
+            }
+            if !ours
+                .iter()
+                .any(|line| line.contains("kind=\"check_violation\""))
+            {
+                return Err("the event must carry the stable kind `check_violation`".to_owned());
+            }
+            if !ours
+                .iter()
+                .any(|line| line.contains("operation=\"repository\""))
+            {
+                return Err("the event must name the owning operation".to_owned());
+            }
+            if !ours.iter().any(|line| line.contains("security")) {
+                return Err("the event must target the reserved security target".to_owned());
+            }
+            if ours
+                .iter()
+                .any(|line| line.contains("CHECK constraint failed"))
+            {
+                return Err("the rendered framework message must not reach the sink".to_owned());
+            }
+            if ours.iter().any(|line| line.contains("probe")) {
+                return Err("the statement must not reach the sink".to_owned());
+            }
+            Ok(())
+        });
         Ok(())
     }
 
@@ -340,7 +322,43 @@ mod tests {
             mapped,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_port_fault(lines, "check_violation", "repository"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], kind: &str, operation: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let error_count = ours.iter().filter(|line| line.contains("ERROR")).count();
+                if error_count != 1 {
+                    return Err(format!(
+                        "a dependency fault must emit exactly one error event (found {error_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"port_fault\""))
+                {
+                    return Err("the event must be port_fault".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("kind=\"{kind}\"")))
+                {
+                    return Err(format!("the event must carry the stable kind `{kind}`"));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("operation=\"{operation}\"")))
+                {
+                    return Err("the event must name the owning operation".to_owned());
+                }
+                if !ours.iter().any(|line| line.contains("security")) {
+                    return Err("the event must target the reserved security target".to_owned());
+                }
+                Ok(())
+            })(lines, "check_violation", "repository")
+        });
         Ok(())
     }
 
@@ -361,7 +379,43 @@ mod tests {
 
         // Assert
         assert!(matches!(mapped, Err(RepositoryError::AlreadyExist)));
-        logs_assert(|lines| assert_constraint_rejected(lines, "unique_violation"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], kind: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "an expected constraint must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"constraint_rejected\""))
+                {
+                    return Err("the event must be constraint_rejected".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("kind=\"{kind}\"")))
+                {
+                    return Err(format!("the event must carry the stable kind `{kind}`"));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("operation=\"repository\""))
+                {
+                    return Err("the event must name the repository operation".to_owned());
+                }
+                if !ours.iter().any(|line| line.contains("security")) {
+                    return Err("the event must target the reserved security target".to_owned());
+                }
+                Ok(())
+            })(lines, "unique_violation")
+        });
         Ok(())
     }
 
@@ -415,7 +469,43 @@ mod tests {
 
         // Assert: no expected constraint can arise here, so it stays a fault.
         assert!(matches!(mapped, Err(UnitOfWorkError::OperationFailed)));
-        logs_assert(|lines| assert_port_fault(lines, "operation_failed", "unit_of_work"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], kind: &str, operation: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let error_count = ours.iter().filter(|line| line.contains("ERROR")).count();
+                if error_count != 1 {
+                    return Err(format!(
+                        "a dependency fault must emit exactly one error event (found {error_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"port_fault\""))
+                {
+                    return Err("the event must be port_fault".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("kind=\"{kind}\"")))
+                {
+                    return Err(format!("the event must carry the stable kind `{kind}`"));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("operation=\"{operation}\"")))
+                {
+                    return Err("the event must name the owning operation".to_owned());
+                }
+                if !ours.iter().any(|line| line.contains("security")) {
+                    return Err("the event must target the reserved security target".to_owned());
+                }
+                Ok(())
+            })(lines, "operation_failed", "unit_of_work")
+        });
         Ok(())
     }
 }

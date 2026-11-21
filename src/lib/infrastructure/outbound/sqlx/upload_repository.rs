@@ -495,31 +495,11 @@ fn domain_upload(row: SqlxUpload, chunk_numbers: &[usize]) -> Result<Upload, Rep
 mod tests {
     use super::*;
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
     use crate::test_helpers::*;
     use rstest::rstest;
     use std::error::Error;
     use tracing_test::traced_test;
-
-    /// Seed a credential and a user so foreign keys resolve.
-    async fn seed_user(
-        transaction: &mut Transaction<'static, Sqlite>,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (?1, ?2)")
-            .bind(user_id)
-            .bind(format!("hash-{user_id}"))
-            .execute(&mut **transaction)
-            .await?;
-        sqlx::query(
-            "INSERT INTO user (user_id, role, username, email, credential_id)
-             VALUES (?1, 'STANDARD', ?2, NULL, ?1)",
-        )
-        .bind(user_id)
-        .bind(format!("user{user_id}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
 
     /// Build a pending upload whose bitmap marks `received` chunks.
     fn upload(

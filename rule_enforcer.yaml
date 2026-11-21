@@ -1,68 +1,17 @@
 ---
 rules:
   STY-RUST-001:
-    # The number of single-call helpers the tree may hold: a production function
-    # whose name is called exactly once. Adding one is a reviewed decision — inline
-    # it, or raise this budget in the same change.
-    # Raised from 67 when the REST handler endpoint tests were removed: the count
-    # is textual across `src` (test code included), and those tests supplied call
-    # sites for handler and router helpers that production still calls once.
-    # Raised from 71 for the shared `JsonObject` request-body extractor's
-    # `FromRequest::from_request`, which the framework calls rather than a
-    # textual call site (API-045 request-body hardening).
-    # Raised from 72 when origin/main's complete-upload lifecycle merged in: its
-    # new helpers lost the textual call sites the removed REST endpoint tests
-    # used to supply.
-    # Raised from 75 when the asset-access module was deleted: the owning resource
-    # now travels with the file, and `ProtectedResource::reference` is the single
-    # accessor the authorization decision reads it through.
-    # Lowered to 62 after a sweep inlined the gratuitous one-call helpers, moved
-    # the two test-only ones under `#[cfg(test)] mod tests`, and fixed the check's
-    # accounting: it now skips the declaration line by position, so a generic
-    # declaration is no longer subtracted as if it were a call site and a generic
-    # helper with a single caller is counted.
-    # Lowered to 55 when the security-event catalog was inlined: its constructors
-    # were single-call helpers, and the module that held them is gone. Raised to
-    # 66 for the resource-and-grant models and the application authorizer, whose
-    # accessors each have one caller by design. Raised to 78 for the permission
-    # API: its boundary parsers, wire projections and per-use-case readers each
-    # have one caller by construction.
-    # Raised to 84 for the volume seed's two grounding steps: `prepare_perf_bases`
-    # runs before the seed migrator and `seed_perf_links` after it, so each has
-    # exactly one call site by design and inlining either would merge two
-    # different failure points into one function.
-    # Raised to 87 for the read-path work: `push_resource_predicate` has one
-    # production caller and is extracted so its query-plan test asserts the exact
-    # predicate production runs; `relation_sources_from` keeps the batched
-    # resolution in `search_many` readable; `summary_album` is the album row
-    # mapper that sits beside the hydrated one.
-    # Raised to 88 for the seed setting: `Configuration::with_seed` is the only
-    # way the application layer can fill a private field on a configuration the
-    # shipped build does not have, and it is called once because it is a
-    # builder, not a helper.
-    # Raised to 93 for the permission wire vocabulary: `parse_grant_role`,
-    # `parse_share_role`, `parse_child_kind` and `parse_grant_effect` each have
-    # one caller by construction, and keeping them separate is what lets the
-    # rejection be the catalogued `enum_validation_failed` event rather than a
-    # domain error.
-    # Raised to 89 for the system fixture's account announcement:
-    # `show_system_account` mirrors `show_demo_accounts`, and each one-call
-    # printer carries the `print_stdout` exemption for the one credential it
-    # reveals, so inlining either would spread that exemption into the seeding
-    # logic.
-    max_single_call_functions: 93
-  STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset
       - identity
       - library
       - user
-  STY-RUST-075:
+  STY-RUST-072:
     allowed_crates:
       - anyhow
       - chrono
       - tracing
-  STY-RUST-083:
+  STY-RUST-080:
     bounded_contexts: *bounded_contexts
   STY-SQL-006:
     singular_exceptions:
@@ -193,7 +142,7 @@ rules:
     ignore_paths:
       - "openspec/**"
 
-  STY-RUST-086:
+  STY-RUST-082:
     technology_nouns:
       - SHA[0-9]*
       - MD5
@@ -216,7 +165,21 @@ rules:
       - MAX
       - MIN
 
-  STY-RUST-089:
+  STY-RUST-085:
     # Import merging is enforced at zero: no two adjacent `use` declarations
     # share a parent module. A new pair fails the gate.
     max_unmerged_imports: 0
+
+  STY-RUST-088:
+    # The datastore seed surface: the only file that declares a seed helper, the
+    # module of that file that owns them, and the name prefix that marks one.
+    seed_module: src/lib/infrastructure/outbound/sqlx.rs
+    helper_module: test_helpers
+    seed_prefix: seed_
+
+  STY-RUST-089:
+    # The one module root whose `mod tests` may keep tests of the root itself:
+    # the SQLite adapter root tests `init_db` there, and a test of a descendant
+    # module lives in the descendant's module. `root_test_prefix` names those tests.
+    root_test_module: src/lib/infrastructure/outbound/sqlx.rs
+    root_test_prefix: init_db_

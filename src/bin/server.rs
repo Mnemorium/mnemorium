@@ -1,6 +1,6 @@
 //! The server launcher.
 //!
-//! The composition root lives in the library (`src/lib/app.rs`, `STY-RUST-067`);
+//! The composition root lives in the library (`src/lib/app.rs`, `STY-RUST-064`);
 //! this binary only launches it.
 
 use mnemorium::app;

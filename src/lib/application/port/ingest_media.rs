@@ -149,10 +149,6 @@ pub(crate) enum IngestMediaError {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait IngestMediaUseCase: Send + Sync {
     /// Reconcile the requested paths and report aggregate counts.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned, so the method is object-safe and the use case can be stored as
-    /// `Arc<dyn IngestMediaUseCase>`.
     fn execute<'future>(
         &'future self,
         command: IngestMediaCommand,

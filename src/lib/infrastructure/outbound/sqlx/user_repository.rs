@@ -165,6 +165,7 @@ fn domain_user(row: SqlxUser) -> Result<User, RepositoryError> {
 mod tests {
     use super::*;
     use crate::domain::model::UserError;
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
 
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use rstest::rstest;
@@ -186,23 +187,11 @@ mod tests {
         )
     }
 
-    async fn seed_credential(
-        transaction: &mut Transaction<'static, Sqlite>,
-        id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (?1, ?2)")
-            .bind(id)
-            .bind(format!("hash-{id}"))
-            .execute(&mut **transaction)
-            .await?;
-        Ok(())
-    }
-
     #[tokio::test]
     async fn save_then_search_round_trips_user() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
         let expected = user(10, "alice", Some("alice@example.com"), 1, Role::Standard)?;
 
         // Act
@@ -230,7 +219,7 @@ mod tests {
     async fn create_assigns_final_identifier_and_round_trips() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
         let pending = user(0, "alice", Some("alice@example.com"), 1, Role::Standard)?;
 
         // Act
@@ -261,7 +250,7 @@ mod tests {
     async fn create_duplicate_username_returns_already_exist() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
         let mut repository = SqlxUserRepository::new(&mut transaction);
         repository
             .create(user(0, "bobby", None, 1, Role::Standard)?)
@@ -281,7 +270,7 @@ mod tests {
     async fn save_duplicate_username_returns_already_exist() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
         let mut repository = SqlxUserRepository::new(&mut transaction);
         repository
             .save(user(1, "bobby", None, 1, Role::Standard)?)
@@ -301,7 +290,7 @@ mod tests {
     async fn save_duplicate_email_returns_already_exist() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
         let mut repository = SqlxUserRepository::new(&mut transaction);
         repository
             .save(user(
@@ -333,8 +322,8 @@ mod tests {
     async fn save_and_search_compare_email_ignoring_case() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
-        seed_credential(&mut transaction, 2).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 2).await?;
         let mut repository = SqlxUserRepository::new(&mut transaction);
         let stored = repository
             .save(user(
@@ -367,50 +356,6 @@ mod tests {
         assert!(matches!(duplicate, Err(RepositoryError::AlreadyExist)));
         assert_eq!(stored.email(), Some("Alice@example.com"));
         assert_eq!(found.first(), Some(&stored));
-        Ok(())
-    }
-
-    /// Insert `email` for a fresh account and require the datastore to reject it.
-    async fn email_is_rejected(email: &str) -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
-
-        // Act
-        let result = sqlx::query(
-            "INSERT INTO user (user_id, credential_id, email, role, username)
-             VALUES (1, 1, ?1, 'STANDARD', 'erin')",
-        )
-        .bind(email)
-        .execute(&mut *transaction)
-        .await;
-
-        // Assert
-        let mapped = result.map_err(RepositoryError::from);
-        assert!(
-            matches!(mapped, Err(RepositoryError::DataIntegrityViolation)),
-            "{email:?} was stored"
-        );
-        Ok(())
-    }
-
-    /// Insert `email` for a fresh account and require the datastore to accept it.
-    async fn email_is_accepted(email: &str) -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
-
-        // Act
-        let result = sqlx::query(
-            "INSERT INTO user (user_id, credential_id, email, role, username)
-             VALUES (1, 1, ?1, 'STANDARD', 'erin')",
-        )
-        .bind(email)
-        .execute(&mut *transaction)
-        .await;
-
-        // Assert
-        assert!(result.is_ok(), "{email:?} was rejected: {result:?}");
         Ok(())
     }
 
@@ -448,7 +393,7 @@ mod tests {
     async fn save_invalid_role_returns_data_integrity_violation() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
 
         // Act
         let result = sqlx::query(
@@ -472,7 +417,7 @@ mod tests {
     {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
 
         // Act
         let result = sqlx::query(
@@ -496,8 +441,8 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange: a stored lowercase row is a value an earlier release wrote.
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
-        seed_credential(&mut transaction, 2).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 2).await?;
         sqlx::query(
             "INSERT INTO user (user_id, credential_id, email, role, username)
              VALUES (1, 1, NULL, 'STANDARD', 'alice')",
@@ -571,7 +516,7 @@ mod tests {
     async fn delete_existing_user_returns_true() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
         let mut repository = SqlxUserRepository::new(&mut transaction);
         repository
             .save(user(7, "grace", None, 1, Role::Standard)?)
@@ -594,7 +539,7 @@ mod tests {
     async fn delete_root_admin_returns_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
         let mut repository = SqlxUserRepository::new(&mut transaction);
         repository
             .save(user(0, "rootadmin", None, 1, Role::Admin)?)
@@ -617,7 +562,7 @@ mod tests {
     async fn update_root_admin_returns_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
         let mut repository = SqlxUserRepository::new(&mut transaction);
         repository
             .save(user(0, "rootadmin", None, 1, Role::Admin)?)
@@ -643,8 +588,8 @@ mod tests {
     async fn search_filters_by_role() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
-        seed_credential(&mut transaction, 2).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 2).await?;
         let mut repository = SqlxUserRepository::new(&mut transaction);
         repository
             .save(user(1, "henry", None, 1, Role::Admin)?)
@@ -671,8 +616,8 @@ mod tests {
     async fn search_returns_all_when_filter_is_empty() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_credential(&mut transaction, 1).await?;
-        seed_credential(&mut transaction, 2).await?;
+        seed_credential_v2(&mut transaction, 1).await?;
+        seed_credential_v2(&mut transaction, 2).await?;
         let mut repository = SqlxUserRepository::new(&mut transaction);
         repository
             .save(user(1, "judie", None, 1, Role::Standard)?)

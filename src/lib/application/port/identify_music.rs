@@ -86,9 +86,6 @@ pub(crate) enum IdentifyMusicError {
 pub(crate) trait IdentifyMusicUseCase: Send + Sync {
     /// Search the configured provider for the command's query and return its
     /// candidates in its order.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn IdentifyMusicUseCase>`.
     fn execute<'future>(
         &'future self,
         command: IdentifyMusicCommand,

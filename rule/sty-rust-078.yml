@@ -1,56 +1,15 @@
 ---
 id: sty-rust-078
 language: Rust
-severity: error
-message: >-
-  a present-but-malformed configuration value must fail startup: fall back to a
-  default only when the key is absent (ConfigError::NotFound), never on every
-  read error
+severity: hint
+message: extract the classic query signature and the domain models a repository port imports for STY-RUST-078
+files:
+  - src/lib/domain/port/*_repository.rs
 rule:
   any:
-    # A defaulting combinator applied directly to a config getter swallows the
-    # distinction between "absent" (NotFound) and "present but malformed".
-    - kind: call_expression
-      all:
-        - has:
-            field: function
-            kind: field_expression
-            has:
-              field: field
-              regex: '^(unwrap_or|unwrap_or_default|unwrap_or_else|map_or|map_or_else)$'
-        - has:
-            field: function
-            kind: field_expression
-            has:
-              field: value
-              stopBy: end
-              has:
-                field: function
-                kind: field_expression
-                has:
-                  field: field
-                  regex: '^get_(string|int|float|bool|table|array)$'
-    # A match on a config getter whose catch-all arm returns a default.
-    - kind: match_expression
-      all:
-        - has:
-            field: value
-            kind: call_expression
-            has:
-              field: function
-              kind: field_expression
-              has:
-                field: field
-                regex: '^get_(string|int|float|bool|table|array)$'
-        - has:
-            kind: match_arm
-            stopBy: end
-            all:
-              - has:
-                  field: pattern
-                  kind: match_pattern
-                  regex: '^(Err\(_\)|_)$'
-              - not:
-                  has:
-                    field: value
-                    regex: 'Err'
+    - all:
+        - kind: function_signature_item
+        - pattern: 'fn search($$$ARGS) -> impl Future<Output = Result<$RET, RepositoryError>> + Send;'
+    - all:
+        - kind: use_declaration
+        - regex: '^use crate::domain::model::'

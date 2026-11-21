@@ -344,32 +344,24 @@ fn domain_file_with_owner(row: SqlxFileWithOwner) -> Result<File, RepositoryErro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::port::{UnitOfWork as _, UnitOfWorkFactory as _};
+    use crate::infrastructure::outbound::sqlx::SqlxUnitOfWorkFactory;
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
     use crate::test_helpers::*;
     use chrono::{NaiveDate, NaiveDateTime};
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use std::error::Error;
+    use std::sync::Arc;
+    use tokio::sync::Barrier;
+    use tokio::task::JoinSet;
 
-    /// Seed a credential and a user so foreign keys resolve.
-    async fn seed_user(
-        transaction: &mut Transaction<'static, Sqlite>,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (?1, ?2)")
-            .bind(user_id)
-            .bind(format!("hash-{user_id}"))
-            .execute(&mut **transaction)
-            .await?;
-        sqlx::query(
-            "INSERT INTO user (user_id, role, username, email, credential_id)
-             VALUES (?1, 'STANDARD', ?2, NULL, ?1)",
-        )
-        .bind(user_id)
-        .bind(format!("user{user_id}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
+    /// `SQLite` extended result code for a writer that found the lock held
+    /// (`SQLITE_BUSY`).
+    const SQLITE_BUSY: &str = "5";
+
+    /// How many units of work contend for the single `SQLite` writer.
+    const WRITERS: usize = 8;
 
     /// Build a pending file with the given digest, path and owner.
     fn file(
@@ -409,6 +401,7 @@ mod tests {
     }
 
     /// Fixture modification instant.
+    #[fixture]
     fn modified_at() -> Result<NaiveDateTime, Box<dyn Error>> {
         Ok(NaiveDateTime::parse_from_str(
             "2026-09-26 10:00:00",
@@ -781,7 +774,7 @@ mod tests {
         // Arrange: a scanned file already recorded under its old location.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 100, "found/clip.mp4", 1).await?;
+        seed_file_v3(&mut transaction, 100, "found/clip.mp4", 1).await?;
         let mut repository = SqlxFileRepository::new(&mut transaction);
         let mut record = repository
             .search(&FileFilter {
@@ -864,25 +857,6 @@ mod tests {
         Ok(())
     }
 
-    /// Seed a scanned file with a known identifier.
-    async fn seed_file(
-        transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
-        path: &str,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at)
-             VALUES (?1, ?2, ?3, 0, 'video/mp4', 10, '2026-09-26 10:00:00')",
-        )
-        .bind(file_id)
-        .bind(path)
-        .bind(user_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
     /// The owner of the file matching `file_id`.
     async fn owner_of(
         transaction: &mut Transaction<'static, Sqlite>,
@@ -911,50 +885,12 @@ mod tests {
         ))
     }
 
-    /// Seed an image row naming `file_id`.
-    async fn seed_image(
-        transaction: &mut Transaction<'static, Sqlite>,
-        image_id: i64,
-        file_id: i64,
-        scope: Option<&str>,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO image (image_id, name, width_px, height_px, orientation, created_at, scope, file_id)
-             VALUES (?1, 'art', 10, 10, 'SQUARE', '2026-09-26', ?2, ?3)",
-        )
-        .bind(image_id)
-        .bind(scope)
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a video row naming `file_id`.
-    async fn seed_video(
-        transaction: &mut Transaction<'static, Sqlite>,
-        video_id: i64,
-        file_id: i64,
-        scope: Option<&str>,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO video (video_id, duration_ms, codec, frame_count, width, height, color_id, scan_type, scope, file_id)
-             VALUES (?1, 1000, 'h264', 30, 640, 480, 'sRGB', 'PROGRESSIVE', ?2, ?3)",
-        )
-        .bind(video_id)
-        .bind(scope)
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
     #[tokio::test]
     async fn search_leaves_an_unreferenced_file_without_an_owner() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 100, "files/1_orphan.mp4", 1).await?;
+        seed_file_v3(&mut transaction, 100, "files/1_orphan.mp4", 1).await?;
 
         // Act
         let owner = owner_of(&mut transaction, 100).await?;
@@ -969,8 +905,8 @@ mod tests {
         // Arrange: a LIBRARY image belongs to no single aggregate.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 100, "art/1.png", 1).await?;
-        seed_image(&mut transaction, 1, 100, Some("LIBRARY")).await?;
+        seed_file_v3(&mut transaction, 100, "art/1.png", 1).await?;
+        seed_image_v5(&mut transaction, 1, 100, Some("LIBRARY")).await?;
 
         // Act
         let owner = owner_of(&mut transaction, 100).await?;
@@ -985,14 +921,14 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 100, "files/1_item.png", 1).await?;
+        seed_file_v3(&mut transaction, 100, "files/1_item.png", 1).await?;
         sqlx::query(
             "INSERT INTO gallery (gallery_id, name, created_at, last_modified_at, is_public, user_id)
              VALUES (2, 'Private', '2026-09-26', '2026-09-26', 0, 1)",
         )
         .execute(&mut *transaction)
         .await?;
-        seed_image(&mut transaction, 1, 100, Some("USER")).await?;
+        seed_image_v5(&mut transaction, 1, 100, Some("USER")).await?;
         sqlx::query(
             "INSERT INTO gallery_item (gallery_item_id, gallery_id, image_id, item_index)
              VALUES (1, 2, 1, 0)",
@@ -1017,14 +953,14 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 100, "files/1_cover.png", 1).await?;
+        seed_file_v3(&mut transaction, 100, "files/1_cover.png", 1).await?;
         sqlx::query(
             "INSERT INTO music_playlist (music_playlist_id, name, user_id, is_public, cover_image_id)
              VALUES (4, 'Mix', 1, 1, NULL)",
         )
         .execute(&mut *transaction)
         .await?;
-        seed_image(&mut transaction, 1, 100, Some("USER")).await?;
+        seed_image_v5(&mut transaction, 1, 100, Some("USER")).await?;
         sqlx::query("UPDATE music_playlist SET cover_image_id = 1 WHERE music_playlist_id = 4")
             .execute(&mut *transaction)
             .await?;
@@ -1045,8 +981,8 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 100, "files/1_film.mp4", 1).await?;
-        seed_video(&mut transaction, 3, 100, None).await?;
+        seed_file_v3(&mut transaction, 100, "files/1_film.mp4", 1).await?;
+        seed_video_v2(&mut transaction, 3, 100, None).await?;
         sqlx::query(
             "INSERT INTO movie (movie_id, name, plot, video_id) VALUES (5, 'Film', 'Plot', 3)",
         )
@@ -1066,14 +1002,14 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 100, "files/1_episode.mp4", 1).await?;
+        seed_file_v3(&mut transaction, 100, "files/1_episode.mp4", 1).await?;
         sqlx::query("INSERT INTO series (series_id, name, plot) VALUES (6, 'Show', 'Plot')")
             .execute(&mut *transaction)
             .await?;
         sqlx::query("INSERT INTO season (season_id, series_id) VALUES (7, 6)")
             .execute(&mut *transaction)
             .await?;
-        seed_video(&mut transaction, 3, 100, None).await?;
+        seed_video_v2(&mut transaction, 3, 100, None).await?;
         sqlx::query("INSERT INTO episode (episode_id, season_id, episode_index, name, plot, video_id) VALUES (8, 7, 0, 'Pilot', 'Plot', 3)")
             .execute(&mut *transaction)
             .await?;
@@ -1175,7 +1111,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 100, "files/1_track.flac", 1).await?;
+        seed_file_v3(&mut transaction, 100, "files/1_track.flac", 1).await?;
         sqlx::query("INSERT INTO music_group (music_group_id, stage_name) VALUES (9, 'Artist')")
             .execute(&mut *transaction)
             .await?;
@@ -1214,6 +1150,109 @@ mod tests {
             owner,
             Some(protected(ResourceKind::MusicAlbum, 5, None, true))
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn deleting_file_referenced_by_media_is_rejected() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act
+        let result = sqlx::query("DELETE FROM file WHERE file_id = 1")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn begin_write_holds_the_write_lock_before_the_first_statement()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let (_tmp, pool) = disk_pool(2).await?;
+        let unit_of_work = SqlxUnitOfWorkFactory::new(pool.clone())
+            .begin_write()
+            .await?;
+
+        // Act
+        let blocked = try_write_lock(&pool).await;
+
+        // Assert
+        let code = blocked.err().and_then(sqlite_code);
+        assert_eq!(
+            code.as_deref(),
+            Some(SQLITE_BUSY),
+            "a write-intent unit of work must hold the write lock from BEGIN"
+        );
+        unit_of_work.rollback().await?;
+        pool.close().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn begin_leaves_the_write_lock_to_the_write_intent_opener() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let (_tmp, pool) = disk_pool(2).await?;
+        let unit_of_work = SqlxUnitOfWorkFactory::new(pool.clone()).begin().await?;
+
+        // Act
+        let locked = try_write_lock(&pool).await;
+
+        // Assert
+        assert!(
+            locked.is_ok(),
+            "a read-only unit of work must not hold the write lock"
+        );
+        unit_of_work.rollback().await?;
+        pool.close().await;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn concurrent_read_then_write_units_of_work_all_commit() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let (_tmp, pool) = disk_pool(u32::try_from(WRITERS)?).await?;
+        seed_media(&pool).await?;
+        let factory = Arc::new(SqlxUnitOfWorkFactory::new(pool.clone()));
+        let barrier = Arc::new(Barrier::new(WRITERS));
+
+        // Act
+        let mut tasks = (0..WRITERS)
+            .map(|index| {
+                let task_factory = Arc::clone(&factory);
+                let task_barrier = Arc::clone(&barrier);
+                let path = format!("concurrent-{index}.png");
+                async move { read_then_write(&task_factory, path, task_barrier).await }
+            })
+            .collect::<JoinSet<Result<(), String>>>();
+        let failures = joined_failures(&mut tasks).await;
+        let persisted: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM file WHERE path LIKE 'concurrent-%'")
+                .fetch_one(&pool)
+                .await?;
+
+        // Assert
+        assert!(
+            failures.is_empty(),
+            "concurrent units of work reported {} failure(s): {}",
+            failures.len(),
+            failures.join("; ")
+        );
+        assert_eq!(
+            persisted,
+            i64::try_from(WRITERS)?,
+            "every concurrent unit of work must commit its own file"
+        );
+        pool.close().await;
         Ok(())
     }
 }

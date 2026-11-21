@@ -126,9 +126,6 @@ pub(crate) enum PutSeriesSeasonError {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait PutSeriesSeasonUseCase: Send + Sync {
     /// Create or replace the season at the requested index.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn PutSeriesSeasonUseCase>`.
     fn execute<'future>(
         &'future self,
         command: PutSeriesSeasonCommand,

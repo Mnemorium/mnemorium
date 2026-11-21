@@ -21,7 +21,7 @@ use tokio::sync::Semaphore;
 ///
 /// Every accessor reads the current configuration for the upload expiry, so a
 /// runtime configuration change is picked up by the next request. The chunk size
-/// is a startup-only setting (`STY-RUST-076`): it is snapshotted when the factory
+/// is a startup-only setting (`STY-RUST-073`): it is snapshotted when the factory
 /// is built, because the router fixes its body limit from the same value at
 /// startup. The file storage adapter is stateless and rebuilt per accessor.
 pub(crate) struct RuntimeAssetUseCaseFactory {

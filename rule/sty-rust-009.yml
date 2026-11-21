@@ -3,39 +3,44 @@ id: sty-rust-009
 language: Rust
 severity: error
 message: >-
-  a request body struct is named <Context>Request and derives at least
-  Deserialize and ToSchema
+  a response body struct is named <Context>Response and derives at least
+  Serialize and ToSchema
 files:
   - src/lib/infrastructure/inbound/rest/handler/**/*.rs
 rule:
   any:
-    # A struct named *Request must derive Deserialize and ToSchema. The derive
+    # A struct named *Response must derive Serialize and ToSchema. The derive
     # attribute precedes the struct (a following sibling is unreachable by
     # `has`), so each required trait is matched with `follows`; `stopBy: end`
     # skips intervening attributes such as #[non_exhaustive] and doc comments.
     - all:
         - kind: struct_item
-        - regex: 'struct \w*Request\b'
+        - regex: 'struct \w*Response\b'
         - not:
             all:
               - follows:
                   kind: attribute_item
-                  regex: 'derive\([^)]*Deserialize'
+                  regex: 'derive\([^)]*Serialize'
                   stopBy: end
               - follows:
                   kind: attribute_item
                   regex: 'derive\([^)]*ToSchema'
                   stopBy: end
-    # A request body extracted as Json<T> in a parameter must be named *Request;
-    # a Json<T> return type is a response (STY-RUST-010), so the match is scoped
-    # to parameters.
+    # A response body returned as Json<T> must be named *Response; the Json<T>
+    # parameter case is a request (STY-RUST-008), so a return is any Json<T>
+    # inside a function that is not inside its parameters.
     - all:
         - kind: generic_type
         - regex: '^Json<'
         - inside:
-            kind: parameter
+            kind: function_item
             stopBy: end
         - not:
-            all:
-              - kind: generic_type
-              - regex: '^Json<\w*Request>$'
+            inside:
+              kind: parameters
+              stopBy: end
+        - not:
+            has:
+              kind: type_identifier
+              regex: 'Response$'
+              stopBy: end

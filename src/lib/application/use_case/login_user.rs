@@ -192,7 +192,7 @@ where
                     if let Err(_rollback_error) = unit_of_work.rollback().await {
                         // The unit-of-work adapter owns the rollback-failure
                         // log (`OBS-002`); the use case returns the original
-                        // business error (`STY-RUST-033`).
+                        // business error (`STY-RUST-031`).
                     }
                     Err(error)
                 }
@@ -230,24 +230,6 @@ mod tests {
         rolled_back: Arc<AtomicBool>,
         /// The use case under test.
         use_case: UseCase,
-    }
-
-    fn use_case_with(
-        setup: impl FnOnce(
-            &mut MockUserRepository,
-            &mut MockCredentialRepository,
-            &mut MockPasswordHasher,
-            &mut MockTokenProvider,
-        ) -> Result<(), Box<dyn Error>>,
-    ) -> Result<Harness, Box<dyn Error>> {
-        use_case_with_limiter(setup, unlimited())
-    }
-
-    /// A limiter that never throttles, for the cases that do not exercise it.
-    fn unlimited() -> MockLoginAttemptLimiter {
-        let mut limiter = MockLoginAttemptLimiter::new();
-        limiter.expect_check().returning(|_| None);
-        limiter
     }
 
     fn use_case_with_limiter(
@@ -305,71 +287,61 @@ mod tests {
         LoginUserCommand::new(username.to_owned(), password.to_owned())
     }
 
-    fn expect_user(user_repository: &mut MockUserRepository, user: User) {
-        user_repository
-            .expect_search()
-            .times(1)
-            .returning(move |_| {
-                let own_user = user.clone();
-                Box::pin(async move { Ok(vec![own_user]) })
-            });
-    }
-
-    /// Expect the one account's email lookup that follows a failed username
-    /// lookup on the register, returning `found`.
-    fn expect_email_lookup(user_repository: &mut MockUserRepository, found: Vec<User>) {
-        user_repository
-            .expect_search()
-            .times(1)
-            .withf(|filter| filter.username.is_none() && filter.email.is_some())
-            .returning(move |_| {
-                let own = found.clone();
-                Box::pin(async move { Ok(own) })
-            });
-    }
-
-    /// Expect the username and email lookups an unknown identifier makes.
-    fn expect_absent_identifier(user_repository: &mut MockUserRepository) {
-        user_repository
-            .expect_search()
-            .times(2)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-    }
-
-    fn expect_credential(
-        credential_repository: &mut MockCredentialRepository,
-        credential: Credential,
-    ) {
-        credential_repository
-            .expect_search()
-            .times(1)
-            .returning(move |_| {
-                let own_credential = credential.clone();
-                Box::pin(async move { Ok(vec![own_credential]) })
-            });
-    }
-
-    fn expect_valid_password(password_hasher: &mut MockPasswordHasher) {
-        password_hasher
-            .expect_verify_password()
-            .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
-    }
-
     #[tokio::test]
     async fn login_user_valid_credentials_returns_issued_token() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(
-            |user_repository, credential_repository, password_hasher, token_provider| {
-                expect_user(user_repository, user(1, "alice")?);
-                expect_credential(credential_repository, credential(1)?);
-                expect_valid_password(password_hasher);
-                token_provider.expect_issue().times(1).returning(|_| {
-                    Box::pin(async { Ok(IssuedToken::new("token".to_owned(), 3600)) })
-                });
-                Ok(())
-            },
-        )?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(
+                |user_repository, credential_repository, password_hasher, token_provider| {
+                    (move |user_repository: &mut MockUserRepository, user: User| {
+                        user_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_user = user.clone();
+                                Box::pin(async move { Ok(vec![own_user]) })
+                            });
+                    })(user_repository, user(1, "alice")?);
+                    (move |credential_repository: &mut MockCredentialRepository,
+                           credential: Credential| {
+                        credential_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_credential = credential.clone();
+                                Box::pin(async move { Ok(vec![own_credential]) })
+                            });
+                    })(credential_repository, credential(1)?);
+                    (move |password_hasher: &mut MockPasswordHasher| {
+                        password_hasher
+                            .expect_verify_password()
+                            .times(1)
+                            .returning(|_, _| Box::pin(async { Ok(true) }));
+                    })(password_hasher);
+                    token_provider.expect_issue().times(1).returning(|_| {
+                        Box::pin(async { Ok(IssuedToken::new("token".to_owned(), 3600)) })
+                    });
+                    Ok(())
+                },
+            );
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
@@ -386,14 +358,38 @@ mod tests {
     async fn login_user_unknown_identifier_returns_invalid_identifier() -> Result<(), Box<dyn Error>>
     {
         // Arrange
-        let harness = use_case_with(|user_repository, _, password_hasher, _| {
-            expect_absent_identifier(user_repository);
-            password_hasher
-                .expect_hash_password()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok("decoy-hash".to_owned()) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, _, password_hasher, _| {
+                (move |user_repository: &mut MockUserRepository| {
+                    user_repository
+                        .expect_search()
+                        .times(2)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                })(user_repository);
+                password_hasher
+                    .expect_hash_password()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok("decoy-hash".to_owned()) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("ghost", SECRET_PASSWORD);
 
         // Act
@@ -409,14 +405,38 @@ mod tests {
     async fn login_user_unknown_identifier_with_failing_hasher_returns_unknown()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, _, password_hasher, _| {
-            expect_absent_identifier(user_repository);
-            password_hasher
-                .expect_hash_password()
-                .times(1)
-                .returning(|_| Box::pin(async { Err(PasswordHasherError::OperationFailed) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, _, password_hasher, _| {
+                (move |user_repository: &mut MockUserRepository| {
+                    user_repository
+                        .expect_search()
+                        .times(2)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                })(user_repository);
+                password_hasher
+                    .expect_hash_password()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Err(PasswordHasherError::OperationFailed) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("ghost", SECRET_PASSWORD);
 
         // Act
@@ -431,13 +451,32 @@ mod tests {
     #[tokio::test]
     async fn login_user_search_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, _, _, _| {
-            user_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, _, _, _| {
+                user_repository
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
@@ -452,14 +491,41 @@ mod tests {
     #[tokio::test]
     async fn login_user_missing_credential_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, credential_repository, _, _| {
-            expect_user(user_repository, user(1, "alice")?);
-            credential_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, credential_repository, _, _| {
+                (move |user_repository: &mut MockUserRepository, user: User| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_user = user.clone();
+                            Box::pin(async move { Ok(vec![own_user]) })
+                        });
+                })(user_repository, user(1, "alice")?);
+                credential_repository
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
@@ -474,17 +540,53 @@ mod tests {
     #[tokio::test]
     async fn login_user_wrong_password_returns_invalid_password() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(
-            |user_repository, credential_repository, password_hasher, _| {
-                expect_user(user_repository, user(1, "alice")?);
-                expect_credential(credential_repository, credential(1)?);
-                password_hasher
-                    .expect_verify_password()
-                    .times(1)
-                    .returning(|_, _| Box::pin(async { Ok(false) }));
-                Ok(())
-            },
-        )?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(
+                |user_repository, credential_repository, password_hasher, _| {
+                    (move |user_repository: &mut MockUserRepository, user: User| {
+                        user_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_user = user.clone();
+                                Box::pin(async move { Ok(vec![own_user]) })
+                            });
+                    })(user_repository, user(1, "alice")?);
+                    (move |credential_repository: &mut MockCredentialRepository,
+                           credential: Credential| {
+                        credential_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_credential = credential.clone();
+                                Box::pin(async move { Ok(vec![own_credential]) })
+                            });
+                    })(credential_repository, credential(1)?);
+                    password_hasher
+                        .expect_verify_password()
+                        .times(1)
+                        .returning(|_, _| Box::pin(async { Ok(false) }));
+                    Ok(())
+                },
+            );
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("alice", "wrong-password");
 
         // Act
@@ -500,19 +602,55 @@ mod tests {
     async fn login_user_password_verification_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
         // Arrange
-        let harness = use_case_with(
-            |user_repository, credential_repository, password_hasher, _| {
-                expect_user(user_repository, user(1, "alice")?);
-                expect_credential(credential_repository, credential(1)?);
-                password_hasher
-                    .expect_verify_password()
-                    .times(1)
-                    .returning(|_, _| {
-                        Box::pin(async { Err(PasswordHasherError::OperationFailed) })
-                    });
-                Ok(())
-            },
-        )?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(
+                |user_repository, credential_repository, password_hasher, _| {
+                    (move |user_repository: &mut MockUserRepository, user: User| {
+                        user_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_user = user.clone();
+                                Box::pin(async move { Ok(vec![own_user]) })
+                            });
+                    })(user_repository, user(1, "alice")?);
+                    (move |credential_repository: &mut MockCredentialRepository,
+                           credential: Credential| {
+                        credential_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_credential = credential.clone();
+                                Box::pin(async move { Ok(vec![own_credential]) })
+                            });
+                    })(credential_repository, credential(1)?);
+                    password_hasher
+                        .expect_verify_password()
+                        .times(1)
+                        .returning(|_, _| {
+                            Box::pin(async { Err(PasswordHasherError::OperationFailed) })
+                        });
+                    Ok(())
+                },
+            );
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
@@ -527,18 +665,58 @@ mod tests {
     #[tokio::test]
     async fn login_user_token_issuance_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(
-            |user_repository, credential_repository, password_hasher, token_provider| {
-                expect_user(user_repository, user(1, "alice")?);
-                expect_credential(credential_repository, credential(1)?);
-                expect_valid_password(password_hasher);
-                token_provider
-                    .expect_issue()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Err(TokenProviderError::OperationFailed) }));
-                Ok(())
-            },
-        )?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(
+                |user_repository, credential_repository, password_hasher, token_provider| {
+                    (move |user_repository: &mut MockUserRepository, user: User| {
+                        user_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_user = user.clone();
+                                Box::pin(async move { Ok(vec![own_user]) })
+                            });
+                    })(user_repository, user(1, "alice")?);
+                    (move |credential_repository: &mut MockCredentialRepository,
+                           credential: Credential| {
+                        credential_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_credential = credential.clone();
+                                Box::pin(async move { Ok(vec![own_credential]) })
+                            });
+                    })(credential_repository, credential(1)?);
+                    (move |password_hasher: &mut MockPasswordHasher| {
+                        password_hasher
+                            .expect_verify_password()
+                            .times(1)
+                            .returning(|_, _| Box::pin(async { Ok(true) }));
+                    })(password_hasher);
+                    token_provider.expect_issue().times(1).returning(|_| {
+                        Box::pin(async { Err(TokenProviderError::OperationFailed) })
+                    });
+                    Ok(())
+                },
+            );
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
@@ -554,17 +732,58 @@ mod tests {
     #[traced_test]
     async fn login_user_valid_credentials_emits_authn_succeeded() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(
-            |user_repository, credential_repository, password_hasher, token_provider| {
-                expect_user(user_repository, user(1, "alice")?);
-                expect_credential(credential_repository, credential(1)?);
-                expect_valid_password(password_hasher);
-                token_provider.expect_issue().times(1).returning(|_| {
-                    Box::pin(async { Ok(IssuedToken::new("token".to_owned(), 3600)) })
-                });
-                Ok(())
-            },
-        )?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(
+                |user_repository, credential_repository, password_hasher, token_provider| {
+                    (move |user_repository: &mut MockUserRepository, user: User| {
+                        user_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_user = user.clone();
+                                Box::pin(async move { Ok(vec![own_user]) })
+                            });
+                    })(user_repository, user(1, "alice")?);
+                    (move |credential_repository: &mut MockCredentialRepository,
+                           credential: Credential| {
+                        credential_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_credential = credential.clone();
+                                Box::pin(async move { Ok(vec![own_credential]) })
+                            });
+                    })(credential_repository, credential(1)?);
+                    (move |password_hasher: &mut MockPasswordHasher| {
+                        password_hasher
+                            .expect_verify_password()
+                            .times(1)
+                            .returning(|_, _| Box::pin(async { Ok(true) }));
+                    })(password_hasher);
+                    token_provider.expect_issue().times(1).returning(|_| {
+                        Box::pin(async { Ok(IssuedToken::new("token".to_owned(), 3600)) })
+                    });
+                    Ok(())
+                },
+            );
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
@@ -598,17 +817,53 @@ mod tests {
     #[traced_test]
     async fn login_user_wrong_password_emits_authn_failed() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(
-            |user_repository, credential_repository, password_hasher, _| {
-                expect_user(user_repository, user(1, "alice")?);
-                expect_credential(credential_repository, credential(1)?);
-                password_hasher
-                    .expect_verify_password()
-                    .times(1)
-                    .returning(|_, _| Box::pin(async { Ok(false) }));
-                Ok(())
-            },
-        )?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(
+                |user_repository, credential_repository, password_hasher, _| {
+                    (move |user_repository: &mut MockUserRepository, user: User| {
+                        user_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_user = user.clone();
+                                Box::pin(async move { Ok(vec![own_user]) })
+                            });
+                    })(user_repository, user(1, "alice")?);
+                    (move |credential_repository: &mut MockCredentialRepository,
+                           credential: Credential| {
+                        credential_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_credential = credential.clone();
+                                Box::pin(async move { Ok(vec![own_credential]) })
+                            });
+                    })(credential_repository, credential(1)?);
+                    password_hasher
+                        .expect_verify_password()
+                        .times(1)
+                        .returning(|_, _| Box::pin(async { Ok(false) }));
+                    Ok(())
+                },
+            );
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("alice", "wrong-password");
 
         // Act
@@ -654,14 +909,38 @@ mod tests {
     async fn login_user_unknown_identifier_emits_uniform_authn_failed() -> Result<(), Box<dyn Error>>
     {
         // Arrange
-        let harness = use_case_with(|user_repository, _, password_hasher, _| {
-            expect_absent_identifier(user_repository);
-            password_hasher
-                .expect_hash_password()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok("decoy-hash".to_owned()) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, _, password_hasher, _| {
+                (move |user_repository: &mut MockUserRepository| {
+                    user_repository
+                        .expect_search()
+                        .times(2)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                })(user_repository);
+                password_hasher
+                    .expect_hash_password()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok("decoy-hash".to_owned()) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("ghost", SECRET_PASSWORD);
 
         // Act
@@ -702,14 +981,38 @@ mod tests {
     #[traced_test]
     async fn login_user_unknown_identifier_never_reaches_a_sink() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, _, password_hasher, _| {
-            expect_absent_identifier(user_repository);
-            password_hasher
-                .expect_hash_password()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok("decoy-hash".to_owned()) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, _, password_hasher, _| {
+                (move |user_repository: &mut MockUserRepository| {
+                    user_repository
+                        .expect_search()
+                        .times(2)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                })(user_repository);
+                password_hasher
+                    .expect_hash_password()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok("decoy-hash".to_owned()) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("bad\nname", SECRET_PASSWORD);
 
         // Act
@@ -739,14 +1042,41 @@ mod tests {
     #[traced_test]
     async fn login_user_missing_credential_emits_application_error() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, credential_repository, _, _| {
-            expect_user(user_repository, user(1, "alice")?);
-            credential_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, credential_repository, _, _| {
+                (move |user_repository: &mut MockUserRepository, user: User| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_user = user.clone();
+                            Box::pin(async move { Ok(vec![own_user]) })
+                        });
+                })(user_repository, user(1, "alice")?);
+                credential_repository
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
@@ -783,13 +1113,32 @@ mod tests {
     #[traced_test]
     async fn login_user_port_failure_emits_no_authn_event() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, _, _, _| {
-            user_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|user_repository, _, _, _| {
+                user_repository
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
@@ -814,7 +1163,15 @@ mod tests {
         });
         let harness = use_case_with_limiter(
             |user_repository, _, _, _| {
-                expect_user(user_repository, user(1, "alice")?);
+                (move |user_repository: &mut MockUserRepository, user: User| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(move |_| {
+                            let own_user = user.clone();
+                            Box::pin(async move { Ok(vec![own_user]) })
+                        });
+                })(user_repository, user(1, "alice")?);
                 Ok(())
             },
             attempt_limiter,
@@ -833,22 +1190,64 @@ mod tests {
     #[tokio::test]
     async fn login_user_by_email_address_succeeds() -> Result<(), Box<dyn Error>> {
         // Arrange: the username lookup finds nothing, so the email lookup runs.
-        let harness = use_case_with(
-            |user_repository, credential_repository, password_hasher, token_provider| {
-                user_repository
-                    .expect_search()
-                    .times(1)
-                    .withf(|filter| filter.username.is_some() && filter.email.is_none())
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                expect_email_lookup(user_repository, vec![user(1, "alice")?]);
-                expect_credential(credential_repository, credential(1)?);
-                expect_valid_password(password_hasher);
-                token_provider.expect_issue().times(1).returning(|_| {
-                    Box::pin(async { Ok(IssuedToken::new("token".to_owned(), 3600)) })
-                });
-                Ok(())
-            },
-        )?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(
+                |user_repository, credential_repository, password_hasher, token_provider| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .withf(|filter| filter.username.is_some() && filter.email.is_none())
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                    (move |user_repository: &mut MockUserRepository, found: Vec<User>| {
+                        user_repository
+                            .expect_search()
+                            .times(1)
+                            .withf(|filter| filter.username.is_none() && filter.email.is_some())
+                            .returning(move |_| {
+                                let own = found.clone();
+                                Box::pin(async move { Ok(own) })
+                            });
+                    })(user_repository, vec![user(1, "alice")?]);
+                    (move |credential_repository: &mut MockCredentialRepository,
+                           credential: Credential| {
+                        credential_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_credential = credential.clone();
+                                Box::pin(async move { Ok(vec![own_credential]) })
+                            });
+                    })(credential_repository, credential(1)?);
+                    (move |password_hasher: &mut MockPasswordHasher| {
+                        password_hasher
+                            .expect_verify_password()
+                            .times(1)
+                            .returning(|_, _| Box::pin(async { Ok(true) }));
+                    })(password_hasher);
+                    token_provider.expect_issue().times(1).returning(|_| {
+                        Box::pin(async { Ok(IssuedToken::new("token".to_owned(), 3600)) })
+                    });
+                    Ok(())
+                },
+            );
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("alice@example.com", SECRET_PASSWORD);
 
         // Act
@@ -865,25 +1264,58 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange: the username lookup returns an account, so the email lookup
         // must not run even though another account's address might match.
-        let harness = use_case_with(
-            |user_repository, credential_repository, password_hasher, token_provider| {
-                let found = vec![user(1, "alice")?];
-                user_repository
-                    .expect_search()
-                    .times(1)
-                    .withf(|filter| filter.username.is_some() && filter.email.is_none())
-                    .returning(move |_| {
-                        let existing = found.clone();
-                        Box::pin(async move { Ok(existing) })
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUserRepository,
+                    &mut MockCredentialRepository,
+                    &mut MockPasswordHasher,
+                    &mut MockTokenProvider,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(
+                |user_repository, credential_repository, password_hasher, token_provider| {
+                    let found = vec![user(1, "alice")?];
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .withf(|filter| filter.username.is_some() && filter.email.is_none())
+                        .returning(move |_| {
+                            let existing = found.clone();
+                            Box::pin(async move { Ok(existing) })
+                        });
+                    (move |credential_repository: &mut MockCredentialRepository,
+                           credential: Credential| {
+                        credential_repository
+                            .expect_search()
+                            .times(1)
+                            .returning(move |_| {
+                                let own_credential = credential.clone();
+                                Box::pin(async move { Ok(vec![own_credential]) })
+                            });
+                    })(credential_repository, credential(1)?);
+                    (move |password_hasher: &mut MockPasswordHasher| {
+                        password_hasher
+                            .expect_verify_password()
+                            .times(1)
+                            .returning(|_, _| Box::pin(async { Ok(true) }));
+                    })(password_hasher);
+                    token_provider.expect_issue().times(1).returning(|_| {
+                        Box::pin(async { Ok(IssuedToken::new("token".to_owned(), 3600)) })
                     });
-                expect_credential(credential_repository, credential(1)?);
-                expect_valid_password(password_hasher);
-                token_provider.expect_issue().times(1).returning(|_| {
-                    Box::pin(async { Ok(IssuedToken::new("token".to_owned(), 3600)) })
-                });
-                Ok(())
-            },
-        )?;
+                    Ok(())
+                },
+            );
+            (move || -> Result<Harness, Box<dyn Error>> {
+                use_case_with_limiter(
+                    setup,
+                    (move || -> MockLoginAttemptLimiter {
+                        let mut limiter = MockLoginAttemptLimiter::new();
+                        limiter.expect_check().returning(|_| None);
+                        limiter
+                    })(),
+                )
+            })()
+        }?;
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
@@ -906,7 +1338,12 @@ mod tests {
         });
         let harness = use_case_with_limiter(
             |user_repository, _, _, _| {
-                expect_absent_identifier(user_repository);
+                (move |user_repository: &mut MockUserRepository| {
+                    user_repository
+                        .expect_search()
+                        .times(2)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                })(user_repository);
                 Ok(())
             },
             attempt_limiter,

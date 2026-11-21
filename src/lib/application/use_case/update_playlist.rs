@@ -338,65 +338,33 @@ mod tests {
         )
     }
 
-    fn harness_with(
-        users: MockUserRepository,
-        playlists: MockMusicPlaylistRepository,
-    ) -> GalleryFactoryHarness {
-        let unit_of_work = TestUnitOfWork {
-            resources: no_resources(),
-            music_playlists: playlists,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        GalleryFactoryHarness::new(unit_of_work)
-    }
-
-    fn expect_caller(
-        users: &mut MockUserRepository,
-        caller_id: i64,
-        role: Role,
-    ) -> Result<(), Box<dyn Error>> {
-        let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
-        users
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.id == Some(caller_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
-        Ok(())
-    }
-
-    fn expect_playlist(playlists: &mut MockMusicPlaylistRepository, playlist: MusicPlaylist) {
-        let playlist_id = playlist.id();
-        playlists
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.id == Some(playlist_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![playlist]) }));
-    }
-
-    fn save_echo(
-        playlists: &mut MockMusicPlaylistRepository,
-        expected_name: &'static str,
-        loaded_at: NaiveDateTime,
-    ) {
-        playlists
-            .expect_save()
-            .times(1)
-            .withf(move |saved| {
-                saved.name() == expected_name && saved.last_modified_at() > loaded_at
-            })
-            .returning(|saved| Box::pin(async move { Ok(saved) }));
-    }
-
     #[tokio::test]
     async fn update_playlist_renames_and_sets_visibility() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         let stored = playlist(3, 4, "Mine", false, Vec::new());
         let loaded_at = stored.last_modified_at();
-        expect_playlist(&mut playlists, stored);
+        (move |playlists: &mut MockMusicPlaylistRepository, playlist: MusicPlaylist| {
+            let playlist_id = playlist.id();
+            playlists
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(playlist_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![playlist]) }));
+        })(&mut playlists, stored);
         playlists
             .expect_search()
             .times(1)
@@ -409,7 +377,16 @@ mod tests {
                 saved.name() == "New" && saved.is_public() && saved.last_modified_at() > loaded_at
             })
             .returning(|saved| Box::pin(async move { Ok(saved) }));
-        let harness = harness_with(users, playlists);
+        let harness = (move |users: MockUserRepository,
+                             playlists: MockMusicPlaylistRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_playlists: playlists,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
         // Act
@@ -436,11 +413,29 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 0, Role::Admin)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 0, Role::Admin)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         let stored = playlist(3, 4, "Mine", false, Vec::new());
         let loaded_at = stored.last_modified_at();
-        expect_playlist(&mut playlists, stored);
+        (move |playlists: &mut MockMusicPlaylistRepository, playlist: MusicPlaylist| {
+            let playlist_id = playlist.id();
+            playlists
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(playlist_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![playlist]) }));
+        })(&mut playlists, stored);
         playlists
             .expect_search()
             .times(1)
@@ -451,7 +446,16 @@ mod tests {
             .times(1)
             .withf(move |saved| saved.name() == "Root" && saved.last_modified_at() > loaded_at)
             .returning(|saved| Box::pin(async move { Ok(saved) }));
-        let harness = harness_with(users, playlists);
+        let harness = (move |users: MockUserRepository,
+                             playlists: MockMusicPlaylistRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_playlists: playlists,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
         // Act
@@ -476,13 +480,50 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         let stored = playlist(3, 4, "Mine", false, Vec::new());
         let loaded_at = stored.last_modified_at();
-        expect_playlist(&mut playlists, stored);
-        save_echo(&mut playlists, "Mine", loaded_at);
-        let harness = harness_with(users, playlists);
+        (move |playlists: &mut MockMusicPlaylistRepository, playlist: MusicPlaylist| {
+            let playlist_id = playlist.id();
+            playlists
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(playlist_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![playlist]) }));
+        })(&mut playlists, stored);
+        (move |playlists: &mut MockMusicPlaylistRepository,
+               expected_name: &'static str,
+               loaded_at: NaiveDateTime| {
+            playlists
+                .expect_save()
+                .times(1)
+                .withf(move |saved| {
+                    saved.name() == expected_name && saved.last_modified_at() > loaded_at
+                })
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut playlists, "Mine", loaded_at);
+        let harness = (move |users: MockUserRepository,
+                             playlists: MockMusicPlaylistRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_playlists: playlists,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
         // Act
@@ -508,16 +549,43 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
+        (move |playlists: &mut MockMusicPlaylistRepository, playlist: MusicPlaylist| {
+            let playlist_id = playlist.id();
+            playlists
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(playlist_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![playlist]) }));
+        })(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
         let collision = playlist(5, 4, "Taken", false, Vec::new());
         playlists.expect_search().times(1).return_once(move |_| {
             let found = collision.clone();
             Box::pin(async move { Ok(vec![found]) })
         });
         playlists.expect_save().times(0);
-        let harness = harness_with(users, playlists);
+        let harness = (move |users: MockUserRepository,
+                             playlists: MockMusicPlaylistRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_playlists: playlists,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
         // Act
@@ -545,11 +613,38 @@ mod tests {
     async fn update_playlist_invalid_name_returns_invalid_name() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
+        (move |playlists: &mut MockMusicPlaylistRepository, playlist: MusicPlaylist| {
+            let playlist_id = playlist.id();
+            playlists
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(playlist_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![playlist]) }));
+        })(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
         playlists.expect_save().times(0);
-        let harness = harness_with(users, playlists);
+        let harness = (move |users: MockUserRepository,
+                             playlists: MockMusicPlaylistRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_playlists: playlists,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
         // Act
@@ -572,11 +667,29 @@ mod tests {
     async fn update_playlist_adds_a_recording_for_a_reader() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         let stored = playlist(3, 4, "Public", true, Vec::new());
         let loaded_at = stored.last_modified_at();
-        expect_playlist(&mut playlists, stored);
+        (move |playlists: &mut MockMusicPlaylistRepository, playlist: MusicPlaylist| {
+            let playlist_id = playlist.id();
+            playlists
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(playlist_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![playlist]) }));
+        })(&mut playlists, stored);
         let added = track(30, 0)?;
         let recorded = added.clone();
         let mut albums = MockMusicAlbumRepository::new();
@@ -608,7 +721,6 @@ mod tests {
             });
         let unit_of_work = TestUnitOfWork {
             music_albums: albums,
-            resources: no_resources(),
             music_playlists: playlists,
             users,
             ..TestUnitOfWork::default()
@@ -644,9 +756,27 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
+        (move |playlists: &mut MockMusicPlaylistRepository, playlist: MusicPlaylist| {
+            let playlist_id = playlist.id();
+            playlists
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(playlist_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![playlist]) }));
+        })(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
         let mut albums = MockMusicAlbumRepository::new();
         albums
             .expect_search_recordings()
@@ -655,7 +785,6 @@ mod tests {
         playlists.expect_save().times(0);
         let unit_of_work = TestUnitOfWork {
             music_albums: albums,
-            resources: no_resources(),
             music_playlists: playlists,
             users,
             ..TestUnitOfWork::default()
@@ -686,14 +815,41 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(
+        (move |playlists: &mut MockMusicPlaylistRepository, playlist: MusicPlaylist| {
+            let playlist_id = playlist.id();
+            playlists
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(playlist_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![playlist]) }));
+        })(
             &mut playlists,
             playlist(3, 4, "Mine", false, vec![track(30, 0)?]),
         );
         playlists.expect_save().times(0);
-        let harness = harness_with(users, playlists);
+        let harness = (move |users: MockUserRepository,
+                             playlists: MockMusicPlaylistRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_playlists: playlists,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
         // Act
@@ -721,9 +877,27 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange: saving the aggregate races another writer of the same name.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
+        (move |playlists: &mut MockMusicPlaylistRepository, playlist: MusicPlaylist| {
+            let playlist_id = playlist.id();
+            playlists
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(playlist_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![playlist]) }));
+        })(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
         let recorded = track(30, 0)?;
         let mut albums = MockMusicAlbumRepository::new();
         albums
@@ -736,7 +910,6 @@ mod tests {
             .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
         let unit_of_work = TestUnitOfWork {
             music_albums: albums,
-            resources: no_resources(),
             music_playlists: playlists,
             users,
             ..TestUnitOfWork::default()
@@ -771,7 +944,16 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, MockMusicPlaylistRepository::new());
+        let harness = (move |users: MockUserRepository,
+                             playlists: MockMusicPlaylistRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_playlists: playlists,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, MockMusicPlaylistRepository::new());
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
         // Act
@@ -795,14 +977,41 @@ mod tests {
     async fn update_playlist_save_failure_rolls_back() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
+        (move |playlists: &mut MockMusicPlaylistRepository, playlist: MusicPlaylist| {
+            let playlist_id = playlist.id();
+            playlists
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(playlist_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![playlist]) }));
+        })(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
         playlists
             .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-        let harness = harness_with(users, playlists);
+        let harness = (move |users: MockUserRepository,
+                             playlists: MockMusicPlaylistRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_playlists: playlists,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
         // Act

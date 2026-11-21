@@ -1,8 +1,13 @@
 #![cfg_attr(
     test,
     allow(
+        clippy::absolute_paths,
         clippy::missing_trait_methods,
-        reason = "We are less strict about test code"
+        clippy::redundant_closure_call,
+        clippy::shadow_reuse,
+        clippy::shadow_unrelated,
+        clippy::type_complexity,
+        reason = "We are less strict about test code: an inlined arrangement block is self-contained, so it keeps a qualified path, an immediately-invoked closure, a rebound mock name and a concrete double type"
     )
 )]
 
@@ -36,10 +41,9 @@ mod test_helpers {
     use crate::domain::{NonNegativeF64, NumericID, PositiveI64};
 
     use crate::domain::model::{
-        ChildKind, Configuration, DIGEST_HEX_LENGTH, Episode, EpisodeIndex, File, Grant,
-        GrantEffect, InstanceState, IntegrityHash, Movie, MusicAlbum, MusicMedium, Orientation,
-        Principal, ProbedAudio, ProbedImage, ProbedVideo, Resource, ResourceAccess, ResourceKind,
-        ResourceRole, Role, ScanType, Season, SeasonIndex, Series, User, Video, Visibility,
+        Configuration, DIGEST_HEX_LENGTH, Episode, EpisodeIndex, File, InstanceState,
+        IntegrityHash, Movie, MusicAlbum, MusicMedium, Orientation, ProbedAudio, ProbedImage,
+        ProbedVideo, ScanType, Season, SeasonIndex, Series, Video,
     };
 
     use crate::domain::port::{
@@ -144,19 +148,154 @@ mod test_helpers {
                 credentials: MockCredentialRepository::new(),
                 files: MockFileRepository::new(),
                 galleries: MockGalleryRepository::new(),
-                grants: no_grants(),
+                grants: (move || -> crate::domain::port::MockGrantRepository {
+                    let mut grants = crate::domain::port::MockGrantRepository::new();
+                    grants
+                        .expect_save_grant()
+                        .returning(|grant| Box::pin(async move { Ok(grant) }));
+                    grants
+                        .expect_delete()
+                        .returning(|_, _| Box::pin(async { Ok(true) }));
+                    grants.expect_search().returning(|filter| {
+                        let resource_id = filter.resource_id.unwrap_or_default();
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(1),
+                            resource_id,
+                            crate::domain::model::ResourceRole::Viewer,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move { Ok(vec![grant]) })
+                    });
+                    grants
+                })(),
                 images: MockImageRepository::new(),
                 mime_types: MockMimeTypeRepository::new(),
                 movies: MockMovieRepository::new(),
                 music_albums: MockMusicAlbumRepository::new(),
                 music_groups: MockMusicGroupRepository::new(),
                 music_playlists: MockMusicPlaylistRepository::new(),
-                resources: no_resources(),
+                resources: (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                        let mut resources = crate::domain::port::MockResourceRepository::new();
+                        resources.expect_search().returning(|filter, caller| {
+                            let user_id = caller.id();
+                            let resource = crate::domain::model::Resource::from_stored(
+                                1,
+                                filter
+                                    .kind
+                                    .unwrap_or(crate::domain::model::ResourceKind::Library),
+                                filter.entity_id.unwrap_or_default(),
+                                Some(user_id),
+                                None,
+                                crate::domain::model::Visibility::Private,
+                            );
+                            let grant = crate::domain::model::Grant::from_stored(
+                                1,
+                                crate::domain::model::Principal::User(user_id),
+                                1,
+                                crate::domain::model::ResourceRole::Downloader,
+                                crate::domain::model::ChildKind::All,
+                                crate::domain::model::GrantEffect::Allow,
+                            );
+                            Box::pin(async move {
+                                Ok(vec![crate::domain::model::ResourceAccess::new(
+                                    resource,
+                                    Vec::new(),
+                                    vec![grant],
+                                    Vec::new(),
+                                )])
+                            })
+                        });
+                        resources
+                            .expect_search_many()
+                            .returning(|addresses, caller| {
+                                let user_id = caller.id();
+                                let found = addresses
+                                    .iter()
+                                    .map(|address| {
+                                        let resource = crate::domain::model::Resource::from_stored(
+                                            1,
+                                            address.kind(),
+                                            address.id(),
+                                            Some(user_id),
+                                            None,
+                                            crate::domain::model::Visibility::Private,
+                                        );
+                                        let grant = crate::domain::model::Grant::from_stored(
+                                            1,
+                                            crate::domain::model::Principal::User(user_id),
+                                            1,
+                                            crate::domain::model::ResourceRole::Downloader,
+                                            crate::domain::model::ChildKind::All,
+                                            crate::domain::model::GrantEffect::Allow,
+                                        );
+                                        crate::domain::model::ResourceAccess::new(
+                                            resource,
+                                            Vec::new(),
+                                            vec![grant],
+                                            Vec::new(),
+                                        )
+                                    })
+                                    .collect::<Vec<_>>();
+                                Box::pin(async move { Ok(found) })
+                            });
+                        resources.expect_create().returning(|new_resource| {
+                            let resource = crate::domain::model::Resource::from_stored(
+                                1,
+                                new_resource.kind,
+                                new_resource.entity_id,
+                                new_resource.owner_id,
+                                None,
+                                new_resource.visibility,
+                            );
+                            Box::pin(async move { Ok(resource) })
+                        });
+                        resources
+                    })();
+                    resources
+                        .expect_delete()
+                        .returning(|_| Box::pin(async { Ok(true) }));
+                    resources
+                })(),
                 rolled_back: Arc::new(AtomicBool::new(false)),
                 series: MockSeriesRepository::new(),
                 uploads: MockUploadRepository::new(),
                 users: MockUserRepository::new(),
                 videos: MockVideoRepository::new(),
+            }
+        }
+    }
+
+    impl TestUnitOfWork {
+        /// A unit of work whose user repository resolves any requested identifier.
+        #[must_use]
+        pub(crate) fn with_any_caller() -> Self {
+            Self {
+                users: (move || -> crate::domain::port::MockUserRepository {
+                    let mut users = crate::domain::port::MockUserRepository::new();
+                    users.expect_search().returning(|filter| {
+                        let found = filter.id.and_then(|id| {
+                            let role = if id == 0 {
+                                crate::domain::model::Role::Admin
+                            } else {
+                                crate::domain::model::Role::Standard
+                            };
+                            crate::domain::model::User::try_new(
+                                id,
+                                "caller".to_owned(),
+                                None,
+                                id.max(1),
+                                role,
+                            )
+                            .ok()
+                        });
+                        Box::pin(async move { Ok(found.into_iter().collect()) })
+                    });
+                    users
+                })(),
+                ..Self::default()
             }
         }
     }
@@ -551,160 +690,6 @@ mod test_helpers {
             Some(video_date()),
             sample_video(video_id, video_id)?,
         )?)
-    }
-
-    /// Expect the caller load to find a standard user named `caller`.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the fixed caller cannot be built.
-    pub(crate) fn expect_caller(
-        users: &mut MockUserRepository,
-        caller_id: NumericID,
-    ) -> Result<(), Box<dyn Error>> {
-        let caller = User::try_new(
-            caller_id,
-            "caller".to_owned(),
-            None,
-            caller_id,
-            Role::Standard,
-        )?;
-        users
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.id == Some(caller_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
-        Ok(())
-    }
-
-    /// Return a resource repository that makes the caller the owner.
-    ///
-    /// A use case whose test does not exercise authorization stubs the load
-    /// with this repository: the addressed resource is private, owned by the
-    /// caller and carries no grant, so the implicit `Owner` bundle allows.
-    #[must_use]
-    pub(crate) fn caller_owned_resources() -> MockResourceRepository {
-        let mut resources = MockResourceRepository::new();
-        resources.expect_search().returning(|filter, caller| {
-            let user_id = caller.id();
-            let resource = Resource::from_stored(
-                1,
-                filter.kind.unwrap_or(ResourceKind::Library),
-                filter.entity_id.unwrap_or_default(),
-                Some(user_id),
-                None,
-                Visibility::Private,
-            );
-            let grant = Grant::from_stored(
-                1,
-                Principal::User(user_id),
-                1,
-                ResourceRole::Downloader,
-                ChildKind::All,
-                GrantEffect::Allow,
-            );
-            Box::pin(async move {
-                Ok(vec![ResourceAccess::new(
-                    resource,
-                    Vec::new(),
-                    vec![grant],
-                    Vec::new(),
-                )])
-            })
-        });
-        resources
-            .expect_search_many()
-            .returning(|addresses, caller| {
-                let user_id = caller.id();
-                let found = addresses
-                    .iter()
-                    .map(|address| {
-                        let resource = Resource::from_stored(
-                            1,
-                            address.kind(),
-                            address.id(),
-                            Some(user_id),
-                            None,
-                            Visibility::Private,
-                        );
-                        let grant = Grant::from_stored(
-                            1,
-                            Principal::User(user_id),
-                            1,
-                            ResourceRole::Downloader,
-                            ChildKind::All,
-                            GrantEffect::Allow,
-                        );
-                        ResourceAccess::new(resource, Vec::new(), vec![grant], Vec::new())
-                    })
-                    .collect::<Vec<_>>();
-                Box::pin(async move { Ok(found) })
-            });
-        resources.expect_create().returning(|new_resource| {
-            let resource = Resource::from_stored(
-                1,
-                new_resource.kind,
-                new_resource.entity_id,
-                new_resource.owner_id,
-                None,
-                new_resource.visibility,
-            );
-            Box::pin(async move { Ok(resource) })
-        });
-        resources
-    }
-
-    /// Return the caller-owned resource double with a tolerated delete.
-    #[must_use]
-    pub(crate) fn no_resources() -> MockResourceRepository {
-        let mut resources = caller_owned_resources();
-        resources
-            .expect_delete()
-            .returning(|_| Box::pin(async { Ok(true) }));
-        resources
-    }
-
-    /// Return a grant repository storing every grant it is handed.
-    #[must_use]
-    pub(crate) fn no_grants() -> MockGrantRepository {
-        let mut grants = MockGrantRepository::new();
-        grants
-            .expect_save_grant()
-            .returning(|grant| Box::pin(async move { Ok(grant) }));
-        grants
-            .expect_delete()
-            .returning(|_, _| Box::pin(async { Ok(true) }));
-        grants.expect_search().returning(|filter| {
-            let resource_id = filter.resource_id.unwrap_or_default();
-            let grant = Grant::from_stored(
-                1,
-                Principal::User(1),
-                resource_id,
-                ResourceRole::Viewer,
-                ChildKind::All,
-                GrantEffect::Allow,
-            );
-            Box::pin(async move { Ok(vec![grant]) })
-        });
-        grants
-    }
-
-    /// Return a user repository resolving any requested identifier.
-    ///
-    /// A use case whose test does not exercise the caller load stubs it with
-    /// this repository: identifier `0` resolves to the Root Admin and any other
-    /// identifier to a Standard user.
-    #[must_use]
-    pub(crate) fn any_caller() -> MockUserRepository {
-        let mut users = MockUserRepository::new();
-        users.expect_search().returning(|filter| {
-            let found = filter.id.and_then(|id| {
-                let role = if id == 0 { Role::Admin } else { Role::Standard };
-                User::try_new(id, "caller".to_owned(), None, id.max(1), role).ok()
-            });
-            Box::pin(async move { Ok(found.into_iter().collect()) })
-        });
-        users
     }
 
     /// Split `response` into its status and decoded JSON body.

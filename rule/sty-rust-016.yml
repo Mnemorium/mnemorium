@@ -3,11 +3,29 @@ id: sty-rust-016
 language: Rust
 severity: error
 message: >-
-  a missing entity is not an outbound-port error; express absence as a value
-  (Option/None or a bool result), never a port error variant
+  a domain-model constructor is named `new` when infallible and `try_new` when it
+  can fail; `try_new` returns `Result<Self, _>`
 files:
-  - src/lib/domain/port/error.rs
+  - src/lib/domain/model/*.rs
 rule:
-  all:
-    - kind: enum_variant
-    - regex: '(NotFound|NoSuch|Missing|DoesNotExist|NotExist|NotPresent|Absent)'
+  any:
+    # An infallible constructor keeps the `new` name; one that can fail must be
+    # `try_new`. A `new` whose return type is `Result`/`Option` can fail.
+    - all:
+        - kind: function_item
+        - has:
+            field: name
+            regex: '^new$'
+        - has:
+            field: return_type
+            regex: '^(Result|Option)<'
+    # A `try_new` is a fallible constructor: it must return `Result<Self, _>`.
+    - all:
+        - kind: function_item
+        - has:
+            field: name
+            regex: '^try_new$'
+        - not:
+            has:
+              field: return_type
+              regex: '^Result<Self\b'

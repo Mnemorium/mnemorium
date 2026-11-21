@@ -1,17 +1,20 @@
 ---
 id: sty-rust-039
 language: Rust
-severity: hint
-message: extract unit-of-work opener call sites for STY-RUST-039
+severity: error
+message: >-
+  a unit-of-work accessor must borrow `&mut self` so repositories are requested
+  sequentially, never held two at a time
 rule:
   all:
     - any:
-        - pattern: $RECV.begin()
-        - pattern: $RECV.begin_write()
-    - inside:
-        kind: function_item
-        pattern: $ENCLOSING
+        - kind: function_item
+        - kind: function_signature_item
+    - has:
+        field: return_type
+        regex: "^impl .*Repository [+] '_$"
+    - has:
+        field: parameters
         has:
-          field: name
-          pattern: $FUNC
-        stopBy: end
+          kind: self_parameter
+          regex: '^&self$'

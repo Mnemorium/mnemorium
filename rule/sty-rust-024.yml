@@ -3,22 +3,36 @@ id: sty-rust-024
 language: Rust
 severity: error
 message: >-
-  an enum deriving sqlx::Type declares
-  #[sqlx(rename_all = "UPPERCASE")] to match the SQL CHECK constraint strings
+  name tests `<UnitOfWork>_<Scenario>_<ExpectedResult>` — at least three
+  underscore-separated parts, with no `test_` prefix
 files:
-  - src/lib/infrastructure/outbound/sqlx/model/*.rs
+  - src/**/*.rs
 rule:
   all:
-    - kind: enum_item
-    # The derive attribute precedes the enum as a sibling, so `follows` — not
-    # `has` — reaches it; `stopBy: end` skips intervening attributes such as
-    # #[non_exhaustive] and doc comments.
+    - kind: function_item
+    # A test carries a test attribute as a preceding sibling. `stopBy` halts the
+    # backward search at the first real item (skipping the attribute/comment
+    # block that decorates this function), so a function that merely follows a
+    # test — or sits below an unrelated item — is not mistaken for one.
     - follows:
         kind: attribute_item
-        regex: 'derive\([^)]*sqlx::Type'
-        stopBy: end
-    - not:
-        follows:
-          kind: attribute_item
-          regex: 'sqlx\(rename_all\s*=\s*"UPPERCASE"\)'
-          stopBy: end
+        regex: '#\[(test|tokio::test|rstest)\b'
+        stopBy:
+          all:
+            - not:
+                kind: attribute_item
+            - not:
+                kind: line_comment
+            - not:
+                kind: block_comment
+    - any:
+        # Reject the legacy `test_` prefix outright, even when the rest of the
+        # name already has three parts.
+        - has:
+            field: name
+            regex: '^test_'
+        # Require at least three underscore-separated parts.
+        - not:
+            has:
+              field: name
+              regex: '^[a-z0-9]+(_[a-z0-9]+){2,}$'

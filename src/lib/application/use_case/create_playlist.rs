@@ -152,7 +152,7 @@ where
                     .await
                     .map_err(|error| match error {
                         // A concurrent insert won the race for the per-owner
-                        // unique name (`STY-RUST-015`).
+                        // unique name (`STY-RUST-014`).
                         RepositoryError::AlreadyExist => CreatePlaylistError::NameAlreadyExists,
                         RepositoryError::Conflict | RepositoryError::DataIntegrityViolation => {
                             CreatePlaylistError::InvalidCover
@@ -239,37 +239,33 @@ mod tests {
         GalleryFactoryHarness::new(unit_of_work)
     }
 
-    fn expect_caller(users: &mut MockUserRepository, caller_id: i64) -> Result<(), Box<dyn Error>> {
-        let caller = User::try_new(
-            caller_id,
-            "caller".to_owned(),
-            None,
-            caller_id,
-            Role::Standard,
-        )?;
-        users
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.id == Some(caller_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
-        Ok(())
-    }
-
-    fn expect_no_collision(playlists: &mut MockMusicPlaylistRepository) {
-        playlists
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-    }
-
     #[tokio::test]
     async fn create_playlist_creates_a_private_playlist_by_default() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut MockUserRepository, caller_id: i64| -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         let stored = playlist(9, 1, "Mix", false);
-        expect_no_collision(&mut playlists);
+        (move |playlists: &mut MockMusicPlaylistRepository| {
+            playlists
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut playlists);
         playlists
             .expect_create()
             .times(1)
@@ -299,7 +295,21 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut MockUserRepository, caller_id: i64| -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         playlists.expect_search().times(0);
         playlists.expect_create().times(0);
@@ -326,7 +336,21 @@ mod tests {
     async fn create_playlist_duplicate_name_returns_already_exists() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut MockUserRepository, caller_id: i64| -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         let existing = playlist(3, 1, "Mix", false);
         playlists
@@ -360,9 +384,28 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut MockUserRepository, caller_id: i64| -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_no_collision(&mut playlists);
+        (move |playlists: &mut MockMusicPlaylistRepository| {
+            playlists
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut playlists);
         playlists
             .expect_create()
             .times(1)
@@ -387,7 +430,21 @@ mod tests {
     async fn create_playlist_empty_name_returns_invalid_name() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut MockUserRepository, caller_id: i64| -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         playlists.expect_create().times(0);
         let harness = harness_with(users, playlists);
@@ -408,7 +465,21 @@ mod tests {
     async fn create_playlist_long_name_returns_name_too_long() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut MockUserRepository, caller_id: i64| -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         playlists.expect_create().times(0);
         let harness = harness_with(users, playlists);
@@ -456,9 +527,28 @@ mod tests {
     async fn create_playlist_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut MockUserRepository, caller_id: i64| -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_no_collision(&mut playlists);
+        (move |playlists: &mut MockMusicPlaylistRepository| {
+            playlists
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut playlists);
         playlists
             .expect_create()
             .times(1)
@@ -481,10 +571,29 @@ mod tests {
     async fn create_playlist_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut MockUserRepository, caller_id: i64| -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         let stored = playlist(9, 1, "Mix", false);
-        expect_no_collision(&mut playlists);
+        (move |playlists: &mut MockMusicPlaylistRepository| {
+            playlists
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut playlists);
         playlists.expect_create().times(1).return_once(move |_| {
             let found = stored.clone();
             Box::pin(async move { Ok(found) })

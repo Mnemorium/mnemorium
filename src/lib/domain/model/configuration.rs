@@ -1280,7 +1280,7 @@ impl<'de> serde::Deserialize<'de> for SeedProfile {
     ///
     /// A derived `Deserialize` would compare the declared spelling exactly
     /// (`rename_all = "lowercase"` is case-sensitive), so every layer reads
-    /// through [`SeedProfile::parse`] instead (`STY-RUST-077`).
+    /// through [`SeedProfile::parse`] instead (`STY-RUST-074`).
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,

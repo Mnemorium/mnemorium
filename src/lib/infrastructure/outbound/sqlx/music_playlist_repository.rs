@@ -301,263 +301,13 @@ fn domain_playlist(row: MusicPlaylistRow, tracks: Vec<MusicRecording>) -> MusicP
 
 #[cfg(test)]
 mod tests {
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
 
     use super::*;
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use chrono::NaiveDateTime;
     use std::error::Error;
     use tracing_test::traced_test;
-
-    /// Assert the captured output is exactly one `output_validation_failed`
-    /// event with `reason`.
-    fn assert_output_validation_failed(lines: &[&str], reason: &str) -> Result<(), String> {
-        let ours: Vec<&str> = lines
-            .iter()
-            .copied()
-            .filter(|line| line.contains("security:"))
-            .collect();
-        let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
-        if warn_count != 1 {
-            return Err(format!(
-                "rejected stored data must emit exactly one warn event (found {warn_count})"
-            ));
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains("event=\"output_validation_failed\""))
-        {
-            return Err("the event must be output_validation_failed".to_owned());
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains(&format!("reason=\"{reason}\"")))
-        {
-            return Err(format!("the event must carry the stable reason `{reason}`"));
-        }
-        if ours.iter().any(|line| line.contains("sqlx")) {
-            return Err("the event must not carry the sqlx detail".to_owned());
-        }
-        Ok(())
-    }
-
-    /// Open a migrated in-memory database and begin one transaction.
-    /// Seed a credential and a standard user so foreign keys resolve.
-    async fn seed_user(
-        transaction: &mut Transaction<'static, Sqlite>,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (?1, ?2)")
-            .bind(user_id)
-            .bind(format!("hash-{user_id}"))
-            .execute(&mut **transaction)
-            .await?;
-        sqlx::query(
-            "INSERT INTO user (user_id, role, username, email, credential_id)
-             VALUES (?1, 'STANDARD', ?2, NULL, ?1)",
-        )
-        .bind(user_id)
-        .bind(format!("user{user_id}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed an audio file owned by `user_id`.
-    async fn seed_file(
-        transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
-        user_id: i64,
-        path: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
-             VALUES (?1, ?2, ?3, 0, 'audio/mpeg', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?4)",
-        )
-        .bind(file_id)
-        .bind(path)
-        .bind(user_id)
-        .bind(format!("{file_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed the audio backing a recording.
-    async fn seed_audio(
-        transaction: &mut Transaction<'static, Sqlite>,
-        audio_id: i64,
-        file_id: i64,
-        name: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO audio (
-                audio_id, name, duration_ms, codec, sample_rate_hz,
-                bit_depth, block_size, file_id
-             )
-             VALUES (?1, ?2, 1000.0, 'MP3', 44100.0, 16, 16, ?3)",
-        )
-        .bind(audio_id)
-        .bind(name)
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a recording on `audio_id`.
-    async fn seed_recording(
-        transaction: &mut Transaction<'static, Sqlite>,
-        recording_id: i64,
-        name: Option<&str>,
-        audio_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO music_recording (
-                music_recording_id, name, isrc_code, audio_id
-             )
-             VALUES (?1, ?2, NULL, ?3)",
-        )
-        .bind(recording_id)
-        .bind(name)
-        .bind(audio_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a playlist owned by `user_id`.
-    async fn seed_playlist(
-        transaction: &mut Transaction<'static, Sqlite>,
-        playlist_id: i64,
-        name: &str,
-        user_id: i64,
-        is_public: bool,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO music_playlist (
-                music_playlist_id, name, user_id, is_public
-             )
-             VALUES (?1, ?2, ?3, ?4)",
-        )
-        .bind(playlist_id)
-        .bind(name)
-        .bind(user_id)
-        .bind(is_public)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed an image row of `image_id` on a new PNG file of the same identifier.
-    async fn seed_image(
-        transaction: &mut Transaction<'static, Sqlite>,
-        image_id: i64,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
-             VALUES (?1, ?2, ?3, 0, 'image/png', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?4)",
-        )
-        .bind(image_id)
-        .bind(format!("{image_id}.png"))
-        .bind(user_id)
-        .bind(format!("{image_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        sqlx::query(
-            "INSERT INTO image (image_id, name, width_px, height_px, orientation, created_at, file_id)
-             VALUES (?1, ?2, 10, 10, 'SQUARE', '2026-10-06', ?1)",
-        )
-        .bind(image_id)
-        .bind(format!("{image_id}.png"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a catalogue group whose cover is `cover_image_id`.
-    async fn seed_covered_group(
-        transaction: &mut Transaction<'static, Sqlite>,
-        cover_image_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO music_group (stage_name, cover_image_id) VALUES ('The Band', ?1)")
-            .bind(cover_image_id)
-            .execute(&mut **transaction)
-            .await?;
-        Ok(())
-    }
-
-    /// Seed a gallery whose only item is `image_id`, so the image is USER media.
-    async fn seed_gallery_media(
-        transaction: &mut Transaction<'static, Sqlite>,
-        gallery_id: i64,
-        gallery_item_id: i64,
-        image_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO gallery (gallery_id, name, created_at, last_modified_at, is_public, user_id)
-             VALUES (?1, 'Holiday', '2026-10-06 00:00:00', '2026-10-06 00:00:00', 1, 1)",
-        )
-        .bind(gallery_id)
-        .execute(&mut **transaction)
-        .await?;
-        sqlx::query(
-            "INSERT INTO gallery_item (gallery_item_id, gallery_id, image_id, item_index)
-             VALUES (?1, ?2, ?3, 0)",
-        )
-        .bind(gallery_item_id)
-        .bind(gallery_id)
-        .bind(image_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a playlist placement directly, bypassing the repository guards.
-    async fn seed_placement(
-        transaction: &mut Transaction<'static, Sqlite>,
-        playlist_id: i64,
-        recording_id: i64,
-        track_index: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO music_track (track_index, music_playlist_id, music_medium_id, music_recording_id)
-             VALUES (?1, ?2, NULL, ?3)",
-        )
-        .bind(track_index)
-        .bind(playlist_id)
-        .bind(recording_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed an album, one medium and one placement on it.
-    async fn seed_album_placement(
-        transaction: &mut Transaction<'static, Sqlite>,
-        recording_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO music_album (music_album_id, name, release_date, production_type, music_group_id)
-             VALUES (1, 'Kind of Blue', '1959-08-17', NULL, 0)",
-        )
-        .execute(&mut **transaction)
-        .await?;
-        sqlx::query(
-            "INSERT INTO music_medium (music_medium_id, music_album_id, type, medium_index)
-             VALUES (40, 1, 'CD', 1)",
-        )
-        .execute(&mut **transaction)
-        .await?;
-        sqlx::query(
-            "INSERT INTO music_track (track_index, music_playlist_id, music_medium_id, music_recording_id)
-             VALUES (1, NULL, 40, ?1)",
-        )
-        .bind(recording_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
 
     /// Build a domain playlist with no tracks.
     fn playlist(name: &str, user_id: i64, is_public: bool) -> MusicPlaylist {
@@ -571,17 +321,6 @@ mod tests {
             None,
             Vec::new(),
         )
-    }
-
-    /// Seed one recording backed by its own file and audio.
-    async fn seed_one_recording(
-        transaction: &mut Transaction<'static, Sqlite>,
-        recording_id: i64,
-        name: &str,
-    ) -> Result<(), sqlx::Error> {
-        seed_file(transaction, recording_id, 1, &format!("{name}.mp3")).await?;
-        seed_audio(transaction, recording_id, recording_id, name).await?;
-        seed_recording(transaction, recording_id, Some(name), recording_id).await
     }
 
     /// Re-read the playlist identified by `id`.
@@ -695,7 +434,7 @@ mod tests {
         // Arrange: one covered playlist and one without artwork.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_image(&mut transaction, 12, 1).await?;
+        seed_image_v2(&mut transaction, 12, 1).await?;
         seed_playlist(&mut transaction, 7, "Covered", 1, false).await?;
         seed_playlist(&mut transaction, 8, "Plain", 1, false).await?;
         sqlx::query("UPDATE music_playlist SET cover_image_id = 12 WHERE music_playlist_id = 7")
@@ -723,8 +462,8 @@ mod tests {
         // Arrange: two covered playlists, each with its own artwork.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_image(&mut transaction, 12, 1).await?;
-        seed_image(&mut transaction, 13, 1).await?;
+        seed_image_v2(&mut transaction, 12, 1).await?;
+        seed_image_v2(&mut transaction, 13, 1).await?;
         seed_playlist(&mut transaction, 7, "First", 1, false).await?;
         seed_playlist(&mut transaction, 8, "Second", 1, false).await?;
         sqlx::query("UPDATE music_playlist SET cover_image_id = 12 WHERE music_playlist_id = 7")
@@ -772,7 +511,7 @@ mod tests {
         // Arrange: the image already backs a catalogue group, so it is `LIBRARY`.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_image(&mut transaction, 12, 1).await?;
+        seed_image_v2(&mut transaction, 12, 1).await?;
         seed_covered_group(&mut transaction, 12).await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
 
@@ -789,7 +528,7 @@ mod tests {
         // Arrange: the image is gallery media, so a USER image already has a referrer.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_image(&mut transaction, 13, 1).await?;
+        seed_image_v2(&mut transaction, 13, 1).await?;
         seed_gallery_media(&mut transaction, 3, 1, 13).await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
 
@@ -945,7 +684,37 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "track_index_out_of_range"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "track_index_out_of_range")
+        });
         Ok(())
     }
 
@@ -1056,7 +825,37 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "invalid_recording"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "invalid_recording")
+        });
         Ok(())
     }
 
@@ -1112,8 +911,8 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_image(&mut transaction, 14, 1).await?;
-        seed_image(&mut transaction, 15, 1).await?;
+        seed_image_v2(&mut transaction, 14, 1).await?;
+        seed_image_v2(&mut transaction, 15, 1).await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
         let created = repository.create(playlist("Mix", 1, false)).await?;
 
@@ -1351,6 +1150,84 @@ mod tests {
         assert!(!missing, "a missing playlist must report false");
         assert_eq!(placements, 0, "deleting a playlist must cascade its tracks");
         assert_eq!(recordings, 1, "the shared recording must survive");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn playlist_cover_rejects_a_library_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: image 1 is a library cover, so it is LIBRARY.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_covered_owners(&pool, 1).await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO music_playlist (music_playlist_id, name, user_id, cover_image_id)
+             VALUES (1, 'Mix', 1, 1)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "a playlist cover must reject a LIBRARY image as a conflict"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn second_playlist_cover_for_a_user_image_is_rejected() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        sqlx::query(
+            "INSERT INTO music_playlist (music_playlist_id, name, user_id, cover_image_id)
+             VALUES (1, 'Mix one', 1, 1)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO music_playlist (music_playlist_id, name, user_id, cover_image_id)
+             VALUES (2, 'Mix two', 1, 1)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::AlreadyExist)),
+            "a USER image must not back two playlist covers"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn playlist_and_gallery_cannot_share_a_user_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: a playlist cover owns image 1.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        sqlx::query(
+            "INSERT INTO music_playlist (music_playlist_id, name, user_id, cover_image_id)
+             VALUES (1, 'Mix', 1, 1)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        let result = seed_gallery_image(&pool, 1)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "a USER image must not have two referrers"
+        );
         Ok(())
     }
 }

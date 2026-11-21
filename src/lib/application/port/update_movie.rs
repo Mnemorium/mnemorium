@@ -166,9 +166,6 @@ pub(crate) enum UpdateMovieError {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait UpdateMovieUseCase: Send + Sync {
     /// Update the requested film.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn UpdateMovieUseCase>`.
     fn execute<'future>(
         &'future self,
         command: UpdateMovieCommand,

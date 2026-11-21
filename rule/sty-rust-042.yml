@@ -1,22 +1,19 @@
 ---
 id: sty-rust-042
 language: Rust
-severity: error
+severity: hint
 message: >-
-  declare the UnitOfWork trait first in
-  src/lib/domain/port/unit_of_work.rs, before UnitOfWorkFactory
-files:
-  - src/lib/domain/port/unit_of_work.rs
+  extract the insert statement of a repository adapter `create`, for
+  STY-RUST-042
 rule:
   all:
-    - kind: trait_item
-    # The factory is the offending node: it must be preceded by UnitOfWork.
-    - regex: '^(pub(\(crate\))? )?trait UnitOfWorkFactory\b'
-    # `follows` is the sibling relation; `stopBy: end` skips doc comments and
-    # other intervening siblings. A body-carrying trait is not matched by a bare
-    # `pattern`, so the name is matched with a regex anchored at the item start.
-    - not:
-        follows:
-          kind: trait_item
-          regex: '^(pub(\(crate\))? )?trait UnitOfWork\b'
-          stopBy: end
+    - kind: string_literal
+    - regex: 'INSERT INTO'
+    - inside:
+        kind: function_item
+        pattern: $ENCLOSING
+        has:
+          field: name
+          pattern: $FUNC
+          regex: '^create'
+        stopBy: end

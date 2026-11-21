@@ -2,21 +2,14 @@
 id: sty-rust-004
 language: Rust
 severity: error
-message: a handler resolves its use case through state.<context>_use_case_factory().<use_case>() before execute
+message: an endpoint file is named <method>_<resource>.rs
 files:
   - src/lib/infrastructure/inbound/rest/handler/**/*.rs
+ignores:
+  - src/lib/infrastructure/inbound/rest/handler/**/{get,post,put,patch,delete}_[a-z0-9_][a-z0-9_]*.rs
 rule:
-  any:
-    - pattern: $RECV.execute($$$ARGS)
-      not:
-        regex: '(?s)_use_case_factory\(\).*\.execute\('
-    - all:
-        - kind: function_item
-        - follows:
-            kind: attribute_item
-            regex: '#\[utoipa::path'
-            stopBy: end
-        - has:
-            kind: parameter
-            regex: 'UseCase'
-            stopBy: end
+  kind: source_file
+  has:
+    kind: attribute_item
+    regex: '#\[utoipa::path'
+    stopBy: end

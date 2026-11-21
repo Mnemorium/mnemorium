@@ -80,7 +80,7 @@ mod tests {
 
     use crate::infrastructure::outbound::reqwest::TmdbVideoMetadataProvider;
 
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use std::error::Error;
     use std::time::Duration;
     use tracing_test::traced_test;
@@ -91,6 +91,7 @@ mod tests {
     const SEARCH_MOVIE: &str = include_str!("../reqwest/fixtures/tmdb/search_movie.json");
 
     /// A candidate for `Inception`, as a provider would report it.
+    #[fixture]
     fn candidate() -> Candidate {
         Candidate::new(
             ExternalRef::new(ProviderId::Tmdb, "27205".to_owned()),
@@ -101,6 +102,7 @@ mod tests {
     }
 
     /// The film metadata a routed lookup yields.
+    #[fixture]
     fn metadata() -> MediaMetadata {
         MediaMetadata::Movie {
             artwork: None,
@@ -118,54 +120,9 @@ mod tests {
     ///
     /// Returns the constructor's error when the title is empty, which no test
     /// passes.
+    #[fixture]
     fn query() -> Result<MediaQuery, MediaQueryError> {
         MediaQuery::try_new(VideoKind::Movie, "Inception".to_owned(), Some(2010), None)
-    }
-
-    /// A link that hits once and is never asked to resolve metadata.
-    fn hitting_link() -> MockVideoMetadataProvider {
-        let mut provider = MockVideoMetadataProvider::new();
-        provider
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(vec![candidate()]) }));
-        provider.expect_lookup().times(0);
-        provider
-    }
-
-    /// A link that answers once with no candidate.
-    fn empty_link() -> MockVideoMetadataProvider {
-        let mut provider = MockVideoMetadataProvider::new();
-        provider
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        provider.expect_lookup().times(0);
-        provider
-    }
-
-    /// A link that fails once with the classification `classification`.
-    fn failing_link(classification: &'static str) -> MockVideoMetadataProvider {
-        let mut provider = MockVideoMetadataProvider::new();
-        provider.expect_search().times(1).returning(move |_| {
-            let error = match classification {
-                "communication_failure" => ExternalServiceError::CommunicationFailure,
-                "dependency_failure" => ExternalServiceError::DependencyFailure,
-                "deserialization_failure" => ExternalServiceError::DeserializationFailure,
-                "forbidden" => ExternalServiceError::Forbidden,
-                "invalid_request" => ExternalServiceError::InvalidRequest,
-                "rate_limited" => ExternalServiceError::RateLimited,
-                "retryable_failure" => ExternalServiceError::RetryableFailure,
-                "serialization_failure" => ExternalServiceError::SerializationFailure,
-                "timeout" => ExternalServiceError::Timeout,
-                "unauthorized" => ExternalServiceError::Unauthorized,
-                "unavailable" => ExternalServiceError::Unavailable,
-                _ => ExternalServiceError::Unknown(anyhow::anyhow!("the link failed")),
-            };
-            Box::pin(async move { Err(error) })
-        });
-        provider.expect_lookup().times(0);
-        provider
     }
 
     #[allure_test]
@@ -209,7 +166,18 @@ mod tests {
         let mut second = MockVideoMetadataProvider::new();
         second.expect_search().times(0);
         let chain = FailoverVideoMetadataProvider::new(vec![
-            (ProviderId::Tmdb, hitting_link()),
+            (
+                ProviderId::Tmdb,
+                (move || -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(vec![candidate()]) }));
+                    provider.expect_lookup().times(0);
+                    provider
+                })(),
+            ),
             (ProviderId::Omdb, second),
         ]);
 
@@ -229,8 +197,30 @@ mod tests {
         allure.story("SCN-METADATA-ENRICHMENT-013-B");
         // Arrange
         let chain = FailoverVideoMetadataProvider::new(vec![
-            (ProviderId::Tmdb, empty_link()),
-            (ProviderId::Omdb, hitting_link()),
+            (
+                ProviderId::Tmdb,
+                (move || -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                    provider.expect_lookup().times(0);
+                    provider
+                })(),
+            ),
+            (
+                ProviderId::Omdb,
+                (move || -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(vec![candidate()]) }));
+                    provider.expect_lookup().times(0);
+                    provider
+                })(),
+            ),
         ]);
 
         // Act
@@ -250,8 +240,30 @@ mod tests {
         allure.story("SCN-METADATA-ENRICHMENT-013-C");
         // Arrange
         let chain = FailoverVideoMetadataProvider::new(vec![
-            (ProviderId::Tmdb, empty_link()),
-            (ProviderId::Omdb, empty_link()),
+            (
+                ProviderId::Tmdb,
+                (move || -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                    provider.expect_lookup().times(0);
+                    provider
+                })(),
+            ),
+            (
+                ProviderId::Omdb,
+                (move || -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                    provider.expect_lookup().times(0);
+                    provider
+                })(),
+            ),
         ]);
 
         // Act
@@ -270,8 +282,45 @@ mod tests {
         allure.story("SCN-METADATA-ENRICHMENT-013-D");
         // Arrange: the first link is empty, the second fails.
         let chain = FailoverVideoMetadataProvider::new(vec![
-            (ProviderId::Tmdb, empty_link()),
-            (ProviderId::Omdb, failing_link("timeout")),
+            (
+                ProviderId::Tmdb,
+                (move || -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                    provider.expect_lookup().times(0);
+                    provider
+                })(),
+            ),
+            (
+                ProviderId::Omdb,
+                (move |classification: &'static str| -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider.expect_search().times(1).returning(move |_| {
+                        let error = match classification {
+                            "communication_failure" => ExternalServiceError::CommunicationFailure,
+                            "dependency_failure" => ExternalServiceError::DependencyFailure,
+                            "deserialization_failure" => {
+                                ExternalServiceError::DeserializationFailure
+                            }
+                            "forbidden" => ExternalServiceError::Forbidden,
+                            "invalid_request" => ExternalServiceError::InvalidRequest,
+                            "rate_limited" => ExternalServiceError::RateLimited,
+                            "retryable_failure" => ExternalServiceError::RetryableFailure,
+                            "serialization_failure" => ExternalServiceError::SerializationFailure,
+                            "timeout" => ExternalServiceError::Timeout,
+                            "unauthorized" => ExternalServiceError::Unauthorized,
+                            "unavailable" => ExternalServiceError::Unavailable,
+                            _ => ExternalServiceError::Unknown(anyhow::anyhow!("the link failed")),
+                        };
+                        Box::pin(async move { Err(error) })
+                    });
+                    provider.expect_lookup().times(0);
+                    provider
+                })("timeout"),
+            ),
         ]);
 
         // Act
@@ -295,8 +344,60 @@ mod tests {
         allure.story("SCN-METADATA-ENRICHMENT-013-D");
         // Arrange: the primary fails first, so its diagnosis is the answer.
         let chain = FailoverVideoMetadataProvider::new(vec![
-            (ProviderId::Tmdb, failing_link("timeout")),
-            (ProviderId::Omdb, failing_link("rate_limited")),
+            (
+                ProviderId::Tmdb,
+                (move |classification: &'static str| -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider.expect_search().times(1).returning(move |_| {
+                        let error = match classification {
+                            "communication_failure" => ExternalServiceError::CommunicationFailure,
+                            "dependency_failure" => ExternalServiceError::DependencyFailure,
+                            "deserialization_failure" => {
+                                ExternalServiceError::DeserializationFailure
+                            }
+                            "forbidden" => ExternalServiceError::Forbidden,
+                            "invalid_request" => ExternalServiceError::InvalidRequest,
+                            "rate_limited" => ExternalServiceError::RateLimited,
+                            "retryable_failure" => ExternalServiceError::RetryableFailure,
+                            "serialization_failure" => ExternalServiceError::SerializationFailure,
+                            "timeout" => ExternalServiceError::Timeout,
+                            "unauthorized" => ExternalServiceError::Unauthorized,
+                            "unavailable" => ExternalServiceError::Unavailable,
+                            _ => ExternalServiceError::Unknown(anyhow::anyhow!("the link failed")),
+                        };
+                        Box::pin(async move { Err(error) })
+                    });
+                    provider.expect_lookup().times(0);
+                    provider
+                })("timeout"),
+            ),
+            (
+                ProviderId::Omdb,
+                (move |classification: &'static str| -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider.expect_search().times(1).returning(move |_| {
+                        let error = match classification {
+                            "communication_failure" => ExternalServiceError::CommunicationFailure,
+                            "dependency_failure" => ExternalServiceError::DependencyFailure,
+                            "deserialization_failure" => {
+                                ExternalServiceError::DeserializationFailure
+                            }
+                            "forbidden" => ExternalServiceError::Forbidden,
+                            "invalid_request" => ExternalServiceError::InvalidRequest,
+                            "rate_limited" => ExternalServiceError::RateLimited,
+                            "retryable_failure" => ExternalServiceError::RetryableFailure,
+                            "serialization_failure" => ExternalServiceError::SerializationFailure,
+                            "timeout" => ExternalServiceError::Timeout,
+                            "unauthorized" => ExternalServiceError::Unauthorized,
+                            "unavailable" => ExternalServiceError::Unavailable,
+                            _ => ExternalServiceError::Unknown(anyhow::anyhow!("the link failed")),
+                        };
+                        Box::pin(async move { Err(error) })
+                    });
+                    provider.expect_lookup().times(0);
+                    provider
+                })("rate_limited"),
+            ),
         ]);
 
         // Act
@@ -332,8 +433,45 @@ mod tests {
         allure.story("SCN-METADATA-ENRICHMENT-013-B");
         // Arrange: the first link fails, the second hits.
         let chain = FailoverVideoMetadataProvider::new(vec![
-            (ProviderId::Tmdb, failing_link(classification)),
-            (ProviderId::Omdb, hitting_link()),
+            (
+                ProviderId::Tmdb,
+                (move |classification: &'static str| -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider.expect_search().times(1).returning(move |_| {
+                        let error = match classification {
+                            "communication_failure" => ExternalServiceError::CommunicationFailure,
+                            "dependency_failure" => ExternalServiceError::DependencyFailure,
+                            "deserialization_failure" => {
+                                ExternalServiceError::DeserializationFailure
+                            }
+                            "forbidden" => ExternalServiceError::Forbidden,
+                            "invalid_request" => ExternalServiceError::InvalidRequest,
+                            "rate_limited" => ExternalServiceError::RateLimited,
+                            "retryable_failure" => ExternalServiceError::RetryableFailure,
+                            "serialization_failure" => ExternalServiceError::SerializationFailure,
+                            "timeout" => ExternalServiceError::Timeout,
+                            "unauthorized" => ExternalServiceError::Unauthorized,
+                            "unavailable" => ExternalServiceError::Unavailable,
+                            _ => ExternalServiceError::Unknown(anyhow::anyhow!("the link failed")),
+                        };
+                        Box::pin(async move { Err(error) })
+                    });
+                    provider.expect_lookup().times(0);
+                    provider
+                })(classification),
+            ),
+            (
+                ProviderId::Omdb,
+                (move || -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(vec![candidate()]) }));
+                    provider.expect_lookup().times(0);
+                    provider
+                })(),
+            ),
         ]);
 
         // Act
@@ -360,7 +498,33 @@ mod tests {
         let mut second = MockVideoMetadataProvider::new();
         second.expect_search().times(0);
         let chain = FailoverVideoMetadataProvider::new(vec![
-            (ProviderId::Tmdb, failing_link(classification)),
+            (
+                ProviderId::Tmdb,
+                (move |classification: &'static str| -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider.expect_search().times(1).returning(move |_| {
+                        let error = match classification {
+                            "communication_failure" => ExternalServiceError::CommunicationFailure,
+                            "dependency_failure" => ExternalServiceError::DependencyFailure,
+                            "deserialization_failure" => {
+                                ExternalServiceError::DeserializationFailure
+                            }
+                            "forbidden" => ExternalServiceError::Forbidden,
+                            "invalid_request" => ExternalServiceError::InvalidRequest,
+                            "rate_limited" => ExternalServiceError::RateLimited,
+                            "retryable_failure" => ExternalServiceError::RetryableFailure,
+                            "serialization_failure" => ExternalServiceError::SerializationFailure,
+                            "timeout" => ExternalServiceError::Timeout,
+                            "unauthorized" => ExternalServiceError::Unauthorized,
+                            "unavailable" => ExternalServiceError::Unavailable,
+                            _ => ExternalServiceError::Unknown(anyhow::anyhow!("the link failed")),
+                        };
+                        Box::pin(async move { Err(error) })
+                    });
+                    provider.expect_lookup().times(0);
+                    provider
+                })(classification),
+            ),
             (ProviderId::Omdb, second),
         ]);
 
@@ -386,8 +550,45 @@ mod tests {
         allure.story("SCN-METADATA-ENRICHMENT-013-B");
         // Arrange: the primary times out, so the chain falls over once.
         let chain = FailoverVideoMetadataProvider::new(vec![
-            (ProviderId::Tmdb, failing_link("timeout")),
-            (ProviderId::Omdb, hitting_link()),
+            (
+                ProviderId::Tmdb,
+                (move |classification: &'static str| -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider.expect_search().times(1).returning(move |_| {
+                        let error = match classification {
+                            "communication_failure" => ExternalServiceError::CommunicationFailure,
+                            "dependency_failure" => ExternalServiceError::DependencyFailure,
+                            "deserialization_failure" => {
+                                ExternalServiceError::DeserializationFailure
+                            }
+                            "forbidden" => ExternalServiceError::Forbidden,
+                            "invalid_request" => ExternalServiceError::InvalidRequest,
+                            "rate_limited" => ExternalServiceError::RateLimited,
+                            "retryable_failure" => ExternalServiceError::RetryableFailure,
+                            "serialization_failure" => ExternalServiceError::SerializationFailure,
+                            "timeout" => ExternalServiceError::Timeout,
+                            "unauthorized" => ExternalServiceError::Unauthorized,
+                            "unavailable" => ExternalServiceError::Unavailable,
+                            _ => ExternalServiceError::Unknown(anyhow::anyhow!("the link failed")),
+                        };
+                        Box::pin(async move { Err(error) })
+                    });
+                    provider.expect_lookup().times(0);
+                    provider
+                })("timeout"),
+            ),
+            (
+                ProviderId::Omdb,
+                (move || -> MockVideoMetadataProvider {
+                    let mut provider = MockVideoMetadataProvider::new();
+                    provider
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(vec![candidate()]) }));
+                    provider.expect_lookup().times(0);
+                    provider
+                })(),
+            ),
         ]);
 
         // Act
