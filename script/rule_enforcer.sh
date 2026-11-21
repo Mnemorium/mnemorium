@@ -164,6 +164,8 @@ RULES=(
 	"TEST-052:check_test_052"
 	"TEST-058:check_test_058"
 	"TEST-060:check_test_060"
+	"TEST-061:check_test_061"
+	"TEST-062:check_test_062"
 	"OBS-001:check_obs_001"
 	"OBS-003:check_obs_003"
 	"OBS-004:check_obs_004"
@@ -3710,6 +3712,91 @@ check_test_060() {
 	done < <(grep -rlE 'logs_(contain|assert)[[:space:]]*\(' "$src_dir" --include='*.rs' | sort)
 
 	return "$result"
+}
+
+# check_test_061 — no Allure usage remains: no import, decorator, attribute, dependency or results toggle (TEST-061).
+check_test_061() {
+	local id="TEST-061"
+	local status=0 output
+	local -a paths=(src test script Cargo.toml Cargo.lock requirements.txt devenv.nix .github docs AGENTS.md .opencode)
+
+	# Textual inventory over the source, tooling and documentation trees. The archived OpenSpec changes are history and
+	# are not scanned; this check's registry line and the rulebook row that defines it are the only text that names the
+	# word by construction.
+	output="$(grep -rIniE 'allure' "${paths[@]}" \
+		--exclude=rule_enforcer.sh \
+		--exclude=TechnicalDesign.md \
+		--exclude-dir=__pycache__ \
+		--exclude-dir=node_modules \
+		--exclude-dir=generated 2>&1)" || status=$?
+	if [ "$status" -eq 0 ]; then
+		printf '%s\n' "$output"
+		return 1
+	fi
+	if [ "$status" -gt 1 ]; then
+		printf 'error: %s: %s\n' "$id" "$output" >&2
+		return 2
+	fi
+	return 0
+}
+
+# check_test_062 — every system case declares its scenarios with @scenario and a well-formed identifier (TEST-062).
+check_test_062() {
+	local id="TEST-062"
+
+	need_dir "$id" "test/system" || return 1
+
+	# The audit reads the AST so a stacked decorator, an alias or a call in a docstring cannot satisfy it.
+	python3 - "$id" <<'PY'
+import ast
+import pathlib
+import re
+import sys
+
+rule = sys.argv[1]
+identifier = re.compile(r"^SCN-[A-Z0-9-]+-\d{3}-[A-Z]$")
+types = {"POSITIVE", "NEGATIVE", "BOUNDARY", "SECURITY", "ERROR_HANDLING", "RECOVERY", "ALTERNATE_FLOW", "BUSINESS_RULE"}
+problems = []
+
+
+def is_scenario(node):
+    if not isinstance(node, ast.Call):
+        return False
+    function = node.func
+    return (isinstance(function, ast.Name) and function.id == "scenario") or (
+        isinstance(function, ast.Attribute) and function.attr == "scenario"
+    )
+
+
+for path in sorted(pathlib.Path("test/system").glob("*.py")):
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.name.startswith("test_"):
+            continue
+        declared = 0
+        for decorator in node.decorator_list:
+            if not is_scenario(decorator):
+                continue
+            declared += 1
+            arguments = decorator.args
+            if not arguments or not isinstance(arguments[0], ast.Constant) or not isinstance(arguments[0].value, str):
+                problems.append(f"{path}:{decorator.lineno}: {node.name} carries no string scenario identifier")
+                continue
+            if not identifier.fullmatch(arguments[0].value):
+                problems.append(f"{path}:{decorator.lineno}: {node.name} cites {arguments[0].value!r}, not SCN-<capability>-<number>-<letter>")
+            if len(arguments) > 2:
+                problems.append(f"{path}:{decorator.lineno}: {node.name} passes more than an identifier and a type")
+            elif len(arguments) == 2:
+                kind = arguments[1]
+                if not isinstance(kind, ast.Attribute) or kind.attr not in types:
+                    problems.append(f"{path}:{decorator.lineno}: {node.name} declares a type outside the closed set")
+        if declared == 0:
+            problems.append(f"{path}:{node.lineno}: {node.name} declares no scenario")
+
+for problem in problems:
+    print(f"error: {rule}: {problem}", file=sys.stderr)
+sys.exit(1 if problems else 0)
+PY
 }
 
 # check_obs_001 — the domain must not log: emit log events only from the application and infrastructure layers (OBS-001).
