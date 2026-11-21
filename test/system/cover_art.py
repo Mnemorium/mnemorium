@@ -2,8 +2,8 @@
 
 import json
 
-import allure
 from harness import Sut
+from labels import scenario
 from mnemorium_client.api.library import (
     get_album,
     get_album_track,
@@ -41,11 +41,8 @@ LIBRARY_IMAGE = 11210
 UNKNOWN_IMAGE = 999_999_999
 
 
-@allure.epic("Cover art")
-@allure.feature("REQ-COVER-ART-001")
-@allure.story("SCN-COVER-ART-001-A")
-@allure.feature("REQ-COVER-ART-004")
-@allure.story("SCN-COVER-ART-004-A")
+@scenario("SCN-COVER-ART-001-A")
+@scenario("SCN-COVER-ART-004-A")
 def test_a_resource_with_its_own_artwork_reports_it(server: Sut, seed_token: str) -> None:
     """A group that stores a cover reports it as its only cover field."""
     response = get_music_group.sync_detailed(COVERED_GROUP, client=server.client(seed_token))
@@ -59,11 +56,8 @@ def test_a_resource_with_its_own_artwork_reports_it(server: Sut, seed_token: str
     assert cover.json()["id"] == COVERED_GROUP_COVER
 
 
-@allure.epic("Cover art")
-@allure.feature("REQ-COVER-ART-001")
-@allure.story("SCN-COVER-ART-001-B")
-@allure.feature("REQ-COVER-ART-004")
-@allure.story("SCN-COVER-ART-004-B")
+@scenario("SCN-COVER-ART-001-B")
+@scenario("SCN-COVER-ART-004-B")
 def test_a_resource_without_artwork_reports_null(server: Sut, seed_token: str) -> None:
     """A group with no cover reports null and no cover link."""
     response = get_music_group.sync_detailed(BARE_GROUP, client=server.client(seed_token))
@@ -75,9 +69,7 @@ def test_a_resource_without_artwork_reports_null(server: Sut, seed_token: str) -
     assert body["_links"].get("cover") is None
 
 
-@allure.epic("Cover art")
-@allure.feature("REQ-COVER-ART-004")
-@allure.story("SCN-COVER-ART-004-A")
+@scenario("SCN-COVER-ART-004-A")
 def test_a_covered_album_links_its_cover(server: Sut, seed_token: str) -> None:
     """An album with a cover exposes the link to that image."""
     response = get_album.sync_detailed(COVERED_ALBUM, client=server.client(seed_token))
@@ -90,9 +82,7 @@ def test_a_covered_album_links_its_cover(server: Sut, seed_token: str) -> None:
     assert cover.json()["id"] == COVERED_ALBUM_COVER
 
 
-@allure.epic("Cover art")
-@allure.feature("REQ-COVER-ART-004")
-@allure.story("SCN-COVER-ART-004-B")
+@scenario("SCN-COVER-ART-004-B")
 def test_a_bare_album_links_no_cover(server: Sut, seed_token: str) -> None:
     """An album without a cover exposes none."""
     response = get_album.sync_detailed(BARE_ALBUM, client=server.client(seed_token))
@@ -103,10 +93,8 @@ def test_a_bare_album_links_no_cover(server: Sut, seed_token: str) -> None:
     assert body["_links"].get("cover") is None
 
 
-@allure.epic("Cover art")
-@allure.feature("REQ-COVER-ART-006")
-@allure.story("SCN-COVER-ART-006-A")
-@allure.story("SCN-COVER-ART-006-C")
+@scenario("SCN-COVER-ART-006-A")
+@scenario("SCN-COVER-ART-006-C")
 def test_an_album_track_reports_no_artwork(server: Sut, seed_token: str) -> None:
     """An album track carries no cover; the album it belongs to reports one."""
     response = get_album_track.sync_detailed(
@@ -126,9 +114,7 @@ def test_an_album_track_reports_no_artwork(server: Sut, seed_token: str) -> None
     assert cover.json()["id"] == COVERED_ALBUM_COVER
 
 
-@allure.epic("Cover art")
-@allure.feature("REQ-COVER-ART-006")
-@allure.story("SCN-COVER-ART-006-D")
+@scenario("SCN-COVER-ART-006-D")
 def test_a_playlist_track_reports_no_artwork(server: Sut, seed_token: str) -> None:
     """A playlist track carries no cover; the album its recording belongs to still reports one."""
     response = get_playlist_track.sync_detailed(PLAYLIST_TRACK_CASE, 0, client=server.client(seed_token))
@@ -146,10 +132,8 @@ def test_a_playlist_track_reports_no_artwork(server: Sut, seed_token: str) -> No
     assert cover.json()["id"] == COVERED_ALBUM_COVER
 
 
-@allure.epic("Cover art")
-@allure.feature("REQ-COVER-ART-006")
-@allure.story("SCN-COVER-ART-006-B")
-@allure.story("SCN-COVER-ART-006-C")
+@scenario("SCN-COVER-ART-006-B")
+@scenario("SCN-COVER-ART-006-C")
 def test_an_episode_reports_no_artwork(server: Sut, seed_token: str) -> None:
     """An episode carries no cover; the season that sequences it reports its own."""
     response = get_series_episode.sync_detailed(SERIES, SEASON_INDEX, EPISODE_INDEX, client=server.client(seed_token))
@@ -167,13 +151,9 @@ def test_an_episode_reports_no_artwork(server: Sut, seed_token: str) -> None:
     assert cover.json()["id"] == SEASON_COVER
 
 
-@allure.epic("Cover art")
-@allure.feature("REQ-COVER-ART-003")
-@allure.story("SCN-COVER-ART-003-B")
-@allure.feature("REQ-COVER-ART-005")
-@allure.story("SCN-COVER-ART-005-A")
-@allure.feature("REQ-COVER-ART-007")
-@allure.story("SCN-COVER-ART-007-A")
+@scenario("SCN-COVER-ART-003-B")
+@scenario("SCN-COVER-ART-005-A")
+@scenario("SCN-COVER-ART-007-A")
 def test_a_new_playlist_stores_its_cover(server: Sut, seed_token: str) -> None:
     """A playlist stores the cover it was created with, reports it and exposes its link."""
     response = post_playlist.sync_detailed(
@@ -192,11 +172,8 @@ def test_a_new_playlist_stores_its_cover(server: Sut, seed_token: str) -> None:
     assert json.loads(stored_response.content)["cover_image_id"] == NEW_PLAYLIST_COVER
 
 
-@allure.epic("Cover art")
-@allure.feature("REQ-COVER-ART-005")
-@allure.story("SCN-COVER-ART-005-B")
-@allure.feature("REQ-COVER-ART-007")
-@allure.story("SCN-COVER-ART-007-B")
+@scenario("SCN-COVER-ART-005-B")
+@scenario("SCN-COVER-ART-007-B")
 def test_a_playlist_replaces_its_cover(server: Sut, seed_token: str) -> None:
     """A playlist metadata update replaces the stored cover."""
     response = patch_playlist.sync_detailed(
@@ -213,11 +190,8 @@ def test_a_playlist_replaces_its_cover(server: Sut, seed_token: str) -> None:
     assert cover.json()["id"] == REPLACEMENT_COVER
 
 
-@allure.epic("Cover art")
-@allure.feature("REQ-COVER-ART-005")
-@allure.story("SCN-COVER-ART-005-C")
-@allure.feature("REQ-COVER-ART-007")
-@allure.story("SCN-COVER-ART-007-B")
+@scenario("SCN-COVER-ART-005-C")
+@scenario("SCN-COVER-ART-007-B")
 def test_a_playlist_clears_its_cover_with_null(server: Sut, seed_token: str) -> None:
     """A playlist metadata update clears the stored cover with null and drops its link."""
     response = patch_playlist.sync_detailed(
@@ -232,11 +206,8 @@ def test_a_playlist_clears_its_cover_with_null(server: Sut, seed_token: str) -> 
     assert body["_links"].get("cover") is None
 
 
-@allure.epic("Cover art")
-@allure.feature("REQ-COVER-ART-003")
-@allure.story("SCN-COVER-ART-003-C")
-@allure.feature("REQ-COVER-ART-007")
-@allure.story("SCN-COVER-ART-007-D")
+@scenario("SCN-COVER-ART-003-C")
+@scenario("SCN-COVER-ART-007-D")
 def test_a_playlist_refuses_library_artwork(server: Sut, seed_token: str) -> None:
     """A library image cannot back a playlist, and the refused creation stores nothing."""
     name = "Library Artwork Refused"
@@ -250,11 +221,8 @@ def test_a_playlist_refuses_library_artwork(server: Sut, seed_token: str) -> Non
     assert json.loads(listing.content)["items"] == []
 
 
-@allure.epic("Cover art")
-@allure.feature("REQ-COVER-ART-002")
-@allure.story("SCN-COVER-ART-002-B")
-@allure.feature("REQ-COVER-ART-007")
-@allure.story("SCN-COVER-ART-007-D")
+@scenario("SCN-COVER-ART-002-B")
+@scenario("SCN-COVER-ART-007-D")
 def test_a_playlist_refuses_an_unknown_image(server: Sut, seed_token: str) -> None:
     """A cover that names no image is refused, and the refused creation stores nothing."""
     name = "Unknown Artwork Refused"
@@ -268,9 +236,7 @@ def test_a_playlist_refuses_an_unknown_image(server: Sut, seed_token: str) -> No
     assert json.loads(listing.content)["items"] == []
 
 
-@allure.epic("Cover art")
-@allure.feature("REQ-COVER-ART-003")
-@allure.story("SCN-COVER-ART-003-D")
+@scenario("SCN-COVER-ART-003-D")
 def test_gallery_media_is_refused_as_artwork(server: Sut, seed_token: str) -> None:
     """An image already used as gallery media cannot back a playlist, and nothing is stored."""
     name = "Gallery Artwork Refused"

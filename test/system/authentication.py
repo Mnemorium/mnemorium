@@ -4,7 +4,6 @@ import json
 import time
 from itertools import count
 
-import allure
 import pytest
 from conftest import (
     INSTANCE_ENV,
@@ -25,6 +24,7 @@ from harness import (
     Sut,
     register,
 )
+from labels import scenario
 from mnemorium_client.api.identity import patch_credential, post_login, post_register, post_token
 from mnemorium_client.api.user import get_me
 from mnemorium_client.models import LoginRequest, PatchCredentialRequest, RegisterRequest, Role
@@ -34,9 +34,7 @@ PASSWORD_SYMBOLS = frozenset("!@#$%^&*()-_=+")
 _ACCOUNTS = count()
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-001")
-@allure.story("SCN-AUTHENTICATION-001-A")
+@scenario("SCN-AUTHENTICATION-001-A")
 def test_first_start_creates_the_root_admin(server: Sut, root_token: str) -> None:
     """The instance's Root Admin is user 0, `root`, Admin and no email."""
     response = get_me.sync_detailed(client=server.client(root_token))
@@ -49,9 +47,7 @@ def test_first_start_creates_the_root_admin(server: Sut, root_token: str) -> Non
     assert body["email"] is None
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-001")
-@allure.story("SCN-AUTHENTICATION-001-B")
+@scenario("SCN-AUTHENTICATION-001-B")
 @pytest.mark.own_instance(reason="restart")
 def test_restart_does_not_recreate_or_reveal_the_root_admin(sut: Sut) -> None:
     """An initialized directory restarts healthy, creates no second account, and reveals nothing."""
@@ -65,9 +61,7 @@ def test_restart_does_not_recreate_or_reveal_the_root_admin(sut: Sut) -> None:
     assert MSG_PASSWORD_LOGGED.search(server.logs()) is None
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-002")
-@allure.story("SCN-AUTHENTICATION-002-A")
+@scenario("SCN-AUTHENTICATION-002-A")
 def test_generated_password_follows_the_declared_shape(server: Sut) -> None:
     """The revealed default password is 20 characters: 19 alphanumeric and one declared symbol."""
     password = server.root_password()
@@ -77,9 +71,7 @@ def test_generated_password_follows_the_declared_shape(server: Sut) -> None:
     assert sum(character in PASSWORD_SYMBOLS for character in password) == 1
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-003")
-@allure.story("SCN-AUTHENTICATION-003-A")
+@scenario("SCN-AUTHENTICATION-003-A")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_password_is_printed_once_and_never_logged(sut: Sut) -> None:
     """The reveal prints the password once to standard output and no log file holds it."""
@@ -94,9 +86,7 @@ def test_the_password_is_printed_once_and_never_logged(sut: Sut) -> None:
     assert password not in server.log_text()
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-003")
-@allure.story("SCN-AUTHENTICATION-003-B")
+@scenario("SCN-AUTHENTICATION-003-B")
 @pytest.mark.own_instance(reason="first_boot")
 def test_a_first_start_without_the_reveal_is_refused(sut: Sut) -> None:
     """A first start with the reveal disabled fails, names the setting, and creates no account."""
@@ -114,9 +104,7 @@ def test_a_first_start_without_the_reveal_is_refused(sut: Sut) -> None:
     assert login(server, ROOT_ADMIN_USERNAME, server.root_password())
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-003")
-@allure.story("SCN-AUTHENTICATION-003-C")
+@scenario("SCN-AUTHENTICATION-003-C")
 @pytest.mark.own_instance(reason="restart")
 def test_disabling_the_reveal_after_initialization_still_starts(sut: Sut) -> None:
     """An initialized directory starts with the reveal disabled, prints the notice, and reveals nothing."""
@@ -135,11 +123,9 @@ def test_disabling_the_reveal_after_initialization_still_starts(sut: Sut) -> Non
     assert MSG_PASSWORD_LOGGED.search(stdout) is None
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-004")
-@allure.story("SCN-AUTHENTICATION-004-A")
-@allure.story("SCN-AUTHENTICATION-004-B")
-@allure.story("SCN-AUTHENTICATION-004-C")
+@scenario("SCN-AUTHENTICATION-004-A")
+@scenario("SCN-AUTHENTICATION-004-B")
+@scenario("SCN-AUTHENTICATION-004-C")
 def test_a_login_issues_a_usable_bearer_token(server: Sut) -> None:
     """A valid login carries the token fields, resolves its user, and never carrying the password."""
     password = server.root_password()
@@ -164,9 +150,7 @@ def test_a_login_issues_a_usable_bearer_token(server: Sut) -> None:
     assert profile["role"] == "ADMIN"
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-005")
-@allure.story("SCN-AUTHENTICATION-005-A")
+@scenario("SCN-AUTHENTICATION-005-A")
 def test_bad_credentials_are_rejected_uniformly(server: Sut) -> None:
     """A wrong password and an unknown username answer the same 401, body and challenge."""
     wrong_password = post_login.sync_detailed(
@@ -187,9 +171,7 @@ def test_bad_credentials_are_rejected_uniformly(server: Sut) -> None:
     )
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-004")
-@allure.story("SCN-AUTHENTICATION-004-D")
+@scenario("SCN-AUTHENTICATION-004-D")
 def test_a_login_by_email_address_succeeds(server: Sut, root_token: str) -> None:
     """The email address stored on an account authenticates it exactly as its username does."""
     name = f"mail{next(_ACCOUNTS)}"
@@ -208,9 +190,7 @@ def test_a_login_by_email_address_succeeds(server: Sut, root_token: str) -> None
     assert set(json.loads(by_email.content)) == set(json.loads(by_username.content))
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-004")
-@allure.story("SCN-AUTHENTICATION-004-A")
+@scenario("SCN-AUTHENTICATION-004-A")
 def test_a_username_wins_over_another_accounts_email(server: Sut, root_token: str) -> None:
     """A value that is one account's username resolves as that username, never as another's email."""
     suffix = next(_ACCOUNTS)
@@ -235,9 +215,7 @@ def test_a_username_wins_over_another_accounts_email(server: Sut, root_token: st
     assert json.loads(profile.content)["id"] == json.loads(holder.content)["id"]
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-008")
-@allure.story("SCN-AUTHENTICATION-008-A")
+@scenario("SCN-AUTHENTICATION-008-A")
 @pytest.mark.own_instance(reason="process_state")
 def test_a_login_burst_is_throttled(sut: Sut) -> None:
     """Exceeding one address's burst answers 429 with Retry-After."""
@@ -250,9 +228,7 @@ def test_a_login_burst_is_throttled(sut: Sut) -> None:
     assert "Retry-After" in throttled.headers
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-008")
-@allure.story("SCN-AUTHENTICATION-008-B")
+@scenario("SCN-AUTHENTICATION-008-B")
 @pytest.mark.own_instance(reason="process_state")
 def test_the_login_quota_refills(sut: Sut) -> None:
     """After the configured period a throttled address is admitted again."""
@@ -267,9 +243,7 @@ def test_the_login_quota_refills(sut: Sut) -> None:
     assert attempt(server, f"ghost-c{next(_ACCOUNTS)}").status_code == 401
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-008")
-@allure.story("SCN-AUTHENTICATION-008-C")
+@scenario("SCN-AUTHENTICATION-008-C")
 @pytest.mark.own_instance(reason="process_state")
 @pytest.mark.slow
 def test_a_client_address_header_cannot_mint_a_new_quota(sut: Sut) -> None:
@@ -289,9 +263,7 @@ def test_a_client_address_header_cannot_mint_a_new_quota(sut: Sut) -> None:
     assert attempt(server, f"ghost-e{next(_ACCOUNTS)}", "203.0.113.4").status_code == 429
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-008")
-@allure.story("SCN-AUTHENTICATION-008-D")
+@scenario("SCN-AUTHENTICATION-008-D")
 @pytest.mark.own_instance(reason="process_state")
 @pytest.mark.slow
 def test_one_account_is_throttled_across_addresses(sut: Sut) -> None:
@@ -305,9 +277,7 @@ def test_one_account_is_throttled_across_addresses(sut: Sut) -> None:
     assert attempt(server, f"ghost-d{next(_ACCOUNTS)}", "203.0.113.3").status_code == 401
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-008")
-@allure.story("SCN-AUTHENTICATION-008-E")
+@scenario("SCN-AUTHENTICATION-008-E")
 @pytest.mark.own_instance(reason="process_state")
 @pytest.mark.slow
 def test_an_unknown_username_is_throttled_identically(sut: Sut) -> None:
@@ -328,9 +298,7 @@ def test_an_unknown_username_is_throttled_identically(sut: Sut) -> None:
     assert "Retry-After" in root_throttled.headers
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-008")
-@allure.story("SCN-AUTHENTICATION-008-F")
+@scenario("SCN-AUTHENTICATION-008-F")
 @pytest.mark.own_instance(reason="process_state")
 @pytest.mark.slow
 def test_an_unknown_email_is_throttled_identically(sut: Sut) -> None:
@@ -350,11 +318,9 @@ def test_an_unknown_email_is_throttled_identically(sut: Sut) -> None:
     assert "Retry-After" in ghost_throttled.headers
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-010")
-@allure.story("SCN-AUTHENTICATION-010-B")
-@allure.story("SCN-AUTHENTICATION-010-C")
-@allure.story("SCN-AUTHENTICATION-010-D")
+@scenario("SCN-AUTHENTICATION-010-B")
+@scenario("SCN-AUTHENTICATION-010-C")
+@scenario("SCN-AUTHENTICATION-010-D")
 def test_invalid_tokens_are_rejected(server: Sut) -> None:
     """A tampered signature, an expired token and a non-numeric subject each answer 401."""
     rejected = {
@@ -368,11 +334,8 @@ def test_invalid_tokens_are_rejected(server: Sut) -> None:
         assert response.status_code == 401, f"{reason} was accepted: {response.status_code} {response.content!r}"
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-012")
-@allure.feature("REQ-AUTHENTICATION-013")
-@allure.story("SCN-AUTHENTICATION-012-A")
-@allure.story("SCN-AUTHENTICATION-013-C")
+@scenario("SCN-AUTHENTICATION-012-A")
+@scenario("SCN-AUTHENTICATION-013-C")
 @pytest.mark.own_instance(reason="process_state")
 def test_rotation_and_regeneration_leave_issued_tokens_valid(sut: Sut) -> None:
     """A token issued before a credential rotation or a regeneration still authenticates afterwards."""
@@ -395,10 +358,8 @@ def test_rotation_and_regeneration_leave_issued_tokens_valid(sut: Sut) -> None:
     assert json.loads(response.content)["id"] == 0
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-013")
-@allure.story("SCN-AUTHENTICATION-013-A")
-@allure.story("SCN-AUTHENTICATION-013-B")
+@scenario("SCN-AUTHENTICATION-013-A")
+@scenario("SCN-AUTHENTICATION-013-B")
 def test_regenerating_a_token_keeps_the_caller(server: Sut, root_token: str) -> None:
     """Regeneration returns the login response shape and a token for the same user."""
     owner_id, owner = provision(server, root_token, f"tokenregen{next(_ACCOUNTS)}")
@@ -419,9 +380,7 @@ def test_regenerating_a_token_keeps_the_caller(server: Sut, root_token: str) -> 
 # A credential is identified by its own sequence: the Root Admin's is `1`, and on a fresh instance a created account's
 # is `user_id + 1`. Only that first inference holds on the shared instance, which is why the rotation cases keep their
 # own containers.
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-014")
-@allure.story("SCN-AUTHENTICATION-014-A")
+@scenario("SCN-AUTHENTICATION-014-A")
 @pytest.mark.own_instance(reason="process_state")
 def test_the_root_admin_rotates_its_own_credential(sut: Sut) -> None:
     """Rotating the Root Admin's own credential replaces the password it authenticates with."""
@@ -446,9 +405,7 @@ def test_the_root_admin_rotates_its_own_credential(sut: Sut) -> None:
     assert login(server, ROOT_ADMIN_USERNAME, new_password)
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-014")
-@allure.story("SCN-AUTHENTICATION-014-B")
+@scenario("SCN-AUTHENTICATION-014-B")
 @pytest.mark.own_instance(reason="process_state")
 def test_the_root_admin_rotates_another_users_credential(sut: Sut) -> None:
     """Rotating another user's credential makes that user's new password authenticate."""
@@ -472,9 +429,7 @@ def test_the_root_admin_rotates_another_users_credential(sut: Sut) -> None:
     assert login(server, username, new_password)
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-014")
-@allure.story("SCN-AUTHENTICATION-014-D")
+@scenario("SCN-AUTHENTICATION-014-D")
 @pytest.mark.own_instance(reason="process_state")
 def test_a_non_root_caller_cannot_rotate_a_credential(sut: Sut) -> None:
     """An Admin and a Standard User are refused with 403 and their passwords stay unchanged."""
@@ -508,9 +463,7 @@ def test_a_non_root_caller_cannot_rotate_a_credential(sut: Sut) -> None:
         assert login(server, username, password)
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-015")
-@allure.story("SCN-AUTHENTICATION-015-A")
+@scenario("SCN-AUTHENTICATION-015-A")
 def test_a_rotation_that_fails_the_policy_changes_nothing(server: Sut, root_token: str) -> None:
     """A short or symbol-free password answers 422 and the old password still authenticates."""
     password = server.root_password()
@@ -526,9 +479,7 @@ def test_a_rotation_that_fails_the_policy_changes_nothing(server: Sut, root_toke
     assert login(server, ROOT_ADMIN_USERNAME, password)
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-018")
-@allure.story("SCN-AUTHENTICATION-018-A")
+@scenario("SCN-AUTHENTICATION-018-A")
 @pytest.mark.own_instance(reason="process_state")
 def test_a_compliant_password_is_accepted_at_rotation(sut: Sut) -> None:
     """A compliant password replaces the Root Admin's credential and authenticates afterwards."""
@@ -553,9 +504,7 @@ def test_a_compliant_password_is_accepted_at_rotation(sut: Sut) -> None:
     assert login(server, ROOT_ADMIN_USERNAME, compliant)
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-018")
-@allure.story("SCN-AUTHENTICATION-018-A")
+@scenario("SCN-AUTHENTICATION-018-A")
 def test_a_compliant_password_is_accepted_at_creation(server: Sut, root_token: str) -> None:
     """A compliant password creates an account that authenticates with it."""
     username = f"policy{next(_ACCOUNTS)}"
@@ -569,10 +518,8 @@ def test_a_compliant_password_is_accepted_at_creation(server: Sut, root_token: s
     assert login(server, username, SECRET_PASSWORD)
 
 
-@allure.epic("Authentication")
-@allure.feature("REQ-AUTHENTICATION-018")
-@allure.story("SCN-AUTHENTICATION-018-B")
-@allure.story("SCN-AUTHENTICATION-018-C")
+@scenario("SCN-AUTHENTICATION-018-B")
+@scenario("SCN-AUTHENTICATION-018-C")
 def test_a_short_or_symbol_free_password_is_rejected_at_creation(server: Sut, root_token: str) -> None:
     """A short and a symbol-free password each answer 422 and store no account."""
     for rejected in ("short1!", "longpassword"):

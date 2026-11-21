@@ -10,7 +10,6 @@ from collections.abc import Callable, Iterator
 from fnmatch import fnmatch
 from pathlib import Path
 
-import allure
 import pytest
 from harness import (
     LOG_DIRECTORY,
@@ -124,7 +123,7 @@ def _evidence(server: Sut) -> list[tuple[str, str]]:
 
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
-    """Attach the failing case's container evidence to the report for the JUnit XML and the Allure result."""
+    """Attach the failing case's container evidence to the report for the JUnit XML."""
     report = yield
     sections = item.stash.get(EVIDENCE_KEY, None)
     if report.failed and sections is None:
@@ -132,8 +131,6 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
         if instance is not None:
             sections = _evidence(instance)
             item.stash[EVIDENCE_KEY] = sections
-            for title, content in sections:
-                allure.attach(content, name=title, attachment_type=allure.attachment_type.TEXT)
     if sections is not None:
         for title, content in sections:
             report.user_properties.append((title, content))

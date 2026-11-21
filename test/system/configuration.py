@@ -5,7 +5,6 @@ import json
 import os
 import time
 
-import allure
 import pytest
 import yaml
 from harness import (
@@ -15,6 +14,7 @@ from harness import (
     WRONG_PASSWORD,
     Sut,
 )
+from labels import scenario
 from mnemorium_client.api.identity import post_login
 from mnemorium_client.models import LoginRequest
 
@@ -33,11 +33,8 @@ def _login(sut: Sut, password: str) -> int:
     return json.loads(response.content)["expires_in"]
 
 
-@allure.epic("Configuration")
-@allure.feature("REQ-CONFIGURATION-001")
-@allure.feature("REQ-CONFIGURATION-003")
-@allure.story("SCN-CONFIGURATION-001-A")
-@allure.story("SCN-CONFIGURATION-003-A")
+@scenario("SCN-CONFIGURATION-001-A")
+@scenario("SCN-CONFIGURATION-003-A")
 def test_nothing_supplied_uses_the_defaults_and_writes_the_file(sut: Sut) -> None:
     """An untouched working directory gets a complete default file and every setting at its default."""
     server = sut.start()
@@ -50,11 +47,8 @@ def test_nothing_supplied_uses_the_defaults_and_writes_the_file(sut: Sut) -> Non
     assert _login(server, server.root_password()) == _DEFAULT_TTL_S
 
 
-@allure.epic("Configuration")
-@allure.feature("REQ-CONFIGURATION-001")
-@allure.story("SCN-CONFIGURATION-001-E")
-@allure.feature("REQ-AUTHENTICATION-007")
-@allure.story("SCN-AUTHENTICATION-007-A")
+@scenario("SCN-CONFIGURATION-001-E")
+@scenario("SCN-AUTHENTICATION-007-A")
 def test_the_resolved_lifetime_reaches_the_issued_token(sut: Sut) -> None:
     """A configured `security.jwt.ttl` is advertised and carried by the token's expiry."""
     ttl = 120
@@ -74,9 +68,7 @@ def test_the_resolved_lifetime_reaches_the_issued_token(sut: Sut) -> None:
     assert before + ttl <= issued["exp"] <= after + ttl
 
 
-@allure.epic("Configuration")
-@allure.feature("REQ-CONFIGURATION-001")
-@allure.story("SCN-CONFIGURATION-001-B")
+@scenario("SCN-CONFIGURATION-001-B")
 def test_the_file_overrides_the_defaults(sut: Sut) -> None:
     """A `config.yaml` value replaces the built-in default."""
     server = sut.start(config={"security": {"jwt": {"ttl": 11}}})
@@ -84,9 +76,7 @@ def test_the_file_overrides_the_defaults(sut: Sut) -> None:
     assert _login(server, server.root_password()) == 11
 
 
-@allure.epic("Configuration")
-@allure.feature("REQ-CONFIGURATION-001")
-@allure.story("SCN-CONFIGURATION-001-C")
+@scenario("SCN-CONFIGURATION-001-C")
 def test_the_environment_overrides_the_file(sut: Sut) -> None:
     """A `MNEMORIUM_*` variable wins over the value the file carries."""
     server = sut.start(
@@ -97,9 +87,7 @@ def test_the_environment_overrides_the_file(sut: Sut) -> None:
     assert _login(server, server.root_password()) == 13
 
 
-@allure.epic("Configuration")
-@allure.feature("REQ-CONFIGURATION-001")
-@allure.story("SCN-CONFIGURATION-001-D")
+@scenario("SCN-CONFIGURATION-001-D")
 def test_a_partial_file_keeps_the_other_defaults(sut: Sut) -> None:
     """A one-key file takes effect and leaves every other setting at its default."""
     server = sut.start(config={"logging": {"ansi": True}})
@@ -108,10 +96,8 @@ def test_a_partial_file_keeps_the_other_defaults(sut: Sut) -> None:
     assert _login(server, server.root_password()) == _DEFAULT_TTL_S
 
 
-@allure.epic("Configuration")
-@allure.feature("REQ-CONFIGURATION-003")
-@allure.story("SCN-CONFIGURATION-003-B")
-@allure.story("SCN-CONFIGURATION-003-C")
+@scenario("SCN-CONFIGURATION-003-B")
+@scenario("SCN-CONFIGURATION-003-C")
 def test_an_existing_file_is_never_rewritten(sut: Sut) -> None:
     """An existing file, empty or partial, is left byte-identical, and its content is what the next run applies."""
     sut.write(CONFIG_PATH, "")
@@ -134,10 +120,8 @@ def test_an_existing_file_is_never_rewritten(sut: Sut) -> None:
     assert _login(server, password) == 7
 
 
-@allure.epic("Configuration")
-@allure.feature("REQ-CONFIGURATION-007")
-@allure.story("SCN-CONFIGURATION-007-A")
-@allure.story("SCN-CONFIGURATION-007-B")
+@scenario("SCN-CONFIGURATION-007-A")
+@scenario("SCN-CONFIGURATION-007-B")
 def test_applied_overrides_are_reported_without_values(sut: Sut) -> None:
     """The start-up report names the setting the environment applied and never its value."""
     server = sut.start(env={"MNEMORIUM_SECURITY_JWT_TTL": "13"})
@@ -152,9 +136,7 @@ def test_applied_overrides_are_reported_without_values(sut: Sut) -> None:
         assert "13" not in report
 
 
-@allure.epic("Configuration")
-@allure.feature("REQ-CONFIGURATION-007")
-@allure.story("SCN-CONFIGURATION-007-C")
+@scenario("SCN-CONFIGURATION-007-C")
 def test_no_override_is_reported_when_the_environment_names_nothing(sut: Sut) -> None:
     """A start whose environment names no setting reports no applied override."""
     server = sut.start()
@@ -163,10 +145,8 @@ def test_no_override_is_reported_when_the_environment_names_nothing(sut: Sut) ->
     assert not [line for line in sut.log_text().splitlines() if MSG_ENV_OVERRIDES in line]
 
 
-@allure.epic("Configuration")
-@allure.feature("REQ-CONFIGURATION-008")
-@allure.story("SCN-CONFIGURATION-008-A")
-@allure.story("SCN-CONFIGURATION-008-B")
+@scenario("SCN-CONFIGURATION-008-A")
+@scenario("SCN-CONFIGURATION-008-B")
 def test_a_runtime_edit_has_no_effect_until_restart(sut: Sut) -> None:
     """The resolved configuration is immutable: an edit is invisible until the server restarts."""
     server = sut.start(config={"security": {"rate_limit": {"burst_size": 5}}})

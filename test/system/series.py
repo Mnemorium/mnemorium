@@ -20,7 +20,6 @@ import time
 from datetime import UTC, datetime
 from itertools import count
 
-import allure
 import pytest
 from conftest import (
     FIXTURE_DIRECTORY,
@@ -37,6 +36,7 @@ from harness import (
     Sut,
     link_of,
 )
+from labels import scenario
 
 # The show resource kind the resource-policy route addresses.
 SERIES = "SERIES"
@@ -286,9 +286,7 @@ def deny_viewer(server: Sut, token: str, user_id: int, series_id: int) -> None:
     assert response.status_code == 200, f"deny failed: {response.status_code} {response.text}"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-008")
-@allure.story("SCN-SERIES-008-A")
+@scenario("SCN-SERIES-008-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_new_show_is_created(sut: Sut) -> None:
     """A show is created from its metadata and answers 201 with a Location and no seasons."""
@@ -326,9 +324,7 @@ def test_a_new_show_is_created(sut: Sut) -> None:
     assert collection_ids(listed) == [show["id"]]
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-008")
-@allure.story("SCN-SERIES-008-B")
+@scenario("SCN-SERIES-008-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_repeated_name_creates_a_second_show(sut: Sut) -> None:
     """A name another show already uses creates a second show rather than returning the first."""
@@ -344,9 +340,7 @@ def test_a_repeated_name_creates_a_second_show(sut: Sut) -> None:
     assert collection_ids(listed) == sorted([first["id"], second["id"]])
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-008")
-@allure.story("SCN-SERIES-008-C")
+@scenario("SCN-SERIES-008-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unknown_genre_is_stored_and_linked(sut: Sut) -> None:
     """A genre the catalogue does not hold is stored and the show reports it."""
@@ -360,9 +354,7 @@ def test_an_unknown_genre_is_stored_and_linked(sut: Sut) -> None:
     assert read.json()["genres"] == [UNKNOWN_GENRE.upper()]
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-008")
-@allure.story("SCN-SERIES-008-D")
+@scenario("SCN-SERIES-008-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_unusable_creation_input_is_refused(sut: Sut) -> None:
     """An empty or padded name, empty genre, malformed date or bad country answers 422."""
@@ -386,9 +378,7 @@ def test_unusable_creation_input_is_refused(sut: Sut) -> None:
     assert collection_ids(listed) == [], "a refused creation stored a show"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-008")
-@allure.story("SCN-SERIES-008-E")
+@scenario("SCN-SERIES-008-E")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
     """An image already used as gallery media answers 409 and creates no show."""
@@ -405,9 +395,7 @@ def test_a_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
     assert collection_ids(listed) == [], "a refused creation stored a show"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-008")
-@allure.story("SCN-SERIES-008-F")
+@scenario("SCN-SERIES-008-F")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_standard_user_cannot_create_a_show(sut: Sut) -> None:
     """A Standard user's creation answers 403 and stores nothing."""
@@ -423,12 +411,9 @@ def test_a_standard_user_cannot_create_a_show(sut: Sut) -> None:
     assert collection_ids(listed) == [], "a refused creation stored a show"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-001")
-@allure.story("SCN-SERIES-001-A")
-@allure.story("SCN-SERIES-001-D")
-@allure.feature("REQ-SERIES-002")
-@allure.story("SCN-SERIES-002-A")
+@scenario("SCN-SERIES-001-A")
+@scenario("SCN-SERIES-001-D")
+@scenario("SCN-SERIES-002-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_the_collection_lists_partial_shows_in_identifier_order(sut: Sut) -> None:
     """Two shows list as partial items by ascending identifier, with their cover links."""
@@ -458,9 +443,7 @@ def test_the_collection_lists_partial_shows_in_identifier_order(sut: Sut) -> Non
     assert uncovered["cover_image_id"] is None
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-001")
-@allure.story("SCN-SERIES-001-B")
+@scenario("SCN-SERIES-001-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_the_name_filter_and_page_are_applied(sut: Sut) -> None:
     """The name filter narrows the collection and limit/offset select one page."""
@@ -477,9 +460,7 @@ def test_the_name_filter_and_page_are_applied(sut: Sut) -> None:
     assert collection_ids(paged) == [ids[1]]
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-001")
-@allure.story("SCN-SERIES-001-C")
+@scenario("SCN-SERIES-001-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_caller_that_discovers_no_show_lists_an_empty_collection(sut: Sut) -> None:
     """A caller denied the only show discovers none and receives an empty collection."""
@@ -495,10 +476,8 @@ def test_a_caller_that_discovers_no_show_lists_an_empty_collection(sut: Sut) -> 
     assert response.json()["_embedded"]["items"] == []
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-001")
-@allure.story("SCN-SERIES-001-E")
-@allure.story("SCN-SERIES-001-F")
+@scenario("SCN-SERIES-001-E")
+@scenario("SCN-SERIES-001-F")
 def test_an_out_of_range_limit_and_a_malformed_query_are_refused(server: Sut, root_token: str) -> None:
     """A limit outside 1..100 answers 422 and an undecodable query answers 400."""
     for query in ("?limit=0", "?limit=101"):
@@ -509,10 +488,8 @@ def test_an_out_of_range_limit_and_a_malformed_query_are_refused(server: Sut, ro
     assert malformed.status_code == 400, f"query accepted: {malformed.status_code} {malformed.text}"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-002")
-@allure.story("SCN-SERIES-002-A")
-@allure.story("SCN-SERIES-002-B")
+@scenario("SCN-SERIES-002-A")
+@scenario("SCN-SERIES-002-B")
 def test_the_detail_read_carries_the_show_metadata_and_season_summaries(server: Sut, root_token: str) -> None:
     """The read carries the metadata, ordered genres, cover and a summary of every season by index."""
     cover = library_image(server, root_token)
@@ -553,9 +530,7 @@ def test_the_detail_read_carries_the_show_metadata_and_season_summaries(server: 
     assert link_of(seasons[0], "episodes") == f"{link_of(first_season, 'self')}/episode"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-002")
-@allure.story("SCN-SERIES-002-C")
+@scenario("SCN-SERIES-002-C")
 def test_a_show_without_a_date_or_country_reports_null(server: Sut, root_token: str) -> None:
     """A show that stores neither a first air date nor a country reports both as null."""
     show = create_show(server, root_token, name="Undated")
@@ -569,9 +544,7 @@ def test_a_show_without_a_date_or_country_reports_null(server: Sut, root_token: 
     assert body["seasons"] == []
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-002")
-@allure.story("SCN-SERIES-002-D")
+@scenario("SCN-SERIES-002-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unknown_or_unviewable_show_is_not_found(sut: Sut) -> None:
     """An unknown show and one the caller may not view both answer 404."""
@@ -588,9 +561,7 @@ def test_an_unknown_or_unviewable_show_is_not_found(sut: Sut) -> None:
     assert unviewable.status_code == 404, f"unviewable show answered {unviewable.status_code}: {unviewable.text}"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-002")
-@allure.story("SCN-SERIES-002-E")
+@scenario("SCN-SERIES-002-E")
 def test_a_malformed_show_identifier_is_refused(server: Sut, root_token: str) -> None:
     """A series_id that is not an identifier answers 400."""
     response = read_show(server, root_token, "not-an-identifier")
@@ -598,9 +569,7 @@ def test_a_malformed_show_identifier_is_refused(server: Sut, root_token: str) ->
     assert response.status_code == 400, f"malformed id answered {response.status_code}: {response.text}"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-003")
-@allure.story("SCN-SERIES-003-A")
+@scenario("SCN-SERIES-003-A")
 def test_the_index_is_the_identity_of_a_season_and_an_episode(server: Sut, root_token: str) -> None:
     """A season and an episode are addressed and reported by their parent-scoped index."""
     show = create_show(server, root_token)
@@ -621,9 +590,7 @@ def test_the_index_is_the_identity_of_a_season_and_an_episode(server: Sut, root_
     assert read.json()["index"] == 7
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-003")
-@allure.story("SCN-SERIES-003-B")
+@scenario("SCN-SERIES-003-B")
 def test_the_largest_32_bit_index_is_addressable(server: Sut, root_token: str) -> None:
     """A season and an episode stored at the largest 32-bit index are addressed and returned."""
     show = create_show(server, root_token)
@@ -642,10 +609,8 @@ def test_the_largest_32_bit_index_is_addressable(server: Sut, root_token: str) -
     assert read_episode_response.json()["name"] == "Pilot"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-004")
-@allure.story("SCN-SERIES-004-A")
-@allure.story("SCN-SERIES-004-B")
+@scenario("SCN-SERIES-004-A")
+@scenario("SCN-SERIES-004-B")
 def test_a_season_is_read_with_its_fields_and_scoped_to_its_show(server: Sut, root_token: str) -> None:
     """Two shows each hold an independent season 1, and each reads with its own fields."""
     cover = library_image(server, root_token)
@@ -675,9 +640,7 @@ def test_a_season_is_read_with_its_fields_and_scoped_to_its_show(server: Sut, ro
     assert other.json()["series_id"] == second["id"]
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-004")
-@allure.story("SCN-SERIES-004-C")
+@scenario("SCN-SERIES-004-C")
 def test_an_unknown_or_foreign_season_is_not_found(server: Sut, root_token: str) -> None:
     """An unknown show, an index the show does not hold and a season of another show all answer 404."""
     first = create_show(server, root_token, name="First Show")
@@ -696,11 +659,9 @@ def test_an_unknown_or_foreign_season_is_not_found(server: Sut, root_token: str)
     assert foreign.status_code == 404, f"foreign season answered {foreign.status_code}: {foreign.text}"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-004")
-@allure.story("SCN-SERIES-004-D")
-@allure.story("SCN-SERIES-005-D")
-@allure.story("SCN-SERIES-006-D")
+@scenario("SCN-SERIES-004-D")
+@scenario("SCN-SERIES-005-D")
+@scenario("SCN-SERIES-006-D")
 def test_a_malformed_index_or_identifier_is_refused(server: Sut, root_token: str) -> None:
     """A path segment that is not an identifier or a 32-bit unsigned index answers 400."""
     show = create_show(server, root_token)
@@ -728,10 +689,8 @@ def test_a_malformed_index_or_identifier_is_refused(server: Sut, root_token: str
         assert response.status_code == 400, f"malformed segment answered {response.status_code}: {response.text}"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-005")
-@allure.story("SCN-SERIES-005-A")
-@allure.story("SCN-SERIES-005-B")
+@scenario("SCN-SERIES-005-A")
+@scenario("SCN-SERIES-005-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_the_episodes_of_a_season_are_listed_with_their_fields(sut: Sut) -> None:
     """The episode collection carries each episode's index, fields, video summary and links."""
@@ -773,9 +732,7 @@ def test_the_episodes_of_a_season_are_listed_with_their_fields(sut: Sut) -> None
     assert_summary(second, undated_file, undated_video)
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-005")
-@allure.story("SCN-SERIES-005-C")
+@scenario("SCN-SERIES-005-C")
 def test_episodes_of_an_unknown_or_foreign_season_are_not_found(server: Sut, root_token: str) -> None:
     """An unknown show, an index the show does not hold and a season of another show all answer 404."""
     first = create_show(server, root_token, name="First Show")
@@ -794,9 +751,7 @@ def test_episodes_of_an_unknown_or_foreign_season_are_not_found(server: Sut, roo
     assert foreign.status_code == 404, f"foreign season answered {foreign.status_code}: {foreign.text}"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-006")
-@allure.story("SCN-SERIES-006-A")
+@scenario("SCN-SERIES-006-A")
 def test_an_episode_is_read_with_its_fields(server: Sut, root_token: str) -> None:
     """The read carries the episode's index, metadata, video summary and links."""
     show = create_show(server, root_token)
@@ -826,9 +781,7 @@ def test_an_episode_is_read_with_its_fields(server: Sut, root_token: str) -> Non
     assert_summary(episode, file, video)
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-006")
-@allure.story("SCN-SERIES-006-B")
+@scenario("SCN-SERIES-006-B")
 def test_an_episode_without_an_air_date_reports_null(server: Sut, root_token: str) -> None:
     """An episode that stores no air date reports `air_date` as null."""
     show = create_show(server, root_token)
@@ -842,9 +795,7 @@ def test_an_episode_without_an_air_date_reports_null(server: Sut, root_token: st
     assert response.json()["air_date"] is None
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-006")
-@allure.story("SCN-SERIES-006-C")
+@scenario("SCN-SERIES-006-C")
 def test_an_episode_outside_the_season_is_not_found(server: Sut, root_token: str) -> None:
     """An episode of another season, and an unknown show, season or episode all answer 404."""
     show = create_show(server, root_token)
@@ -862,9 +813,7 @@ def test_an_episode_outside_the_season_is_not_found(server: Sut, root_token: str
         assert response.status_code == 404, f"answered {response.status_code}: {response.text}"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-007")
-@allure.story("SCN-SERIES-007-A")
+@scenario("SCN-SERIES-007-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_seasons_and_episodes_are_listed_in_ascending_index_order(sut: Sut) -> None:
     """Seasons and episodes list by ascending index whatever order they were written in."""
@@ -895,10 +844,8 @@ def test_seasons_and_episodes_are_listed_in_ascending_index_order(sut: Sut) -> N
         assert episode_ids(episodes) == [1, 2]
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-009")
-@allure.story("SCN-SERIES-009-A")
-@allure.story("SCN-SERIES-009-C")
+@scenario("SCN-SERIES-009-A")
+@scenario("SCN-SERIES-009-C")
 def test_the_show_metadata_is_updated_partially(server: Sut, root_token: str) -> None:
     """A patch stores each submitted field and leaves every season and episode unchanged."""
     cover = library_image(server, root_token)
@@ -950,9 +897,7 @@ def test_the_show_metadata_is_updated_partially(server: Sut, root_token: str) ->
     assert episode.json()["video"]["id"] == video["id"]
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-009")
-@allure.story("SCN-SERIES-009-B")
+@scenario("SCN-SERIES-009-B")
 def test_null_clears_a_show_optional_value(server: Sut, root_token: str) -> None:
     """A null clears the first air date, the country and the cover and the read reports each as null."""
     cover = library_image(server, root_token)
@@ -984,9 +929,7 @@ def test_null_clears_a_show_optional_value(server: Sut, root_token: str) -> None
     assert stored["cover_image_id"] is None
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-009")
-@allure.story("SCN-SERIES-009-D")
+@scenario("SCN-SERIES-009-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_standard_user_may_read_but_not_edit_a_show(sut: Sut) -> None:
     """A Standard user reads the show but its patch answers 403 and stores nothing."""
@@ -1003,9 +946,7 @@ def test_a_standard_user_may_read_but_not_edit_a_show(sut: Sut) -> None:
     assert read_show(server, root_token, show["id"]).json()["name"] == "Untouched"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-009")
-@allure.story("SCN-SERIES-009-F")
+@scenario("SCN-SERIES-009-F")
 def test_a_padded_show_name_is_refused_on_update(server: Sut, root_token: str) -> None:
     """A patch name that begins or ends with whitespace answers 422 and applies nothing."""
     show = create_show(server, root_token, name="Kept Show")
@@ -1017,9 +958,7 @@ def test_a_padded_show_name_is_refused_on_update(server: Sut, root_token: str) -
     assert read_show(server, root_token, show["id"]).json()["name"] == "Kept Show"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-009")
-@allure.story("SCN-SERIES-009-E")
+@scenario("SCN-SERIES-009-E")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unknown_or_unviewable_show_cannot_be_patched(sut: Sut) -> None:
     """An unknown show and one the caller may not view both answer 404 and apply nothing."""
@@ -1037,11 +976,9 @@ def test_an_unknown_or_unviewable_show_cannot_be_patched(sut: Sut) -> None:
     assert read_show(server, root_token, show["id"]).json()["name"] == "Untouched"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-010")
-@allure.story("SCN-SERIES-010-A")
-@allure.story("SCN-SERIES-010-B")
-@allure.story("SCN-SERIES-010-C")
+@scenario("SCN-SERIES-010-A")
+@scenario("SCN-SERIES-010-B")
+@scenario("SCN-SERIES-010-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_season_is_created_then_replaced_keeping_its_episodes(sut: Sut) -> None:
     """A free index creates a season with 201; the same index replaces it with 200 and keeps the episodes."""
@@ -1082,9 +1019,7 @@ def test_a_season_is_created_then_replaced_keeping_its_episodes(sut: Sut) -> Non
     assert episode.json()["video"]["id"] == video["id"]
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-010")
-@allure.story("SCN-SERIES-010-D")
+@scenario("SCN-SERIES-010-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_season_write_of_an_unknown_show_or_malformed_index_is_refused(sut: Sut) -> None:
     """An unknown show answers 404 and an index that is not a 32-bit unsigned integer answers 400."""
@@ -1100,9 +1035,7 @@ def test_a_season_write_of_an_unknown_show_or_malformed_index_is_refused(sut: Su
     assert read_show(server, root_token, show["id"]).json()["seasons"] == []
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-010")
-@allure.story("SCN-SERIES-010-E")
+@scenario("SCN-SERIES-010-E")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_season_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
     """An image already used as gallery media answers 409 and creates no season."""
@@ -1118,9 +1051,7 @@ def test_a_season_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None
     assert read_show(server, root_token, show["id"]).json()["seasons"] == []
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-010")
-@allure.story("SCN-SERIES-010-F")
+@scenario("SCN-SERIES-010-F")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_standard_user_cannot_write_a_season(sut: Sut) -> None:
     """A Standard user's season write answers 403 and creates no season."""
@@ -1135,10 +1066,8 @@ def test_a_standard_user_cannot_write_a_season(sut: Sut) -> None:
     assert read_show(server, root_token, show["id"]).json()["seasons"] == []
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-011")
-@allure.story("SCN-SERIES-011-A")
-@allure.story("SCN-SERIES-011-C")
+@scenario("SCN-SERIES-011-A")
+@scenario("SCN-SERIES-011-C")
 def test_a_season_is_renamed_and_re_covered_keeping_its_episodes(server: Sut, root_token: str) -> None:
     """A patch stores the name and cover, returns the season and leaves the episodes in place."""
     cover = library_image(server, root_token)
@@ -1160,9 +1089,7 @@ def test_a_season_is_renamed_and_re_covered_keeping_its_episodes(server: Sut, ro
     assert episode.json()["video"]["id"] == video["id"]
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-011")
-@allure.story("SCN-SERIES-011-B")
+@scenario("SCN-SERIES-011-B")
 def test_null_clears_a_season_name_and_cover(server: Sut, root_token: str) -> None:
     """A null clears the season's name and cover and the read reports both as null."""
     cover = library_image(server, root_token)
@@ -1182,9 +1109,7 @@ def test_null_clears_a_season_name_and_cover(server: Sut, root_token: str) -> No
     assert stored["cover_image_id"] is None
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-011")
-@allure.story("SCN-SERIES-011-D")
+@scenario("SCN-SERIES-011-D")
 def test_an_unknown_or_malformed_season_cannot_be_patched(server: Sut, root_token: str) -> None:
     """An index the show does not hold answers 404 and a malformed index answers 400."""
     show = create_show(server, root_token)
@@ -1198,9 +1123,7 @@ def test_an_unknown_or_malformed_season_cannot_be_patched(server: Sut, root_toke
     assert read_season(server, root_token, show["id"], 1).json()["name"] == "Season One"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-011")
-@allure.story("SCN-SERIES-011-E")
+@scenario("SCN-SERIES-011-E")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_standard_user_may_read_but_not_edit_a_season(sut: Sut) -> None:
     """A Standard user reads the season but its patch answers 403 and stores nothing."""
@@ -1218,9 +1141,7 @@ def test_a_standard_user_may_read_but_not_edit_a_season(sut: Sut) -> None:
     assert read_season(server, root_token, show["id"], 1).json()["name"] == "Season One"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-012")
-@allure.story("SCN-SERIES-012-A")
+@scenario("SCN-SERIES-012-A")
 def test_an_episode_is_created_at_a_free_index(server: Sut, root_token: str) -> None:
     """A free index creates the episode and answers 201 with a Location and the representation."""
     show = create_show(server, root_token)
@@ -1247,9 +1168,7 @@ def test_an_episode_is_created_at_a_free_index(server: Sut, root_token: str) -> 
     assert_summary(episode, file, video)
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-012")
-@allure.story("SCN-SERIES-012-B")
+@scenario("SCN-SERIES-012-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_episode_is_replaced_keeping_its_address(sut: Sut) -> None:
     """A second write at an existing index stores the new metadata, keeps the address and answers 200."""
@@ -1280,9 +1199,7 @@ def test_an_episode_is_replaced_keeping_its_address(sut: Sut) -> None:
     assert episode_ids(list_episodes(server, root_token, show["id"], 1)) == [1]
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-012")
-@allure.story("SCN-SERIES-012-C")
+@scenario("SCN-SERIES-012-C")
 def test_replacing_an_episodes_video_unattaches_the_previous_one(server: Sut, root_token: str) -> None:
     """A different video replaces the stored one and the previous video becomes unattached."""
     show = create_show(server, root_token)
@@ -1302,9 +1219,7 @@ def test_replacing_an_episodes_video_unattaches_the_previous_one(server: Sut, ro
     assert released.status_code == 201, f"the replaced video stayed attached: {released.status_code} {released.text}"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-012")
-@allure.story("SCN-SERIES-012-D")
+@scenario("SCN-SERIES-012-D")
 def test_a_video_attached_to_another_episode_is_refused(server: Sut, root_token: str) -> None:
     """A video another episode already takes answers 409 and creates nothing."""
     show = create_show(server, root_token)
@@ -1318,9 +1233,7 @@ def test_a_video_attached_to_another_episode_is_refused(server: Sut, root_token:
     assert episode_ids(list_episodes(server, root_token, show["id"], 1)) == [1]
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-012")
-@allure.story("SCN-SERIES-012-E")
+@scenario("SCN-SERIES-012-E")
 def test_unusable_episode_input_is_refused(server: Sut, root_token: str) -> None:
     """An unknown video, empty name or malformed air date answers 422 and creates nothing."""
     show = create_show(server, root_token)
@@ -1341,9 +1254,7 @@ def test_unusable_episode_input_is_refused(server: Sut, root_token: str) -> None
     assert episode_ids(list_episodes(server, root_token, show["id"], 1)) == []
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-012")
-@allure.story("SCN-SERIES-012-F")
+@scenario("SCN-SERIES-012-F")
 def test_an_episode_write_of_an_unknown_parent_or_malformed_index_is_refused(server: Sut, root_token: str) -> None:
     """An unknown show or season answers 404 and an index that is not a 32-bit unsigned integer answers 400."""
     show = create_show(server, root_token)
@@ -1368,9 +1279,7 @@ def test_an_episode_write_of_an_unknown_parent_or_malformed_index_is_refused(ser
     assert episode_ids(list_episodes(server, root_token, show["id"], 1)) == []
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-012")
-@allure.story("SCN-SERIES-012-G")
+@scenario("SCN-SERIES-012-G")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_standard_user_cannot_write_an_episode(sut: Sut) -> None:
     """A Standard user's episode write answers 403 and creates no episode."""
@@ -1387,10 +1296,8 @@ def test_a_standard_user_cannot_write_an_episode(sut: Sut) -> None:
     assert episode_ids(list_episodes(server, root_token, show["id"], 1)) == []
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-013")
-@allure.story("SCN-SERIES-013-A")
-@allure.story("SCN-SERIES-013-C")
+@scenario("SCN-SERIES-013-A")
+@scenario("SCN-SERIES-013-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_the_episode_metadata_is_updated_partially(sut: Sut) -> None:
     """A patch stores each submitted field and leaves the backing video unchanged."""
@@ -1429,9 +1336,7 @@ def test_the_episode_metadata_is_updated_partially(sut: Sut) -> None:
     assert stored["video"]["id"] == video["id"]
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-013")
-@allure.story("SCN-SERIES-013-B")
+@scenario("SCN-SERIES-013-B")
 def test_null_clears_the_air_date(server: Sut, root_token: str) -> None:
     """A null clears the episode's air date and the read reports it as null."""
     show = create_show(server, root_token)
@@ -1446,9 +1351,7 @@ def test_null_clears_the_air_date(server: Sut, root_token: str) -> None:
     assert read_episode(server, root_token, show["id"], 1, 1).json()["air_date"] is None
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-013")
-@allure.story("SCN-SERIES-013-F")
+@scenario("SCN-SERIES-013-F")
 def test_a_padded_episode_name_is_refused_on_update(server: Sut, root_token: str) -> None:
     """A patch name that begins or ends with whitespace answers 422 and applies nothing."""
     show = create_show(server, root_token)
@@ -1463,9 +1366,7 @@ def test_a_padded_episode_name_is_refused_on_update(server: Sut, root_token: str
     assert read_episode(server, root_token, show["id"], 1, 1).json()["name"] == "Pilot"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-013")
-@allure.story("SCN-SERIES-013-D")
+@scenario("SCN-SERIES-013-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unknown_episode_or_denied_caller_cannot_be_patched(sut: Sut) -> None:
     """An unknown episode answers 404, a Standard user answers 403 and the stored episode survives."""
@@ -1485,9 +1386,7 @@ def test_an_unknown_episode_or_denied_caller_cannot_be_patched(sut: Sut) -> None
     assert read_episode(server, root_token, show["id"], 1, 1).json()["name"] == "Pilot"
 
 
-@allure.epic("Series")
-@allure.feature("REQ-SERIES-013")
-@allure.story("SCN-SERIES-013-E")
+@scenario("SCN-SERIES-013-E")
 def test_a_malformed_index_cannot_be_patched(server: Sut, root_token: str) -> None:
     """A season or episode index that is not a 32-bit unsigned integer answers 400 and applies nothing."""
     show = create_show(server, root_token)

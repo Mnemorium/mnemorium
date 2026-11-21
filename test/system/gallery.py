@@ -5,7 +5,6 @@ import time
 import zlib
 from itertools import count
 
-import allure
 import pytest
 from conftest import (
     FIXTURE_DIRECTORY,
@@ -21,6 +20,7 @@ from harness import (
     Sut,
     link_of,
 )
+from labels import scenario
 
 IMAGE_CONTENT_TYPE = "image/png"
 VIDEO_CONTENT_TYPE = "video/mp4"
@@ -108,15 +108,10 @@ def gallery_ids(response) -> list[int]:
     return [item["id"] for item in response.json()["items"]]
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-001")
-@allure.story("SCN-GALLERY-001-A")
-@allure.feature("REQ-GALLERY-005")
-@allure.story("SCN-GALLERY-005-A")
-@allure.feature("REQ-GALLERY-007")
-@allure.story("SCN-GALLERY-007-C")
-@allure.feature("REQ-GALLERY-011")
-@allure.story("SCN-GALLERY-011-A")
+@scenario("SCN-GALLERY-001-A")
+@scenario("SCN-GALLERY-005-A")
+@scenario("SCN-GALLERY-007-C")
+@scenario("SCN-GALLERY-011-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_gallery_reads_its_items_in_position_order(sut: Sut) -> None:
     """The read lists each item after the previous one."""
@@ -142,10 +137,8 @@ def test_a_gallery_reads_its_items_in_position_order(sut: Sut) -> None:
     assert all(item["type"] == "image" and item["media_id"] > 0 for item in body["items"])
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-002")
-@allure.story("SCN-GALLERY-002-A")
-@allure.story("SCN-GALLERY-002-B")
+@scenario("SCN-GALLERY-002-A")
+@scenario("SCN-GALLERY-002-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_the_default_gallery_is_ownerless_public_and_empty(sut: Sut) -> None:
     """The seeded gallery is readable by any caller, ownerless, public and empty."""
@@ -164,9 +157,7 @@ def test_the_default_gallery_is_ownerless_public_and_empty(sut: Sut) -> None:
     assert body["items"] == []
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-002")
-@allure.story("SCN-GALLERY-002-C")
+@scenario("SCN-GALLERY-002-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_the_default_gallery_cannot_be_deleted(sut: Sut) -> None:
     """Deleting the seeded gallery answers 409 and deletes nothing."""
@@ -185,9 +176,7 @@ def test_the_default_gallery_cannot_be_deleted(sut: Sut) -> None:
     assert kept.status_code == 200, f"the default gallery must survive: {kept.text}"
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-003")
-@allure.story("SCN-GALLERY-003-A")
+@scenario("SCN-GALLERY-003-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_created_gallery_is_owned_and_private(sut: Sut) -> None:
     """Creation answers 201 with a Location; the gallery is owned and private."""
@@ -216,9 +205,7 @@ def test_a_created_gallery_is_owned_and_private(sut: Sut) -> None:
     assert stored.json()["created_at"] == body["created_at"]
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-003")
-@allure.story("SCN-GALLERY-003-B")
+@scenario("SCN-GALLERY-003-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_public_gallery_is_created_and_readable_by_another_caller(sut: Sut) -> None:
     """`is_public` selects a public gallery another authenticated caller may read."""
@@ -238,9 +225,7 @@ def test_a_public_gallery_is_created_and_readable_by_another_caller(sut: Sut) ->
     assert readable.json()["is_public"] is True
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-003")
-@allure.story("SCN-GALLERY-003-C")
+@scenario("SCN-GALLERY-003-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_duplicate_name_is_refused_and_stores_nothing(sut: Sut) -> None:
     """A second gallery with the same trimmed name answers 409 and creates nothing."""
@@ -257,9 +242,7 @@ def test_a_duplicate_name_is_refused_and_stores_nothing(sut: Sut) -> None:
     assert gallery_ids(listed) == [created["id"]]
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-003")
-@allure.story("SCN-GALLERY-003-D")
+@scenario("SCN-GALLERY-003-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unusable_name_is_refused_and_stores_nothing(sut: Sut) -> None:
     """Empty, whitespace-only and overlong names answer 422 and create nothing."""
@@ -276,10 +259,8 @@ def test_an_unusable_name_is_refused_and_stores_nothing(sut: Sut) -> None:
     assert gallery_ids(listed) == [DEFAULT_GALLERY_ID], "a refused creation stored a gallery"
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-004")
-@allure.story("SCN-GALLERY-004-A")
-@allure.story("SCN-GALLERY-004-B")
+@scenario("SCN-GALLERY-004-A")
+@scenario("SCN-GALLERY-004-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_the_collection_lists_what_a_caller_may_discover_and_filters_it(sut: Sut) -> None:
     """The listing carries item counts and narrows by name, public flag and owner."""
@@ -320,9 +301,7 @@ def test_the_collection_lists_what_a_caller_may_discover_and_filters_it(sut: Sut
     assert private_gallery["id"] not in discoverable_ids
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-004")
-@allure.story("SCN-GALLERY-004-C")
+@scenario("SCN-GALLERY-004-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_caller_with_no_discoverable_gallery_gets_an_empty_collection(sut: Sut) -> None:
     """A filter matching only another caller's private gallery answers an empty collection."""
@@ -338,11 +317,8 @@ def test_a_caller_with_no_discoverable_gallery_gets_an_empty_collection(sut: Sut
     assert response.json()["items"] == []
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-004")
-@allure.story("SCN-GALLERY-004-D")
-@allure.feature("REQ-API-022")
-@allure.story("SCN-API-022-A")
+@scenario("SCN-GALLERY-004-D")
+@scenario("SCN-API-022-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_malformed_or_undeclared_query_is_rejected(sut: Sut) -> None:
     """A query value that cannot be decoded, or a parameter the operation does not declare, answers 400."""
@@ -357,9 +333,7 @@ def test_a_malformed_or_undeclared_query_is_rejected(sut: Sut) -> None:
         assert response.json()["error"] == "the request query string is invalid"
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-005")
-@allure.story("SCN-GALLERY-005-B")
+@scenario("SCN-GALLERY-005-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unknown_or_unreadable_gallery_is_not_found(sut: Sut) -> None:
     """An unknown gallery and another caller's private one answer 404 alike."""
@@ -376,9 +350,7 @@ def test_an_unknown_or_unreadable_gallery_is_not_found(sut: Sut) -> None:
     assert hidden.status_code == 404, f"private gallery leaked: {hidden.status_code} {hidden.text}"
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-005")
-@allure.story("SCN-GALLERY-005-C")
+@scenario("SCN-GALLERY-005-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_malformed_gallery_identifier_is_rejected(sut: Sut) -> None:
     """A non-numeric gallery identifier answers 400 with a stable message."""
@@ -392,12 +364,9 @@ def test_a_malformed_gallery_identifier_is_rejected(sut: Sut) -> None:
     assert response.json()["error"] == "invalid gallery identifier"
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-007")
-@allure.story("SCN-GALLERY-007-A")
-@allure.story("SCN-GALLERY-007-B")
-@allure.feature("REQ-GALLERY-011")
-@allure.story("SCN-GALLERY-011-B")
+@scenario("SCN-GALLERY-007-A")
+@scenario("SCN-GALLERY-007-B")
+@scenario("SCN-GALLERY-011-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_adding_an_image_and_a_video_appends_them_and_advances_time(sut: Sut) -> None:
     """Both media are appended by their file identifier and each change advances the time."""
@@ -437,9 +406,7 @@ def test_adding_an_image_and_a_video_appends_them_and_advances_time(sut: Sut) ->
     assert stored_video["last_modified_at"] > video_before
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-007")
-@allure.story("SCN-GALLERY-007-D")
+@scenario("SCN-GALLERY-007-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_medium_already_in_a_gallery_is_refused(sut: Sut) -> None:
     """A medium assigned to one gallery answers 409 in another and creates nothing."""
@@ -458,9 +425,7 @@ def test_a_medium_already_in_a_gallery_is_refused(sut: Sut) -> None:
     assert server.follow(second, "self", token=alice).json()["items"] == []
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-007")
-@allure.story("SCN-GALLERY-007-E")
+@scenario("SCN-GALLERY-007-E")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_missing_or_unowned_medium_is_refused(sut: Sut) -> None:
     """An unknown file and another caller's file answer 422 and create nothing."""
@@ -479,9 +444,7 @@ def test_a_missing_or_unowned_medium_is_refused(sut: Sut) -> None:
     assert server.follow(gallery, "self", token=alice).json()["items"] == []
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-008")
-@allure.story("SCN-GALLERY-008-A")
+@scenario("SCN-GALLERY-008-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_image_item_carries_the_image_name(sut: Sut) -> None:
     """An image item reports its medium, file, added instant and the name intake assigned."""
@@ -507,9 +470,7 @@ def test_an_image_item_carries_the_image_name(sut: Sut) -> None:
     assert body["_links"]["self"]["href"] == added.headers["Location"]
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-008")
-@allure.story("SCN-GALLERY-008-B")
+@scenario("SCN-GALLERY-008-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_video_item_carries_the_file_path(sut: Sut) -> None:
     """A video item carries the backing file's path as its display name."""
@@ -530,11 +491,8 @@ def test_a_video_item_carries_the_file_path(sut: Sut) -> None:
     assert body["name"] == video["path"]
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-008")
-@allure.story("SCN-GALLERY-008-C")
-@allure.feature("REQ-GALLERY-010")
-@allure.story("SCN-GALLERY-010-D")
+@scenario("SCN-GALLERY-008-C")
+@scenario("SCN-GALLERY-010-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_item_of_another_gallery_is_not_found(sut: Sut) -> None:
     """An item is scoped to its gallery for both the read and the removal."""
@@ -558,13 +516,10 @@ def test_an_item_of_another_gallery_is_not_found(sut: Sut) -> None:
     assert kept.status_code == 200, f"the item must survive a refused removal: {kept.text}"
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-010")
-@allure.story("SCN-GALLERY-010-A")
-@allure.story("SCN-GALLERY-010-B")
-@allure.story("SCN-GALLERY-010-C")
-@allure.feature("REQ-GALLERY-011")
-@allure.story("SCN-GALLERY-011-B")
+@scenario("SCN-GALLERY-010-A")
+@scenario("SCN-GALLERY-010-B")
+@scenario("SCN-GALLERY-010-C")
+@scenario("SCN-GALLERY-011-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_removing_an_item_removes_its_medium_but_keeps_the_bytes(sut: Sut) -> None:
     """Removal answers 204, deletes the medium row, keeps the bytes and advances the time."""
@@ -597,9 +552,7 @@ def test_removing_an_item_removes_its_medium_but_keeps_the_bytes(sut: Sut) -> No
     assert item_id > 0
 
 
-@allure.epic("Gallery")
-@allure.feature("REQ-GALLERY-010")
-@allure.story("SCN-GALLERY-010-D")
+@scenario("SCN-GALLERY-010-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_removing_an_unknown_item_is_not_found(sut: Sut) -> None:
     """An item identifier the gallery never issued answers 404 and removes nothing."""
@@ -619,9 +572,7 @@ def test_removing_an_unknown_item_is_not_found(sut: Sut) -> None:
     assert linked_id(link_of(gallery, "self")) == gallery["id"]
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-038")
-@allure.story("SCN-AUTHORIZATION-038-A")
+@scenario("SCN-AUTHORIZATION-038-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_adding_to_and_removing_from_an_unreadable_gallery_is_not_found(sut: Sut) -> None:
     """Adding to and removing from another caller's private gallery answer 404 and change nothing."""
