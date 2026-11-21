@@ -16,7 +16,7 @@ a requirement row the eight type columns count the scenario-type pairs claimed, 
 `N/A` is a hand judgement that the type does not apply, and the generator warns in `## Contradictions` when a proof
 appears behind it. `Unclassified` counts claimed scenarios that declare no type. In a scenario row, `Cause` is the one
 hand-authored place for "another layer owns this" or "nobody wrote it yet"; a `Not tested` scenario with an empty
-`Cause` is the worklist, and one that a Rust test proves is filled with the test's path and function automatically.
+`Cause` is the worklist, and one that a Rust test proves is filled with the test's function automatically.
 
 The generator never overwrites authored text: a type cell survives unless it is empty or a bare integer, a `Cause`
 survives while it is non-empty, and a row whose identifier leaves the specification moves to `## Detached notes` rather

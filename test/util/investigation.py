@@ -426,7 +426,7 @@ def render(matrix: Matrix) -> tuple[str, list[str], int]:
         claims_by_scenario.setdefault(claim.scenario, []).append(claim)
     rust_by_scenario: dict[str, list[str]] = {}
     for claim in rust_claims:
-        rust_by_scenario.setdefault(claim.scenario, []).append(claim.location)
+        rust_by_scenario.setdefault(claim.scenario, []).append(claim.location.rsplit("::", 1)[-1])
 
     type_overrides = dict(preserved.type_cells)
     causes = dict(preserved.causes)
