@@ -330,6 +330,11 @@ in
     description = "Remove the generated system-suite client";
   };
 
+  tasks."system:investigation" = {
+    exec = "script/investigation.sh";
+    description = "Regenerate the requirement and scenario matrix";
+  };
+
   # Performance suite
 
   tasks."setup:perf" = {
