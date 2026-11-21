@@ -3501,6 +3501,8 @@ longest-prefix match, and every scope owns at least one path. Adding or removing
 | Docs    | `user`           | `docs/index.md`                           | Documentation home page         |
 | Docs    | `user`           | `docs/Permissions.md`                     | Permissions guide               |
 | Docs    | `user`           | `docs/assets/**`                          | Documentation theme assets      |
+| Docs    | `user`           | `docs/javascripts/**`                     | Documentation theme scripts     |
+| Docs    | `user`           | `docs/stylesheets/**`                     | Documentation theme styles      |
 | Docs    | `user`           | `mkdocs.yml`                              | MkDocs site configuration       |
 | Docs    | `development`    | `docs/development/**`                     | Development documentation       |
 | Repo    | `repo`           | `LICENSE`                                 | License                         |

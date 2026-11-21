@@ -1,0 +1,27 @@
+/* Collapse the site navigation or the page table of contents. */
+body.hide-left-sidebar .md-sidebar--primary,
+body.hide-right-sidebar .md-sidebar--secondary {
+  display: none;
+}
+
+/* Floating toggle buttons. */
+.sidebar-toggle {
+  position: fixed;
+  top: 4.2rem;
+  z-index: 10;
+  border: 0;
+  border-radius: 0.3rem;
+  padding: 0.45rem 0.65rem;
+  cursor: pointer;
+  color: var(--md-default-fg-color);
+  background: var(--md-default-bg-color);
+  box-shadow: var(--md-shadow-z2);
+}
+
+.sidebar-toggle-left {
+  left: 0.5rem;
+}
+
+.sidebar-toggle-right {
+  right: 0.5rem;
+}

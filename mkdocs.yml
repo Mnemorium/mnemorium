@@ -35,6 +35,12 @@ nav:
       - Artifacts:
           - System Test Coverage: development/artifacts/SystemTestCoverage.md
 
+extra_css:
+  - stylesheets/sidebar-toggle.css
+
+extra_javascript:
+  - javascripts/sidebar-toggle.js
+
 plugins:
   - plantuml:
       puml_url: https://www.plantuml.com/plantuml
