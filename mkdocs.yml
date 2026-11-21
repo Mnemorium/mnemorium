@@ -32,6 +32,8 @@ nav:
       - Testing: development/Test.md
       - Glossary: development/Glossary.md
       - Use Cases: development/UseCases.md
+      - Artifacts:
+          - System Test Coverage: development/artifacts/SystemTestCoverage.md
 
 plugins:
   - plantuml:

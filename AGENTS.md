@@ -30,6 +30,7 @@ first.
 | Test      | `cargo test` (unit + integration)                                                                                                    |
 | System    | `script/system.sh` (builds the image with `test-seed` and `api-docs`, regenerates the suite's typed client, then runs `test/system`; `NO_BUILD=1` reuses the image, `PYTEST_WORKERS=4` parallelises, `IMAGE=...` picks the tag) |
 | Client    | `script/openapi_client.sh` or `devenv tasks run system:client` (regenerates `test/generated/` from the image under test; the package is never committed) |
+| Investigation | `script/investigation.sh` (regenerates `docs/development/artifacts/SystemTestCoverage.md` from the specifications and the suites' `@scenario`/`// proves:` annotations; needs no container and no pytest run) |
 | Coverage  | `cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler\|src/lib/infrastructure/seed.rs' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80` (gate ≥ 80%; the REST handler tree is covered by the system suite and Schemathesis instead, and the seed file by every suite run and the performance dataset gate) |
 | Lint      | `cargo clippy --all-targets --all-features -- -D warnings` and `cargo clippy --all-targets -- -D warnings`; `cargo fmt --all -- --check` |
 | All rules | `script/rule_enforcer.sh check` (every registered rule; CI and the pre-commit hook run this)                                         |
