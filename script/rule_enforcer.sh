@@ -7,8 +7,9 @@ set -u -o pipefail
 # through `scan_short <ID> <root> [--globs ...]` or `scan_json <ID> <root>
 # [--globs ...]`, which share one batched `ast-grep scan` per distinct argument
 # tuple (the root plus its globs) and slice the stream by rule id. So a new
-# check adds a rule file and a registry line, not a scanner process. SQL rules
-# share `sql_lint <code>...`, which lints the migrations once for every code.
+# check adds a rule file and a registry line, not a scanner process. A SQL rule
+# `sqlfluff` already enforces is not wrapped here; the remaining SQL checks read
+# the migrations textually.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
@@ -136,8 +137,6 @@ RULES=(
 	"DOC-005:check_doc_005"
 	"DOC-007:check_doc_007"
 	"DOC-008:check_doc_008"
-	"STY-SQL-001:check_sty_sql_001"
-	"STY-SQL-003:check_sty_sql_003"
 	"STY-SQL-004:check_sty_sql_004"
 	"STY-SQL-005:check_sty_sql_005"
 	"STY-SQL-006:check_sty_sql_006"
@@ -279,10 +278,9 @@ read_rulebook() {
 			if (id !~ /^`[A-Z][A-Z-]*-[0-9]+`$/) next
 			gsub(/`/, "", id)
 			section = trim(c[3])
-			rule = ""
-			for (i = 4; i <= n - 2; i++) {
-				rule = rule (i > 4 ? "|" : "") c[i]
-			}
+			# Column four is the Rule; the trailing More info and Enforced by
+			# columns are reference data, not part of the statement.
+			rule = trim(c[4])
 			gsub(/[[:space:]]+/, " ", rule)
 			printf "%s\t%s\t%s\n", id, section, trim(rule)
 		}
@@ -2987,61 +2985,6 @@ check_doc_008() {
 	' "$catalog")
 
 	return "$result"
-}
-
-# sql_lint <code>... — lint the migrations once for every SQL rule and print the violations of the named codes.
-# CP02, RF04 and RF06 are parse-bound: one lint pass costs what one rule costs, so the rules share it.
-sql_lint() {
-	local -a codes=("$@")
-	local dir rc output
-	dir="$(scan_dir "sql-lint")"
-	mkdir -p "$dir"
-	(
-		flock 9 || exit 0
-		if [ -f "$dir/.done" ]; then
-			exit 0
-		fi
-		sqlfluff lint --config .sqlfluff --rules CP02,RF04,RF06 --nocolor --format json \
-			migrations >"$dir/out.json" 2>"$dir/err"
-		printf '%s\n' "$?" >"$dir/rc"
-		: >"$dir/.done"
-		exit 0
-	) 9>"$dir/.lock"
-
-	rc="$(<"$dir/rc")"
-	if [ "$rc" -gt 1 ]; then
-		cat "$dir/err" >&2
-		return 2
-	fi
-	output="$(jq -r --args '
-		.[] | .filepath as $file |
-		.violations[] |
-		select(.code as $code | $ARGS.positional | index($code)) |
-		"\($file):\(.start_line_no):\(.start_line_pos): \(.code): \(.description)"
-	' "${codes[@]}" <"$dir/out.json")" || return 2
-	[ -n "$output" ] || return 0
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_sql_001() {
-	local config=".sqlfluff"
-	local migrations_dir="migrations"
-
-	need_file "STY-SQL-001" "$config" || return 1
-	need_dir "STY-SQL-001" "$migrations_dir" || return 1
-
-	# sqlfluff already performs this check: CP02 holds every unquoted identifier to the `.sqlfluff` `capitalisation_policy = lower` (snake_case), and RF06 flags a quoted identifier whose quotes are unnecessary.
-	sql_lint CP02 RF06
-}
-
-check_sty_sql_003() {
-	local migrations_dir="migrations"
-
-	need_dir "STY-SQL-003" "$migrations_dir" || return 1
-
-	# sqlfluff's RF04 (`references.keywords`) is the SQLite dialect's implementation of the rule: an unreserved keyword used as a name (date, key) is reported as RF04, while a reserved keyword (order, group, select) cannot be an unquoted identifier at all and surfaces as an unparsable PRS section.
-	sql_lint RF04
 }
 
 check_sty_sql_004() {
