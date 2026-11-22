@@ -124,7 +124,6 @@ mod tests {
     use crate::domain::model::{
         ExternalRef, MusicCandidate, MusicKind, MusicQuery, MusicQueryError, ProviderId,
     };
-    use allure_cargotest::allure_test;
     use rstest::fixture;
 
     use crate::domain::port::{
@@ -197,12 +196,9 @@ mod tests {
         )?)
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-018-D
     #[tokio::test]
     async fn identify_music_rejects_a_query_without_a_title() {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-018");
-        allure.story("SCN-METADATA-ENRICHMENT-018-D");
         // Act: the model refuses the query before the use case ever sees it.
         let result = MusicQuery::try_new(MusicKind::Album, String::new(), None, None);
 
@@ -213,14 +209,9 @@ mod tests {
         );
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-001-A, SCN-METADATA-ENRICHMENT-023-D
     #[tokio::test]
     async fn identify_music_reports_unavailable_without_a_provider() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-001");
-        allure.feature("REQ-METADATA-ENRICHMENT-023");
-        allure.story("SCN-METADATA-ENRICHMENT-001-A");
-        allure.story("SCN-METADATA-ENRICHMENT-023-D");
         // Arrange: no music provider is configured.
         let harness = use_case_with(
             (move || -> crate::domain::port::MockUserRepository {
@@ -456,13 +447,10 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-001-B
     #[tokio::test]
     async fn identify_music_reports_no_candidate_when_the_search_is_empty()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-001");
-        allure.story("SCN-METADATA-ENRICHMENT-001-B");
         // Arrange: a configured provider answers with nothing.
         let mut provider = MockMusicMetadataProvider::new();
         provider
@@ -594,15 +582,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-002-B, SCN-METADATA-ENRICHMENT-023-A
     #[tokio::test]
     async fn identify_music_returns_the_providers_candidates_in_its_order()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-002");
-        allure.feature("REQ-METADATA-ENRICHMENT-023");
-        allure.story("SCN-METADATA-ENRICHMENT-002-B");
-        allure.story("SCN-METADATA-ENRICHMENT-023-A");
         // Arrange: the provider reports two candidates in its own order.
         let mut provider = MockMusicMetadataProvider::new();
         provider

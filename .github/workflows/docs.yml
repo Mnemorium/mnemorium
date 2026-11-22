@@ -12,6 +12,8 @@ on:
       - ready_for_review
     paths:
       - '**/*.md'
+      - 'docs/**/*.css'
+      - 'docs/**/*.js'
       - 'mkdocs.yml'
       - 'requirements.txt'
       - '.prettierrc'

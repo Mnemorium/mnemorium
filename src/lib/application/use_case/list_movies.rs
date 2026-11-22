@@ -135,7 +135,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use allure_cargotest::allure_test;
 
     use crate::domain::model::Movie;
 
@@ -148,12 +147,9 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = ListMovies<TestFactory>;
 
-    #[allure_test]
+    // proves: SCN-MOVIES-001-A
     #[tokio::test]
     async fn list_movies_returns_the_page_with_its_video() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-001");
-        allure.story("SCN-MOVIES-001-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -221,12 +217,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-001-D
     #[tokio::test]
     async fn list_movies_carries_the_cover_of_a_film_with_artwork() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-001");
-        allure.story("SCN-MOVIES-001-D");
         // Arrange: one covered film beside one without artwork.
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -307,12 +300,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-001-B
     #[tokio::test]
     async fn list_movies_forwards_the_filter_and_paginates() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-001");
-        allure.story("SCN-MOVIES-001-B");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -372,12 +362,9 @@ mod tests {
         );
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-MOVIES-001-A
     #[tokio::test]
     async fn list_movies_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-001");
-        allure.story("SCN-MOVIES-001-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -413,12 +400,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-001-A
     #[tokio::test]
     async fn list_movies_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-001");
-        allure.story("SCN-MOVIES-001-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -472,12 +456,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-001-A
     #[tokio::test]
     async fn list_movies_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-001");
-        allure.story("SCN-MOVIES-001-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,

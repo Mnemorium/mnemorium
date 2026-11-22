@@ -214,7 +214,6 @@ where
 mod tests {
     use super::*;
     use crate::domain::NumericID;
-    use allure_cargotest::allure_test;
     use rstest::fixture;
 
     use crate::domain::model::{ExternalRef, ProviderId, Role, Series, User};
@@ -272,15 +271,9 @@ mod tests {
         }
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-A, SCN-METADATA-ENRICHMENT-027-A, SCN-METADATA-ENRICHMENT-027-D
     #[tokio::test]
     async fn apply_series_episode_writes_the_reported_metadata() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.feature("REQ-METADATA-ENRICHMENT-027");
-        allure.story("SCN-METADATA-ENRICHMENT-024-A");
-        allure.story("SCN-METADATA-ENRICHMENT-027-A");
-        allure.story("SCN-METADATA-ENRICHMENT-027-D");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -432,12 +425,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-027-C
     #[tokio::test]
     async fn apply_series_episode_rejects_another_position() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-027");
-        allure.story("SCN-METADATA-ENRICHMENT-027-C");
         // Arrange: the provider reports episode 2 while the command addresses 1.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -566,12 +556,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-D
     #[tokio::test]
     async fn apply_series_episode_reports_an_unknown_reference() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.story("SCN-METADATA-ENRICHMENT-024-D");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -700,12 +687,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-C
     #[tokio::test]
     async fn apply_series_episode_rejects_another_kind() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.story("SCN-METADATA-ENRICHMENT-024-C");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -842,12 +826,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-E
     #[tokio::test]
     async fn apply_series_episode_reports_an_unconfigured_provider() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.story("SCN-METADATA-ENRICHMENT-024-E");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,

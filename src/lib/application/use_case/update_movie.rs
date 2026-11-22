@@ -229,7 +229,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use allure_cargotest::allure_test;
     use rstest::fixture;
 
     use crate::domain::NumericID;
@@ -276,12 +275,9 @@ mod tests {
         )
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-005-A
     #[tokio::test]
     async fn update_movie_replaces_metadata_keeping_the_video() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-005");
-        allure.story("SCN-MOVIES-005-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -433,12 +429,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-005-A
     #[tokio::test]
     async fn update_movie_absent_fields_keep_the_stored_values() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-005");
-        allure.story("SCN-MOVIES-005-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -576,12 +569,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-005-B
     #[tokio::test]
     async fn update_movie_null_clears_optional_values() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-005");
-        allure.story("SCN-MOVIES-005-B");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -728,12 +718,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-005-E
     #[tokio::test]
     async fn update_movie_unknown_movie_returns_no_such_movie() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-005");
-        allure.story("SCN-MOVIES-005-E");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -849,12 +836,9 @@ mod tests {
         assert!(matches!(result, Err(UpdateMovieError::NoSuchMovie)));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-MOVIES-005-A
     #[tokio::test]
     async fn update_movie_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-005");
-        allure.story("SCN-MOVIES-005-A");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -995,12 +979,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-005-A
     #[tokio::test]
     async fn update_movie_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-005");
-        allure.story("SCN-MOVIES-005-A");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1141,12 +1122,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-005-A
     #[tokio::test]
     async fn update_movie_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-005");
-        allure.story("SCN-MOVIES-005-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1282,12 +1260,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-005-A
     #[tokio::test]
     async fn update_movie_invalid_country_is_unprocessable() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-005");
-        allure.story("SCN-MOVIES-005-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1423,12 +1398,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-005-A
     #[tokio::test]
     async fn update_movie_empty_genre_is_invalid() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-005");
-        allure.story("SCN-MOVIES-005-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,

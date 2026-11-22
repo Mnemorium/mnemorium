@@ -5,7 +5,6 @@ import time
 from itertools import count
 from urllib.parse import urlsplit
 
-import allure
 import pytest
 import yaml
 from conftest import (
@@ -33,6 +32,7 @@ from harness import (
     WRONG_PASSWORD,
     Sut,
 )
+from labels import scenario
 from mnemorium_client.api.asset import delete_upload, post_upload_complete
 from mnemorium_client.api.identity import patch_credential, post_login, post_register, post_token
 from mnemorium_client.api.library import get_gallery, identify_video_movie_metadata, list_galleries
@@ -46,11 +46,8 @@ _SEEDED_LOGS = {f"logs/mnemorium.log.2020-01-0{day}": "old\n" for day in range(1
 _ACCOUNTS = count()
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-001")
-@allure.story("SCN-LOGGING-001-B")
-@allure.feature("REQ-LOGGING-012")
-@allure.story("SCN-LOGGING-012-A")
+@scenario("SCN-LOGGING-001-B")
+@scenario("SCN-LOGGING-012-A")
 def test_the_standard_output_sink_holds_the_event(server: Sut, root_token: str) -> None:
     """An accepted credential appears on standard output, naming its actor."""
     name = f"sink{next(_ACCOUNTS)}"
@@ -65,9 +62,7 @@ def test_the_standard_output_sink_holds_the_event(server: Sut, root_token: str) 
     assert len(emitted) == 1
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-001")
-@allure.story("SCN-LOGGING-001-D")
+@scenario("SCN-LOGGING-001-D")
 def test_standard_output_is_uncoloured_by_default(server: Sut, root_token: str) -> None:
     """The installed configuration colours neither sink."""
     provision(server, root_token, f"plain{next(_ACCOUNTS)}")
@@ -75,13 +70,9 @@ def test_standard_output_is_uncoloured_by_default(server: Sut, root_token: str) 
     assert "\x1b[" not in server.logs()
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-006")
-@allure.story("SCN-LOGGING-006-C")
-@allure.feature("REQ-LOGGING-009")
-@allure.story("SCN-LOGGING-009-A")
-@allure.feature("REQ-LOGGING-012")
-@allure.story("SCN-LOGGING-012-B")
+@scenario("SCN-LOGGING-006-C")
+@scenario("SCN-LOGGING-009-A")
+@scenario("SCN-LOGGING-012-B")
 def test_a_rejected_login_is_recorded_as_a_warning(server: Sut) -> None:
     """A wrong password and an unknown identifier each emit one warning with the same reason."""
     first = f"wrong{next(_ACCOUNTS)}"
@@ -106,9 +97,7 @@ def test_a_rejected_login_is_recorded_as_a_warning(server: Sut) -> None:
     assert all(" WARN " in line for line in lines)
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-012")
-@allure.story("SCN-LOGGING-012-B")
+@scenario("SCN-LOGGING-012-B")
 def test_a_rejected_login_carries_no_client_value(server: Sut) -> None:
     """A control character in the submitted identifier cannot forge a record, because it is never logged."""
     nonce = next(_ACCOUNTS)
@@ -127,11 +116,8 @@ def test_a_rejected_login_carries_no_client_value(server: Sut) -> None:
     assert not any(f"forged{nonce}" in line for line in server.logs().splitlines())
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-006")
-@allure.story("SCN-LOGGING-006-A")
-@allure.feature("REQ-LOGGING-013")
-@allure.story("SCN-LOGGING-013-A")
+@scenario("SCN-LOGGING-006-A")
+@scenario("SCN-LOGGING-013-A")
 def test_a_denial_is_recorded_once(server: Sut, root_token: str) -> None:
     """A denied view records one `authz_failed` naming the actor, the action and the target."""
     name = f"denied{next(_ACCOUNTS)}"
@@ -155,9 +141,7 @@ def test_a_denial_is_recorded_once(server: Sut, root_token: str) -> None:
     assert mine[0]["action"] == "view"
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-013")
-@allure.story("SCN-LOGGING-013-B")
+@scenario("SCN-LOGGING-013-B")
 def test_filtering_a_listing_records_no_denial(server: Sut, root_token: str) -> None:
     """A listing that drops an undiscoverable item is not a denial."""
     name = f"listing{next(_ACCOUNTS)}"
@@ -173,9 +157,7 @@ def test_filtering_a_listing_records_no_denial(server: Sut, root_token: str) -> 
     assert [record for record in emitted if record["actor"] == str(owner_id)] == []
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-013")
-@allure.story("SCN-LOGGING-013-C")
+@scenario("SCN-LOGGING-013-C")
 def test_an_out_of_order_action_is_suspicious(server: Sut, root_token: str) -> None:
     """Completing an upload before its chunks arrive records one `suspicious_business_logic`."""
     data = (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes()
@@ -195,9 +177,7 @@ def test_an_out_of_order_action_is_suspicious(server: Sut, root_token: str) -> N
     assert mine[0]["actor"] == "0"
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-007")
-@allure.story("SCN-LOGGING-007-A")
+@scenario("SCN-LOGGING-007-A")
 def test_a_query_string_is_withheld(server: Sut, root_token: str) -> None:
     """A traced request carries the path and not the query string."""
     sentinel = f"LEAK-SENTINEL{next(_ACCOUNTS)}"
@@ -211,12 +191,9 @@ def test_a_query_string_is_withheld(server: Sut, root_token: str) -> None:
     assert sentinel not in logs
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-008")
-@allure.story("SCN-LOGGING-008-D")
-@allure.feature("REQ-LOGGING-018")
-@allure.story("SCN-LOGGING-018-A")
-@allure.story("SCN-LOGGING-018-B")
+@scenario("SCN-LOGGING-008-D")
+@scenario("SCN-LOGGING-018-A")
+@scenario("SCN-LOGGING-018-B")
 def test_a_personal_data_read_is_recorded(server: Sut, root_token: str) -> None:
     """Reading personal data records the actor and the object and no personal value."""
     name = f"personal{next(_ACCOUNTS)}"
@@ -238,9 +215,7 @@ def test_a_personal_data_read_is_recorded(server: Sut, root_token: str) -> None:
     assert not any("@" in value for value in mine[0].values())
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-012")
-@allure.story("SCN-LOGGING-012-E")
+@scenario("SCN-LOGGING-012-E")
 def test_a_token_regeneration_names_the_actor(server: Sut, root_token: str) -> None:
     """A token regeneration records one event naming the actor."""
     name = f"regen{next(_ACCOUNTS)}"
@@ -259,9 +234,7 @@ def test_a_token_regeneration_names_the_actor(server: Sut, root_token: str) -> N
     assert len(mine) == 1
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-015")
-@allure.story("SCN-LOGGING-015-D")
+@scenario("SCN-LOGGING-015-D")
 def test_user_administration_names_actor_and_target(server: Sut, root_token: str) -> None:
     """Creating a user records one `user_admin` naming the actor, the action and the target."""
     before = len(server.events("user_admin"))
@@ -285,9 +258,7 @@ def test_user_administration_names_actor_and_target(server: Sut, root_token: str
     assert mine[-1]["actor"] == "0"
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-017")
-@allure.story("SCN-LOGGING-017-A")
+@scenario("SCN-LOGGING-017-A")
 def test_an_upload_lifecycle_is_recorded(server: Sut, root_token: str) -> None:
     """An accepted, written, completed and cancelled upload each record one event with its outcome."""
     data = (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes()
@@ -311,9 +282,7 @@ def test_an_upload_lifecycle_is_recorded(server: Sut, root_token: str) -> None:
     assert all(record["actor"] == "0" for record in emitted if record["upload"] in {str(session.id), str(cancelled.id)})
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-001")
-@allure.story("SCN-LOGGING-001-A")
+@scenario("SCN-LOGGING-001-A")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_file_sink_holds_the_event(sut: Sut) -> None:
     """An accepted credential appears in `logs/mnemorium.log`."""
@@ -324,9 +293,7 @@ def test_the_file_sink_holds_the_event(sut: Sut) -> None:
     assert len(server.written_events("authn_succeeded")) == 1
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-001")
-@allure.story("SCN-LOGGING-001-C")
+@scenario("SCN-LOGGING-001-C")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_file_sink_is_never_coloured(sut: Sut) -> None:
     """Colour enabled for standard output never reaches the file sink."""
@@ -339,9 +306,7 @@ def test_the_file_sink_is_never_coloured(sut: Sut) -> None:
     assert "\x1b[" not in server.log_text()
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-003")
-@allure.story("SCN-LOGGING-003-D")
+@scenario("SCN-LOGGING-003-D")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_error_rung_hides_the_warning_and_info(sut: Sut) -> None:
     """At `error`, an operational warning and info reach no sink."""
@@ -353,9 +318,7 @@ def test_the_error_rung_hides_the_warning_and_info(sut: Sut) -> None:
     assert _APPLIED not in server.logs()
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-003")
-@allure.story("SCN-LOGGING-003-D")
+@scenario("SCN-LOGGING-003-D")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_warn_rung_keeps_the_warning_and_hides_the_info(sut: Sut) -> None:
     """At `warn`, an operational warning reaches a sink and the info below it does not."""
@@ -367,9 +330,7 @@ def test_the_warn_rung_keeps_the_warning_and_hides_the_info(sut: Sut) -> None:
     assert _APPLIED not in server.logs()
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-003")
-@allure.story("SCN-LOGGING-003-D")
+@scenario("SCN-LOGGING-003-D")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_info_rung_keeps_the_warning_and_info(sut: Sut) -> None:
     """At `info`, the applied-setting record reaches a sink."""
@@ -381,9 +342,7 @@ def test_the_info_rung_keeps_the_warning_and_info(sut: Sut) -> None:
     assert _APPLIED in server.logs()
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-004")
-@allure.story("SCN-LOGGING-004-A")
+@scenario("SCN-LOGGING-004-A")
 @pytest.mark.own_instance(reason="log_sink")
 def test_a_fault_only_verbosity_cannot_silence_a_success(sut: Sut) -> None:
     """With a verbosity admitting only `error`, a login succeeds and its catalogued event reaches the sinks."""
@@ -394,9 +353,7 @@ def test_a_fault_only_verbosity_cannot_silence_a_success(sut: Sut) -> None:
     assert len(server.events("authn_succeeded")) == 1
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-004")
-@allure.story("SCN-LOGGING-004-B")
+@scenario("SCN-LOGGING-004-B")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_lowest_declared_severity_survives(sut: Sut) -> None:
     """With a verbosity admitting only `error`, a catalogued `debug` event still reaches the sinks."""
@@ -409,9 +366,7 @@ def test_the_lowest_declared_severity_survives(sut: Sut) -> None:
     assert len(server.events("sensitive_data_access")) == 1
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-002")
-@allure.story("SCN-LOGGING-002-A")
+@scenario("SCN-LOGGING-002-A")
 @pytest.mark.own_instance(reason="restart")
 def test_rotation_replaces_the_active_file(sut: Sut) -> None:
     """A period change starts a dated active file holding the further event and keeps the previous file."""
@@ -429,9 +384,7 @@ def test_rotation_replaces_the_active_file(sut: Sut) -> None:
     assert 'event="lifecycle"' in server.read(f"{LOG_DIRECTORY}/{dated[0]}")
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-002")
-@allure.story("SCN-LOGGING-002-B")
+@scenario("SCN-LOGGING-002-B")
 @pytest.mark.own_instance(reason="log_sink")
 def test_pruning_bounds_the_retained_files(sut: Sut) -> None:
     """A maximum of two keeps one seeded file plus today's."""
@@ -441,9 +394,7 @@ def test_pruning_bounds_the_retained_files(sut: Sut) -> None:
     assert len(sut.listing(LOG_DIRECTORY)) == 2
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-002")
-@allure.story("SCN-LOGGING-002-C")
+@scenario("SCN-LOGGING-002-C")
 @pytest.mark.own_instance(reason="log_sink")
 def test_a_zero_maximum_keeps_every_file(sut: Sut) -> None:
     """A maximum of zero retains the five seeded files and today's."""
@@ -453,9 +404,7 @@ def test_a_zero_maximum_keeps_every_file(sut: Sut) -> None:
     assert len(sut.listing(LOG_DIRECTORY)) == 6
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-015")
-@allure.story("SCN-LOGGING-015-A")
+@scenario("SCN-LOGGING-015-A")
 @pytest.mark.own_instance(reason="log_sink")
 def test_startup_records_a_lifecycle_event(sut: Sut) -> None:
     """Installing logging records the component and the outcome, even at a fault-only verbosity."""
@@ -470,11 +419,8 @@ def test_startup_records_a_lifecycle_event(sut: Sut) -> None:
     assert len(installed) == 1
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-007")
-@allure.story("SCN-LOGGING-007-B")
-@allure.feature("REQ-LOGGING-009")
-@allure.story("SCN-LOGGING-009-B")
+@scenario("SCN-LOGGING-007-B")
+@scenario("SCN-LOGGING-009-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_file_name_is_withheld_from_a_storage_fault(sut: Sut) -> None:
     """A failed promotion records its classification at `error` and never the user-supplied name."""
@@ -498,9 +444,7 @@ def test_a_file_name_is_withheld_from_a_storage_fault(sut: Sut) -> None:
     assert sentinel not in server.logs()
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-008")
-@allure.story("SCN-LOGGING-008-A")
+@scenario("SCN-LOGGING-008-A")
 @pytest.mark.own_instance(reason="log_sink")
 def test_login_secrets_stay_out_of_every_sink(sut: Sut) -> None:
     """Neither the submitted password nor the issued token reaches standard output or a log file."""
@@ -526,9 +470,7 @@ def test_login_secrets_stay_out_of_every_sink(sut: Sut) -> None:
     assert password not in written
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-008")
-@allure.story("SCN-LOGGING-008-B")
+@scenario("SCN-LOGGING-008-B")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_configured_instance_secrets_stay_out_of_every_sink(sut: Sut) -> None:
     """Neither the configured pepper nor the signing secret reaches a sink."""
@@ -543,9 +485,7 @@ def test_the_configured_instance_secrets_stay_out_of_every_sink(sut: Sut) -> Non
         assert secret not in written
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-008")
-@allure.story("SCN-LOGGING-008-B")
+@scenario("SCN-LOGGING-008-B")
 @pytest.mark.own_instance(reason="first_boot")
 def test_the_generated_instance_secrets_stay_out_of_every_sink(sut: Sut) -> None:
     """Neither the generated pepper nor the generated signing secret reaches a sink."""
@@ -561,9 +501,7 @@ def test_the_generated_instance_secrets_stay_out_of_every_sink(sut: Sut) -> None
         assert secret not in written
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-012")
-@allure.story("SCN-LOGGING-012-C")
+@scenario("SCN-LOGGING-012-C")
 @pytest.mark.own_instance(reason="log_sink")
 def test_token_rejections_name_their_reason(sut: Sut) -> None:
     """A missing, invalid and expired token each emit one `session_validation_failed`."""
@@ -583,9 +521,7 @@ def test_token_rejections_name_their_reason(sut: Sut) -> None:
     assert sum(record["reason"] == "invalid_or_expired_token" for record in emitted) == 2
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-012")
-@allure.story("SCN-LOGGING-012-D")
+@scenario("SCN-LOGGING-012-D")
 @pytest.mark.own_instance(reason="log_sink")
 def test_a_throttled_request_names_its_route(sut: Sut) -> None:
     """A rate-limited login records one `rate_limit_exceeded` with its route and reason."""
@@ -601,9 +537,7 @@ def test_a_throttled_request_names_its_route(sut: Sut) -> None:
     assert emitted[0]["reason"] == "quota_exceeded"
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-012")
-@allure.story("SCN-LOGGING-012-E")
+@scenario("SCN-LOGGING-012-E")
 @pytest.mark.own_instance(reason="log_sink")
 def test_a_credential_rotation_names_the_actor(sut: Sut) -> None:
     """A credential rotation records one event naming the actor."""
@@ -622,10 +556,8 @@ def test_a_credential_rotation_names_the_actor(sut: Sut) -> None:
     assert emitted[0]["actor"] == "0"
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-015")
-@allure.story("SCN-LOGGING-015-B")
-@allure.story("SCN-LOGGING-015-C")
+@scenario("SCN-LOGGING-015-B")
+@scenario("SCN-LOGGING-015-C")
 @pytest.mark.own_instance(reason="first_boot")
 def test_identity_creation_is_reported(sut: Sut) -> None:
     """A first start creates the identity and reports it once per generated secret; reuse reports nothing."""
@@ -652,9 +584,7 @@ def test_identity_creation_is_reported(sut: Sut) -> None:
     assert 'event="secret_initialized"' not in reused
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-016")
-@allure.story("SCN-LOGGING-016-A")
+@scenario("SCN-LOGGING-016-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_ingest_reports_counts_only(sut: Sut) -> None:
     """A startup scan records the counts and never a file name."""
@@ -671,9 +601,7 @@ def test_an_ingest_reports_counts_only(sut: Sut) -> None:
     assert sentinel not in server.logs()
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-016")
-@allure.story("SCN-LOGGING-016-B")
+@scenario("SCN-LOGGING-016-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_degraded_observer_is_reported(sut: Sut) -> None:
     """An unreadable library root degrades the observer and records `ingest_fault` with its kind."""
@@ -690,10 +618,8 @@ def test_a_degraded_observer_is_reported(sut: Sut) -> None:
         media.chmod(0o700)
 
 
-@allure.epic("Logging")
-@allure.feature("REQ-LOGGING-016")
-@allure.story("SCN-LOGGING-016-C")
-@allure.story("SCN-LOGGING-016-D")
+@scenario("SCN-LOGGING-016-C")
+@scenario("SCN-LOGGING-016-D")
 @pytest.mark.own_instance(reason="log_sink")
 def test_a_skipped_provider_reports_its_classification(sut: Sut) -> None:
     """A lookup naming an unconfigured provider records only the provider and the classification."""

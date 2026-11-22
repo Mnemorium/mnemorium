@@ -2,9 +2,9 @@
 
 import json
 
-import allure
 from conftest import SEED_MEDIA_DIRECTORY, upload
 from harness import Sut
+from labels import scenario
 from mnemorium_client.api.asset import get_file
 
 # The seeded slots this module reads, documented in `seed/sql/0004_audio.sql`.
@@ -29,9 +29,7 @@ AUDIO_FIELDS = {
 }
 
 
-@allure.epic("Audio")
-@allure.feature("REQ-AUDIO-001")
-@allure.story("SCN-AUDIO-001-A")
+@scenario("SCN-AUDIO-001-A")
 def test_an_audio_file_creates_one_audio(server: Sut, root_token: str) -> None:
     """An audio upload leaves one audio backed by the uploaded file."""
     data = (SEED_MEDIA_DIRECTORY / "audio-create.wav").read_bytes()
@@ -45,9 +43,7 @@ def test_an_audio_file_creates_one_audio(server: Sut, root_token: str) -> None:
     assert file["_links"]["audio"]["href"].endswith(f"/{audio['id']}")
 
 
-@allure.epic("Audio")
-@allure.feature("REQ-AUDIO-001")
-@allure.story("SCN-AUDIO-001-B")
+@scenario("SCN-AUDIO-001-B")
 def test_a_file_backs_one_audio(server: Sut, root_token: str) -> None:
     """Uploading the same content twice reuses the stored file and its one audio."""
     data = (SEED_MEDIA_DIRECTORY / "audio-dedupe.wav").read_bytes()
@@ -69,9 +65,7 @@ def test_a_file_backs_one_audio(server: Sut, root_token: str) -> None:
     assert second_audio["id"] == first_audio["id"], "the second registration created a second audio"
 
 
-@allure.epic("Audio")
-@allure.feature("REQ-AUDIO-002")
-@allure.story("SCN-AUDIO-002-A")
+@scenario("SCN-AUDIO-002-A")
 def test_every_reported_measurement_is_reported(server: Sut, root_token: str) -> None:
     """The one-second 16-bit audio reports its name, codec, duration, sample rate and bit depth."""
     file_response = get_file.sync_detailed(FULL_FILE, client=server.client(root_token))
@@ -89,9 +83,7 @@ def test_every_reported_measurement_is_reported(server: Sut, root_token: str) ->
     assert audio["bit_depth"] == 16
 
 
-@allure.epic("Audio")
-@allure.feature("REQ-AUDIO-002")
-@allure.story("SCN-AUDIO-002-B")
+@scenario("SCN-AUDIO-002-B")
 def test_a_missing_bit_depth_and_block_size_stay_absent(server: Sut, root_token: str) -> None:
     """The 64-bit audio reports neither a bit depth nor a block size."""
     file_response = get_file.sync_detailed(WIDE_FILE, client=server.client(root_token))
@@ -109,9 +101,7 @@ def test_a_missing_bit_depth_and_block_size_stay_absent(server: Sut, root_token:
     assert audio["sample_rate_hz"] == SAMPLE_RATE_HZ
 
 
-@allure.epic("Audio")
-@allure.feature("REQ-AUDIO-002")
-@allure.story("SCN-AUDIO-002-C")
+@scenario("SCN-AUDIO-002-C")
 def test_a_missing_duration_stays_absent(server: Sut, root_token: str) -> None:
     """The zero-sample audio carries no duration rather than a fabricated one."""
     file_response = get_file.sync_detailed(EMPTY_FILE, client=server.client(root_token))
@@ -126,9 +116,7 @@ def test_a_missing_duration_stays_absent(server: Sut, root_token: str) -> None:
     assert audio["sample_rate_hz"] == SAMPLE_RATE_HZ
 
 
-@allure.epic("Audio")
-@allure.feature("REQ-AUDIO-003")
-@allure.story("SCN-AUDIO-003-A")
+@scenario("SCN-AUDIO-003-A")
 def test_an_audio_carries_its_representation(server: Sut, root_token: str) -> None:
     """The typed representation carries its fields and links its own resource, file and content."""
     file_response = get_file.sync_detailed(READ_FILE, client=server.client(root_token))

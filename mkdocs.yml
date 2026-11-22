@@ -22,7 +22,7 @@ theme:
         name: Switch to light mode
   features:
     - navigation.tracking
-
+    - navigation.sections
 nav:
   - Home: index.md
   - Permissions: Permissions.md
@@ -32,6 +32,14 @@ nav:
       - Testing: development/Test.md
       - Glossary: development/Glossary.md
       - Use Cases: development/UseCases.md
+      - Artifacts:
+          - Requirements Traceability Coverage: development/artifacts/RequirementsTraceabilityCoverage.md
+
+extra_css:
+  - stylesheets/sidebar-toggle.css
+
+extra_javascript:
+  - javascripts/sidebar-toggle.js
 
 plugins:
   - plantuml:

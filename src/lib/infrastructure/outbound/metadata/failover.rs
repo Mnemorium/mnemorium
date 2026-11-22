@@ -74,7 +74,6 @@ impl<L: VideoMetadataProvider> VideoMetadataProvider for FailoverVideoMetadataPr
 mod tests {
     use super::*;
     use crate::domain::model::{ExternalRef, MediaQueryError, VideoKind};
-    use allure_cargotest::allure_test;
 
     use crate::domain::port::MockVideoMetadataProvider;
 
@@ -125,12 +124,9 @@ mod tests {
         MediaQuery::try_new(VideoKind::Movie, "Inception".to_owned(), Some(2010), None)
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-013-A
     #[tokio::test]
     async fn failover_returns_a_real_adapter_hit() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-013");
-        allure.story("SCN-METADATA-ENRICHMENT-013-A");
         // Arrange: the chain's link is the production adapter, stubbed by
         // `wiremock`, so the composition itself is exercised end to end.
         let server = MockServer::start().await;
@@ -155,13 +151,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-013-A
     #[tokio::test]
     async fn failover_returns_the_first_hit_without_asking_the_next() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-013");
-        allure.story("SCN-METADATA-ENRICHMENT-013-A");
         // Arrange
         let mut second = MockVideoMetadataProvider::new();
         second.expect_search().times(0);
@@ -189,12 +182,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-013-B
     #[tokio::test]
     async fn failover_advances_past_an_empty_result() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-013");
-        allure.story("SCN-METADATA-ENRICHMENT-013-B");
         // Arrange
         let chain = FailoverVideoMetadataProvider::new(vec![
             (
@@ -231,13 +221,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-013-C
     #[tokio::test]
     async fn failover_reports_no_candidate_when_every_link_is_empty() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-013");
-        allure.story("SCN-METADATA-ENRICHMENT-013-C");
         // Arrange
         let chain = FailoverVideoMetadataProvider::new(vec![
             (
@@ -274,12 +261,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-013-D
     #[tokio::test]
     async fn failover_reports_the_failure_when_no_result_arrives() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-013");
-        allure.story("SCN-METADATA-ENRICHMENT-013-D");
         // Arrange: the first link is empty, the second fails.
         let chain = FailoverVideoMetadataProvider::new(vec![
             (
@@ -335,13 +319,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-013-D
     #[tokio::test]
     async fn failover_returns_the_first_failure_when_every_link_fails() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-013");
-        allure.story("SCN-METADATA-ENRICHMENT-013-D");
         // Arrange: the primary fails first, so its diagnosis is the answer.
         let chain = FailoverVideoMetadataProvider::new(vec![
             (
@@ -412,7 +393,7 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-013-B
     #[rstest]
     #[case::communication("communication_failure")]
     #[case::dependency("dependency_failure")]
@@ -428,9 +409,6 @@ mod tests {
     async fn failover_advances_on_a_classified_failure(
         #[case] classification: &'static str,
     ) -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-013");
-        allure.story("SCN-METADATA-ENRICHMENT-013-B");
         // Arrange: the first link fails, the second hits.
         let chain = FailoverVideoMetadataProvider::new(vec![
             (
@@ -482,7 +460,7 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-013-F
     #[rstest]
     #[case::invalid_request("invalid_request")]
     #[case::serialization("serialization_failure")]
@@ -490,9 +468,6 @@ mod tests {
     async fn failover_does_not_advance_on_a_system_defect(
         #[case] classification: &'static str,
     ) -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-013");
-        allure.story("SCN-METADATA-ENRICHMENT-013-F");
         // Arrange: a defect in the request must not be concealed behind another
         // provider, so the second link is never asked.
         let mut second = MockVideoMetadataProvider::new();
@@ -540,14 +515,11 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-013-B
     #[tokio::test]
     #[traced_test]
     async fn failover_records_the_fallback_provider_and_classification()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-013");
-        allure.story("SCN-METADATA-ENRICHMENT-013-B");
         // Arrange: the primary times out, so the chain falls over once.
         let chain = FailoverVideoMetadataProvider::new(vec![
             (
@@ -601,12 +573,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-008-A
     #[tokio::test]
     async fn lookup_routes_to_the_reference_provider() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-008");
-        allure.story("SCN-METADATA-ENRICHMENT-008-A");
         // Arrange: only the OMDb link is allowed to resolve the reference.
         let mut tmdb = MockVideoMetadataProvider::new();
         tmdb.expect_lookup().times(0);
@@ -629,13 +598,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-008-A
     #[tokio::test]
     #[traced_test]
     async fn lookup_reports_an_unconfigured_provider_as_absent() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-008");
-        allure.story("SCN-METADATA-ENRICHMENT-008-A");
         // Arrange: the reference names a provider the chain does not hold.
         let mut tmdb = MockVideoMetadataProvider::new();
         tmdb.expect_lookup().times(0);
@@ -654,12 +620,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-008-B
     #[tokio::test]
     async fn lookup_returns_the_routed_failure() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-008");
-        allure.story("SCN-METADATA-ENRICHMENT-008-B");
         // Arrange: the routed link fails and no other link may be asked.
         let mut tmdb = MockVideoMetadataProvider::new();
         tmdb.expect_lookup().times(0);

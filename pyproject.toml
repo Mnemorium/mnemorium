@@ -26,6 +26,14 @@ addopts = ["-p", "harness", "--strict-markers"]
 markers = [
   "slow: a test that starts more than one server or waits on a race",
   "own_instance(reason): the test starts its own container; reason is one of first_boot, restart, global_filesystem, log_sink, exact_collection, process_state",
+  "positive: the case proves a positive scenario",
+  "negative: the case proves a negative scenario",
+  "boundary: the case proves a boundary scenario",
+  "security: the case proves a security scenario",
+  "error_handling: the case proves an error-handling scenario",
+  "recovery: the case proves a recovery scenario",
+  "alternate_flow: the case proves an alternate-flow scenario",
+  "business_rule: the case proves a business-rule scenario",
 ]
 
 [tool.ruff]
@@ -65,7 +73,23 @@ ignore_decorators = ["@schemathesis.hook", "@schemathesis.check"]
 # (Schemathesis and the pytest hookspec respectively), and the sqlite3 Connection
 # attributes the suite sets. A whitelist module would restate these as bare
 # expressions, which ruff rejects (B018 useless expression, F821 undefined name).
-ignore_names = ["pytest*", "row_factory", "shouldstop", "ctx", "call"]
+# The scenario-type members are referenced as `TestType.<member>` at the call site
+# that types a case; the ones no case types yet are not dead code.
+ignore_names = [
+  "pytest*",
+  "row_factory",
+  "shouldstop",
+  "ctx",
+  "call",
+  "POSITIVE",
+  "NEGATIVE",
+  "BOUNDARY",
+  "SECURITY",
+  "ERROR_HANDLING",
+  "RECOVERY",
+  "ALTERNATE_FLOW",
+  "BUSINESS_RULE",
+]
 
 [tool.pyright]
 # The suite is not type-checked: `off` keeps the editor to import resolution,

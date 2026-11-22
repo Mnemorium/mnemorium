@@ -292,7 +292,6 @@ mod tests {
         File, Gallery, GalleryItem, Image, IntegrityHash, Orientation, Origin, Role, ScanType,
         User, Video,
     };
-    use allure_cargotest::allure_test;
 
     use crate::domain::port::{
         GalleryItemDetail, MockFileRepository, MockFileStorage, MockGalleryRepository,
@@ -384,12 +383,9 @@ mod tests {
         DeleteGalleryItem::new(Arc::clone(&harness.factory), Arc::new(file_storage))
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-A
     #[tokio::test]
     async fn delete_gallery_item_owner_deletes_image_and_item() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -584,12 +580,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-A
     #[tokio::test]
     async fn delete_gallery_item_removes_its_resource() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -766,12 +759,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-C
     #[tokio::test]
     async fn delete_gallery_item_storage_failure_still_succeeds() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-C");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -962,12 +952,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-A
     #[tokio::test]
     async fn delete_gallery_item_any_caller_deletes_public_item() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1159,13 +1146,10 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-GALLERY-010-A
     #[tokio::test]
     async fn delete_gallery_item_root_admin_deletes_other_users_private_item()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-A");
         // Arrange: the Root Admin may remove an item of another user's private
         // gallery and destroy the file that user owns.
         let mut users = MockUserRepository::new();
@@ -1358,13 +1342,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-A
     #[tokio::test]
     async fn delete_gallery_item_backing_file_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1537,13 +1518,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-C
     #[tokio::test]
     async fn delete_gallery_item_keeps_a_file_an_image_still_references()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-C");
         // Arrange: the item's own image is deleted, but another image still
         // references the shared file, so its row and bytes are kept.
         let mut users = MockUserRepository::new();
@@ -1727,13 +1705,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-C
     #[tokio::test]
     async fn delete_gallery_item_keeps_a_file_a_video_still_references()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-C");
         // Arrange: the item's own image is deleted, but a video still references
         // the shared file, so its row and bytes are kept.
         let mut users = MockUserRepository::new();
@@ -1921,12 +1896,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-C
     #[tokio::test]
     async fn delete_gallery_item_missing_file_row_removes_no_bytes() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-C");
         // Arrange: the file row is already gone when the delete runs, so the
         // removal that deleted it owns the bytes and none are removed here.
         let mut users = MockUserRepository::new();
@@ -2104,13 +2076,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-C
     #[tokio::test]
     async fn delete_gallery_item_rejected_file_delete_keeps_the_file() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-C");
         // Arrange: the datastore rejects the delete because a reference the guard
         // cannot see survives (`audio.file_id` today has no port to query); the
         // file is kept and the removal still commits.
@@ -2289,13 +2258,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-C
     #[tokio::test]
     async fn delete_gallery_item_reference_probe_failure_returns_unknown()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-C");
         // Arrange: the image reference probe fails, so the removal rolls back
         // rather than leaking or wrongly deleting the shared file.
         let mut users = MockUserRepository::new();
@@ -2462,12 +2428,9 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-GALLERY-010-D
     #[tokio::test]
     async fn delete_gallery_item_unknown_item_returns_no_such_item() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-D");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -2612,13 +2575,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-D
     #[tokio::test]
     async fn delete_gallery_item_unknown_gallery_returns_no_such_gallery()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-D");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -2754,13 +2714,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-A
     #[tokio::test]
     async fn delete_gallery_item_unknown_caller_returns_no_such_caller()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -2883,13 +2840,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-D
     #[tokio::test]
     async fn delete_gallery_item_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-D");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -3033,12 +2987,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-010-A
     #[tokio::test]
     async fn delete_gallery_item_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-010");
-        allure.story("SCN-GALLERY-010-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,

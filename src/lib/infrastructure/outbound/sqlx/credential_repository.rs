@@ -99,7 +99,6 @@ mod tests {
     use crate::infrastructure::outbound::sqlx::test_helpers::*;
 
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
-    use allure_cargotest::allure_test;
     use chrono::NaiveDateTime;
     use std::error::Error;
 
@@ -318,13 +317,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-AUTHENTICATION-006-A
     #[tokio::test]
     async fn creation_and_rotation_store_only_a_password_hash() -> Result<(), Box<dyn Error>> {
-        allure.epic("Authentication");
-        allure.feature("REQ-AUTHENTICATION-006");
-        allure.story("SCN-AUTHENTICATION-006-A");
-
         // Arrange: the same hasher the creation and rotation use cases hash with.
         let hasher = Argon2PasswordHasher::new(vec![7; 32]);
         let pending_password = "C0rrect!Horse";

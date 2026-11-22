@@ -202,7 +202,6 @@ where
 mod tests {
     use super::*;
     use crate::application::FieldUpdate;
-    use allure_cargotest::allure_test;
     use rstest::fixture;
 
     use crate::domain::NumericID;
@@ -247,14 +246,10 @@ mod tests {
         UpdateSeriesEpisodeCommand::new(1, 7, 1, 1, None, None, FieldUpdate::Absent)
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-013-A, SCN-SERIES-013-C
     #[tokio::test]
     async fn update_series_episode_replaces_metadata_keeping_the_video()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-013");
-        allure.story("SCN-SERIES-013-A");
-        allure.story("SCN-SERIES-013-C");
         // Arrange: episode 1 backs video 20.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -413,13 +408,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-013-A
     #[tokio::test]
     async fn update_series_episode_absent_fields_keep_stored_values() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-013");
-        allure.story("SCN-SERIES-013-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -559,12 +551,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-013-B
     #[tokio::test]
     async fn update_series_episode_null_clears_the_air_date() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-013");
-        allure.story("SCN-SERIES-013-B");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -706,13 +695,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-013-D
     #[tokio::test]
     async fn update_series_episode_absent_episode_returns_no_such_episode()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-013");
-        allure.story("SCN-SERIES-013-D");
         // Arrange: the season holds no episode at index 1.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -839,13 +825,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-013-D
     #[tokio::test]
     async fn update_series_episode_absent_season_returns_no_such_season()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-013");
-        allure.story("SCN-SERIES-013-D");
         // Arrange: the show holds no season.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -972,13 +955,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-013-D
     #[tokio::test]
     async fn update_series_episode_unknown_show_returns_no_such_series()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-013");
-        allure.story("SCN-SERIES-013-D");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1097,12 +1077,9 @@ mod tests {
         ));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-SERIES-013-A
     #[tokio::test]
     async fn update_series_episode_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-013");
-        allure.story("SCN-SERIES-013-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1239,13 +1216,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-013-D
     #[tokio::test]
     async fn update_series_episode_absent_at_write_returns_no_such_episode()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-013");
-        allure.story("SCN-SERIES-013-D");
         // Arrange: the episode disappears between the read and the write.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1379,13 +1353,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-013-A
     #[tokio::test]
     async fn update_series_episode_dependency_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-013");
-        allure.story("SCN-SERIES-013-A");
         // Arrange: the show load fails at the port.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,

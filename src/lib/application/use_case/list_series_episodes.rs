@@ -135,7 +135,6 @@ where
 mod tests {
     use super::*;
     use crate::domain::port::{MockSeriesRepository, MockUserRepository, RepositoryError};
-    use allure_cargotest::allure_test;
 
     use crate::test_helpers::*;
     use std::error::Error;
@@ -144,14 +143,10 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = ListSeriesEpisodes<TestFactory>;
 
-    #[allure_test]
+    // proves: SCN-SERIES-005-A, SCN-SERIES-007-A
     #[tokio::test]
     async fn list_series_episodes_returns_the_season_in_index_order() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-005");
-        allure.story("SCN-SERIES-005-A");
-        allure.story("SCN-SERIES-007-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -231,12 +226,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-005-A
     #[tokio::test]
     async fn list_series_episodes_of_an_empty_season_returns_none() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-005");
-        allure.story("SCN-SERIES-005-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -287,13 +279,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-005-C
     #[tokio::test]
     async fn list_series_episodes_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-005");
-        allure.story("SCN-SERIES-005-C");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -343,13 +332,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-005-C
     #[tokio::test]
     async fn list_series_episodes_unknown_season_returns_no_such_season()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-005");
-        allure.story("SCN-SERIES-005-C");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -400,13 +386,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-005-A
     #[tokio::test]
     async fn list_series_episodes_unknown_caller_returns_no_such_caller()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-005");
-        allure.story("SCN-SERIES-005-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -438,13 +421,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-005-A
     #[tokio::test]
     async fn list_series_episodes_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-005");
-        allure.story("SCN-SERIES-005-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,

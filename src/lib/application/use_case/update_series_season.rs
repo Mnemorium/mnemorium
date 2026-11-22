@@ -161,7 +161,6 @@ where
 mod tests {
     use super::*;
     use crate::application::FieldUpdate;
-    use allure_cargotest::allure_test;
     use rstest::fixture;
 
     use crate::domain::NumericID;
@@ -204,14 +203,10 @@ mod tests {
         sample_series(7, vec![season])
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-011-A, SCN-SERIES-011-C
     #[tokio::test]
     async fn update_series_season_replaces_name_and_cover_keeping_episodes()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-011");
-        allure.story("SCN-SERIES-011-A");
-        allure.story("SCN-SERIES-011-C");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -365,12 +360,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-011-B
     #[tokio::test]
     async fn update_series_season_null_name_and_cover_clear() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-011");
-        allure.story("SCN-SERIES-011-B");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -512,13 +504,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-011-D
     #[tokio::test]
     async fn update_series_season_absent_season_returns_no_such_season()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-011");
-        allure.story("SCN-SERIES-011-D");
         // Arrange: the show holds no season at index 1.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -650,13 +639,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-011-D
     #[tokio::test]
     async fn update_series_season_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-011");
-        allure.story("SCN-SERIES-011-D");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -780,12 +766,9 @@ mod tests {
         assert!(matches!(result, Err(UpdateSeriesSeasonError::NoSuchSeries)));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-SERIES-011-A
     #[tokio::test]
     async fn update_series_season_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-011");
-        allure.story("SCN-SERIES-011-A");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -922,12 +905,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-011-A
     #[tokio::test]
     async fn update_series_season_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-011");
-        allure.story("SCN-SERIES-011-A");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1064,13 +1044,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-011-D
     #[tokio::test]
     async fn update_series_season_absent_at_write_returns_no_such_season()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-011");
-        allure.story("SCN-SERIES-011-D");
         // Arrange: the season disappears between the read and the write.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,

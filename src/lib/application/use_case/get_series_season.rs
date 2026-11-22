@@ -124,7 +124,6 @@ where
 mod tests {
     use super::*;
     use crate::domain::model::{Season, SeasonIndex, Series};
-    use allure_cargotest::allure_test;
 
     use crate::domain::port::{MockSeriesRepository, MockUserRepository, RepositoryError};
 
@@ -135,12 +134,9 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = GetSeriesSeason<TestFactory>;
 
-    #[allure_test]
+    // proves: SCN-SERIES-004-A
     #[tokio::test]
     async fn get_series_season_returns_the_requested_season() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-004");
-        allure.story("SCN-SERIES-004-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -198,12 +194,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-004-A
     #[tokio::test]
     async fn get_series_season_carries_the_season_cover() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-004");
-        allure.story("SCN-SERIES-004-A");
         // Arrange: the season carries its own artwork.
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -266,12 +259,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-004-C
     #[tokio::test]
     async fn get_series_season_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-004");
-        allure.story("SCN-SERIES-004-C");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -321,13 +311,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-004-C
     #[tokio::test]
     async fn get_series_season_unknown_season_returns_no_such_season() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-004");
-        allure.story("SCN-SERIES-004-C");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -380,12 +367,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-004-B
     #[tokio::test]
     async fn get_series_season_scopes_the_index_to_the_series() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-004");
-        allure.story("SCN-SERIES-004-B");
         // Arrange: both shows hold a season 1, so the path must pick the one
         // belonging to the requested show.
         let mut users = MockUserRepository::new();
@@ -440,13 +424,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-004-A
     #[tokio::test]
     async fn get_series_season_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-004");
-        allure.story("SCN-SERIES-004-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -478,12 +459,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-004-A
     #[tokio::test]
     async fn get_series_season_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-004");
-        allure.story("SCN-SERIES-004-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,

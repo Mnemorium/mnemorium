@@ -237,7 +237,6 @@ where
 mod tests {
     use super::*;
     use crate::domain::NumericID;
-    use allure_cargotest::allure_test;
 
     use crate::domain::model::{Role, Series, User};
 
@@ -291,12 +290,9 @@ mod tests {
         )
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-012-A
     #[tokio::test]
     async fn put_series_episode_new_index_reports_created() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-012");
-        allure.story("SCN-SERIES-012-A");
         // Arrange: the season holds no episode and video 5 is free.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -458,13 +454,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-012-B, SCN-SERIES-012-C
     #[tokio::test]
     async fn put_series_episode_existing_index_replaces_the_video() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-012");
-        allure.story("SCN-SERIES-012-B");
-        allure.story("SCN-SERIES-012-C");
         // Arrange: episode 1 already backs video 20; the request names video 5.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -618,12 +610,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-012-B
     #[tokio::test]
     async fn put_series_episode_same_video_is_not_a_conflict() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-012");
-        allure.story("SCN-SERIES-012-B");
         // Arrange: episode 1 already backs video 5, the same video named again.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -773,12 +762,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-012-D
     #[tokio::test]
     async fn put_series_episode_video_backing_a_film_is_conflict() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-012");
-        allure.story("SCN-SERIES-012-D");
         // Arrange: film 9 already backs video 5.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -918,13 +904,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-012-D
     #[tokio::test]
     async fn put_series_episode_video_backing_another_episode_is_conflict()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-012");
-        allure.story("SCN-SERIES-012-D");
         // Arrange: video 5 already backs another episode.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1070,12 +1053,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-012-E
     #[tokio::test]
     async fn put_series_episode_unknown_video_is_unprocessable() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-012");
-        allure.story("SCN-SERIES-012-E");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1207,13 +1187,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-012-F
     #[tokio::test]
     async fn put_series_episode_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-012");
-        allure.story("SCN-SERIES-012-F");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1332,13 +1309,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-012-F
     #[tokio::test]
     async fn put_series_episode_unknown_season_returns_no_such_season() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-012");
-        allure.story("SCN-SERIES-012-F");
         // Arrange: the show holds no season at index 1.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1464,12 +1438,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-012-E
     #[tokio::test]
     async fn put_series_episode_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-012");
-        allure.story("SCN-SERIES-012-E");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1605,13 +1576,10 @@ mod tests {
         assert!(matches!(result, Err(PutSeriesEpisodeError::InvalidName)));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-SERIES-012-F
     #[tokio::test]
     async fn put_series_episode_absent_at_write_returns_no_such_season()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-012");
-        allure.story("SCN-SERIES-012-F");
         // Arrange: the season disappears between the read and the write.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1756,12 +1724,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-012-A
     #[tokio::test]
     async fn put_series_episode_dependency_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-012");
-        allure.story("SCN-SERIES-012-A");
         // Arrange: the show load fails at the port.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,

@@ -6,7 +6,6 @@ import shutil
 import time
 from itertools import count
 
-import allure
 import pytest
 from conftest import (
     SEED_MEDIA_DIRECTORY,
@@ -20,6 +19,7 @@ from conftest import (
     store_chunk,
 )
 from harness import ROOT_ADMIN_USERNAME, STAGING_DIRECTORY, Sut
+from labels import scenario
 from mnemorium_client.api.asset import (
     delete_upload,
     get_audio,
@@ -56,9 +56,7 @@ AUDIO_SAMPLE_RATE_HZ = 44_100
 _ACCOUNTS = count()
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-001")
-@allure.story("SCN-UPLOAD-001-A")
+@scenario("SCN-UPLOAD-001-A")
 def test_a_valid_request_creates_a_session(server: Sut, root_token: str) -> None:
     """A valid declaration creates a readable session and its staged content."""
     session = begin(server, root_token, "cover.png", IMAGE)
@@ -68,13 +66,11 @@ def test_a_valid_request_creates_a_session(server: Sut, root_token: str) -> None
     assert session_state(server, root_token, session)["bitmap"] == "0"
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-001")
-@allure.story("SCN-UPLOAD-001-B")
-@allure.story("SCN-UPLOAD-001-C")
-@allure.story("SCN-UPLOAD-001-D")
-@allure.story("SCN-UPLOAD-001-E")
-@allure.story("SCN-UPLOAD-001-F")
+@scenario("SCN-UPLOAD-001-B")
+@scenario("SCN-UPLOAD-001-C")
+@scenario("SCN-UPLOAD-001-D")
+@scenario("SCN-UPLOAD-001-E")
+@scenario("SCN-UPLOAD-001-F")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_invalid_declaration_creates_nothing(sut: Sut) -> None:
     """Unsafe names, an unsupported type, a zero or oversized size and a malformed hash create nothing."""
@@ -112,9 +108,7 @@ def test_an_invalid_declaration_creates_nothing(sut: Sut) -> None:
     assert json.loads(list_files.sync_detailed(client=server.client(token)).content)["items"] == []
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-002")
-@allure.story("SCN-UPLOAD-002-A")
+@scenario("SCN-UPLOAD-002-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_failed_begin_leaves_nothing(sut: Sut) -> None:
     """A refused begin persists no session and leaves no staged content."""
@@ -139,9 +133,7 @@ def test_a_failed_begin_leaves_nothing(sut: Sut) -> None:
     assert server.listing(STAGING_DIRECTORY) == [str(session.id)]
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-002")
-@allure.story("SCN-UPLOAD-002-B")
+@scenario("SCN-UPLOAD-002-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_leftover_staging_file_is_reclaimed(sut: Sut) -> None:
     """A staged file planted for the next identifier is reclaimed by the begin."""
@@ -157,9 +149,7 @@ def test_a_leftover_staging_file_is_reclaimed(sut: Sut) -> None:
     )
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-003")
-@allure.story("SCN-UPLOAD-003-B")
+@scenario("SCN-UPLOAD-003-B")
 @pytest.mark.own_instance(reason="restart")
 def test_a_new_chunk_size_applies_to_sessions_created_after_a_restart(sut: Sut) -> None:
     """A restart applies a new configured chunk size to new sessions and leaves an existing session's geometry."""
@@ -178,9 +168,7 @@ def test_a_new_chunk_size_applies_to_sessions_created_after_a_restart(sut: Sut) 
     assert store_chunk(server, token, new, 0, b"\x02" * 2048, total=2048).status_code == 200
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-004")
-@allure.story("SCN-UPLOAD-004-A")
+@scenario("SCN-UPLOAD-004-A")
 def test_a_valid_chunk_is_stored_at_its_offset(server: Sut, root_token: str) -> None:
     """A valid chunk is stored and reported in the bitmap."""
     session = begin(server, root_token, "cover.png", IMAGE)
@@ -192,9 +180,7 @@ def test_a_valid_chunk_is_stored_at_its_offset(server: Sut, root_token: str) -> 
     assert (server.dir / staged_path(server, session)).read_bytes() == IMAGE
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-004")
-@allure.story("SCN-UPLOAD-004-B")
+@scenario("SCN-UPLOAD-004-B")
 def test_a_resent_chunk_changes_nothing(server: Sut, root_token: str) -> None:
     """Re-sending a recorded chunk keeps the stored content and bitmap unchanged."""
     session = begin(server, root_token, "cover.png", IMAGE)
@@ -208,9 +194,7 @@ def test_a_resent_chunk_changes_nothing(server: Sut, root_token: str) -> None:
     assert session_state(server, root_token, session)["bitmap"] == "1"
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-004")
-@allure.story("SCN-UPLOAD-004-C")
+@scenario("SCN-UPLOAD-004-C")
 def test_a_digest_mismatch_stores_no_bytes(server: Sut, root_token: str) -> None:
     """A chunk whose digest differs from the header stores no bytes and records nothing."""
     session = begin(server, root_token, "cover.png", IMAGE)
@@ -230,9 +214,7 @@ def test_a_digest_mismatch_stores_no_bytes(server: Sut, root_token: str) -> None
     assert session_state(server, root_token, session)["bitmap"] == "0"
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-004")
-@allure.story("SCN-UPLOAD-004-D")
+@scenario("SCN-UPLOAD-004-D")
 def test_a_range_mismatch_stores_no_bytes(server: Sut, root_token: str) -> None:
     """A range that does not match the chunk stores no bytes and records nothing."""
     session = begin(server, root_token, "cover.png", IMAGE)
@@ -245,9 +227,7 @@ def test_a_range_mismatch_stores_no_bytes(server: Sut, root_token: str) -> None:
     assert session_state(server, root_token, session)["bitmap"] == "0"
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-004")
-@allure.story("SCN-UPLOAD-004-E")
+@scenario("SCN-UPLOAD-004-E")
 def test_a_malformed_chunk_header_stores_no_bytes(server: Sut, root_token: str) -> None:
     """A present but malformed range or digest header stores no bytes."""
     session = begin(server, root_token, "cover.png", IMAGE)
@@ -276,9 +256,7 @@ def test_a_malformed_chunk_header_stores_no_bytes(server: Sut, root_token: str) 
     assert session_state(server, root_token, session)["bitmap"] == "0"
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-004")
-@allure.story("SCN-UPLOAD-004-F")
+@scenario("SCN-UPLOAD-004-F")
 def test_a_missing_header_stores_no_bytes(server: Sut, root_token: str) -> None:
     """A missing range, a missing digest or an unsupported digest algorithm stores no bytes."""
     session = begin(server, root_token, "cover.png", IMAGE)
@@ -316,9 +294,7 @@ def test_a_missing_header_stores_no_bytes(server: Sut, root_token: str) -> None:
     assert session_state(server, root_token, session)["bitmap"] == "0"
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-005")
-@allure.story("SCN-UPLOAD-005-B")
+@scenario("SCN-UPLOAD-005-B")
 def test_a_chunk_for_a_finished_session_is_refused(server: Sut, root_token: str) -> None:
     """A chunk for a finished session is a conflict and stores no bytes."""
     data = IMAGE + b"\x00" * (next(_ACCOUNTS) + 1)
@@ -334,9 +310,7 @@ def test_a_chunk_for_a_finished_session_is_refused(server: Sut, root_token: str)
     assert server.sha256(f"{MEDIA_DIRECTORY}/{file['path']}") == before
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-006")
-@allure.story("SCN-UPLOAD-006-A")
+@scenario("SCN-UPLOAD-006-A")
 def test_a_known_session_is_read(server: Sut, root_token: str) -> None:
     """A known session reports its bitmap, count, expiry, finish flag, file and links."""
     data = IMAGE + b"\x00" * (next(_ACCOUNTS) + 1)
@@ -356,9 +330,7 @@ def test_a_known_session_is_read(server: Sut, root_token: str) -> None:
     assert body["_links"]["self"]["href"] == session.self_href
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-006")
-@allure.story("SCN-UPLOAD-006-C")
+@scenario("SCN-UPLOAD-006-C")
 def test_a_finished_session_reports_a_complete_bitmap(server: Sut, root_token: str) -> None:
     """A finished session reports every chunk as received and the caller's file."""
     data = IMAGE + b"\x00" * (next(_ACCOUNTS) + 1)
@@ -374,9 +346,7 @@ def test_a_finished_session_reports_a_complete_bitmap(server: Sut, root_token: s
     assert body["file_id"] == file["id"]
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-006")
-@allure.story("SCN-UPLOAD-006-D")
+@scenario("SCN-UPLOAD-006-D")
 def test_no_collection_of_sessions_exists(server: Sut, root_token: str) -> None:
     """The upload entry point is an operation, not a collection that lists sessions."""
     begin(server, root_token, "cover.png", IMAGE)
@@ -387,9 +357,7 @@ def test_no_collection_of_sessions_exists(server: Sut, root_token: str) -> None:
     assert "upload_id" not in response.text
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-007")
-@allure.story("SCN-UPLOAD-007-A")
+@scenario("SCN-UPLOAD-007-A")
 def test_a_matching_hash_completes(server: Sut, root_token: str) -> None:
     """A session whose staged content matches its hash completes."""
     session = begin(server, root_token, "cover.png", IMAGE)
@@ -402,9 +370,7 @@ def test_a_matching_hash_completes(server: Sut, root_token: str) -> None:
     assert file["id"] > 0
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-007")
-@allure.story("SCN-UPLOAD-007-B")
+@scenario("SCN-UPLOAD-007-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_hash_mismatch_registers_nothing(sut: Sut) -> None:
     """A recomputed hash that differs from the declared one registers nothing and stays retryable."""
@@ -429,9 +395,7 @@ def test_a_hash_mismatch_registers_nothing(sut: Sut) -> None:
     assert server.exists(staged_path(server, session)), "a failed verification must leave the session retryable"
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-007")
-@allure.story("SCN-UPLOAD-007-C")
+@scenario("SCN-UPLOAD-007-C")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_incomplete_session_registers_nothing(sut: Sut) -> None:
     """Completing a session missing a chunk registers nothing and leaves it readable."""
@@ -449,9 +413,7 @@ def test_an_incomplete_session_registers_nothing(sut: Sut) -> None:
     assert state["is_finished"] is False
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-009")
-@allure.story("SCN-UPLOAD-009-A")
+@scenario("SCN-UPLOAD-009-A")
 def test_an_image_is_completed(server: Sut, root_token: str) -> None:
     """A valid image completes to a file and its image row."""
     session = begin(server, root_token, "cover.png", IMAGE)
@@ -471,9 +433,7 @@ def test_an_image_is_completed(server: Sut, root_token: str) -> None:
     assert body["orientation"] == "SQUARE"
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-009")
-@allure.story("SCN-UPLOAD-009-B")
+@scenario("SCN-UPLOAD-009-B")
 def test_a_video_is_completed(server: Sut, root_token: str) -> None:
     """A valid video completes to a file and its video row with the probed values."""
     session = begin(server, root_token, "clip.mp4", VIDEO, VIDEO_CONTENT_TYPE)
@@ -494,9 +454,7 @@ def test_a_video_is_completed(server: Sut, root_token: str) -> None:
     assert body["scan_type"] == "PROGRESSIVE"
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-009")
-@allure.story("SCN-UPLOAD-009-C")
+@scenario("SCN-UPLOAD-009-C")
 def test_an_audio_file_is_completed(server: Sut, root_token: str) -> None:
     """A valid audio file completes to a file and its audio row with the probed values."""
     session = begin(server, root_token, "track.flac", AUDIO, AUDIO_CONTENT_TYPE)
@@ -516,9 +474,7 @@ def test_an_audio_file_is_completed(server: Sut, root_token: str) -> None:
     assert body["duration_ms"] > 0.0
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-009")
-@allure.story("SCN-UPLOAD-009-D")
+@scenario("SCN-UPLOAD-009-D")
 def test_unreported_audio_values_stay_absent(server: Sut, root_token: str) -> None:
     """A completion records an unreported bit depth or block size as absent."""
     session = begin(server, root_token, "wide.wav", UNMEASURED_AUDIO, AUDIO_CONTENT_TYPE)
@@ -536,11 +492,8 @@ def test_unreported_audio_values_stay_absent(server: Sut, root_token: str) -> No
     assert body["codec"].lower() == "pcm_s64le"
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-009")
-@allure.story("SCN-UPLOAD-009-E")
-@allure.feature("REQ-UPLOAD-010")
-@allure.story("SCN-UPLOAD-010-B")
+@scenario("SCN-UPLOAD-009-E")
+@scenario("SCN-UPLOAD-010-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_content_without_the_declared_family_registers_nothing(sut: Sut) -> None:
     """Content with no stream of the declared family registers neither row."""
@@ -559,9 +512,7 @@ def test_content_without_the_declared_family_registers_nothing(sut: Sut) -> None
         assert json.loads(list_files.sync_detailed(client=server.client(token)).content)["items"] == []
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-009")
-@allure.story("SCN-UPLOAD-009-F")
+@scenario("SCN-UPLOAD-009-F")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_unprobeable_content_registers_nothing(sut: Sut) -> None:
     """Content that is not a supported media file registers neither row."""
@@ -577,9 +528,7 @@ def test_unprobeable_content_registers_nothing(sut: Sut) -> None:
     assert json.loads(list_files.sync_detailed(client=server.client(token)).content)["items"] == []
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-010")
-@allure.story("SCN-UPLOAD-010-A")
+@scenario("SCN-UPLOAD-010-A")
 def test_a_declared_audio_type_over_a_video_track_is_stored_as_declared(server: Sut, root_token: str) -> None:
     """An audio declaration over content with both tracks is stored as audio."""
     session = begin(server, root_token, "audiovisual.mp4", AUDIOVISUAL, AUDIO_MP4_CONTENT_TYPE)
@@ -593,9 +542,7 @@ def test_a_declared_audio_type_over_a_video_track_is_stored_as_declared(server: 
     assert "video" not in file["_links"]
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-010")
-@allure.story("SCN-UPLOAD-010-C")
+@scenario("SCN-UPLOAD-010-C")
 def test_a_declared_image_type_is_stored_unchanged(server: Sut, root_token: str) -> None:
     """An image declaration over image content is stored unchanged."""
     session = begin(server, root_token, "cover.png", IMAGE, IMAGE_CONTENT_TYPE)
@@ -608,9 +555,7 @@ def test_a_declared_image_type_is_stored_unchanged(server: Sut, root_token: str)
     assert "image" in file["_links"]
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-011")
-@allure.story("SCN-UPLOAD-011-A")
+@scenario("SCN-UPLOAD-011-A")
 def test_a_caller_reuses_its_own_content(server: Sut, root_token: str) -> None:
     """Completing the same bytes twice returns the first file and leaves the second session unfinished."""
     data = IMAGE + b"\x00" * (next(_ACCOUNTS) + 1)
@@ -631,9 +576,7 @@ def test_a_caller_reuses_its_own_content(server: Sut, root_token: str) -> None:
     assert state["file_id"] == first_file["id"]
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-011")
-@allure.story("SCN-UPLOAD-011-B")
+@scenario("SCN-UPLOAD-011-B")
 def test_another_caller_receives_its_own_copy(server: Sut, root_token: str) -> None:
     """A different caller owning the same bytes receives its own copy."""
     data = IMAGE + b"\x00" * (next(_ACCOUNTS) + 1)
@@ -652,9 +595,7 @@ def test_another_caller_receives_its_own_copy(server: Sut, root_token: str) -> N
     assert second_file["path"] != first_file["path"]
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-013")
-@allure.story("SCN-UPLOAD-013-A")
+@scenario("SCN-UPLOAD-013-A")
 def test_a_pending_session_is_cancelled(server: Sut, root_token: str) -> None:
     """Cancelling a pending session removes it and its staged content."""
     session = begin(server, root_token, "cover.png", IMAGE)
@@ -669,9 +610,7 @@ def test_a_pending_session_is_cancelled(server: Sut, root_token: str) -> None:
     assert session_state(server, root_token, replacement)["bitmap"] == "0"
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-013")
-@allure.story("SCN-UPLOAD-013-B")
+@scenario("SCN-UPLOAD-013-B")
 def test_a_finished_session_cannot_be_cancelled(server: Sut, root_token: str) -> None:
     """Cancelling a finished session is refused and leaves its file readable."""
     data = IMAGE + b"\x00" * (next(_ACCOUNTS) + 1)
@@ -688,9 +627,7 @@ def test_a_finished_session_cannot_be_cancelled(server: Sut, root_token: str) ->
     )
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-014")
-@allure.story("SCN-UPLOAD-014-A")
+@scenario("SCN-UPLOAD-014-A")
 def test_completing_a_finished_session_returns_the_same_file(server: Sut, root_token: str) -> None:
     """A retried completion returns the same file, whose bitmap is complete."""
     data = IMAGE + b"\x00" * (next(_ACCOUNTS) + 1)
@@ -707,9 +644,7 @@ def test_completing_a_finished_session_returns_the_same_file(server: Sut, root_t
     assert session_state(server, root_token, session)["bitmap"] == "1"
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-014")
-@allure.story("SCN-UPLOAD-014-B")
+@scenario("SCN-UPLOAD-014-B")
 def test_a_finished_identifier_is_not_reused(server: Sut, root_token: str) -> None:
     """A session created after a finished one carries a different identifier."""
     finished = begin(server, root_token, "cover.png", IMAGE)
@@ -721,14 +656,11 @@ def test_a_finished_identifier_is_not_reused(server: Sut, root_token: str) -> No
     assert later.id != finished.id
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-005")
-@allure.story("SCN-UPLOAD-005-A")
-@allure.feature("REQ-UPLOAD-012")
-@allure.story("SCN-UPLOAD-012-A")
-@allure.story("SCN-UPLOAD-012-B")
-@allure.story("SCN-UPLOAD-012-C")
-@allure.story("SCN-UPLOAD-012-D")
+@scenario("SCN-UPLOAD-005-A")
+@scenario("SCN-UPLOAD-012-A")
+@scenario("SCN-UPLOAD-012-B")
+@scenario("SCN-UPLOAD-012-C")
+@scenario("SCN-UPLOAD-012-D")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_expired_session_is_gone(sut: Sut) -> None:
     """An expired session refuses a chunk and a completion, is not readable, and activity did not extend it."""
@@ -758,14 +690,11 @@ def test_an_expired_session_is_gone(sut: Sut) -> None:
         assert not server.exists(staged_path(server, session)), "an expired session's staged content must be removed"
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-015")
-@allure.story("SCN-UPLOAD-015-A")
-@allure.story("SCN-UPLOAD-015-C")
-@allure.story("SCN-UPLOAD-015-D")
-@allure.story("SCN-UPLOAD-015-E")
-@allure.feature("REQ-LOGGING-017")
-@allure.story("SCN-LOGGING-017-B")
+@scenario("SCN-UPLOAD-015-A")
+@scenario("SCN-UPLOAD-015-C")
+@scenario("SCN-UPLOAD-015-D")
+@scenario("SCN-UPLOAD-015-E")
+@scenario("SCN-LOGGING-017-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_the_reaper_removes_expired_and_orphaned_content(sut: Sut) -> None:
     """A reaping run removes an expired session and an orphaned staging file, reports counts, and delays nothing."""
@@ -794,11 +723,9 @@ def test_the_reaper_removes_expired_and_orphaned_content(sut: Sut) -> None:
         assert "cover.png" not in report
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-016")
-@allure.story("SCN-UPLOAD-016-A")
-@allure.story("SCN-UPLOAD-016-B")
-@allure.story("SCN-UPLOAD-016-C")
+@scenario("SCN-UPLOAD-016-A")
+@scenario("SCN-UPLOAD-016-B")
+@scenario("SCN-UPLOAD-016-C")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_absent_library_root_refuses_uploads(sut: Sut) -> None:
     """An absent root refuses beginning and completing a session while every other route keeps serving."""
@@ -826,11 +753,9 @@ def test_an_absent_library_root_refuses_uploads(sut: Sut) -> None:
     assert server.request("GET", server.href("health")).status_code == 200
 
 
-@allure.epic("Upload")
-@allure.feature("REQ-UPLOAD-017")
-@allure.story("SCN-UPLOAD-017-A")
-@allure.story("SCN-UPLOAD-017-B")
-@allure.story("SCN-UPLOAD-017-C")
+@scenario("SCN-UPLOAD-017-A")
+@scenario("SCN-UPLOAD-017-B")
+@scenario("SCN-UPLOAD-017-C")
 def test_a_completed_file_is_attributed_to_its_uploader(server: Sut, root_token: str) -> None:
     """A completed file is the caller's, private and uploaded, with the content's size, instant and unique path."""
     _, uploader = provision(server, root_token, f"uploader{next(_ACCOUNTS)}")

@@ -1,6 +1,5 @@
 """Black-box proof of the `metadata enrichment` capability a container can observe."""
 
-import allure
 import pytest
 import requests
 from conftest import (
@@ -13,6 +12,7 @@ from harness import (
     Sut,
     link_of,
 )
+from labels import scenario
 
 NO_PROVIDER = "no provider is configured, so the capability is unavailable"
 
@@ -71,11 +71,8 @@ def _assert_unavailable_document(response: requests.Response) -> None:
     assert "metadata" not in body, "an unavailable resolution carries no document"
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-001")
-@allure.feature("REQ-METADATA-ENRICHMENT-017")
-@allure.story("SCN-METADATA-ENRICHMENT-001-A")
-@allure.story("SCN-METADATA-ENRICHMENT-017-F")
+@scenario("SCN-METADATA-ENRICHMENT-001-A")
+@scenario("SCN-METADATA-ENRICHMENT-017-F")
 def test_a_film_name_read_reports_enrichment_unavailable(server: Sut, root_token: str) -> None:
     """The film search answers an unavailable document, not an error and not an empty search."""
     movie, _series, _music = _identify_routes(server)
@@ -86,11 +83,8 @@ def test_a_film_name_read_reports_enrichment_unavailable(server: Sut, root_token
     assert response.json()["_links"]["self"]["href"] == movie
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-001")
-@allure.feature("REQ-METADATA-ENRICHMENT-017")
-@allure.story("SCN-METADATA-ENRICHMENT-001-A")
-@allure.story("SCN-METADATA-ENRICHMENT-017-F")
+@scenario("SCN-METADATA-ENRICHMENT-001-A")
+@scenario("SCN-METADATA-ENRICHMENT-017-F")
 def test_a_show_name_read_reports_enrichment_unavailable(server: Sut, root_token: str) -> None:
     """The show search answers an unavailable document, not an error and not an empty search."""
     _movie, series, _music = _identify_routes(server)
@@ -101,11 +95,8 @@ def test_a_show_name_read_reports_enrichment_unavailable(server: Sut, root_token
     assert response.json()["_links"]["self"]["href"] == series
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-001")
-@allure.feature("REQ-METADATA-ENRICHMENT-017")
-@allure.story("SCN-METADATA-ENRICHMENT-001-A")
-@allure.story("SCN-METADATA-ENRICHMENT-017-F")
+@scenario("SCN-METADATA-ENRICHMENT-001-A")
+@scenario("SCN-METADATA-ENRICHMENT-017-F")
 def test_a_film_reference_read_reports_enrichment_unavailable(server: Sut, root_token: str) -> None:
     """A film reference cannot be resolved without a provider, and that is unavailable rather than a failure."""
     movie, _series, _music = _identify_routes(server)
@@ -116,11 +107,8 @@ def test_a_film_reference_read_reports_enrichment_unavailable(server: Sut, root_
     assert response.json()["_links"]["self"]["href"] == f"{movie}/tmdb/27205"
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-001")
-@allure.feature("REQ-METADATA-ENRICHMENT-017")
-@allure.story("SCN-METADATA-ENRICHMENT-001-A")
-@allure.story("SCN-METADATA-ENRICHMENT-017-F")
+@scenario("SCN-METADATA-ENRICHMENT-001-A")
+@scenario("SCN-METADATA-ENRICHMENT-017-F")
 def test_a_show_reference_read_reports_enrichment_unavailable(server: Sut, root_token: str) -> None:
     """A show reference cannot be resolved without a provider, and that is unavailable rather than a failure."""
     _movie, series, _music = _identify_routes(server)
@@ -130,11 +118,8 @@ def test_a_show_reference_read_reports_enrichment_unavailable(server: Sut, root_
     _assert_unavailable_document(response)
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-001")
-@allure.feature("REQ-METADATA-ENRICHMENT-017")
-@allure.story("SCN-METADATA-ENRICHMENT-001-A")
-@allure.story("SCN-METADATA-ENRICHMENT-017-F")
+@scenario("SCN-METADATA-ENRICHMENT-001-A")
+@scenario("SCN-METADATA-ENRICHMENT-017-F")
 def test_an_episode_reference_read_reports_enrichment_unavailable(server: Sut, root_token: str) -> None:
     """The series read with a season and an episode answers unavailable, not an error."""
     _movie, series, _music = _identify_routes(server)
@@ -145,11 +130,8 @@ def test_an_episode_reference_read_reports_enrichment_unavailable(server: Sut, r
     assert response.json()["_links"]["self"]["href"] == f"{series}/tmdb/1920?season=1&episode=2"
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-001")
-@allure.feature("REQ-METADATA-ENRICHMENT-023")
-@allure.story("SCN-METADATA-ENRICHMENT-001-A")
-@allure.story("SCN-METADATA-ENRICHMENT-023-D")
+@scenario("SCN-METADATA-ENRICHMENT-001-A")
+@scenario("SCN-METADATA-ENRICHMENT-023-D")
 def test_a_music_search_reports_enrichment_unavailable(server: Sut, root_token: str) -> None:
     """The music search answers an unavailable document, distinct from an empty candidate list."""
     _movie, _series, music = _identify_routes(server)
@@ -164,11 +146,8 @@ def test_a_music_search_reports_enrichment_unavailable(server: Sut, root_token: 
     assert response.json()["_links"]["self"]["href"] == music
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-001")
-@allure.feature("REQ-METADATA-ENRICHMENT-023")
-@allure.story("SCN-METADATA-ENRICHMENT-001-A")
-@allure.story("SCN-METADATA-ENRICHMENT-023-D")
+@scenario("SCN-METADATA-ENRICHMENT-001-A")
+@scenario("SCN-METADATA-ENRICHMENT-023-D")
 def test_a_music_reference_read_reports_enrichment_unavailable(server: Sut, root_token: str) -> None:
     """A music reference cannot be resolved without a provider, and that is unavailable rather than a failure."""
     _movie, _series, music = _identify_routes(server)
@@ -178,9 +157,7 @@ def test_a_music_reference_read_reports_enrichment_unavailable(server: Sut, root
     _assert_unavailable_document(response)
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-017")
-@allure.story("SCN-METADATA-ENRICHMENT-017-D")
+@scenario("SCN-METADATA-ENRICHMENT-017-D")
 def test_an_empty_film_name_is_rejected(server: Sut, root_token: str) -> None:
     """An empty media name is rejected before a provider is consulted."""
     movie, _series, _music = _identify_routes(server)
@@ -190,9 +167,7 @@ def test_an_empty_film_name_is_rejected(server: Sut, root_token: str) -> None:
     _assert_error(response, 422)
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-017")
-@allure.story("SCN-METADATA-ENRICHMENT-017-I")
+@scenario("SCN-METADATA-ENRICHMENT-017-I")
 def test_a_partial_episode_position_is_rejected(server: Sut, root_token: str) -> None:
     """A season without its episode, or an episode without its season, is rejected."""
     _movie, series, _music = _identify_routes(server)
@@ -203,9 +178,7 @@ def test_a_partial_episode_position_is_rejected(server: Sut, root_token: str) ->
         _assert_error(response, 422)
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-017")
-@allure.story("SCN-METADATA-ENRICHMENT-017-J")
+@scenario("SCN-METADATA-ENRICHMENT-017-J")
 def test_an_out_of_range_episode_position_is_rejected(server: Sut, root_token: str) -> None:
     """A position that is not a 32-bit unsigned integer is rejected."""
     _movie, series, _music = _identify_routes(server)
@@ -215,9 +188,7 @@ def test_an_out_of_range_episode_position_is_rejected(server: Sut, root_token: s
     _assert_error(response, 422)
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-018")
-@allure.story("SCN-METADATA-ENRICHMENT-018-D")
+@scenario("SCN-METADATA-ENRICHMENT-018-D")
 def test_an_empty_music_title_is_rejected(server: Sut, root_token: str) -> None:
     """A music query without a title is rejected rather than searched."""
     _movie, _series, music = _identify_routes(server)
@@ -227,9 +198,7 @@ def test_an_empty_music_title_is_rejected(server: Sut, root_token: str) -> None:
     _assert_error(response, 422)
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-018")
-@allure.story("SCN-METADATA-ENRICHMENT-018-D")
+@scenario("SCN-METADATA-ENRICHMENT-018-D")
 def test_a_music_kind_outside_the_admitted_set_is_rejected(server: Sut, root_token: str) -> None:
     """A query whose kind is not an album, a release or a recording is rejected."""
     _movie, _series, music = _identify_routes(server)
@@ -239,9 +208,7 @@ def test_a_music_kind_outside_the_admitted_set_is_rejected(server: Sut, root_tok
     _assert_error(response, 400)
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-017")
-@allure.story("SCN-METADATA-ENRICHMENT-017-G")
+@scenario("SCN-METADATA-ENRICHMENT-017-G")
 def test_a_film_route_refuses_a_music_provider(server: Sut, root_token: str) -> None:
     """A provider the film route does not serve is reported as not found rather than resolved."""
     movie, _series, _music = _identify_routes(server)
@@ -251,9 +218,7 @@ def test_a_film_route_refuses_a_music_provider(server: Sut, root_token: str) -> 
     _assert_error(response, 404)
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-023")
-@allure.story("SCN-METADATA-ENRICHMENT-023-C")
+@scenario("SCN-METADATA-ENRICHMENT-023-C")
 def test_a_music_route_refuses_a_video_provider(server: Sut, root_token: str) -> None:
     """A provider the music route does not serve is reported as not found rather than resolved."""
     _movie, _series, music = _identify_routes(server)
@@ -282,9 +247,7 @@ def _create_album(server: Sut, token: str, name: str) -> dict:
     return created.json()
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-024")
-@allure.story("SCN-METADATA-ENRICHMENT-024-E")
+@scenario("SCN-METADATA-ENRICHMENT-024-E")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_apply_without_a_provider_reports_the_failure_and_stores_nothing(sut: Sut) -> None:
     """An apply that finds no configured provider fails and leaves the addressed album unchanged."""
@@ -311,9 +274,7 @@ def test_an_apply_without_a_provider_reports_the_failure_and_stores_nothing(sut:
 # --- the provider list --------------------------------------------------------
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-001")
-@allure.story("SCN-METADATA-ENRICHMENT-001-A")
+@scenario("SCN-METADATA-ENRICHMENT-001-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_empty_provider_list_starts_with_enrichment_unavailable(sut: Sut) -> None:
     """An empty provider list is a valid configuration: the server starts with enrichment unavailable."""
@@ -322,9 +283,7 @@ def test_an_empty_provider_list_starts_with_enrichment_unavailable(sut: Sut) -> 
     assert server.request("GET", HEALTH_PATH).status_code == 200
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-029")
-@allure.story("SCN-METADATA-ENRICHMENT-029-A")
+@scenario("SCN-METADATA-ENRICHMENT-029-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_configured_provider_list_starts_without_contacting_a_provider(sut: Sut) -> None:
     """Two configured providers are accepted at startup; no request leaves before a read needs one."""
@@ -333,9 +292,7 @@ def test_a_configured_provider_list_starts_without_contacting_a_provider(sut: Su
     assert server.request("GET", HEALTH_PATH).status_code == 200
 
 
-@allure.epic("Metadata enrichment")
-@allure.feature("REQ-METADATA-ENRICHMENT-016")
-@allure.story("SCN-METADATA-ENRICHMENT-016-D")
+@scenario("SCN-METADATA-ENRICHMENT-016-D")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_configured_key_never_reaches_a_log_sink(sut: Sut) -> None:
     """A clean start with a configured key writes it to neither stdout nor the log files."""

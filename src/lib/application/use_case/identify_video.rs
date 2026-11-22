@@ -132,7 +132,6 @@ where
 mod tests {
     use super::*;
     use crate::domain::model::{Candidate, ExternalRef, ProviderId, VideoKind};
-    use allure_cargotest::allure_test;
     use rstest::fixture;
 
     use crate::domain::port::{
@@ -191,12 +190,9 @@ mod tests {
         )
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-012-A
     #[tokio::test]
     async fn identify_video_returns_the_first_query_that_hits() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-012");
-        allure.story("SCN-METADATA-ENRICHMENT-012-A");
         // Arrange
         let mut provider = MockVideoMetadataProvider::new();
         provider
@@ -330,13 +326,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-012-B
     #[tokio::test]
     async fn identify_video_advances_past_a_query_that_yields_nothing() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-012");
-        allure.story("SCN-METADATA-ENRICHMENT-012-B");
         // Arrange: the first query (2010) is empty, the second (2011) hits.
         let mut provider = MockVideoMetadataProvider::new();
         provider.expect_search().times(2).returning(|query| {
@@ -470,13 +463,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-017-C
     #[tokio::test]
     async fn identify_video_skips_show_hypotheses_on_the_movie_route() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-017");
-        allure.story("SCN-METADATA-ENRICHMENT-017-C");
         // Arrange: an episode-shaped name yields show queries only, so the movie
         // route must not search at all.
         let mut provider = MockVideoMetadataProvider::new();
@@ -609,13 +599,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-017-C
     #[tokio::test]
     async fn identify_video_skips_film_hypotheses_on_the_series_route() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-017");
-        allure.story("SCN-METADATA-ENRICHMENT-017-C");
         // Arrange: a film-shaped name yields film queries only, so the series
         // route must not search at all.
         let mut provider = MockVideoMetadataProvider::new();
@@ -748,12 +735,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-012-C
     #[tokio::test]
     async fn identify_video_stops_on_a_provider_failure() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-012");
-        allure.story("SCN-METADATA-ENRICHMENT-012-C");
         // Arrange: the first query fails, so the remaining queries are not searched.
         let mut provider = MockVideoMetadataProvider::new();
         provider
@@ -889,14 +873,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-001-B, SCN-METADATA-ENRICHMENT-017-E
     #[tokio::test]
     async fn identify_video_reports_no_candidate_for_a_usable_name() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-001");
-        allure.feature("REQ-METADATA-ENRICHMENT-017");
-        allure.story("SCN-METADATA-ENRICHMENT-001-B");
-        allure.story("SCN-METADATA-ENRICHMENT-017-E");
         // Arrange: every query is empty, so the response carries no candidate.
         let mut provider = MockVideoMetadataProvider::new();
         provider
@@ -1030,12 +1009,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-009-D
     #[tokio::test]
     async fn identify_video_does_not_search_an_unusable_name() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-009");
-        allure.story("SCN-METADATA-ENRICHMENT-009-D");
         // Arrange
         let mut provider = MockVideoMetadataProvider::new();
         provider.expect_search().times(0);
@@ -1164,14 +1140,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-001-A, SCN-METADATA-ENRICHMENT-017-F
     #[tokio::test]
     async fn identify_video_reports_unavailable_without_a_provider() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-001");
-        allure.feature("REQ-METADATA-ENRICHMENT-017");
-        allure.story("SCN-METADATA-ENRICHMENT-001-A");
-        allure.story("SCN-METADATA-ENRICHMENT-017-F");
         // Arrange: no provider is configured.
         let harness = use_case_with(
             (move || -> crate::domain::port::MockUserRepository {

@@ -6,9 +6,9 @@ import zlib
 from datetime import UTC, datetime
 from itertools import count
 
-import allure
 from conftest import SEED_MEDIA_DIRECTORY, upload
 from harness import Sut
+from labels import scenario
 
 IMAGE_CONTENT_TYPE = "image/png"
 AUDIO_CONTENT_TYPE = "audio/flac"
@@ -38,9 +38,7 @@ def png(width: int, height: int) -> bytes:
     return b"\x89PNG\r\n\x1a\n" + _png_chunk(b"IHDR", header) + _png_chunk(b"IDAT", pixels) + _png_chunk(b"IEND", b"")
 
 
-@allure.epic("Image")
-@allure.feature("REQ-IMAGE-001")
-@allure.story("SCN-IMAGE-001-A")
+@scenario("SCN-IMAGE-001-A")
 def test_an_image_file_creates_one_image(server: Sut, root_token: str) -> None:
     """An image upload leaves one image backed by the uploaded file."""
     file = upload(server, root_token, "screen.png", png(*SQUARE), IMAGE_CONTENT_TYPE)
@@ -53,9 +51,7 @@ def test_an_image_file_creates_one_image(server: Sut, root_token: str) -> None:
     assert file["_links"]["image"]["href"].endswith(f"/{image['id']}")
 
 
-@allure.epic("Image")
-@allure.feature("REQ-IMAGE-001")
-@allure.story("SCN-IMAGE-001-B")
+@scenario("SCN-IMAGE-001-B")
 def test_a_file_backs_one_image(server: Sut, root_token: str) -> None:
     """Uploading the same content twice reuses the stored file and its one image."""
     data = png(*SQUARE)
@@ -77,9 +73,7 @@ def test_a_file_backs_one_image(server: Sut, root_token: str) -> None:
     assert second_image["id"] == first_image["id"], "the second registration created a second image"
 
 
-@allure.epic("Image")
-@allure.feature("REQ-IMAGE-001")
-@allure.story("SCN-IMAGE-001-C")
+@scenario("SCN-IMAGE-001-C")
 def test_audio_and_video_content_create_no_image(server: Sut, root_token: str) -> None:
     """Audio and video uploads leave the file without an image."""
     audio = upload(
@@ -101,9 +95,7 @@ def test_audio_and_video_content_create_no_image(server: Sut, root_token: str) -
     assert "image" not in video["_links"]
 
 
-@allure.epic("Image")
-@allure.feature("REQ-IMAGE-002")
-@allure.story("SCN-IMAGE-002-A")
+@scenario("SCN-IMAGE-002-A")
 def test_a_wider_image_is_landscape(server: Sut, root_token: str) -> None:
     """Width exceeding height reports `LANDSCAPE`."""
     file = upload(server, root_token, "wide.png", png(*LANDSCAPE), IMAGE_CONTENT_TYPE)
@@ -116,9 +108,7 @@ def test_a_wider_image_is_landscape(server: Sut, root_token: str) -> None:
     assert image["orientation"] == "LANDSCAPE"
 
 
-@allure.epic("Image")
-@allure.feature("REQ-IMAGE-002")
-@allure.story("SCN-IMAGE-002-B")
+@scenario("SCN-IMAGE-002-B")
 def test_a_taller_image_is_portrait(server: Sut, root_token: str) -> None:
     """Height exceeding width reports `PORTRAIT`."""
     file = upload(server, root_token, "tall.png", png(*PORTRAIT), IMAGE_CONTENT_TYPE)
@@ -131,9 +121,7 @@ def test_a_taller_image_is_portrait(server: Sut, root_token: str) -> None:
     assert image["orientation"] == "PORTRAIT"
 
 
-@allure.epic("Image")
-@allure.feature("REQ-IMAGE-002")
-@allure.story("SCN-IMAGE-002-C")
+@scenario("SCN-IMAGE-002-C")
 def test_a_square_image_is_square(server: Sut, root_token: str) -> None:
     """Equal width and height report `SQUARE`."""
     file = upload(server, root_token, "square.png", png(*SQUARE), IMAGE_CONTENT_TYPE)
@@ -146,9 +134,7 @@ def test_a_square_image_is_square(server: Sut, root_token: str) -> None:
     assert image["orientation"] == "SQUARE"
 
 
-@allure.epic("Image")
-@allure.feature("REQ-IMAGE-002")
-@allure.story("SCN-IMAGE-002-D")
+@scenario("SCN-IMAGE-002-D")
 def test_the_name_and_creation_date_are_reported(server: Sut, root_token: str) -> None:
     """The name is the one the intake assigned and the creation date is the registration date."""
     registered_on = datetime.now(UTC).date().isoformat()

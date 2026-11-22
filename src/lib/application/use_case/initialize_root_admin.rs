@@ -176,7 +176,6 @@ mod tests {
     };
 
     use crate::test_helpers::*;
-    use allure_cargotest::allure_test;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -396,14 +395,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-AUTHENTICATION-001-C
     #[tokio::test]
     async fn initialize_root_admin_save_credential_failure_returns_unknown()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Authentication");
-        allure.feature("REQ-AUTHENTICATION-001");
-        allure.story("SCN-AUTHENTICATION-001-C");
-
         // Arrange
         let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, password_generator| {
@@ -443,14 +438,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-AUTHENTICATION-001-D
     #[tokio::test]
     async fn initialize_root_admin_save_user_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Authentication");
-        allure.feature("REQ-AUTHENTICATION-001");
-        allure.story("SCN-AUTHENTICATION-001-D");
-
         // Arrange
         let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, password_generator| {

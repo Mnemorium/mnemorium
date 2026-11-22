@@ -568,28 +568,34 @@ fn validate_email_scenario_returns_expected(
 
 Scenario labels:
 
-Every test carries three Allure labels: `epic` names the capability (for example `Authentication`), `feature` the
-requirement ID (`REQ-AUTHENTICATION-002`) and `story` the scenario ID (`SCN-AUTHENTICATION-002-A`). A test that proves
-two scenarios in one case carries one `story` label per scenario.
+A test states which declared scenario it proves. A system test stacks one `@scenario` decorator per scenario; the
+identifier names the capability and the requirement, so neither is repeated at the call site and neither can disagree
+with the specification. The optional second argument is the kind of proof, from the closed set `Positive`, `Negative`,
+`Boundary`, `Security`, `Error handling`, `Recovery`, `Alternate flow` and `Business rule`; it is also a pytest marker,
+so `pytest -m security` selects the security proofs. From `test/system/user.py`:
 
-A system test declares them with the pytest decorators `@allure.epic("Authentication")`,
-`@allure.feature("REQ-AUTHENTICATION-002")` and `@allure.story("SCN-AUTHENTICATION-002-A")`, stacked once per scenario.
-A Rust test uses `#[allure_test]` above its test attribute and calls the facade it injects, as the unit test in
-`src/lib/infrastructure/outbound/random/password_generator.rs` does:
+```python
+@scenario("SCN-USER-004-A")
+@scenario("SCN-USER-004-B")
+def test_an_omitted_or_null_email_is_stored_as_none(server: Sut, root_token: str) -> None:
+    """A creation with no email value or an explicit null stores no email address."""
+```
+
+A Rust test declares the scenarios it proves in a `// proves:` comment above its first attribute. The generator
+associates the comment with the next `fn`, and a rule check verifies that both the identifier and the function exist.
+From `src/lib/infrastructure/outbound/random/password_generator.rs`:
 
 ```rust
-#[allure_test]
+// proves: SCN-AUTHENTICATION-002-A
 #[tokio::test]
-async fn random_password_generator_samples_follow_declared_shape() {
-    allure.epic("Authentication");
-    allure.feature("REQ-AUTHENTICATION-002");
-    allure.story("SCN-AUTHENTICATION-002-A");
+async fn random_password_generator_samples_follow_declared_shape() -> Result<(), Box<dyn Error>> {
     // [...]
 }
 ```
 
-`#[allure_test]` is the outermost attribute, directly above `#[test]` or `#[tokio::test]`, because it owns the test
-lifecycle and injects the `allure` facade.
+Neither form produces a run report: the labels are a static map from a test to the scenario it proves.
+`docs/development/artifacts/RequirementsTraceabilityCoverage.md` is generated from them and from the specification tree
+by `script/investigation.sh` ([`TEST-054`](#system-test)).
 
 ---
 
@@ -1223,7 +1229,7 @@ Rules are grouped in the table below; the numbered detail sections that follow h
 | `STY-SQL-009` | Column names                  | Foreign keys: use the exact primary key name of the referenced table (e.g. `customer_id` inside the `orders` table). A foreign key named for its meaning instead is permitted only when `rule_enforcer.yaml` records `<table>::<column>-><referenced table>(<primary key>)` in `allowed_foreign_keys`. |                                        | `check_sty_sql_009`       |
 | `STY-SQL-010` | Column names                  | Name columns by data type: boolean `is_`/`has_`/`can_`, timestamps `_at`, dates `_date`, counts `_count`, totals `_total`.                                                                                                                                                                             |                                        | `check_sty_sql_010`       |
 | `STY-SQL-013` | Keys, indexes and constraints | Name constraints `<constraint_type>_<table_name>_<column_name(s)>`.                                                                                                                                                                                                                                    | [§ 1](#1-keys-indexes-and-constraints) |                           |
-| `STY-SQL-014` | Keys, indexes and constraints | Declare all constraints at table level, at the end of the `CREATE TABLE` statement.                                                                                                                                                                                                                    | [§ 1](#1-keys-indexes-and-constraints) |                           |
+| `STY-SQL-014` | Keys, indexes and constraints | Declare all constraints at table level, at the end of the `CREATE TABLE` statement.                                                                                                                                                                                                                    |                                        |                           |
 | `STY-SQL-011` | Triggers and functions        | Triggers: `tg_`                                                                                                                                                                                                                                                                                        |                                        | `check_sty_sql_011`       |
 | `STY-SQL-012` | Triggers and functions        | Functions: `fn_`                                                                                                                                                                                                                                                                                       |                                        | `check_sty_sql_012`       |
 
@@ -2799,12 +2805,14 @@ the flows the system suite covers come from the critical exception paths in [Use
 | `TEST-048` | Shell script       | Shell scripts in the `script/` folder are tooling and CI glue and are exempt from the unit, integration and black-box test requirements; they are validated by their own gates — `shellcheck` and `shfmt` plus their pre-commit and CI execution — not by a test module.                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Shell script](#shell-script)                 |
 | `TEST-049` | CI / prompt assets | GitHub workflow files (`.github/workflows/*`) and the opencode agent, command and skill prompts (`.opencode/agents/*`, `.opencode/commands/*`, `.opencode/skills/*/SKILL.md`, `.agents/skills/**`) are tooling and agent configuration, not application code; they are exempt from the unit, integration and black-box test requirements. A workflow's YAML is validated by `yamllint`. The triage workflow's `gh`-driven inline prompt, its `OPENCODE_CONFIG_CONTENT` shell permission allowlist, and its effect on issues are exercised only when the workflow runs; they have no automated behavioural gate and no dry-run rehearsal — an explicit residual, validated by review rather than asserted by a test. | [§ CI and prompt assets](#ci-and-prompt-assets) |
 | `TEST-052` | Integration test   | An outbound adapter that drives a native binary is covered by an integration test in the same file; the child process is replaced by a stub executable through the adapter's test-only program seam, every child outcome is asserted, and the real binary is exercised by the container system suite.                                                                                                                                                                                                                                                                                                                                                                                                               | [§ Native binary](#native-binary)               |
-| `TEST-054` | System test        | Every system test carries the three Allure labels: `epic` for the capability, `feature` for the requirement and `story` for each scenario it proves. The suite keeps no separate scenario map or meta-test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ System test](#system-test)                   |
+| `TEST-054` | System test        | Every system test declares the scenarios it proves with `@scenario("SCN-…", TestType.…)`, one decorator per scenario and its type from the closed eight-value set. A Rust test declares the scenarios it proves in a `// proves:` comment above its attributes. `docs/development/artifacts/RequirementsTraceabilityCoverage.md` is the generated map of declared requirements and scenarios and their proofs; it is regenerated by `script/investigation.sh` and its authored `Cause` and `N/A` cells are never hand-emptied by the tool.                                                                                                                                                                          | [§ System test](#system-test)                   |
 | `TEST-056` | System test        | A test sleeps at most 3 s on purpose. A longer-horizon observation is reached by pre-seeding the directory the component reads at startup, never by waiting for it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ System test](#system-test)                   |
 | `TEST-057` | System test        | An operator message is matched through the suite's single constants module, never inline. A structured `event=` / `component=` field is matched where the server emits one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ System test](#system-test)                   |
 | `TEST-058` | System test        | A test runs against its worker's shared instance — booted once, one writable working directory, a random loopback port, the suite's fixed identity and a raised login quota — or, when marked `@pytest.mark.own_instance(reason=...)` with a reason from the closed set (`first_boot`, `restart`, `global_filesystem`, `log_sink`, `exact_collection`, `process_state`), against its own container with its own working directory. A shared-instance test never asserts on global state another test can extend, and never starts, stops or restarts a container; no test touches another test's container or the repository working tree.                                                                          | [§ System test](#system-test)                   |
 | `TEST-059` | System test        | A refusal case asserts the refusal effect: the persisted file is byte-identical, no replacement identity is written, no `config.yaml` or datastore is created, and the secret value never reaches stdout or a log file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | [§ System test](#system-test)                   |
 | `TEST-060` | Logging test       | A test that asserts on emitted log output is annotated `#[traced_test]` from `tracing-test` and matches through `logs_contain`/`logs_assert`; it installs no subscriber of its own — no `tracing::subscriber::set_default`, no `MakeWriter`/capture writer and no `capture_logs`/`captured_logs` helper.                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Logging test](#logging-test)                 |
+| `TEST-061` | Test tooling       | No Allure usage remains: no `allure` import, no `allure.*` decorator, no `#[allure_test]`, no `allure-cargotest` or `allure-pytest` dependency and no `ALLURE_RESULTS_DIR` toggle.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | [§ System test](#system-test)                   |
+| `TEST-062` | System test        | Every `test/system/*.py` case carries at least one `@scenario("SCN-…")` with a well-formed identifier; a declared type is a member of the closed eight-value set.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ System test](#system-test)                   |
 
 ---
 
@@ -2931,9 +2939,9 @@ Two custom checks extend what a schema-conformance check can see. `valid_hal_lin
 `4xx` envelope's `self` is the request path with its query ignored. `valid_collection_links` (`REQ-API-007`) proves that
 a collection's `search` link is templated and names the collection, that its `self` and `next` preserve the request
 filters, that `next` advances by `limit`, and that `prev` never appears at offset `0`. Both live in `test/api/checks.py`
-as ordinary functions over the response primitives, so `pytest test/api` runs them without Schemathesis installed;
-`test/api/hooks.py` registers the thin wrappers the fuzz run uses. `devenv tasks run test:api-cases` runs
-`pytest test/api`, while `test:api` stays the fuzz run.
+as ordinary functions over the response primitives, so the fuzz configuration reads them without importing anything
+project-specific; `test/api/hooks.py` registers the thin wrappers the fuzz run uses, and `devenv tasks run test:api`
+runs that fuzz.
 
 ---
 
@@ -2953,15 +2961,15 @@ image is named by `MNEMORIUM_IMAGE`, default `mnemorium:latest`; a test never bu
 sits directly under `test/system/` — `api.py`, `audio.py`, `authentication.py`, `authorization.py`, `configuration.py`,
 `cover_art.py`, `download.py`, `file.py`, `gallery.py`, `image.py`, `logging_events.py`, `media_ingest.py`,
 `metadata_enrichment.py`, `movies.py`, `music.py`, `series.py`, `state.py`, `upload.py`, `user.py` and `video.py`.
-`test/api/hal_test.py` holds the API suite's HAL helper unit cases; `test/system/conftest.py` collects those unprefixed
-names because the global `python_files` patterns match none of them. Each case asserts only what an operator can
-observe: the HTTP response, standard output, the log sink and the working directory. The worker's shared instance boots
-the `system` seed profile, so one browsable catalogue serves every case of that worker; an own container stays unseeded
-unless the case names a profile. A log-sink assertion treats the sink as a collection: it snapshots what the sink holds,
-acts, then filters the added records on a value the case owns. No system case reads the datastore: a stored record is
-read over HTTP at its exact path, a typed row through the item's own link, and staging and content bytes through the
-working directory. `authorization.py` is the primary proof of the authorization capability: every case runs on the
-shared instance, provisioning fresh accounts it owns and restoring any shared deny before it ends.
+`test/system/conftest.py` collects those unprefixed modules because the global `python_files` patterns match none of
+them. Each case asserts only what an operator can observe: the HTTP response, standard output, the log sink and the
+working directory. The worker's shared instance boots the `system` seed profile, so one browsable catalogue serves every
+case of that worker; an own container stays unseeded unless the case names a profile. A log-sink assertion treats the
+sink as a collection: it snapshots what the sink holds, acts, then filters the added records on a value the case owns.
+No system case reads the datastore: a stored record is read over HTTP at its exact path, a typed row through the item's
+own link, and staging and content bytes through the working directory. `authorization.py` is the primary proof of the
+authorization capability: every case runs on the shared instance, provisioning fresh accounts it owns and restoring any
+shared deny before it ends.
 
 Configuration has no suite of its own: resolution is proved here on cheap probes rather than on every setting, so
 `configuration.py` proves the layer order and the file's lifecycle, and `upload.py` proves the `asset.upload.*` effects,
@@ -2971,9 +2979,20 @@ fail startup in [§ 10 (Configuration)](#10-configuration); those cases are cove
 integration tests that own the loader and the domain constructors. The suite asserts the effect of a **valid** value.
 
 `state.py` starts, stops or restarts its own container in every case, so it marks the whole module `own_instance` with
-the `global_filesystem` reason and uses the `sut` fixture directly rather than the shared `server` fixture. Each case
-carries the three Allure labels (`epic`, `feature`, `story`) so the report groups the proof by requirement and scenario;
-the suite keeps no separate scenario map or meta-test.
+the `global_filesystem` reason and uses the `sut` fixture directly rather than the shared `server` fixture.
+
+`test/util/investigation.py` generates `docs/development/artifacts/RequirementsTraceabilityCoverage.md`, the requirement
+and scenario matrix over the specification tree. `script/investigation.sh` runs it without pytest and without a
+container: it parses `openspec/specs/**/spec.md`, the `@scenario` decorators of `test/system/*.py` and the `// proves:`
+comments under `src/`, and rewrites the file in place. Each requirement row carries a count per proof type and its
+tested/untested split; each scenario row carries its proving layer in `Evidence` — `System suite`, `Proven in Rust`, or
+both — its `Cause` and its `Tested`/`Not tested` status. Neither the case nor the function name is written, nor the
+requirement the scenario identifier already names: the annotation in the suite is the citation, so a renamed test leaves
+the matrix unchanged. Status is presence-based: `Tested` means a committed system case claims the scenario, not that a
+particular run passed. The derived columns are generated, while the type cells and `Cause` cells are authored — a type
+cell is preserved unless it is empty or a bare integer, and a `Cause` is preserved while it is non-empty. An `N/A` cell
+contradicted by a real proof is a warning and a `## Contradictions` line, never an overwrite, and a row whose identifier
+leaves the specification moves to `## Detached notes` rather than disappearing ([`TEST-054`](#system-test)).
 
 The suite drives a declared operation through the typed client `openapi-python-client` generates from the served
 document. The client is never committed: `script/openapi_client.sh` boots a throwaway, unseeded container from the image
@@ -3005,10 +3024,11 @@ timing. A declared status, content type, body shape or response header belongs t
 When one black-box suite takes a scenario over from another, the replaced case is deleted in the same change, so one
 failure never reports twice.
 
-Every test carries the three Allure labels of § 1.5: `epic` names the capability, `feature` the requirement ID and
-`story` the scenario ID, with one `story` label per scenario a case proves. A system test stacks `@allure.epic(...)`,
-`@allure.feature(...)` and `@allure.story(...)`; a Rust test puts `#[allure_test]` above its `#[test]`/`#[tokio::test]`
-and calls `allure.epic(...)`, `allure.feature(...)` and `allure.story(...)` in the body.
+Every test declares the scenarios it proves, and `docs/development/artifacts/RequirementsTraceabilityCoverage.md` is the
+resulting map of declared requirements and scenarios to their proofs. A system test stacks
+`@scenario("SCN-…", TestType.…)` per scenario; a Rust test writes `// proves: SCN-…` above its first attribute. Both
+forms are described in [§ 5 (Scenario labels)](#5-testing) and required by [`TEST-054`](#system-test) and
+[`TEST-062`](#system-test).
 
 The authorization capability splits its proof by level. The decision engine in `src/lib/domain/service/authorization.rs`
 is a pure domain service, so its grant algebra, traversal bound, relation lend, owner/root/upload special cases and
@@ -3328,34 +3348,33 @@ Source: `Cargo.toml`.
 
 Source: `devenv.nix`.
 
-| Name                                                              | Description                                                                                                           | Version | License    |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------- | ---------- |
-| [allure](https://github.com/allure-framework/allure3)             | Allure Report CLI for the results the black-box suites emit.                                                          | 3.33.0  | Apache-2.0 |
-| [betterleaks](https://github.com/dortort/betterleaks)             | Secret scanning in pre-commit and CI.                                                                                 | 1.8.1   | TODO       |
-| [cargo-about](https://github.com/EmbarkStudios/cargo-about)       | Generates the third-party license notices in `THIRD_PARTY_NOTICES.txt`.                                               | 0.9.0   | TODO       |
-| [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)         | Audits `Cargo.lock` for advisories, licenses, bans, and sources.                                                      | 0.20.2  | TODO       |
-| [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov)       | Coverage instrumentation and reporting for Rust.                                                                      | 0.9.0   | TODO       |
-| [cargo-machete](https://github.com/bnjbvr/cargo-machete)          | Reports direct dependencies no source file uses; pre-commit and CI.                                                   | 0.9.2   | MIT        |
-| [ffmpeg-headless](https://ffmpeg.org/)                            | Headless FFmpeg build providing the `ffprobe` binary.                                                                 | 6.1.2   | TODO       |
-| [git](https://git-scm.com/)                                       | Version control.                                                                                                      | 2.55.0  | TODO       |
-| [hadolint](https://github.com/hadolint/hadolint)                  | Dockerfile linter; the pre-commit hook and the Docker workflow.                                                       | 2.13.1  | GPL-3.0    |
-| [llvm](https://llvm.org/)                                         | LLVM tools used by coverage (`llvm-cov`, `llvm-profdata`).                                                            | 21.1.8  | TODO       |
-| [ls-lint](https://ls-lint.org/)                                   | File and directory naming linter.                                                                                     | 2.3.1   | TODO       |
-| [nixfmt](https://github.com/NixOS/nixfmt)                         | Nix code formatter.                                                                                                   | 1.4.0   | TODO       |
-| [nodejs](https://nodejs.org/)                                     | Node.js runtime for tooling.                                                                                          | 24.19.0 | TODO       |
-| [prettier](https://prettier.io/)                                  | Markdown formatter.                                                                                                   | 3.8.3   | TODO       |
-| [Python toolchain](https://www.python.org/)                       | Python runtime for tooling and tests.                                                                                 | 3.14.6  | TODO       |
-| [Rust toolchain](https://www.rust-lang.org/)                      | Rust compiler and standard tooling.                                                                                   | 1.98.0  | TODO       |
-| [schemathesis](https://github.com/schemathesis/schemathesis)      | Property-based API tests against the served OpenAPI document.                                                         | 4.33.1  | MIT        |
-| [semgrep](https://semgrep.dev/)                                   | Static-analysis (SAST) scanner; CI and the `security:semgrep` task, with the repository rules in `security/semgrep/`. | 1.172.0 | TODO       |
-| [shellcheck](https://github.com/koalaman/shellcheck)              | Shell script linter.                                                                                                  | 0.11.0  | TODO       |
-| [shfmt](https://github.com/mvdan/sh)                              | Shell script formatter.                                                                                               | 3.13.1  | TODO       |
-| [sqlfluff](https://sqlfluff.com/)                                 | SQL linter and formatter (SQLite dialect).                                                                            | 4.3.0   | TODO       |
-| [sqlite](https://sqlite.org/)                                     | SQLite command-line shell.                                                                                            | 3.51.2  | TODO       |
-| [sqlx-cli](https://github.com/launchbadge/sqlx)                   | SQLx migrations and database CLI.                                                                                     | 0.9.0   | TODO       |
-| [taplo](https://taplo.tamasfe.dev/)                               | TOML formatter.                                                                                                       | 0.10.0  | TODO       |
-| [xdg-utils](https://www.freedesktop.org/wiki/Software/xdg-utils/) | Desktop integration helpers (opens reports in a browser).                                                             | 1.2.1   | TODO       |
-| [yamllint](https://github.com/adrienverge/yamllint)               | YAML linter.                                                                                                          | 1.37.1  | TODO       |
+| Name                                                              | Description                                                                                                           | Version | License |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------- | ------- |
+| [betterleaks](https://github.com/dortort/betterleaks)             | Secret scanning in pre-commit and CI.                                                                                 | 1.8.1   | TODO    |
+| [cargo-about](https://github.com/EmbarkStudios/cargo-about)       | Generates the third-party license notices in `THIRD_PARTY_NOTICES.txt`.                                               | 0.9.0   | TODO    |
+| [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)         | Audits `Cargo.lock` for advisories, licenses, bans, and sources.                                                      | 0.20.2  | TODO    |
+| [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov)       | Coverage instrumentation and reporting for Rust.                                                                      | 0.9.0   | TODO    |
+| [cargo-machete](https://github.com/bnjbvr/cargo-machete)          | Reports direct dependencies no source file uses; pre-commit and CI.                                                   | 0.9.2   | MIT     |
+| [ffmpeg-headless](https://ffmpeg.org/)                            | Headless FFmpeg build providing the `ffprobe` binary.                                                                 | 6.1.2   | TODO    |
+| [git](https://git-scm.com/)                                       | Version control.                                                                                                      | 2.55.0  | TODO    |
+| [hadolint](https://github.com/hadolint/hadolint)                  | Dockerfile linter; the pre-commit hook and the Docker workflow.                                                       | 2.13.1  | GPL-3.0 |
+| [llvm](https://llvm.org/)                                         | LLVM tools used by coverage (`llvm-cov`, `llvm-profdata`).                                                            | 21.1.8  | TODO    |
+| [ls-lint](https://ls-lint.org/)                                   | File and directory naming linter.                                                                                     | 2.3.1   | TODO    |
+| [nixfmt](https://github.com/NixOS/nixfmt)                         | Nix code formatter.                                                                                                   | 1.4.0   | TODO    |
+| [nodejs](https://nodejs.org/)                                     | Node.js runtime for tooling.                                                                                          | 24.19.0 | TODO    |
+| [prettier](https://prettier.io/)                                  | Markdown formatter.                                                                                                   | 3.8.3   | TODO    |
+| [Python toolchain](https://www.python.org/)                       | Python runtime for tooling and tests.                                                                                 | 3.14.6  | TODO    |
+| [Rust toolchain](https://www.rust-lang.org/)                      | Rust compiler and standard tooling.                                                                                   | 1.98.0  | TODO    |
+| [schemathesis](https://github.com/schemathesis/schemathesis)      | Property-based API tests against the served OpenAPI document.                                                         | 4.33.1  | MIT     |
+| [semgrep](https://semgrep.dev/)                                   | Static-analysis (SAST) scanner; CI and the `security:semgrep` task, with the repository rules in `security/semgrep/`. | 1.172.0 | TODO    |
+| [shellcheck](https://github.com/koalaman/shellcheck)              | Shell script linter.                                                                                                  | 0.11.0  | TODO    |
+| [shfmt](https://github.com/mvdan/sh)                              | Shell script formatter.                                                                                               | 3.13.1  | TODO    |
+| [sqlfluff](https://sqlfluff.com/)                                 | SQL linter and formatter (SQLite dialect).                                                                            | 4.3.0   | TODO    |
+| [sqlite](https://sqlite.org/)                                     | SQLite command-line shell.                                                                                            | 3.51.2  | TODO    |
+| [sqlx-cli](https://github.com/launchbadge/sqlx)                   | SQLx migrations and database CLI.                                                                                     | 0.9.0   | TODO    |
+| [taplo](https://taplo.tamasfe.dev/)                               | TOML formatter.                                                                                                       | 0.10.0  | TODO    |
+| [xdg-utils](https://www.freedesktop.org/wiki/Software/xdg-utils/) | Desktop integration helpers (opens reports in a browser).                                                             | 1.2.1   | TODO    |
+| [yamllint](https://github.com/adrienverge/yamllint)               | YAML linter.                                                                                                          | 1.37.1  | TODO    |
 
 The repository rules in `security/semgrep/` complement the registry packs with the checks that name this server's own
 sinks: SQL interpolation, process spawns, secret-bearing logs, JWT validation, path joins, file modes, weak randomness
@@ -3500,6 +3519,8 @@ longest-prefix match, and every scope owns at least one path. Adding or removing
 | Docs    | `user`           | `docs/index.md`                           | Documentation home page         |
 | Docs    | `user`           | `docs/Permissions.md`                     | Permissions guide               |
 | Docs    | `user`           | `docs/assets/**`                          | Documentation theme assets      |
+| Docs    | `user`           | `docs/javascripts/**`                     | Documentation theme scripts     |
+| Docs    | `user`           | `docs/stylesheets/**`                     | Documentation theme styles      |
 | Docs    | `user`           | `mkdocs.yml`                              | MkDocs site configuration       |
 | Docs    | `development`    | `docs/development/**`                     | Development documentation       |
 | Repo    | `repo`           | `LICENSE`                                 | License                         |

@@ -205,7 +205,6 @@ where
 mod tests {
     use super::*;
     use crate::domain::NumericID;
-    use allure_cargotest::allure_test;
     use rstest::fixture;
 
     use crate::domain::model::{Role, User};
@@ -249,12 +248,9 @@ mod tests {
         )
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-008-A
     #[tokio::test]
     async fn create_series_stores_the_show_with_no_seasons() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-008");
-        allure.story("SCN-SERIES-008-A");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -397,12 +393,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-008-B
     #[tokio::test]
     async fn create_series_repeated_name_returns_a_second_show() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-008");
-        allure.story("SCN-SERIES-008-B");
         // Arrange: the schema holds no unique show name, so creation never looks
         // one up before inserting.
         let mut users = MockUserRepository::new();
@@ -525,12 +518,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-008-C
     #[tokio::test]
     async fn create_series_unknown_genre_is_written() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-008");
-        allure.story("SCN-SERIES-008-C");
         // Arrange: the genre vocabulary is open on write.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -662,12 +652,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-008-D
     #[tokio::test]
     async fn create_series_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-008");
-        allure.story("SCN-SERIES-008-D");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -789,12 +776,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-008-D
     #[tokio::test]
     async fn create_series_invalid_country_is_unprocessable() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-008");
-        allure.story("SCN-SERIES-008-D");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -916,12 +900,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-008-D
     #[tokio::test]
     async fn create_series_empty_genre_is_invalid() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-008");
-        allure.story("SCN-SERIES-008-D");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1042,12 +1023,9 @@ mod tests {
         assert!(matches!(result, Err(CreateSeriesError::InvalidGenre)));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-SERIES-008-E
     #[tokio::test]
     async fn create_series_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-008");
-        allure.story("SCN-SERIES-008-E");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -1175,12 +1153,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-008-E
     #[tokio::test]
     async fn create_series_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-008");
-        allure.story("SCN-SERIES-008-E");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,

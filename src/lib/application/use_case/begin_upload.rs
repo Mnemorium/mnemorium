@@ -333,7 +333,6 @@ mod tests {
     };
 
     use crate::test_helpers::*;
-    use allure_cargotest::allure_test;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};
     use tracing_test::traced_test;
@@ -1873,13 +1872,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-UPLOAD-003-A
     #[tokio::test]
     async fn begin_upload_keeps_the_chunk_size_it_was_built_with() -> Result<(), Box<dyn Error>> {
-        allure.epic("Upload");
-        allure.feature("REQ-UPLOAD-003");
-        allure.story("SCN-UPLOAD-003-A");
-
         // Arrange: the use case holds the chunk size it was built with and reads
         // no configuration itself, so a runtime change cannot reach a session.
         let harness = (move |chunk_size: u64| -> Result<Harness, Box<dyn Error>> {

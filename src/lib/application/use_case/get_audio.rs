@@ -132,18 +132,13 @@ mod tests {
     };
 
     use crate::test_helpers::*;
-    use allure_cargotest::allure_test;
     use std::error::Error;
 
     type UseCase = GetAudio<TestFactory>;
 
-    #[allure_test]
+    // proves: SCN-AUDIO-003-A
     #[tokio::test]
     async fn an_album_track_is_readable_and_linked() -> Result<(), Box<dyn Error>> {
-        allure.epic("Audio");
-        allure.feature("REQ-AUDIO-003");
-        allure.story("SCN-AUDIO-003-A");
-
         // Arrange: caller 9 reads the track of album 5.
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -219,13 +214,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-AUDIO-003-B
     #[tokio::test]
     async fn an_audio_repository_failure_is_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Audio");
-        allure.feature("REQ-AUDIO-003");
-        allure.story("SCN-AUDIO-003-B");
-
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,
@@ -281,13 +272,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-AUDIO-003-B
     #[tokio::test]
     async fn an_unknown_audio_is_concealed() -> Result<(), Box<dyn Error>> {
-        allure.epic("Audio");
-        allure.feature("REQ-AUDIO-003");
-        allure.story("SCN-AUDIO-003-B");
-
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut crate::domain::port::MockUserRepository,

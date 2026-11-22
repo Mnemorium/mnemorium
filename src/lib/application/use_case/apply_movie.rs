@@ -182,7 +182,6 @@ where
 mod tests {
     use super::*;
     use crate::domain::NumericID;
-    use allure_cargotest::allure_test;
     use rstest::fixture;
 
     use crate::domain::model::{ExternalRef, Genre, ProviderId, Role, User};
@@ -237,15 +236,9 @@ mod tests {
         }
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-A, SCN-METADATA-ENRICHMENT-025-A, SCN-METADATA-ENRICHMENT-025-C
     #[tokio::test]
     async fn apply_movie_writes_the_reported_metadata() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.feature("REQ-METADATA-ENRICHMENT-025");
-        allure.story("SCN-METADATA-ENRICHMENT-024-A");
-        allure.story("SCN-METADATA-ENRICHMENT-025-A");
-        allure.story("SCN-METADATA-ENRICHMENT-025-C");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -382,14 +375,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-B, SCN-METADATA-ENRICHMENT-025-B
     #[tokio::test]
     async fn apply_movie_clears_what_the_provider_does_not_report() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.feature("REQ-METADATA-ENRICHMENT-025");
-        allure.story("SCN-METADATA-ENRICHMENT-024-B");
-        allure.story("SCN-METADATA-ENRICHMENT-025-B");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -528,12 +516,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-E
     #[tokio::test]
     async fn apply_movie_reports_a_provider_failure() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.story("SCN-METADATA-ENRICHMENT-024-E");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -657,12 +642,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-D
     #[tokio::test]
     async fn apply_movie_reports_an_unknown_reference() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.story("SCN-METADATA-ENRICHMENT-024-D");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -785,12 +767,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-C
     #[tokio::test]
     async fn apply_movie_rejects_another_kind() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.story("SCN-METADATA-ENRICHMENT-024-C");
         // Arrange: the provider resolves a show under the film route.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
@@ -921,12 +900,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-E
     #[tokio::test]
     async fn apply_movie_reports_an_unconfigured_provider() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.story("SCN-METADATA-ENRICHMENT-024-E");
         // Arrange
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,

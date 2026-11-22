@@ -4,10 +4,10 @@ import json
 import shutil
 from itertools import count
 
-import allure
 import pytest
 from conftest import SEED_MEDIA_DIRECTORY, login, provision, start_instance, upload
 from harness import ROOT_ADMIN_USERNAME, Sut
+from labels import scenario
 from mnemorium_client.api.asset import get_file
 
 # The seeded slots this module reads, documented in `seed/sql/0005_download.sql`.
@@ -38,11 +38,8 @@ PRIVATE = "PRIVATE"
 _ACCOUNTS = count()
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-001")
-@allure.story("SCN-DOWNLOAD-001-A")
-@allure.feature("REQ-DOWNLOAD-003")
-@allure.story("SCN-DOWNLOAD-003-A")
+@scenario("SCN-DOWNLOAD-001-A")
+@scenario("SCN-DOWNLOAD-003-A")
 def test_a_bearer_request_reads_content(server: Sut, root_token: str) -> None:
     """A bearer request reads the bytes with the stored media type."""
     file_response = get_file.sync_detailed(IMAGE_FILE, client=server.client(root_token))
@@ -61,9 +58,7 @@ def test_a_bearer_request_reads_content(server: Sut, root_token: str) -> None:
     assert response.headers["Content-Type"] == IMAGE_CONTENT_TYPE
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-002")
-@allure.story("SCN-DOWNLOAD-002-A")
+@scenario("SCN-DOWNLOAD-002-A")
 def test_image_content_decides_view(server: Sut, root_token: str) -> None:
     """A viewer grant reads image content."""
     user_id, user = provision(server, root_token, f"download{next(_ACCOUNTS)}")
@@ -97,9 +92,7 @@ def test_image_content_decides_view(server: Sut, root_token: str) -> None:
     assert response.status_code == 200, f"image content failed: {response.status_code} {response.content!r}"
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-002")
-@allure.story("SCN-DOWNLOAD-002-B")
+@scenario("SCN-DOWNLOAD-002-B")
 def test_audio_content_decides_stream(server: Sut, root_token: str) -> None:
     """A viewer grant reads audio content."""
     user_id, user = provision(server, root_token, f"download{next(_ACCOUNTS)}")
@@ -133,9 +126,7 @@ def test_audio_content_decides_stream(server: Sut, root_token: str) -> None:
     assert response.status_code == 200, f"audio content failed: {response.status_code} {response.content!r}"
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-002")
-@allure.story("SCN-DOWNLOAD-002-B")
+@scenario("SCN-DOWNLOAD-002-B")
 def test_video_content_decides_stream(server: Sut, root_token: str) -> None:
     """A viewer grant reads video content."""
     user_id, user = provision(server, root_token, f"download{next(_ACCOUNTS)}")
@@ -169,9 +160,7 @@ def test_video_content_decides_stream(server: Sut, root_token: str) -> None:
     assert response.status_code == 200, f"video content failed: {response.status_code} {response.content!r}"
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-003")
-@allure.story("SCN-DOWNLOAD-003-B")
+@scenario("SCN-DOWNLOAD-003-B")
 def test_audio_content_carries_the_stored_type(server: Sut, root_token: str) -> None:
     """Audio content carries the bytes and type stored for its file."""
     file_response = get_file.sync_detailed(AUDIO_FILE, client=server.client(root_token))
@@ -190,9 +179,7 @@ def test_audio_content_carries_the_stored_type(server: Sut, root_token: str) -> 
     assert response.content == AUDIO_BYTES
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-003")
-@allure.story("SCN-DOWNLOAD-003-B")
+@scenario("SCN-DOWNLOAD-003-B")
 def test_video_content_carries_the_stored_type(server: Sut, root_token: str) -> None:
     """Video content carries the bytes and type stored for its file."""
     file_response = get_file.sync_detailed(VIDEO_FILE, client=server.client(root_token))
@@ -211,9 +198,7 @@ def test_video_content_carries_the_stored_type(server: Sut, root_token: str) -> 
     assert response.content == VIDEO_BYTES
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-003")
-@allure.story("SCN-DOWNLOAD-003-C")
+@scenario("SCN-DOWNLOAD-003-C")
 def test_file_content_carries_the_stored_type(server: Sut, root_token: str) -> None:
     """File content carries the stored type of the file."""
     response = server.request(
@@ -227,9 +212,7 @@ def test_file_content_carries_the_stored_type(server: Sut, root_token: str) -> N
     assert response.content == IMAGE_BYTES
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-004")
-@allure.story("SCN-DOWNLOAD-004-B")
+@scenario("SCN-DOWNLOAD-004-B")
 def test_a_head_request_answers_without_content(server: Sut, root_token: str) -> None:
     """`HEAD` answers the headers of `GET` and no body."""
     file_response = get_file.sync_detailed(IMAGE_FILE, client=server.client(root_token))
@@ -251,9 +234,7 @@ def test_a_head_request_answers_without_content(server: Sut, root_token: str) ->
     assert head.headers["Content-Type"] == whole.headers["Content-Type"]
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-005")
-@allure.story("SCN-DOWNLOAD-005-A")
+@scenario("SCN-DOWNLOAD-005-A")
 def test_a_closed_range(server: Sut, root_token: str) -> None:
     """A closed range answers 206 with exactly the requested bytes."""
     file_response = get_file.sync_detailed(AUDIO_FILE, client=server.client(root_token))
@@ -277,9 +258,7 @@ def test_a_closed_range(server: Sut, root_token: str) -> None:
     assert response.headers["Content-Range"] == f"bytes 0-99/{len(AUDIO_BYTES)}"
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-005")
-@allure.story("SCN-DOWNLOAD-005-B")
+@scenario("SCN-DOWNLOAD-005-B")
 def test_an_open_ended_range(server: Sut, root_token: str) -> None:
     """An open-ended range answers from its offset to the end."""
     file_response = get_file.sync_detailed(AUDIO_FILE, client=server.client(root_token))
@@ -302,9 +281,7 @@ def test_an_open_ended_range(server: Sut, root_token: str) -> None:
     assert response.content == AUDIO_BYTES[100:]
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-005")
-@allure.story("SCN-DOWNLOAD-005-C")
+@scenario("SCN-DOWNLOAD-005-C")
 def test_a_suffix_range(server: Sut, root_token: str) -> None:
     """A suffix range answers the final bytes."""
     file_response = get_file.sync_detailed(AUDIO_FILE, client=server.client(root_token))
@@ -327,9 +304,7 @@ def test_a_suffix_range(server: Sut, root_token: str) -> None:
     assert response.content == AUDIO_BYTES[-500:]
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-005")
-@allure.story("SCN-DOWNLOAD-005-D")
+@scenario("SCN-DOWNLOAD-005-D")
 def test_an_unsatisfiable_range(server: Sut, root_token: str) -> None:
     """A range past the end answers 416 with the content size."""
     file_response = get_file.sync_detailed(AUDIO_FILE, client=server.client(root_token))
@@ -352,9 +327,7 @@ def test_an_unsatisfiable_range(server: Sut, root_token: str) -> None:
     assert response.headers["Content-Range"] == f"bytes */{len(AUDIO_BYTES)}"
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-005")
-@allure.story("SCN-DOWNLOAD-005-E")
+@scenario("SCN-DOWNLOAD-005-E")
 def test_more_than_one_range(server: Sut, root_token: str) -> None:
     """Several ranges in one header answer the whole content."""
     file_response = get_file.sync_detailed(AUDIO_FILE, client=server.client(root_token))
@@ -377,9 +350,7 @@ def test_more_than_one_range(server: Sut, root_token: str) -> None:
     assert response.content == AUDIO_BYTES
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-006")
-@allure.story("SCN-DOWNLOAD-006-A")
+@scenario("SCN-DOWNLOAD-006-A")
 def test_a_content_response_carries_its_validators(server: Sut, root_token: str) -> None:
     """Content carries an `ETag` and a `Last-Modified`."""
     file_response = get_file.sync_detailed(AUDIO_FILE, client=server.client(root_token))
@@ -397,9 +368,7 @@ def test_a_content_response_carries_its_validators(server: Sut, root_token: str)
     assert response.headers["Last-Modified"].endswith("GMT")
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-006")
-@allure.story("SCN-DOWNLOAD-006-B")
+@scenario("SCN-DOWNLOAD-006-B")
 def test_unchanged_content_answers_not_modified(server: Sut, root_token: str) -> None:
     """A matching `If-None-Match` answers 304 with no body."""
     file_response = get_file.sync_detailed(AUDIO_FILE, client=server.client(root_token))
@@ -423,9 +392,7 @@ def test_unchanged_content_answers_not_modified(server: Sut, root_token: str) ->
     assert response.content == b""
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-006")
-@allure.story("SCN-DOWNLOAD-006-C")
+@scenario("SCN-DOWNLOAD-006-C")
 def test_a_range_is_conditional_on_the_content(server: Sut, root_token: str) -> None:
     """A range whose `If-Range` matches answers 206."""
     file_response = get_file.sync_detailed(AUDIO_FILE, client=server.client(root_token))
@@ -448,9 +415,7 @@ def test_a_range_is_conditional_on_the_content(server: Sut, root_token: str) -> 
     assert response.status_code == 206
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-006")
-@allure.story("SCN-DOWNLOAD-006-D")
+@scenario("SCN-DOWNLOAD-006-D")
 def test_a_stale_validator_answers_the_whole_content(server: Sut, root_token: str) -> None:
     """A range whose `If-Range` does not match answers 200."""
     file_response = get_file.sync_detailed(AUDIO_FILE, client=server.client(root_token))
@@ -473,9 +438,7 @@ def test_a_stale_validator_answers_the_whole_content(server: Sut, root_token: st
     assert response.content == AUDIO_BYTES
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-007")
-@allure.story("SCN-DOWNLOAD-007-A")
+@scenario("SCN-DOWNLOAD-007-A")
 def test_a_typed_file_keeps_its_original_name(server: Sut, root_token: str) -> None:
     """The file route names the typed media row's original name."""
     response = server.request(
@@ -488,9 +451,7 @@ def test_a_typed_file_keeps_its_original_name(server: Sut, root_token: str) -> N
     assert response.headers["Content-Disposition"] == 'attachment; filename="holiday.png"'
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-007")
-@allure.story("SCN-DOWNLOAD-007-B")
+@scenario("SCN-DOWNLOAD-007-B")
 def test_a_bare_file_keeps_its_stored_name(server: Sut, root_token: str) -> None:
     """A file with no typed row names the final segment of its stored path."""
     response = server.request(
@@ -504,9 +465,7 @@ def test_a_bare_file_keeps_its_stored_name(server: Sut, root_token: str) -> None
     assert response.content == BARE_BYTES
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-007")
-@allure.story("SCN-DOWNLOAD-007-C")
+@scenario("SCN-DOWNLOAD-007-C")
 def test_a_display_route_is_not_an_attachment(server: Sut, root_token: str) -> None:
     """Image, audio and video content carry no disposition."""
     for file_id, rel in ((IMAGE_FILE, "image"), (AUDIO_FILE, "audio"), (VIDEO_FILE, "video")):
@@ -526,9 +485,7 @@ def test_a_display_route_is_not_an_attachment(server: Sut, root_token: str) -> N
         assert "Content-Disposition" not in response.headers
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-007")
-@allure.story("SCN-DOWNLOAD-007-D")
+@scenario("SCN-DOWNLOAD-007-D")
 def test_an_awkward_file_name_is_encoded(server: Sut, root_token: str) -> None:
     """A name carrying a quote is encoded so it round-trips intact."""
     response = server.request(
@@ -543,13 +500,9 @@ def test_an_awkward_file_name_is_encoded(server: Sut, root_token: str) -> None:
     assert "filename*=UTF-8''odd%20%22name%22.png" in disposition
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-002")
-@allure.story("SCN-DOWNLOAD-002-C")
-@allure.feature("REQ-DOWNLOAD-008")
-@allure.story("SCN-DOWNLOAD-008-B")
-@allure.feature("REQ-DOWNLOAD-009")
-@allure.story("SCN-DOWNLOAD-009-A")
+@scenario("SCN-DOWNLOAD-002-C")
+@scenario("SCN-DOWNLOAD-008-B")
+@scenario("SCN-DOWNLOAD-009-A")
 def test_a_visible_asset_whose_action_refuses_answers_forbidden(server: Sut, root_token: str) -> None:
     """A discoverable file without `Download` answers 403 and reads no bytes."""
     user_id, user = provision(server, root_token, f"download{next(_ACCOUNTS)}")
@@ -582,9 +535,7 @@ def test_a_visible_asset_whose_action_refuses_answers_forbidden(server: Sut, roo
     assert refused.content != REFUSAL_BYTES
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-008")
-@allure.story("SCN-DOWNLOAD-008-C")
+@scenario("SCN-DOWNLOAD-008-C")
 @pytest.mark.own_instance(reason="restart")
 def test_an_absent_library_root_answers_unavailable(sut: Sut) -> None:
     """A content request while the library root is absent answers 503."""
@@ -605,9 +556,7 @@ def test_an_absent_library_root_answers_unavailable(sut: Sut) -> None:
     assert response.status_code == 503
 
 
-@allure.epic("Download")
-@allure.feature("REQ-DOWNLOAD-008")
-@allure.story("SCN-DOWNLOAD-008-D")
+@scenario("SCN-DOWNLOAD-008-D")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_registered_file_without_bytes_answers_server_error(sut: Sut) -> None:
     """A registered file whose bytes are absent answers 500."""
