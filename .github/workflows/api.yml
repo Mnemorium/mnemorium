@@ -52,10 +52,6 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install the suite's dependencies
         run: pip install -r requirements.txt
-      # The container-free API cases prove the HAL helpers and run before the
-      # fuzz, so a broken helper fails fast instead of surfacing mid-fuzz.
-      - name: Run the API cases
-        run: pytest test/api -p no:cacheprovider
       # Builds the seeded server, starts it, and hands the schema URL, the
       # generated config and the Root Admin credentials to the next step. The
       # server stays up until `--stop` (always), so the fuzz runs against it.

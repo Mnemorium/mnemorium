@@ -1,0 +1,61 @@
+/* The toggle row sits at the top of each sidebar. */
+.sidebar-toggle-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0.2rem;
+}
+
+.sidebar-toggle {
+  cursor: pointer;
+  color: var(--md-default-fg-color--light);
+  background: transparent;
+  border: 0;
+  border-radius: 0.3rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.sidebar-toggle:hover {
+  color: var(--md-default-fg-color);
+  background: var(--md-default-fg-color--lightest);
+}
+
+/* Collapse a sidebar to a slim rail that keeps its toggle visible. */
+@media screen and (min-width: 76.25em) {
+  body.hide-left-sidebar .md-sidebar--primary,
+  body.hide-right-sidebar .md-sidebar--secondary {
+    width: 2.6rem;
+  }
+
+  body.hide-left-sidebar .md-sidebar--primary .md-nav,
+  body.hide-right-sidebar .md-sidebar--secondary .md-nav {
+    display: none;
+  }
+
+  body.hide-left-sidebar .md-sidebar--primary .md-sidebar__inner,
+  body.hide-right-sidebar .md-sidebar--secondary .md-sidebar__inner {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+/* Allow the main documentation area to use the full browser width. */
+.md-main__inner.md-grid {
+  max-width: none;
+  width: 100%;
+}
+
+/* Let the content grow when either sidebar is collapsed. */
+.md-content {
+  max-width: none;
+  width: 100%;
+  flex-grow: 1;
+}
+
+/* Below the desktop breakpoint the sidebars are drawers, so no rail and no toggles. */
+@media screen and (max-width: 76.234375em) {
+  .sidebar-toggle-bar {
+    display: none;
+  }
+}

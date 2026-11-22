@@ -825,7 +825,6 @@ fn year(value: Option<&str>) -> Option<u32> {
 mod tests {
     use super::*;
     use crate::domain::model::MusicQueryError;
-    use allure_cargotest::allure_test;
 
     use rstest::rstest;
     use std::collections::VecDeque;
@@ -1049,7 +1048,7 @@ mod tests {
         );
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-021-A, SCN-METADATA-ENRICHMENT-021-B
     #[rstest]
     #[case::quote("He said \"Hi\"", "releasegroup:\"He said \\\"Hi\\\"\"")]
     #[case::conjunction("Rock AND Roll", "releasegroup:\"Rock AND Roll\"")]
@@ -1060,10 +1059,6 @@ mod tests {
         #[case] title: &str,
         #[case] expected: &str,
     ) -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-021");
-        allure.story("SCN-METADATA-ENRICHMENT-021-A");
-        allure.story("SCN-METADATA-ENRICHMENT-021-B");
         // Arrange
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -1083,13 +1078,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-002-A, SCN-METADATA-ENRICHMENT-002-B
     #[tokio::test]
     async fn musicbrainz_search_maps_a_release_group_hit() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-002");
-        allure.story("SCN-METADATA-ENRICHMENT-002-A");
-        allure.story("SCN-METADATA-ENRICHMENT-002-B");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, "/release-group", SEARCH_RELEASE_GROUP).await;
@@ -1117,13 +1108,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-002-D
     #[tokio::test]
     async fn musicbrainz_search_maps_a_release_hit_with_its_mediums() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-002");
-        allure.story("SCN-METADATA-ENRICHMENT-002-D");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, "/release", SEARCH_RELEASE).await;
@@ -1160,12 +1148,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-002-A
     #[tokio::test]
     async fn musicbrainz_search_maps_a_recording_hit() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-002");
-        allure.story("SCN-METADATA-ENRICHMENT-002-A");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, "/recording", SEARCH_RECORDING).await;
@@ -1187,12 +1172,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-002-C
     #[tokio::test]
     async fn musicbrainz_search_leaves_an_unreported_group_absent() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-002");
-        allure.story("SCN-METADATA-ENRICHMENT-002-C");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, "/release-group", SEARCH_WITHOUT_ARTIST).await;
@@ -1210,15 +1192,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-004-A, SCN-METADATA-ENRICHMENT-020-A
     #[tokio::test]
     async fn musicbrainz_lookup_maps_an_album_and_orders_its_editions() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-004");
-        allure.feature("REQ-METADATA-ENRICHMENT-020");
-        allure.story("SCN-METADATA-ENRICHMENT-004-A");
-        allure.story("SCN-METADATA-ENRICHMENT-020-A");
         // Arrange
         let server = MockServer::start().await;
         mount_json(
@@ -1291,16 +1268,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-004-C, SCN-METADATA-ENRICHMENT-006-A, SCN-METADATA-ENRICHMENT-006-B
     #[tokio::test]
     async fn musicbrainz_lookup_maps_a_release_and_reports_absent_values()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-004");
-        allure.feature("REQ-METADATA-ENRICHMENT-006");
-        allure.story("SCN-METADATA-ENRICHMENT-004-C");
-        allure.story("SCN-METADATA-ENRICHMENT-006-A");
-        allure.story("SCN-METADATA-ENRICHMENT-006-B");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, &format!("/release/{CD_RELEASE_ID}"), RELEASE).await;
@@ -1347,12 +1318,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-004-E
     #[tokio::test]
     async fn musicbrainz_lookup_maps_a_recording() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-004");
-        allure.story("SCN-METADATA-ENRICHMENT-004-E");
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, &format!("/recording/{RECORDING_ID}"), RECORDING).await;
@@ -1385,7 +1353,7 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-019-A, SCN-METADATA-ENRICHMENT-019-C
     #[rstest]
     #[case::album("Album", Some(ProductionType::Studio))]
     #[case::compilation("compilation", Some(ProductionType::Compilation))]
@@ -1400,10 +1368,6 @@ mod tests {
         #[case] name: &str,
         #[case] expected: Option<ProductionType>,
     ) {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-019");
-        allure.story("SCN-METADATA-ENRICHMENT-019-A");
-        allure.story("SCN-METADATA-ENRICHMENT-019-C");
         // Act
         let mapped = mapped_production_type(name);
 
@@ -1440,13 +1404,10 @@ mod tests {
         Ok(production_type)
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-019-B
     #[tokio::test]
     async fn musicbrainz_secondary_production_type_takes_precedence() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-019");
-        allure.story("SCN-METADATA-ENRICHMENT-019-B");
         // Act
         let mapped = album_production_type(RELEASE_GROUP_LIVE_SECONDARY).await?;
 
@@ -1455,12 +1416,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-019-C
     #[tokio::test]
     async fn musicbrainz_unmappable_secondary_type_stays_absent() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-019");
-        allure.story("SCN-METADATA-ENRICHMENT-019-C");
         // Act
         let mapped = album_production_type(RELEASE_GROUP_UNMAPPABLE_SECONDARY).await?;
 
@@ -1469,13 +1427,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-007-A, SCN-METADATA-ENRICHMENT-007-B
     #[test]
     fn musicbrainz_genre_normalisation_folds_case_and_drops_empty_entries() {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-007");
-        allure.story("SCN-METADATA-ENRICHMENT-007-A");
-        allure.story("SCN-METADATA-ENRICHMENT-007-B");
         // Arrange
         let entries = vec![
             super::GenrePayload {
@@ -1496,16 +1450,9 @@ mod tests {
         assert_eq!(mapped, vec!["cool jazz", "jazz"]);
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-006-A, SCN-METADATA-ENRICHMENT-006-B, SCN-METADATA-ENRICHMENT-006-C, SCN-METADATA-ENRICHMENT-014-B
     #[test]
     fn musicbrainz_country_and_date_placeholders_are_absent() {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-006");
-        allure.feature("REQ-METADATA-ENRICHMENT-014");
-        allure.story("SCN-METADATA-ENRICHMENT-006-A");
-        allure.story("SCN-METADATA-ENRICHMENT-006-B");
-        allure.story("SCN-METADATA-ENRICHMENT-006-C");
-        allure.story("SCN-METADATA-ENRICHMENT-014-B");
         // Arrange
         let placeholder = Some("N/A");
         let partial_date = Some("1959");
@@ -1556,12 +1503,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-023-E
     #[tokio::test]
     async fn musicbrainz_lookup_returns_none_for_an_unknown_mbid() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-023");
-        allure.story("SCN-METADATA-ENRICHMENT-023-E");
         // Arrange
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -1584,12 +1528,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-022-C
     #[tokio::test]
     async fn musicbrainz_retries_a_rate_limited_request() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-022");
-        allure.story("SCN-METADATA-ENRICHMENT-022-C");
         // Arrange
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -1610,13 +1551,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-022-D
     #[tokio::test]
     #[traced_test]
     async fn musicbrainz_exhausts_the_retry_budget_and_logs_once() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-022");
-        allure.story("SCN-METADATA-ENRICHMENT-022-D");
         // Arrange
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -1657,12 +1595,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-022-E
     #[tokio::test]
     async fn musicbrainz_does_not_retry_an_invalid_request() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-022");
-        allure.story("SCN-METADATA-ENRICHMENT-022-E");
         // Arrange
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -1686,12 +1621,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-022-F
     #[tokio::test]
     async fn musicbrainz_does_not_retry_an_undecodable_payload() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-022");
-        allure.story("SCN-METADATA-ENRICHMENT-022-F");
         // Arrange
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -1715,12 +1647,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-022-A
     #[tokio::test]
     async fn musicbrainz_spaces_sequential_requests() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-022");
-        allure.story("SCN-METADATA-ENRICHMENT-022-A");
         // Arrange
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -1745,12 +1674,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-022-B
     #[tokio::test]
     async fn musicbrainz_serialises_concurrent_requests() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-022");
-        allure.story("SCN-METADATA-ENRICHMENT-022-B");
         // Arrange
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -1779,12 +1705,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-005-A
     #[tokio::test]
     async fn musicbrainz_artwork_follows_the_cover_art_json_hop() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-005");
-        allure.story("SCN-METADATA-ENRICHMENT-005-A");
         // Arrange
         let server = MockServer::start().await;
         mount_json(
@@ -1825,16 +1748,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-004-B, SCN-METADATA-ENRICHMENT-006-A, SCN-METADATA-ENRICHMENT-007-C
     #[tokio::test]
     async fn musicbrainz_lookup_maps_an_album_without_editions() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-004");
-        allure.feature("REQ-METADATA-ENRICHMENT-006");
-        allure.feature("REQ-METADATA-ENRICHMENT-007");
-        allure.story("SCN-METADATA-ENRICHMENT-004-B");
-        allure.story("SCN-METADATA-ENRICHMENT-006-A");
-        allure.story("SCN-METADATA-ENRICHMENT-007-C");
         // Arrange: the payload lists no edition and no genre, and its date is partial.
         let server = MockServer::start().await;
         mount_json(
@@ -1875,13 +1791,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-008-A
     #[tokio::test]
     async fn musicbrainz_lookup_ignores_another_providers_reference() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-008");
-        allure.story("SCN-METADATA-ENRICHMENT-008-A");
         // Arrange: a reference issued by a video provider must not be resolved here.
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -1900,14 +1813,11 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-008-B
     #[tokio::test]
     #[traced_test]
     async fn musicbrainz_lookup_reports_a_provider_failure_without_another_provider()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-008");
-        allure.story("SCN-METADATA-ENRICHMENT-008-B");
         // Arrange: the only provider fails, so nothing else may be asked.
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -1933,12 +1843,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-005-A
     #[tokio::test]
     async fn musicbrainz_artwork_follows_the_archives_redirect_hop() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-005");
-        allure.story("SCN-METADATA-ENRICHMENT-005-A");
         // Arrange: the index names an address the archive answers with a redirect.
         let server = MockServer::start().await;
         mount_json(
@@ -1987,14 +1894,11 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-005-B
     #[tokio::test]
     #[traced_test]
     async fn musicbrainz_artwork_refuses_a_hop_outside_the_allow_list() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-005");
-        allure.story("SCN-METADATA-ENRICHMENT-005-B");
         // Arrange: the archive points the download at a host it does not own.
         let server = MockServer::start().await;
         mount_json(
@@ -2045,13 +1949,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-005-B
     #[tokio::test]
     #[traced_test]
     async fn musicbrainz_artwork_absence_yields_none_and_one_event() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-005");
-        allure.story("SCN-METADATA-ENRICHMENT-005-B");
         // Arrange
         let server = MockServer::start().await;
         mount_json(
@@ -2118,7 +2019,7 @@ mod tests {
         }
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-008-A
     #[rstest]
     #[case(
         MusicKind::Album,
@@ -2153,9 +2054,6 @@ mod tests {
         #[case] search_fixture: &str,
         #[case] lookup_fixture: &str,
     ) -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-008");
-        allure.story("SCN-METADATA-ENRICHMENT-008-A");
         // Arrange: the search lists one candidate per kind, and the lookup
         // answers the reference that candidate carries.
         let server = MockServer::start().await;

@@ -136,7 +136,6 @@ mod tests {
         ArtistCredit, ExternalRef, MusicKind, MusicMetadata, MusicTarget, ProductionType,
         ProviderId,
     };
-    use allure_cargotest::allure_test;
 
     use crate::domain::port::{
         ExternalServiceError, MockMusicMetadataProvider, MockResourceRepository,
@@ -218,13 +217,10 @@ mod tests {
         provider
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-023-D
     #[tokio::test]
     async fn resolve_music_metadata_reports_unavailable_without_a_provider()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-023");
-        allure.story("SCN-METADATA-ENRICHMENT-023-D");
         // Arrange: no music provider is configured.
         let harness = use_case_with(no_resources(), None);
 
@@ -242,13 +238,10 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-008-A
     #[tokio::test]
     async fn resolve_music_metadata_reports_a_reference_another_provider_issued()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-008");
-        allure.story("SCN-METADATA-ENRICHMENT-008-A");
         // Arrange: the configured provider is MusicBrainz, the target names
         // another provider.
         let mut provider = musicbrainz_provider();
@@ -271,13 +264,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-023-E
     #[tokio::test]
     async fn resolve_music_metadata_reports_a_missing_item_as_no_response()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-023");
-        allure.story("SCN-METADATA-ENRICHMENT-023-E");
         // Arrange: the provider does not know the target.
         let mut provider = musicbrainz_provider();
         provider
@@ -302,14 +292,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-004-A, SCN-METADATA-ENRICHMENT-023-B
     #[tokio::test]
     async fn resolve_music_metadata_returns_the_providers_document() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-004");
-        allure.feature("REQ-METADATA-ENRICHMENT-023");
-        allure.story("SCN-METADATA-ENRICHMENT-004-A");
-        allure.story("SCN-METADATA-ENRICHMENT-023-B");
         // Arrange: the provider resolves the target into album metadata.
         let expected = album()?;
         let mut provider = musicbrainz_provider();
@@ -333,12 +318,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-008-B
     #[tokio::test]
     async fn resolve_music_metadata_reports_a_provider_failure() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-008");
-        allure.story("SCN-METADATA-ENRICHMENT-008-B");
         // Arrange: the configured provider fails.
         let mut provider = musicbrainz_provider();
         provider

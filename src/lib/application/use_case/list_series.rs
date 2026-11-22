@@ -131,7 +131,6 @@ where
 mod tests {
     use super::*;
     use crate::domain::model::Series;
-    use allure_cargotest::allure_test;
 
     use crate::domain::port::{MockSeriesRepository, MockUserRepository, RepositoryError};
 
@@ -156,12 +155,9 @@ mod tests {
         GalleryFactoryHarness::new(unit_of_work)
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-001-D
     #[tokio::test]
     async fn list_series_projects_only_the_identifier_and_name() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-001");
-        allure.story("SCN-SERIES-001-D");
         // Arrange: the aggregate carries a season, an episode, a genre and
         // dates, so the projection has something to drop.
         let mut users = MockUserRepository::new();
@@ -200,12 +196,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-001-D
     #[tokio::test]
     async fn list_series_carries_the_cover_of_a_show_with_artwork() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-001");
-        allure.story("SCN-SERIES-001-D");
         // Arrange: one covered show beside one without artwork.
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -261,12 +254,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-001-B
     #[tokio::test]
     async fn list_series_forwards_the_filter_and_paginates() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-001");
-        allure.story("SCN-SERIES-001-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -302,12 +292,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-001-A
     #[tokio::test]
     async fn list_series_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-001");
-        allure.story("SCN-SERIES-001-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -334,12 +321,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-001-A
     #[tokio::test]
     async fn list_series_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-001");
-        allure.story("SCN-SERIES-001-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -368,12 +352,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-SERIES-001-A
     #[tokio::test]
     async fn list_series_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Series");
-        allure.feature("REQ-SERIES-001");
-        allure.story("SCN-SERIES-001-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;

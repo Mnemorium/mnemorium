@@ -3,7 +3,6 @@
 import json
 from itertools import count
 
-import allure
 from conftest import (
     SEED_MEDIA_DIRECTORY,
     add_to_gallery,
@@ -13,6 +12,7 @@ from conftest import (
     upload,
 )
 from harness import ROOT_ADMIN_USERNAME, SECRET_PASSWORD, Sut
+from labels import scenario
 from mnemorium_client.api.asset import get_file, get_upload
 from mnemorium_client.api.identity import (
     delete_permission_share,
@@ -133,9 +133,7 @@ def _share_href(server: Sut, gallery_id: int) -> str:
     return f"{_resource_permission_href(server, gallery_id)}/share"
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-031")
-@allure.story("SCN-AUTHORIZATION-031-A")
+@scenario("SCN-AUTHORIZATION-031-A")
 def test_a_caller_reads_its_own_summary(server: Sut, root_token: str) -> None:
     """A Standard user reaches its own summary and receives no grant internals."""
     alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -149,9 +147,7 @@ def test_a_caller_reads_its_own_summary(server: Sut, root_token: str) -> None:
     assert all("grant_id" not in item for item in body["grants"])
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-031")
-@allure.story("SCN-AUTHORIZATION-031-B")
+@scenario("SCN-AUTHORIZATION-031-B")
 def test_an_admin_reads_a_standard_users_summary(server: Sut, root_token: str) -> None:
     """An Admin reaches a Standard user's summary."""
     bob_id, _bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
@@ -162,9 +158,7 @@ def test_an_admin_reads_a_standard_users_summary(server: Sut, root_token: str) -
     assert response.status_code == 200
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-031")
-@allure.story("SCN-AUTHORIZATION-031-C")
+@scenario("SCN-AUTHORIZATION-031-C")
 def test_another_users_summary_is_forbidden(server: Sut, root_token: str) -> None:
     """A Standard user may not read another user's summary."""
     _, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
@@ -175,9 +169,7 @@ def test_another_users_summary_is_forbidden(server: Sut, root_token: str) -> Non
     assert response.status_code == 403
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-031")
-@allure.story("SCN-AUTHORIZATION-031-D")
+@scenario("SCN-AUTHORIZATION-031-D")
 def test_the_explanation_is_returned_to_a_manager(server: Sut, root_token: str) -> None:
     """The Root Admin receives the decision and its explanation."""
     alice_id, _alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -199,9 +191,7 @@ def test_the_explanation_is_returned_to_a_manager(server: Sut, root_token: str) 
     assert decision["auth_path"][0]["kind"] == GALLERY
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-032")
-@allure.story("SCN-AUTHORIZATION-032-A")
+@scenario("SCN-AUTHORIZATION-032-A")
 def test_an_owner_reads_the_resource_permission(server: Sut, root_token: str) -> None:
     """The owner reads its gallery's visibility and grants."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -215,11 +205,8 @@ def test_an_owner_reads_the_resource_permission(server: Sut, root_token: str) ->
     assert body["address"]["kind"] == GALLERY
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-032")
-@allure.story("SCN-AUTHORIZATION-032-B")
-@allure.feature("REQ-DOWNLOAD-002")
-@allure.story("SCN-DOWNLOAD-002-D")
+@scenario("SCN-AUTHORIZATION-032-B")
+@scenario("SCN-DOWNLOAD-002-D")
 def test_an_owner_replaces_the_set(server: Sut, root_token: str) -> None:
     """A replacement stores exactly the submitted grant set, and the dropped recipient is concealed."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -252,9 +239,7 @@ def test_an_owner_replaces_the_set(server: Sut, root_token: str) -> None:
     assert concealed.status_code == 404, "the dropped caller must be concealed"
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-032")
-@allure.story("SCN-AUTHORIZATION-032-C")
+@scenario("SCN-AUTHORIZATION-032-C")
 def test_a_manager_cannot_replace(server: Sut, root_token: str) -> None:
     """A caller holding Manager but not ManagePermissions may read but not replace."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -280,11 +265,8 @@ def test_a_manager_cannot_replace(server: Sut, root_token: str) -> None:
     assert replaced.status_code == 403
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-032")
-@allure.story("SCN-AUTHORIZATION-032-D")
-@allure.feature("REQ-AUTHORIZATION-034")
-@allure.story("SCN-AUTHORIZATION-034-A")
+@scenario("SCN-AUTHORIZATION-032-D")
+@scenario("SCN-AUTHORIZATION-034-A")
 def test_a_rejected_replacement_leaves_the_previous_set(server: Sut, root_token: str) -> None:
     """A replacement naming the Owner role answers 422 and stores nothing."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -314,9 +296,7 @@ def test_a_rejected_replacement_leaves_the_previous_set(server: Sut, root_token:
     assert body["grants"] == []
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-033")
-@allure.story("SCN-AUTHORIZATION-033-A")
+@scenario("SCN-AUTHORIZATION-033-A")
 def test_a_manager_shares_a_viewer(server: Sut, root_token: str) -> None:
     """An owner shares Viewer and the recipient can read the gallery."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -335,9 +315,7 @@ def test_a_manager_shares_a_viewer(server: Sut, root_token: str) -> None:
     assert read.status_code == 200
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-033")
-@allure.story("SCN-AUTHORIZATION-033-B")
+@scenario("SCN-AUTHORIZATION-033-B")
 def test_sharing_cannot_escalate(server: Sut, root_token: str) -> None:
     """A share naming a role outside the published read roles answers 422 and stores nothing."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -356,9 +334,7 @@ def test_sharing_cannot_escalate(server: Sut, root_token: str) -> None:
     assert read.status_code == 404
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-033")
-@allure.story("SCN-AUTHORIZATION-033-C")
+@scenario("SCN-AUTHORIZATION-033-C")
 def test_a_share_is_revoked(server: Sut, root_token: str) -> None:
     """A revoked share stops reaching the resource."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -380,9 +356,7 @@ def test_a_share_is_revoked(server: Sut, root_token: str) -> None:
     assert read.status_code == 404
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-034")
-@allure.story("SCN-AUTHORIZATION-034-B")
+@scenario("SCN-AUTHORIZATION-034-B")
 def test_permission_administration_is_refused(server: Sut, root_token: str) -> None:
     """A grant naming ManagePermissions answers 422."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -408,9 +382,7 @@ def test_permission_administration_is_refused(server: Sut, root_token: str) -> N
     assert response.status_code == 422
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-034")
-@allure.story("SCN-AUTHORIZATION-034-C")
+@scenario("SCN-AUTHORIZATION-034-C")
 def test_a_duplicate_is_refused(server: Sut, root_token: str) -> None:
     """A set naming the same grant twice answers 422."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -428,9 +400,7 @@ def test_a_duplicate_is_refused(server: Sut, root_token: str) -> None:
     assert response.status_code == 422
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-034")
-@allure.story("SCN-AUTHORIZATION-034-D")
+@scenario("SCN-AUTHORIZATION-034-D")
 def test_an_unknown_principal_is_refused(server: Sut, root_token: str) -> None:
     """A grant naming a user that does not exist answers 422."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -446,9 +416,7 @@ def test_an_unknown_principal_is_refused(server: Sut, root_token: str) -> None:
     assert response.status_code == 422
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-034")
-@allure.story("SCN-AUTHORIZATION-034-E")
+@scenario("SCN-AUTHORIZATION-034-E")
 def test_admin_creation_is_refused(server: Sut, root_token: str) -> None:
     """A CreateChild grant naming the Admin child kind answers 422."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -475,9 +443,7 @@ def test_admin_creation_is_refused(server: Sut, root_token: str) -> None:
     assert response.status_code == 422
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-035")
-@allure.story("SCN-AUTHORIZATION-035-A")
+@scenario("SCN-AUTHORIZATION-035-A")
 def test_a_role_grant_cannot_be_written(server: Sut, root_token: str) -> None:
     """A replacement naming a role principal answers 422."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -505,9 +471,7 @@ def test_a_role_grant_cannot_be_written(server: Sut, root_token: str) -> None:
     assert response.status_code == 422
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-035")
-@allure.story("SCN-AUTHORIZATION-035-B")
+@scenario("SCN-AUTHORIZATION-035-B")
 def test_the_seeded_role_applies(server: Sut, root_token: str) -> None:
     """A Standard user with no per-resource grant creates a gallery through its seeded role."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -517,9 +481,7 @@ def test_the_seeded_role_applies(server: Sut, root_token: str) -> None:
     assert created.status_code == 201
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-016")
-@allure.story("SCN-AUTHORIZATION-016-C")
+@scenario("SCN-AUTHORIZATION-016-C")
 def test_a_public_resource_is_readable_by_every_caller(server: Sut, root_token: str) -> None:
     """A public gallery is readable by a user with no grant."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -531,9 +493,7 @@ def test_a_public_resource_is_readable_by_every_caller(server: Sut, root_token: 
     assert response.status_code == 200
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-014")
-@allure.story("SCN-AUTHORIZATION-014-A")
+@scenario("SCN-AUTHORIZATION-014-A")
 def test_a_deny_wins_over_a_grant(server: Sut, root_token: str) -> None:
     """A deny stored on the resource defeats a viewer grant."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -575,9 +535,7 @@ def test_a_deny_wins_over_a_grant(server: Sut, root_token: str) -> None:
     )
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-021")
-@allure.story("SCN-AUTHORIZATION-021-A")
+@scenario("SCN-AUTHORIZATION-021-A")
 def test_a_caller_reads_its_own_account(server: Sut, root_token: str) -> None:
     """A caller reads its own account without a grant."""
     alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -587,9 +545,7 @@ def test_a_caller_reads_its_own_account(server: Sut, root_token: str) -> None:
     assert response.status_code == 200
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-018")
-@allure.story("SCN-AUTHORIZATION-018-B")
+@scenario("SCN-AUTHORIZATION-018-B")
 def test_the_root_cannot_read_another_users_upload(server: Sut, root_token: str) -> None:
     """An upload is owner-only, even for the Root Admin."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -600,9 +556,7 @@ def test_the_root_cannot_read_another_users_upload(server: Sut, root_token: str)
     assert response.status_code == 404
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-025")
-@allure.story("SCN-AUTHORIZATION-025-B")
+@scenario("SCN-AUTHORIZATION-025-B")
 def test_an_asset_is_reachable_through_its_gallery(server: Sut, root_token: str) -> None:
     """A gallery item's image is readable by the gallery owner and concealed from others."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -618,9 +572,7 @@ def test_an_asset_is_reachable_through_its_gallery(server: Sut, root_token: str)
     assert stranger_read.status_code == 404
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-019")
-@allure.story("SCN-AUTHORIZATION-019-A")
+@scenario("SCN-AUTHORIZATION-019-A")
 def test_an_admin_creates_a_standard_account(server: Sut, root_token: str) -> None:
     """An Admin creates a Standard account, which then authenticates."""
     _, admin = provision(server, root_token, f"azadmin{next(_ACCOUNTS)}", role="ADMIN")
@@ -641,11 +593,8 @@ def test_an_admin_creates_a_standard_account(server: Sut, root_token: str) -> No
     )
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-019")
-@allure.story("SCN-AUTHORIZATION-019-B")
-@allure.feature("REQ-AUTHORIZATION-023")
-@allure.story("SCN-AUTHORIZATION-023-D")
+@scenario("SCN-AUTHORIZATION-019-B")
+@scenario("SCN-AUTHORIZATION-023-D")
 def test_an_admin_cannot_create_an_admin(server: Sut, root_token: str) -> None:
     """Neither an Admin nor a Standard user creates an Admin account, while the root does."""
     _, admin = provision(server, root_token, f"azadmin{next(_ACCOUNTS)}", role="ADMIN")
@@ -678,9 +627,7 @@ def test_an_admin_cannot_create_an_admin(server: Sut, root_token: str) -> None:
     assert json.loads(created.content)["role"] == "ADMIN"
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-019")
-@allure.story("SCN-AUTHORIZATION-019-C")
+@scenario("SCN-AUTHORIZATION-019-C")
 def test_an_admin_cannot_touch_an_admin(server: Sut, root_token: str) -> None:
     """An Admin deleting an Admin peer or itself answers 403 and applies nothing."""
     admin_id, admin = provision(server, root_token, f"azadmina{next(_ACCOUNTS)}", role="ADMIN")
@@ -695,9 +642,7 @@ def test_an_admin_cannot_touch_an_admin(server: Sut, root_token: str) -> None:
     assert get_me.sync_detailed(client=server.client(admin)).status_code == 200
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-019")
-@allure.story("SCN-AUTHORIZATION-019-D")
+@scenario("SCN-AUTHORIZATION-019-D")
 def test_the_root_admin_deletes_an_admin(server: Sut, root_token: str) -> None:
     """The Root Admin deletes an Admin account and the account is gone."""
     admin_id, admin = provision(server, root_token, f"azadmina{next(_ACCOUNTS)}", role="ADMIN")
@@ -709,9 +654,7 @@ def test_the_root_admin_deletes_an_admin(server: Sut, root_token: str) -> None:
     assert get_me.sync_detailed(client=server.client(admin)).status_code == 401
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-019")
-@allure.story("SCN-AUTHORIZATION-019-E")
+@scenario("SCN-AUTHORIZATION-019-E")
 def test_the_root_account_is_untouchable(server: Sut, root_token: str) -> None:
     """Deleting or updating account 0 answers 403 and applies nothing."""
     deleted = delete_user.sync_detailed(0, client=server.client(root_token))
@@ -728,9 +671,7 @@ def test_the_root_account_is_untouchable(server: Sut, root_token: str) -> None:
     assert json.loads(stored.content)["username"] == ROOT_ADMIN_USERNAME
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-020")
-@allure.story("SCN-AUTHORIZATION-020-A")
+@scenario("SCN-AUTHORIZATION-020-A")
 def test_an_admin_replaces_a_standard_users_grants(server: Sut, root_token: str) -> None:
     """An Admin replaces the grant set naming a Standard user and reads the replacement back."""
     _, admin = provision(server, root_token, f"azadmin{next(_ACCOUNTS)}", role="ADMIN")
@@ -754,9 +695,7 @@ def test_an_admin_replaces_a_standard_users_grants(server: Sut, root_token: str)
     assert readable.status_code == 200
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-017")
-@allure.story("SCN-AUTHORIZATION-017-A")
+@scenario("SCN-AUTHORIZATION-017-A")
 def test_the_root_administers_another_callers_private_gallery(server: Sut, root_token: str) -> None:
     """The Root Admin reads, appends media to and deletes another caller's private gallery."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -778,9 +717,7 @@ def test_the_root_administers_another_callers_private_gallery(server: Sut, root_
     assert get_gallery.sync_detailed(gallery["id"], client=server.client(alice)).status_code == 404
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-GALLERY-006")
-@allure.story("SCN-GALLERY-006-C")
+@scenario("SCN-GALLERY-006-C")
 def test_an_admin_cannot_delete_a_readable_public_gallery(server: Sut, root_token: str) -> None:
     """An Admin deleting a readable public gallery answers 403 and the gallery survives."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -794,9 +731,7 @@ def test_an_admin_cannot_delete_a_readable_public_gallery(server: Sut, root_toke
     assert kept.status_code == 200
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-022")
-@allure.story("SCN-AUTHORIZATION-022-A")
+@scenario("SCN-AUTHORIZATION-022-A")
 def test_a_standard_user_reads_the_catalogue(server: Sut, root_token: str) -> None:
     """A Standard user with the seeded role reads a film, a show, a music group and an album."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -812,9 +747,7 @@ def test_a_standard_user_reads_the_catalogue(server: Sut, root_token: str) -> No
     assert album.status_code == 200
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-022")
-@allure.story("SCN-AUTHORIZATION-022-B")
+@scenario("SCN-AUTHORIZATION-022-B")
 def test_a_standard_user_cannot_rename_the_catalogue(server: Sut, root_token: str) -> None:
     """A Standard user renaming a film, a music group or an album answers 403 and applies nothing."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -847,9 +780,7 @@ def test_a_standard_user_cannot_rename_the_catalogue(server: Sut, root_token: st
     assert json.loads(stored_album.content)["name"] == "Covered Album"
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-023")
-@allure.story("SCN-AUTHORIZATION-023-G")
+@scenario("SCN-AUTHORIZATION-023-G")
 def test_a_standard_user_cannot_create_a_music_group(server: Sut, root_token: str) -> None:
     """A Standard user creating a music group answers 403 and creates nothing."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -865,9 +796,7 @@ def test_a_standard_user_cannot_create_a_music_group(server: Sut, root_token: st
     assert json.loads(listed.content)["_embedded"]["items"] == []
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-023")
-@allure.story("SCN-AUTHORIZATION-023-G")
+@scenario("SCN-AUTHORIZATION-023-G")
 def test_a_standard_user_cannot_create_a_music_album(server: Sut, root_token: str) -> None:
     """A Standard user creating a music album answers 403 and creates nothing."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -883,9 +812,7 @@ def test_a_standard_user_cannot_create_a_music_album(server: Sut, root_token: st
     assert json.loads(listed.content)["_embedded"]["items"] == []
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-023")
-@allure.story("SCN-AUTHORIZATION-023-B")
+@scenario("SCN-AUTHORIZATION-023-B")
 def test_a_standard_user_cannot_create_a_film(server: Sut, root_token: str) -> None:
     """A Standard user creating a film answers 403 and creates nothing."""
     _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -901,9 +828,7 @@ def test_a_standard_user_cannot_create_a_film(server: Sut, root_token: str) -> N
     assert json.loads(listed.content)["_embedded"]["items"] == []
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-023")
-@allure.story("SCN-AUTHORIZATION-023-F")
+@scenario("SCN-AUTHORIZATION-023-F")
 def test_a_denied_playlist_surface_refuses_creation(server: Sut, root_token: str) -> None:
     """A denied CreateChild on the playlist collection refuses creation and leaves the seeded role intact."""
     alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -937,9 +862,7 @@ def test_a_denied_playlist_surface_refuses_creation(server: Sut, root_token: str
     assert allowed.status_code == 201, "the seeded role grant must survive the deny"
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-040")
-@allure.story("SCN-AUTHORIZATION-040-A")
+@scenario("SCN-AUTHORIZATION-040-A")
 def test_an_unreadable_recording_refuses_the_append(server: Sut, root_token: str) -> None:
     """A caller that cannot read the named recording answers 403 and appends nothing."""
     alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -979,9 +902,7 @@ def test_an_unreadable_recording_refuses_the_append(server: Sut, root_token: str
     assert body["tracks"] == []
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-039")
-@allure.story("SCN-AUTHORIZATION-039-A")
+@scenario("SCN-AUTHORIZATION-039-A")
 def test_a_filtered_film_listing_returns_discoverable_films(server: Sut, root_token: str) -> None:
     """A film hidden from one caller is absent from their listing and present for the root."""
     alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
@@ -1012,9 +933,7 @@ def test_a_filtered_film_listing_returns_discoverable_films(server: Sut, root_to
     assert restored.status_code == 200
 
 
-@allure.epic("Authorization")
-@allure.feature("REQ-AUTHORIZATION-001")
-@allure.story("SCN-AUTHORIZATION-001-C")
+@scenario("SCN-AUTHORIZATION-001-C")
 def test_a_hidden_resource_is_concealed(server: Sut, root_token: str) -> None:
     """A denied film answers 404 for a read and a write, and another user's private file answers 404."""
     alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")

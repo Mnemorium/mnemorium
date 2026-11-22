@@ -278,7 +278,6 @@ where
 mod tests {
     use super::*;
     use crate::application::port::AlbumPlacement;
-    use allure_cargotest::allure_test;
 
     use crate::domain::NumericID;
 
@@ -387,16 +386,10 @@ mod tests {
         });
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-A, SCN-METADATA-ENRICHMENT-028-A, SCN-METADATA-ENRICHMENT-028-D
     #[tokio::test]
     async fn apply_music_album_without_placements_writes_the_structure()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.feature("REQ-METADATA-ENRICHMENT-028");
-        allure.story("SCN-METADATA-ENRICHMENT-024-A");
-        allure.story("SCN-METADATA-ENRICHMENT-028-A");
-        allure.story("SCN-METADATA-ENRICHMENT-028-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -435,15 +428,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-A, SCN-METADATA-ENRICHMENT-028-B
     #[tokio::test]
     async fn apply_music_album_with_placements_moves_the_recordings() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.feature("REQ-METADATA-ENRICHMENT-028");
-        allure.story("SCN-METADATA-ENRICHMENT-024-A");
-        allure.story("SCN-METADATA-ENRICHMENT-028-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -496,12 +484,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-028-C
     #[tokio::test]
     async fn apply_music_album_multi_cd_release_becomes_cd_mediums() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-028");
-        allure.story("SCN-METADATA-ENRICHMENT-028-C");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -545,12 +530,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-E
     #[tokio::test]
     async fn apply_music_album_provider_failure_writes_nothing() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.story("SCN-METADATA-ENRICHMENT-024-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -580,12 +562,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-028-F
     #[tokio::test]
     async fn apply_music_album_rejects_the_default_album() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-028");
-        allure.story("SCN-METADATA-ENRICHMENT-028-F");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -607,12 +586,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-E
     #[tokio::test]
     async fn apply_music_album_without_a_provider_is_unavailable() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.story("SCN-METADATA-ENRICHMENT-024-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -652,13 +628,10 @@ mod tests {
         resources
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-028-G
     #[tokio::test]
     async fn apply_music_album_rejects_a_placement_naming_a_medium_it_does_not_create()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-028");
-        allure.story("SCN-METADATA-ENRICHMENT-028-G");
         // Arrange: a single-CD release materialises one digital medium, so a
         // placement at medium 2 names a medium the apply never creates.
         let mut users = MockUserRepository::new();
@@ -695,14 +668,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-AUTHORIZATION-038-B
     #[tokio::test]
     async fn apply_music_album_refuses_a_caller_without_edit_metadata() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.feature("REQ-AUTHORIZATION-038");
-        allure.story("SCN-AUTHORIZATION-038-B");
         // Arrange: the caller may view the public album but may not edit it.
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -723,14 +692,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-AUTHORIZATION-038-A
     #[tokio::test]
     async fn apply_music_album_conceals_an_album_the_caller_cannot_view()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.feature("REQ-AUTHORIZATION-038");
-        allure.story("SCN-AUTHORIZATION-038-A");
         // Arrange: a private album owned by another user is not the caller's to see.
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -751,12 +716,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-METADATA-ENRICHMENT-024-D
     #[tokio::test]
     async fn apply_music_album_unknown_reference_is_not_found() -> Result<(), Box<dyn Error>> {
-        allure.epic("Metadata enrichment");
-        allure.feature("REQ-METADATA-ENRICHMENT-024");
-        allure.story("SCN-METADATA-ENRICHMENT-024-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;

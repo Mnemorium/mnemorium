@@ -392,7 +392,6 @@ mod tests {
     };
 
     use crate::test_helpers::*;
-    use allure_cargotest::allure_test;
     use std::collections::VecDeque;
     use std::error::Error;
     use std::sync::atomic::Ordering;
@@ -802,16 +801,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-UPLOAD-005-C, SCN-UPLOAD-008-A
     #[tokio::test]
     async fn write_upload_chunk_sealed_upload_returns_completion_in_progress()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Upload");
-        allure.feature("REQ-UPLOAD-005");
-        allure.story("SCN-UPLOAD-005-C");
-        allure.feature("REQ-UPLOAD-008");
-        allure.story("SCN-UPLOAD-008-A");
-
         let hasher = MockContentHasher::new();
         // Arrange: a completion holds the verification seal, so the session is
         // not writable even though it is not finished.

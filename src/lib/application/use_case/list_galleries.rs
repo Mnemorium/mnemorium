@@ -160,7 +160,6 @@ where
 mod tests {
     use super::*;
     use crate::domain::model::{Gallery, Role, User};
-    use allure_cargotest::allure_test;
 
     use crate::domain::port::{MockGalleryRepository, MockUserRepository, RepositoryError};
 
@@ -203,13 +202,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-004-A
     #[tokio::test]
     async fn list_galleries_root_admin_sees_every_gallery_with_item_counts()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-004");
-        allure.story("SCN-GALLERY-004-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 0, Role::Admin)?;
@@ -265,12 +261,9 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-GALLERY-004-B
     #[tokio::test]
     async fn list_galleries_forwards_filters_and_paginates() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-004");
-        allure.story("SCN-GALLERY-004-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -322,12 +315,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-004-A
     #[tokio::test]
     async fn list_galleries_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-004");
-        allure.story("SCN-GALLERY-004-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -348,12 +338,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-004-A
     #[tokio::test]
     async fn list_galleries_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-004");
-        allure.story("SCN-GALLERY-004-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
@@ -376,12 +363,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-GALLERY-004-A
     #[tokio::test]
     async fn list_galleries_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Gallery");
-        allure.feature("REQ-GALLERY-004");
-        allure.story("SCN-GALLERY-004-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;

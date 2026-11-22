@@ -3,7 +3,6 @@
 import os
 import re
 
-import allure
 import pytest
 import yaml
 from conftest import login
@@ -17,6 +16,7 @@ from harness import (
     hex64,
     register,
 )
+from labels import scenario
 from mnemorium_client.api.identity import post_login
 from mnemorium_client.models import LoginRequest
 
@@ -56,17 +56,11 @@ def _restored(sut: Sut, mode: int, *, created_at: int = 1_700_000_000) -> str:
     return sut.sha256(STATE_PATH)
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-001")
-@allure.story("SCN-STATE-001-A")
-@allure.feature("REQ-STATE-002")
-@allure.story("SCN-STATE-002-A")
-@allure.feature("REQ-STATE-003")
-@allure.story("SCN-STATE-003-A")
-@allure.feature("REQ-STATE-004")
-@allure.story("SCN-STATE-004-A")
-@allure.feature("REQ-STATE-008")
-@allure.story("SCN-STATE-008-A")
+@scenario("SCN-STATE-001-A")
+@scenario("SCN-STATE-002-A")
+@scenario("SCN-STATE-003-A")
+@scenario("SCN-STATE-004-A")
+@scenario("SCN-STATE-008-A")
 def test_seeds_are_applied_at_creation(sut: Sut) -> None:
     """The environment's seeds are persisted verbatim, versioned and readable only by the server's account."""
     sut.start(env={PEPPER_ENV: SEED_A, JWT_SECRET_ENV: SEED_B})
@@ -80,11 +74,8 @@ def test_seeds_are_applied_at_creation(sut: Sut) -> None:
     assert sut.mode(STATE_PATH) == 0o600
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-004")
-@allure.story("SCN-STATE-004-B")
-@allure.feature("REQ-STATE-006")
-@allure.story("SCN-STATE-006-B")
+@scenario("SCN-STATE-004-B")
+@scenario("SCN-STATE-006-B")
 def test_secrets_are_generated_when_absent(sut: Sut) -> None:
     """An unseeded first start generates both secrets and creates the state before the datastore."""
     sut.start()
@@ -97,11 +88,8 @@ def test_secrets_are_generated_when_absent(sut: Sut) -> None:
     assert sut.exists(DATABASE_PATH)
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-003")
-@allure.story("SCN-STATE-003-B")
-@allure.feature("REQ-STATE-005")
-@allure.story("SCN-STATE-005-B")
+@scenario("SCN-STATE-003-B")
+@scenario("SCN-STATE-005-B")
 def test_a_persisted_identity_is_reused_silently(sut: Sut) -> None:
     """A restart over the same directory keeps the file byte-identical and starts healthy."""
     sut.start(env={PEPPER_ENV: SEED_A, JWT_SECRET_ENV: SEED_B})
@@ -115,9 +103,7 @@ def test_a_persisted_identity_is_reused_silently(sut: Sut) -> None:
     assert sut.sha256(STATE_PATH) == before
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-002")
-@allure.story("SCN-STATE-002-B")
+@scenario("SCN-STATE-002-B")
 def test_the_signing_secret_survives_a_restart(sut: Sut) -> None:
     """A token issued before the restart still validates afterwards."""
     sut.start(env={PEPPER_ENV: SEED_A, JWT_SECRET_ENV: SEED_B})
@@ -128,9 +114,7 @@ def test_the_signing_secret_survives_a_restart(sut: Sut) -> None:
     assert sut.request("GET", sut.href("current_user"), token=token).status_code == 200
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-001")
-@allure.story("SCN-STATE-001-B")
+@scenario("SCN-STATE-001-B")
 def test_the_pepper_survives_a_restart(sut: Sut) -> None:
     """A password hashed before the restart still verifies afterwards."""
     sut.start(env={PEPPER_ENV: SEED_A, JWT_SECRET_ENV: SEED_B})
@@ -142,9 +126,7 @@ def test_the_pepper_survives_a_restart(sut: Sut) -> None:
     assert login(sut, "alice", SECRET_PASSWORD)
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-004")
-@allure.story("SCN-STATE-004-C")
+@scenario("SCN-STATE-004-C")
 def test_a_changed_pepper_is_refused(sut: Sut) -> None:
     """A pepper that disagrees with the persisted one stops startup and leaves the file untouched."""
     sut.start(env={PEPPER_ENV: SEED_A, JWT_SECRET_ENV: SEED_B})
@@ -160,9 +142,7 @@ def test_a_changed_pepper_is_refused(sut: Sut) -> None:
     assert sut.sha256(STATE_PATH) == before
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-004")
-@allure.story("SCN-STATE-004-C")
+@scenario("SCN-STATE-004-C")
 def test_a_changed_signing_secret_is_refused(sut: Sut) -> None:
     """A signing secret that disagrees with the persisted one stops startup, naming its variable."""
     sut.start(env={PEPPER_ENV: SEED_A, JWT_SECRET_ENV: SEED_B})
@@ -178,9 +158,7 @@ def test_a_changed_signing_secret_is_refused(sut: Sut) -> None:
     assert sut.sha256(STATE_PATH) == before
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-004")
-@allure.story("SCN-STATE-004-C")
+@scenario("SCN-STATE-004-C")
 def test_both_changed_seeds_are_refused(sut: Sut) -> None:
     """Two changed seeds fail startup without either value reaching the output."""
     sut.start(env={PEPPER_ENV: SEED_A, JWT_SECRET_ENV: SEED_B})
@@ -195,9 +173,7 @@ def test_both_changed_seeds_are_refused(sut: Sut) -> None:
     assert sut.sha256(STATE_PATH) == before
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-004")
-@allure.story("SCN-STATE-004-D")
+@scenario("SCN-STATE-004-D")
 def test_a_matching_seed_is_accepted(sut: Sut) -> None:
     """Seeds equal to the persisted ones let startup proceed and change nothing."""
     sut.start(env={PEPPER_ENV: SEED_A, JWT_SECRET_ENV: SEED_B})
@@ -209,9 +185,7 @@ def test_a_matching_seed_is_accepted(sut: Sut) -> None:
     assert sut.sha256(STATE_PATH) == before
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-004")
-@allure.story("SCN-STATE-004-E")
+@scenario("SCN-STATE-004-E")
 @pytest.mark.parametrize("variable", [PEPPER_ENV, JWT_SECRET_ENV])
 def test_a_malformed_seed_is_refused(sut: Sut, variable: str) -> None:
     """A seed that is not 64 hexadecimal characters stops startup, naming the variable and never the value."""
@@ -224,9 +198,7 @@ def test_a_malformed_seed_is_refused(sut: Sut, variable: str) -> None:
     assert value not in failure.output
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-005")
-@allure.story("SCN-STATE-005-A")
+@scenario("SCN-STATE-005-A")
 def test_an_unreadable_identity_stops_startup_early(sut: Sut) -> None:
     """An unreadable identity stops startup before any datastore file exists."""
     sut.write(
@@ -250,9 +222,7 @@ def test_an_unreadable_identity_stops_startup_early(sut: Sut) -> None:
     assert not sut.exists(DATABASE_PATH)
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-006")
-@allure.story("SCN-STATE-006-A")
+@scenario("SCN-STATE-006-A")
 def test_a_datastore_without_an_identity_is_refused(sut: Sut) -> None:
     """A datastore with no identity stops startup: no identity is written and the datastore is untouched."""
     sut.start()
@@ -268,9 +238,7 @@ def test_a_datastore_without_an_identity_is_refused(sut: Sut) -> None:
     assert sut.sha256(DATABASE_PATH) == database
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-006")
-@allure.story("SCN-STATE-006-C")
+@scenario("SCN-STATE-006-C")
 def test_an_identity_without_a_datastore_is_reused(sut: Sut) -> None:
     """A persisted identity outlives its datastore: the file is reused and the datastore recreated."""
     sut.start()
@@ -299,9 +267,7 @@ def test_an_identity_without_a_datastore_is_reused(sut: Sut) -> None:
     assert login(sut, ROOT_ADMIN_USERNAME, sut.root_password())
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-007")
-@allure.story("SCN-STATE-007-E")
+@scenario("SCN-STATE-007-E")
 def test_the_state_is_written_at_the_fixed_path(sut: Sut) -> None:
     """A created state lives at `state.yaml` in the working directory."""
     sut.start()
@@ -310,9 +276,7 @@ def test_the_state_is_written_at_the_fixed_path(sut: Sut) -> None:
     assert _state(sut)["version"] == _STATE_VERSION
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-008")
-@allure.story("SCN-STATE-008-B")
+@scenario("SCN-STATE-008-B")
 def test_a_restored_state_with_a_wider_mode_is_repaired(sut: Sut) -> None:
     """A restored state readable by another account is tightened to `0600` before it is read and reused on restart."""
     before = _restored(sut, 0o644)
@@ -331,9 +295,7 @@ def test_a_restored_state_with_a_wider_mode_is_repaired(sut: Sut) -> None:
     assert sut.mode(STATE_PATH) == 0o600
 
 
-@allure.epic("State")
-@allure.feature("REQ-STATE-008")
-@allure.story("SCN-STATE-008-C")
+@scenario("SCN-STATE-008-C")
 def test_a_private_restored_state_is_accepted(sut: Sut) -> None:
     """A restored state already private to the server account starts and is reused unchanged."""
     before = _restored(sut, 0o600)

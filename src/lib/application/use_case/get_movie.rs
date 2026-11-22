@@ -113,7 +113,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use allure_cargotest::allure_test;
 
     use crate::domain::model::Movie;
 
@@ -140,12 +139,9 @@ mod tests {
         GalleryFactoryHarness::new(unit_of_work)
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-003-A
     #[tokio::test]
     async fn get_movie_returns_the_requested_film() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-003");
-        allure.story("SCN-MOVIES-003-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -185,12 +181,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-003-A
     #[tokio::test]
     async fn get_movie_returns_a_film_with_its_cover() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-003");
-        allure.story("SCN-MOVIES-003-A");
         // Arrange: a film whose artwork is file 19.
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -225,12 +218,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-003-C
     #[tokio::test]
     async fn get_movie_unknown_film_returns_no_such_movie() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-003");
-        allure.story("SCN-MOVIES-003-C");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -256,12 +246,9 @@ mod tests {
         );
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-MOVIES-003-A
     #[tokio::test]
     async fn get_movie_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-003");
-        allure.story("SCN-MOVIES-003-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -282,12 +269,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-003-A
     #[tokio::test]
     async fn get_movie_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-003");
-        allure.story("SCN-MOVIES-003-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;

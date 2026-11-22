@@ -905,7 +905,6 @@ mod tests {
     };
 
     use crate::test_helpers::*;
-    use allure_cargotest::allure_test;
     use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;
     use std::sync::Mutex;
@@ -3113,14 +3112,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-UPLOAD-008-B
     #[tokio::test]
     async fn complete_upload_failure_after_sealing_unseals_for_retry() -> Result<(), Box<dyn Error>>
     {
-        allure.epic("Upload");
-        allure.feature("REQ-UPLOAD-008");
-        allure.story("SCN-UPLOAD-008-B");
-
         // Arrange: the first completion seals the session, fails to hash the
         // staged content and unseals it; the second completion seals and
         // promotes it.
@@ -3134,8 +3129,8 @@ mod tests {
         let mut commit_uploads = MockUploadRepository::new();
         expect_upload(&mut commit_uploads, sealed(pending));
         commit_uploads.expect_finish().times(1).returning(move |_| {
-            let stored = finished.clone();
-            Box::pin(async move { Ok(Some(stored)) })
+            let sealed_upload = finished.clone();
+            Box::pin(async move { Ok(Some(sealed_upload)) })
         });
         let mut files = MockFileRepository::new();
         files
@@ -3143,8 +3138,8 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         files.expect_create().times(1).returning(move |_| {
-            let stored = stored.clone();
-            Box::pin(async move { Ok(stored) })
+            let created = stored.clone();
+            Box::pin(async move { Ok(created) })
         });
         let mut file_storage = MockFileStorage::new();
         file_storage
@@ -3202,14 +3197,10 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-UPLOAD-008-C
     #[tokio::test]
     async fn complete_upload_concurrent_completion_returns_completion_in_progress()
     -> Result<(), Box<dyn Error>> {
-        allure.epic("Upload");
-        allure.feature("REQ-UPLOAD-008");
-        allure.story("SCN-UPLOAD-008-C");
-
         // Arrange: another completion already holds the seal, so sealing is a
         // no-op and the fresh read reports the live session.
         let resolved = sealed(upload(5, 3, 4, &[0], false)?);

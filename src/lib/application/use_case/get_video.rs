@@ -135,7 +135,6 @@ mod tests {
     };
 
     use crate::test_helpers::*;
-    use allure_cargotest::allure_test;
     use std::error::Error;
 
     type UseCase = GetVideo<TestFactory>;
@@ -158,13 +157,9 @@ mod tests {
         })
     }
 
-    #[allure_test]
+    // proves: SCN-VIDEO-003-A
     #[tokio::test]
     async fn a_library_video_is_readable_and_linked() -> Result<(), Box<dyn Error>> {
-        allure.epic("Video");
-        allure.feature("REQ-VIDEO-003");
-        allure.story("SCN-VIDEO-003-A");
-
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9)?;
@@ -212,13 +207,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-VIDEO-003-B
     #[tokio::test]
     async fn a_video_repository_failure_is_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Video");
-        allure.feature("REQ-VIDEO-003");
-        allure.story("SCN-VIDEO-003-B");
-
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9)?;
@@ -244,13 +235,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-VIDEO-003-B
     #[tokio::test]
     async fn an_unknown_video_is_concealed() -> Result<(), Box<dyn Error>> {
-        allure.epic("Video");
-        allure.feature("REQ-VIDEO-003");
-        allure.story("SCN-VIDEO-003-B");
-
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9)?;

@@ -6,7 +6,7 @@ Schemathesis uses) refuses to send such a header at all. That is a transport
 limitation, not a server behaviour, so the cases carrying it are dropped.
 
 The two custom checks are thin wrappers over the pure bodies in `checks.py`, so
-`pytest test/api` runs them without Schemathesis installed.
+the fuzz configuration never restates their rules.
 """
 
 import re

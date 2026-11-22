@@ -238,7 +238,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use allure_cargotest::allure_test;
 
     use crate::domain::NumericID;
 
@@ -304,12 +303,9 @@ mod tests {
         )
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-004-A
     #[tokio::test]
     async fn create_movie_new_film_reports_created() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-004");
-        allure.story("SCN-MOVIES-004-A");
         // Arrange: the video is free and no film or episode backs it.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -363,12 +359,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-004-B
     #[tokio::test]
     async fn create_movie_existing_film_returns_it_unchanged() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-004");
-        allure.story("SCN-MOVIES-004-B");
         // Arrange: the video already backs film 7.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -402,12 +395,9 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-    #[allure_test]
+    // proves: SCN-MOVIES-004-E
     #[tokio::test]
     async fn create_movie_unknown_video_is_unprocessable() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-004");
-        allure.story("SCN-MOVIES-004-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -434,12 +424,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-004-E
     #[tokio::test]
     async fn create_movie_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-004");
-        allure.story("SCN-MOVIES-004-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -471,12 +458,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-004-E
     #[tokio::test]
     async fn create_movie_invalid_country_is_unprocessable() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-004");
-        allure.story("SCN-MOVIES-004-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -508,12 +492,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-004-E
     #[tokio::test]
     async fn create_movie_empty_genre_is_invalid() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-004");
-        allure.story("SCN-MOVIES-004-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -545,12 +526,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-004-C
     #[tokio::test]
     async fn create_movie_video_backing_an_episode_is_conflict() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-004");
-        allure.story("SCN-MOVIES-004-C");
         // Arrange: an episode already backs video 5.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -587,12 +565,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-004-F
     #[tokio::test]
     async fn create_movie_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-004");
-        allure.story("SCN-MOVIES-004-F");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -639,12 +614,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-004-A
     #[tokio::test]
     async fn create_movie_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-004");
-        allure.story("SCN-MOVIES-004-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -668,12 +640,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-MOVIES-004-A
     #[tokio::test]
     async fn create_movie_dependency_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        allure.epic("Movies");
-        allure.feature("REQ-MOVIES-004");
-        allure.story("SCN-MOVIES-004-A");
         // Arrange: the video load fails at the port.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;

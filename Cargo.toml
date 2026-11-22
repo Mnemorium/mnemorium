@@ -173,4 +173,3 @@ wiremock = "0.6.5"
 tempfile = "3"
 tower = "0.5.3"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
-allure-cargotest = "1.6.1"

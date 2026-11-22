@@ -5,9 +5,9 @@ import json
 import time
 from itertools import count
 
-import allure
 from conftest import provision
 from harness import Sut
+from labels import scenario
 from mnemorium_client.api.library import (
     delete_playlist,
     delete_playlist_track,
@@ -137,9 +137,7 @@ DIGITAL = "DIGITAL"
 _ACCOUNTS = count()
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-001")
-@allure.story("SCN-MUSIC-001-A")
+@scenario("SCN-MUSIC-001-A")
 def test_the_album_collection_carries_partial_albums(server: Sut, root_token: str) -> None:
     """The collection carries partial albums, the name filter narrows it, and covers follow their links."""
     response = list_albums.sync_detailed(client=server.client(root_token), name="Collected Album")
@@ -156,9 +154,7 @@ def test_the_album_collection_carries_partial_albums(server: Sut, root_token: st
     assert items[1]["_links"].get("cover") is None
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-001")
-@allure.story("SCN-MUSIC-001-B")
+@scenario("SCN-MUSIC-001-B")
 def test_the_album_collection_filters_on_name(server: Sut, root_token: str) -> None:
     """The name filter returns only the album whose name matches."""
     response = list_albums.sync_detailed(client=server.client(root_token), name="Filtered Album")
@@ -166,9 +162,7 @@ def test_the_album_collection_filters_on_name(server: Sut, root_token: str) -> N
     assert [item["id"] for item in json.loads(response.content)["_embedded"]["items"]] == [FILTERED_ALBUM]
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-002")
-@allure.story("SCN-MUSIC-002-A")
+@scenario("SCN-MUSIC-002-A")
 def test_an_album_detail_read_carries_its_metadata(server: Sut, root_token: str) -> None:
     """An album read carries its identifier, group, metadata, cover and mediums."""
     response = get_album.sync_detailed(DETAIL_ALBUM, client=server.client(root_token))
@@ -186,9 +180,7 @@ def test_an_album_detail_read_carries_its_metadata(server: Sut, root_token: str)
     assert album["_links"]["group"]["href"].endswith(f"/{DETAIL_GROUP}")
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-002")
-@allure.story("SCN-MUSIC-002-B")
+@scenario("SCN-MUSIC-002-B")
 def test_an_album_detail_read_omits_unreported_values(server: Sut, root_token: str) -> None:
     """An album that stores no optional value reports null and no cover link."""
     response = get_album.sync_detailed(BARE_ALBUM, client=server.client(root_token))
@@ -201,10 +193,8 @@ def test_an_album_detail_read_omits_unreported_values(server: Sut, root_token: s
     assert album["_links"].get("cover") is None
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-002")
-@allure.story("SCN-MUSIC-002-C")
-@allure.story("SCN-MUSIC-002-D")
+@scenario("SCN-MUSIC-002-C")
+@scenario("SCN-MUSIC-002-D")
 def test_an_unknown_or_malformed_album_is_refused(server: Sut, root_token: str) -> None:
     """An unknown album answers 404 and a malformed identifier answers 400."""
     unknown = get_album.sync_detailed(UNKNOWN_ID, client=server.client(root_token))
@@ -214,9 +204,7 @@ def test_an_unknown_or_malformed_album_is_refused(server: Sut, root_token: str) 
     assert malformed.status_code == 400, f"malformed album answered {malformed.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-008")
-@allure.story("SCN-MUSIC-008-A")
+@scenario("SCN-MUSIC-008-A")
 def test_a_new_album_is_created(server: Sut, root_token: str) -> None:
     """An album is created from a name and group and holds no medium yet."""
     response = post_album.sync_detailed(
@@ -234,9 +222,7 @@ def test_a_new_album_is_created(server: Sut, root_token: str) -> None:
     assert album["_links"]["group"]["href"].endswith(f"/{NEW_ALBUM_GROUP}")
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-008")
-@allure.story("SCN-MUSIC-008-C")
+@scenario("SCN-MUSIC-008-C")
 def test_an_unnamed_genre_is_stored_as_unknown(server: Sut, root_token: str) -> None:
     """A creation that names no genre stores the UNKNOWN genre."""
     response = post_album.sync_detailed(
@@ -247,9 +233,7 @@ def test_an_unnamed_genre_is_stored_as_unknown(server: Sut, root_token: str) -> 
     assert json.loads(response.content)["genres"] == ["UNKNOWN"]
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-008")
-@allure.story("SCN-MUSIC-008-B")
+@scenario("SCN-MUSIC-008-B")
 def test_an_existing_album_is_returned_unchanged(server: Sut, root_token: str) -> None:
     """The same name and group answers 200 with the stored album and stores no second one."""
     response = post_album.sync_detailed(
@@ -263,9 +247,7 @@ def test_an_existing_album_is_returned_unchanged(server: Sut, root_token: str) -
     assert [item["id"] for item in json.loads(listed.content)["_embedded"]["items"]] == [EXISTING_ALBUM]
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-008")
-@allure.story("SCN-MUSIC-008-D")
+@scenario("SCN-MUSIC-008-D")
 def test_an_album_with_an_unusable_name_is_refused(server: Sut, root_token: str) -> None:
     """An empty or over-long name is refused on creation and update and stores nothing."""
     empty = post_album.sync_detailed(
@@ -300,9 +282,7 @@ def test_an_album_with_an_unusable_name_is_refused(server: Sut, root_token: str)
     assert json.loads(stored.content)["name"] == "Kept Album"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-008")
-@allure.story("SCN-MUSIC-008-D")
+@scenario("SCN-MUSIC-008-D")
 def test_an_album_with_an_unknown_group_is_refused(server: Sut, root_token: str) -> None:
     """A creation or update naming an unknown group answers 422 and stores nothing."""
     name = "Orphan Album"
@@ -322,9 +302,7 @@ def test_an_album_with_an_unknown_group_is_refused(server: Sut, root_token: str)
     assert json.loads(listed.content)["_embedded"]["items"] == []
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-008")
-@allure.story("SCN-MUSIC-008-D")
+@scenario("SCN-MUSIC-008-D")
 def test_an_album_with_an_empty_genre_is_refused(server: Sut, root_token: str) -> None:
     """A creation or update naming an empty genre answers 422 and stores nothing."""
     name = "Empty Genre Album"
@@ -344,9 +322,7 @@ def test_an_album_with_an_empty_genre_is_refused(server: Sut, root_token: str) -
     assert json.loads(listed.content)["_embedded"]["items"] == []
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-029")
-@allure.story("SCN-MUSIC-029-A")
+@scenario("SCN-MUSIC-029-A")
 def test_an_albums_release_date_and_genres_are_updated(server: Sut, root_token: str) -> None:
     """A new release date and genre list are stored and reported."""
     response = patch_album.sync_detailed(
@@ -364,9 +340,7 @@ def test_an_albums_release_date_and_genres_are_updated(server: Sut, root_token: 
     assert set(stored["genres"]) == {"JAZZ", "MODAL"}
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-029")
-@allure.story("SCN-MUSIC-029-B")
+@scenario("SCN-MUSIC-029-B")
 def test_an_albums_optional_value_is_cleared(server: Sut, root_token: str) -> None:
     """A null release date clears the stored value."""
     response = patch_album.sync_detailed(
@@ -380,9 +354,7 @@ def test_an_albums_optional_value_is_cleared(server: Sut, root_token: str) -> No
     assert json.loads(stored.content).get("release_date") is None
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-029")
-@allure.story("SCN-MUSIC-029-C")
+@scenario("SCN-MUSIC-029-C")
 def test_an_album_group_change_that_collides_is_refused(server: Sut, root_token: str) -> None:
     """Moving an album onto another album's name and group answers 409 and applies nothing."""
     response = patch_album.sync_detailed(
@@ -395,9 +367,7 @@ def test_an_album_group_change_that_collides_is_refused(server: Sut, root_token:
     assert stored["_links"]["group"]["href"].endswith(f"/{COLLIDE_SECOND_GROUP}")
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-029")
-@allure.story("SCN-MUSIC-029-D")
+@scenario("SCN-MUSIC-029-D")
 def test_an_absent_album_field_keeps_its_value(server: Sut, root_token: str) -> None:
     """A request that names no production type leaves the stored production type unchanged."""
     response = patch_album.sync_detailed(
@@ -409,11 +379,8 @@ def test_an_absent_album_field_keeps_its_value(server: Sut, root_token: str) -> 
     assert json.loads(response.content)["production_type"] == "LIVE"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-003")
-@allure.story("SCN-MUSIC-003-B")
-@allure.feature("REQ-MUSIC-009")
-@allure.story("SCN-MUSIC-009-A")
+@scenario("SCN-MUSIC-003-B")
+@scenario("SCN-MUSIC-009-A")
 def test_a_medium_is_created(server: Sut, root_token: str) -> None:
     """A medium is created at the named index and read back."""
     created = put_album_medium.sync_detailed(
@@ -431,9 +398,7 @@ def test_a_medium_is_created(server: Sut, root_token: str) -> None:
     assert json.loads(read.content)["type"] == "CD"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-009")
-@allure.story("SCN-MUSIC-009-B")
+@scenario("SCN-MUSIC-009-B")
 def test_a_medium_is_retyped(server: Sut, root_token: str) -> None:
     """A medium is retyped at the same index and keeps its tracks."""
     response = put_album_medium.sync_detailed(
@@ -450,9 +415,7 @@ def test_a_medium_is_retyped(server: Sut, root_token: str) -> None:
     assert json.loads(track.content)["recording_id"] == RETYPE_RECORDING
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-009")
-@allure.story("SCN-MUSIC-009-C")
+@scenario("SCN-MUSIC-009-C")
 def test_a_medium_write_is_idempotent(server: Sut, root_token: str) -> None:
     """Repeating the stored type changes nothing and answers 200."""
     first = put_album_medium.sync_detailed(
@@ -473,9 +436,7 @@ def test_a_medium_write_is_idempotent(server: Sut, root_token: str) -> None:
     assert json.loads(second.content)["type"] == DIGITAL
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-004")
-@allure.story("SCN-MUSIC-004-A")
+@scenario("SCN-MUSIC-004-A")
 def test_a_medium_read_carries_its_type_and_index(server: Sut, root_token: str) -> None:
     """A medium read carries its album-scoped index, type and track count."""
     response = get_album_medium.sync_detailed(MEDIUM_READ_ALBUM, 1, client=server.client(root_token))
@@ -487,10 +448,8 @@ def test_a_medium_read_carries_its_type_and_index(server: Sut, root_token: str) 
     assert medium["track_count"] == 0
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-004")
-@allure.story("SCN-MUSIC-004-B")
-@allure.story("SCN-MUSIC-004-C")
+@scenario("SCN-MUSIC-004-B")
+@scenario("SCN-MUSIC-004-C")
 def test_an_unknown_or_malformed_medium_is_refused(server: Sut, root_token: str) -> None:
     """An unknown album or index answers 404, a malformed index 400 and an out-of-range one 422."""
     unknown_album = get_album_medium.sync_detailed(UNKNOWN_ID, 1, client=server.client(root_token))
@@ -504,9 +463,7 @@ def test_an_unknown_or_malformed_medium_is_refused(server: Sut, root_token: str)
     assert out_of_range.status_code == 422, f"out-of-range index answered {out_of_range.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-009")
-@allure.story("SCN-MUSIC-009-D")
+@scenario("SCN-MUSIC-009-D")
 def test_an_invalid_medium_type_is_refused(server: Sut, root_token: str) -> None:
     """An unsupported type and the default album are refused and store no medium."""
     invalid = put_album_medium.sync_detailed(
@@ -527,9 +484,7 @@ def test_an_invalid_medium_type_is_refused(server: Sut, root_token: str) -> None
     assert get_album_medium.sync_detailed(INVALID_MEDIUM_ALBUM, 1, client=server.client(root_token)).status_code == 404
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-010")
-@allure.story("SCN-MUSIC-010-A")
+@scenario("SCN-MUSIC-010-A")
 def test_a_recording_is_placed(server: Sut, root_token: str) -> None:
     """A recording is placed at an unoccupied destination."""
     response = put_album_track.sync_detailed(
@@ -545,9 +500,7 @@ def test_a_recording_is_placed(server: Sut, root_token: str) -> None:
     assert json.loads(track.content)["recording_id"] == PLACED_RECORDING
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-010")
-@allure.story("SCN-MUSIC-010-B")
+@scenario("SCN-MUSIC-010-B")
 def test_a_recording_is_moved(server: Sut, root_token: str) -> None:
     """A recording moves to a new destination and leaves its previous placement empty."""
     response = put_album_track.sync_detailed(
@@ -564,9 +517,7 @@ def test_a_recording_is_moved(server: Sut, root_token: str) -> None:
     assert json.loads(moved.content)["recording_id"] == MOVED_RECORDING
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-010")
-@allure.story("SCN-MUSIC-010-C")
+@scenario("SCN-MUSIC-010-C")
 def test_a_placement_of_an_unknown_recording_is_refused(server: Sut, root_token: str) -> None:
     """A placement naming no recording answers 422 and stores nothing."""
     response = put_album_track.sync_detailed(
@@ -583,9 +534,7 @@ def test_a_placement_of_an_unknown_recording_is_refused(server: Sut, root_token:
     )
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-010")
-@allure.story("SCN-MUSIC-010-D")
+@scenario("SCN-MUSIC-010-D")
 def test_a_placement_into_an_unknown_destination_is_refused(server: Sut, root_token: str) -> None:
     """A placement into an unknown medium or album answers 404 and stores nothing."""
     unknown_medium = put_album_track.sync_detailed(
@@ -607,9 +556,7 @@ def test_a_placement_into_an_unknown_destination_is_refused(server: Sut, root_to
     assert unknown_album.status_code == 404, f"unknown album answered {unknown_album.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-010")
-@allure.story("SCN-MUSIC-010-E")
+@scenario("SCN-MUSIC-010-E")
 def test_a_placement_into_an_occupied_destination_is_refused(server: Sut, root_token: str) -> None:
     """An occupied destination answers 409 and the default album refuses the write."""
     occupied = put_album_track.sync_detailed(
@@ -633,9 +580,7 @@ def test_a_placement_into_an_occupied_destination_is_refused(server: Sut, root_t
     assert json.loads(stored.content)["recording_id"] == OCCUPIED_RECORDING
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-011")
-@allure.story("SCN-MUSIC-011-A")
+@scenario("SCN-MUSIC-011-A")
 def test_a_recording_rename_reaches_the_playlist(server: Sut, root_token: str) -> None:
     """Renaming a recording through a track reaches every playlist entry that references it."""
     alice_id, alice = provision(
@@ -671,9 +616,7 @@ def test_a_recording_rename_reaches_the_playlist(server: Sut, root_token: str) -
     assert json.loads(entry.content)["name"] == "Renamed Song"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-011")
-@allure.story("SCN-MUSIC-011-B")
+@scenario("SCN-MUSIC-011-B")
 def test_a_recording_field_is_cleared(server: Sut, root_token: str) -> None:
     """A null name and ISRC clear the stored values."""
     response = patch_album_track.sync_detailed(
@@ -692,9 +635,7 @@ def test_a_recording_field_is_cleared(server: Sut, root_token: str) -> None:
     assert json.loads(stored.content)["name"] is None
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-011")
-@allure.story("SCN-MUSIC-011-C")
+@scenario("SCN-MUSIC-011-C")
 def test_a_duplicate_isrc_is_refused(server: Sut, root_token: str) -> None:
     """An ISRC already held by another recording answers 409."""
     first = patch_album_track.sync_detailed(
@@ -718,9 +659,7 @@ def test_a_duplicate_isrc_is_refused(server: Sut, root_token: str) -> None:
     assert json.loads(stored.content).get("isrc_code") is None
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-011")
-@allure.story("SCN-MUSIC-011-C")
+@scenario("SCN-MUSIC-011-C")
 def test_a_malformed_isrc_is_refused(server: Sut, root_token: str) -> None:
     """An ISRC that is not twelve valid characters answers 422."""
     response = patch_album_track.sync_detailed(
@@ -735,9 +674,7 @@ def test_a_malformed_isrc_is_refused(server: Sut, root_token: str) -> None:
     assert json.loads(stored.content).get("isrc_code") is None
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-011")
-@allure.story("SCN-MUSIC-011-D")
+@scenario("SCN-MUSIC-011-D")
 def test_an_unknown_track_is_refused(server: Sut, root_token: str) -> None:
     """An unknown album, medium or position answers 404."""
     unknown_track = patch_album_track.sync_detailed(
@@ -767,9 +704,7 @@ def test_an_unknown_track_is_refused(server: Sut, root_token: str) -> None:
     assert unknown_medium.status_code == 404, f"unknown medium answered {unknown_medium.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-011")
-@allure.story("SCN-MUSIC-011-E")
+@scenario("SCN-MUSIC-011-E")
 def test_editing_a_default_album_track_is_refused(server: Sut, root_token: str) -> None:
     """A track edit on the default album answers 422 and stores no track."""
     protected = patch_album_track.sync_detailed(
@@ -785,11 +720,8 @@ def test_editing_a_default_album_track_is_refused(server: Sut, root_token: str) 
     assert stored.status_code == 404, f"protected album gained a track: {stored.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-007")
-@allure.story("SCN-MUSIC-007-A")
-@allure.feature("REQ-MUSIC-006")
-@allure.story("SCN-MUSIC-006-A")
+@scenario("SCN-MUSIC-007-A")
+@scenario("SCN-MUSIC-006-A")
 def test_a_track_read_carries_its_recording(server: Sut, root_token: str) -> None:
     """A track read carries its position, recording, file, links and no artwork of its own."""
     response = get_album_track.sync_detailed(TRACK_READ_ALBUM, 1, 0, client=server.client(root_token))
@@ -814,9 +746,7 @@ def test_a_track_read_carries_its_recording(server: Sut, root_token: str) -> Non
     assert cover.json()["id"] == TRACK_ALBUM_IMAGE
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-005")
-@allure.story("SCN-MUSIC-005-A")
+@scenario("SCN-MUSIC-005-A")
 def test_a_mediums_tracks_are_listed(server: Sut, root_token: str) -> None:
     """The tracks of a medium are listed in ascending index order."""
     response = get_album_track_list.sync_detailed(TRACK_LIST_ALBUM, 1, client=server.client(root_token))
@@ -828,12 +758,9 @@ def test_a_mediums_tracks_are_listed(server: Sut, root_token: str) -> None:
     assert all("cover_image_id" not in item for item in items)
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-005")
-@allure.story("SCN-MUSIC-005-B")
-@allure.feature("REQ-MUSIC-006")
-@allure.story("SCN-MUSIC-006-B")
-@allure.story("SCN-MUSIC-006-C")
+@scenario("SCN-MUSIC-005-B")
+@scenario("SCN-MUSIC-006-B")
+@scenario("SCN-MUSIC-006-C")
 def test_an_unknown_or_unsequenced_track_position_is_refused(server: Sut, root_token: str) -> None:
     """An unsequenced position, unknown medium, or malformed index is refused."""
     unsequenced = get_album_track.sync_detailed(POSITION_ALBUM, 1, 1, client=server.client(root_token))
@@ -847,9 +774,7 @@ def test_an_unknown_or_unsequenced_track_position_is_refused(server: Sut, root_t
     assert malformed_track.status_code == 400, f"malformed track answered {malformed_track.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-014")
-@allure.story("SCN-MUSIC-014-A")
+@scenario("SCN-MUSIC-014-A")
 def test_a_group_is_created(server: Sut, root_token: str) -> None:
     """A group is created with a valid name and no cover."""
     response = post_music_group.sync_detailed(
@@ -864,9 +789,7 @@ def test_a_group_is_created(server: Sut, root_token: str) -> None:
     assert group["_links"].get("cover") is None
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-014")
-@allure.story("SCN-MUSIC-014-B")
+@scenario("SCN-MUSIC-014-B")
 def test_a_group_stores_its_library_artwork(server: Sut, root_token: str) -> None:
     """A creation naming an existing LIBRARY image stores it as the cover."""
     response = post_music_group.sync_detailed(
@@ -882,9 +805,7 @@ def test_a_group_stores_its_library_artwork(server: Sut, root_token: str) -> Non
     assert cover.json()["id"] == FREE_GROUP_IMAGE
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-014")
-@allure.story("SCN-MUSIC-014-C")
+@scenario("SCN-MUSIC-014-C")
 def test_a_duplicate_group_name_is_refused(server: Sut, root_token: str) -> None:
     """A name another group holds answers 409 and creates nothing."""
     response = post_music_group.sync_detailed(
@@ -894,9 +815,7 @@ def test_a_duplicate_group_name_is_refused(server: Sut, root_token: str) -> None
     assert response.status_code == 409, f"duplicate group accepted: {response.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-014")
-@allure.story("SCN-MUSIC-014-D")
+@scenario("SCN-MUSIC-014-D")
 def test_a_group_with_an_invalid_name_is_refused(server: Sut, root_token: str) -> None:
     """An empty or over-long name answers 422."""
     empty = post_music_group.sync_detailed(
@@ -917,9 +836,7 @@ def test_a_group_with_an_invalid_name_is_refused(server: Sut, root_token: str) -
     assert padded.status_code == 422, f"padded name accepted: {padded.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-014")
-@allure.story("SCN-MUSIC-014-D")
+@scenario("SCN-MUSIC-014-D")
 def test_a_group_with_unusable_artwork_is_refused(server: Sut, root_token: str) -> None:
     """A cover naming no image answers 409."""
     response = post_music_group.sync_detailed(
@@ -929,10 +846,8 @@ def test_a_group_with_unusable_artwork_is_refused(server: Sut, root_token: str) 
     assert response.status_code == 409, f"unusable artwork accepted: {response.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-012")
-@allure.story("SCN-MUSIC-012-A")
-@allure.story("SCN-MUSIC-012-B")
+@scenario("SCN-MUSIC-012-A")
+@scenario("SCN-MUSIC-012-B")
 def test_the_group_collection_lists_and_filters(server: Sut, root_token: str) -> None:
     """The collection carries partial groups and the name filter narrows it."""
     listed = list_music_groups.sync_detailed(client=server.client(root_token), name="Listed One")
@@ -946,9 +861,7 @@ def test_the_group_collection_lists_and_filters(server: Sut, root_token: str) ->
     assert [item["id"] for item in json.loads(filtered.content)["_embedded"]["items"]] == [LISTED_TWO]
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-013")
-@allure.story("SCN-MUSIC-013-A")
+@scenario("SCN-MUSIC-013-A")
 def test_a_group_detail_read_carries_its_representation(server: Sut, root_token: str) -> None:
     """A group read carries its identifier, name, cover and cover link."""
     response = get_music_group.sync_detailed(DETAIL_GROUP_ENTITY, client=server.client(root_token))
@@ -963,18 +876,14 @@ def test_a_group_detail_read_carries_its_representation(server: Sut, root_token:
     assert cover.json()["id"] == DETAIL_GROUP_IMAGE
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-013")
-@allure.story("SCN-MUSIC-013-B")
+@scenario("SCN-MUSIC-013-B")
 def test_an_unknown_group_is_refused(server: Sut, root_token: str) -> None:
     """An unknown group answers 404."""
     response = get_music_group.sync_detailed(UNKNOWN_ID, client=server.client(root_token))
     assert response.status_code == 404, f"unknown group answered {response.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-015")
-@allure.story("SCN-MUSIC-015-A")
+@scenario("SCN-MUSIC-015-A")
 def test_a_group_is_renamed_keeping_its_artwork(server: Sut, root_token: str) -> None:
     """A rename replaces the name and keeps the stored cover."""
     response = patch_music_group.sync_detailed(
@@ -989,9 +898,7 @@ def test_a_group_is_renamed_keeping_its_artwork(server: Sut, root_token: str) ->
     assert group["cover_image_id"] == COVERED_ALBUM_IMAGE
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-015")
-@allure.story("SCN-MUSIC-015-B")
+@scenario("SCN-MUSIC-015-B")
 def test_group_artwork_is_replaced(server: Sut, root_token: str) -> None:
     """A supplied LIBRARY image replaces the stored cover."""
     response = patch_music_group.sync_detailed(
@@ -1003,9 +910,7 @@ def test_group_artwork_is_replaced(server: Sut, root_token: str) -> None:
     assert json.loads(response.content)["cover_image_id"] == TRACK_ALBUM_IMAGE
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-015")
-@allure.story("SCN-MUSIC-015-C")
+@scenario("SCN-MUSIC-015-C")
 def test_group_artwork_is_cleared(server: Sut, root_token: str) -> None:
     """A null cover clears the stored cover and drops its link."""
     response = patch_music_group.sync_detailed(
@@ -1020,9 +925,7 @@ def test_group_artwork_is_cleared(server: Sut, root_token: str) -> None:
     assert group["_links"].get("cover") is None
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-015")
-@allure.story("SCN-MUSIC-015-D")
+@scenario("SCN-MUSIC-015-D")
 def test_a_group_rename_that_collides_is_refused(server: Sut, root_token: str) -> None:
     """A name another group holds answers 409 and applies nothing."""
     response = patch_music_group.sync_detailed(
@@ -1035,9 +938,7 @@ def test_a_group_rename_that_collides_is_refused(server: Sut, root_token: str) -
     assert stored["name"] == "Renamed Group"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-015")
-@allure.story("SCN-MUSIC-015-E")
+@scenario("SCN-MUSIC-015-E")
 def test_a_group_rename_with_an_invalid_name_is_refused(server: Sut, root_token: str) -> None:
     """An empty or over-long name answers 422 and applies nothing."""
     empty = patch_music_group.sync_detailed(
@@ -1063,9 +964,7 @@ def test_a_group_rename_with_an_invalid_name_is_refused(server: Sut, root_token:
     assert stored["name"] == "Invalid Name Group"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-017")
-@allure.story("SCN-MUSIC-017-A")
+@scenario("SCN-MUSIC-017-A")
 def test_the_album_representation_names_its_group(server: Sut, root_token: str) -> None:
     """An album representation carries a group link naming its group."""
     response = get_album.sync_detailed(NAMING_ALBUM, client=server.client(root_token))
@@ -1073,9 +972,7 @@ def test_the_album_representation_names_its_group(server: Sut, root_token: str) 
     assert json.loads(response.content)["_links"]["group"]["href"].endswith(f"/{ALBUM_GROUP}")
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-017")
-@allure.story("SCN-MUSIC-017-B")
+@scenario("SCN-MUSIC-017-B")
 def test_an_album_moves_group(server: Sut, root_token: str) -> None:
     """An update naming another group stores the album under it."""
     response = patch_album.sync_detailed(
@@ -1088,9 +985,7 @@ def test_an_album_moves_group(server: Sut, root_token: str) -> None:
     assert stored["_links"]["group"]["href"].endswith(f"/{MOVE_TARGET_GROUP}")
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-016")
-@allure.story("SCN-MUSIC-016-A")
+@scenario("SCN-MUSIC-016-A")
 def test_the_default_album_and_group_are_readable(server: Sut, root_token: str) -> None:
     """The default album and group answer 200 with their representations."""
     album = get_album.sync_detailed(DEFAULT_ALBUM, client=server.client(root_token))
@@ -1102,9 +997,7 @@ def test_the_default_album_and_group_are_readable(server: Sut, root_token: str) 
     assert json.loads(group.content)["name"] == "Unknown"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-016")
-@allure.story("SCN-MUSIC-016-B")
+@scenario("SCN-MUSIC-016-B")
 def test_a_default_group_write_is_refused(server: Sut, root_token: str) -> None:
     """A rename or cover replacement on the default group answers 409 and applies nothing."""
     rename = patch_music_group.sync_detailed(
@@ -1124,9 +1017,7 @@ def test_a_default_group_write_is_refused(server: Sut, root_token: str) -> None:
     assert stored["name"] == "Unknown"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-016")
-@allure.story("SCN-MUSIC-016-C")
+@scenario("SCN-MUSIC-016-C")
 def test_a_default_album_write_is_refused(server: Sut, root_token: str) -> None:
     """An update, medium write or track write on the default album is refused and applies nothing."""
     updated = patch_album.sync_detailed(
@@ -1155,9 +1046,7 @@ def test_a_default_album_write_is_refused(server: Sut, root_token: str) -> None:
     assert stored["name"] == "Unknown"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-019")
-@allure.story("SCN-MUSIC-019-A")
+@scenario("SCN-MUSIC-019-A")
 def test_a_private_playlist_is_created(server: Sut, root_token: str) -> None:
     """A creation with no visibility is private and owned by the caller."""
     alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1176,9 +1065,7 @@ def test_a_private_playlist_is_created(server: Sut, root_token: str) -> None:
     assert playlist.get("cover_image_id") is None
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-019")
-@allure.story("SCN-MUSIC-019-B")
+@scenario("SCN-MUSIC-019-B")
 def test_a_public_playlist_is_created(server: Sut, root_token: str) -> None:
     """A creation naming is_public stores a public playlist."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1190,9 +1077,7 @@ def test_a_public_playlist_is_created(server: Sut, root_token: str) -> None:
     assert json.loads(response.content)["is_public"] is True
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-019")
-@allure.story("SCN-MUSIC-019-C")
+@scenario("SCN-MUSIC-019-C")
 def test_a_playlist_with_a_malformed_name_is_refused(server: Sut, root_token: str) -> None:
     """An empty or over-long name answers 422 and creates nothing."""
     alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1216,9 +1101,7 @@ def test_a_playlist_with_a_malformed_name_is_refused(server: Sut, root_token: st
     assert json.loads(listed.content)["items"] == []
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-030")
-@allure.story("SCN-MUSIC-030-A")
+@scenario("SCN-MUSIC-030-A")
 def test_a_playlist_name_with_surrounding_whitespace_is_refused(server: Sut, root_token: str) -> None:
     """A name that begins or ends with whitespace answers 422 on creation and rename."""
     alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1247,9 +1130,7 @@ def test_a_playlist_name_with_surrounding_whitespace_is_refused(server: Sut, roo
     assert stored["name"] == "Kept Playlist"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-030")
-@allure.story("SCN-MUSIC-030-B")
+@scenario("SCN-MUSIC-030-B")
 def test_a_duplicate_playlist_name_is_refused(server: Sut, root_token: str) -> None:
     """A name the caller already owns answers 409."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1266,9 +1147,7 @@ def test_a_duplicate_playlist_name_is_refused(server: Sut, root_token: str) -> N
     assert duplicate.status_code == 409, f"duplicate name accepted: {duplicate.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-030")
-@allure.story("SCN-MUSIC-030-C")
+@scenario("SCN-MUSIC-030-C")
 def test_two_owners_may_share_a_playlist_name(server: Sut, root_token: str) -> None:
     """Two callers may each hold a playlist with the same name."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1287,9 +1166,7 @@ def test_two_owners_may_share_a_playlist_name(server: Sut, root_token: str) -> N
     assert json.loads(first.content)["id"] != json.loads(second.content)["id"]
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-018")
-@allure.story("SCN-MUSIC-018-A")
+@scenario("SCN-MUSIC-018-A")
 def test_the_playlist_collection_lists_owned_and_public(server: Sut, root_token: str) -> None:
     """The collection filter returns the caller's own playlists and the public ones."""
     alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1319,9 +1196,7 @@ def test_the_playlist_collection_lists_owned_and_public(server: Sut, root_token:
     assert [item["id"] for item in json.loads(visible.content)["items"]] == [public["id"]]
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-018")
-@allure.story("SCN-MUSIC-018-C")
+@scenario("SCN-MUSIC-018-C")
 def test_another_owners_private_playlist_is_filtered_out(server: Sut, root_token: str) -> None:
     """Another owner's private playlist is absent from the caller's collection."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1336,9 +1211,7 @@ def test_another_owners_private_playlist_is_filtered_out(server: Sut, root_token
     assert json.loads(listed.content)["items"] == []
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-018")
-@allure.story("SCN-MUSIC-018-B")
+@scenario("SCN-MUSIC-018-B")
 def test_the_playlist_collection_filters(server: Sut, root_token: str) -> None:
     """The collection applies every filter together."""
     alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1367,12 +1240,9 @@ def test_the_playlist_collection_filters(server: Sut, root_token: str) -> None:
     assert [item["id"] for item in json.loads(by_owner.content)["items"]] == [private["id"]]
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-021")
-@allure.story("SCN-MUSIC-021-A")
-@allure.story("SCN-MUSIC-021-B")
-@allure.feature("REQ-MUSIC-023")
-@allure.story("SCN-MUSIC-023-A")
+@scenario("SCN-MUSIC-021-A")
+@scenario("SCN-MUSIC-021-B")
+@scenario("SCN-MUSIC-023-A")
 def test_a_playlist_detail_read_carries_its_tracks(server: Sut, root_token: str) -> None:
     """A playlist read carries its metadata and its tracks in ascending index order."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1401,9 +1271,7 @@ def test_a_playlist_detail_read_carries_its_tracks(server: Sut, root_token: str)
     assert json.loads(alias.content)["tracks"] == tracks
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-021")
-@allure.story("SCN-MUSIC-021-C")
+@scenario("SCN-MUSIC-021-C")
 def test_an_unknown_or_malformed_playlist_is_refused(server: Sut, root_token: str) -> None:
     """An unknown, malformed or another owner's private playlist answers 404 or 400."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1424,9 +1292,7 @@ def test_an_unknown_or_malformed_playlist_is_refused(server: Sut, root_token: st
     assert invisible.status_code == 404, f"private playlist answered {invisible.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-024")
-@allure.story("SCN-MUSIC-024-A")
+@scenario("SCN-MUSIC-024-A")
 def test_playlist_metadata_is_replaced(server: Sut, root_token: str) -> None:
     """A metadata update replaces the name and visibility and advances the last-modified time."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1454,9 +1320,7 @@ def test_playlist_metadata_is_replaced(server: Sut, root_token: str) -> None:
     )
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-024")
-@allure.story("SCN-MUSIC-024-B")
+@scenario("SCN-MUSIC-024-B")
 def test_an_empty_playlist_update_changes_nothing(server: Sut, root_token: str) -> None:
     """An update carrying no metadata field leaves the playlist unchanged."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1478,9 +1342,7 @@ def test_an_empty_playlist_update_changes_nothing(server: Sut, root_token: str) 
     assert updated["is_public"] is False
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-024")
-@allure.story("SCN-MUSIC-024-C")
+@scenario("SCN-MUSIC-024-C")
 def test_a_playlist_rename_that_collides_is_refused(server: Sut, root_token: str) -> None:
     """A rename onto another playlist's name of the same owner answers 409."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1507,9 +1369,7 @@ def test_a_playlist_rename_that_collides_is_refused(server: Sut, root_token: str
     assert stored["name"] == "First Playlist"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-024")
-@allure.story("SCN-MUSIC-024-C")
+@scenario("SCN-MUSIC-024-C")
 def test_a_playlist_rename_with_an_invalid_name_is_refused(server: Sut, root_token: str) -> None:
     """An empty or over-long rename answers 422 and applies nothing."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1543,9 +1403,7 @@ def test_a_playlist_rename_with_an_invalid_name_is_refused(server: Sut, root_tok
     assert stored["name"] == "Valid Playlist"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-025")
-@allure.story("SCN-MUSIC-025-A")
+@scenario("SCN-MUSIC-025-A")
 def test_a_recording_is_appended(server: Sut, root_token: str) -> None:
     """Two recordings append at contiguous indices."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1568,9 +1426,7 @@ def test_a_recording_is_appended(server: Sut, root_token: str) -> None:
     assert stored["track_count"] == 2
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-025")
-@allure.story("SCN-MUSIC-025-C")
+@scenario("SCN-MUSIC-025-C")
 def test_an_unusable_target_recording_is_refused(server: Sut, root_token: str) -> None:
     """An unknown recording answers 422 and a duplicate answers 409."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1603,11 +1459,8 @@ def test_an_unusable_target_recording_is_refused(server: Sut, root_token: str) -
     assert [track["recording_id"] for track in stored["tracks"]] == [KNOWN_TARGET_RECORDING]
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-022")
-@allure.story("SCN-MUSIC-022-A")
-@allure.feature("REQ-MUSIC-023")
-@allure.story("SCN-MUSIC-023-B")
+@scenario("SCN-MUSIC-022-A")
+@scenario("SCN-MUSIC-023-B")
 def test_a_playlist_track_read_carries_its_recording(server: Sut, root_token: str) -> None:
     """A playlist track carries its recording, file, name, ISRC and playlist link, and no artwork."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1637,9 +1490,7 @@ def test_a_playlist_track_read_carries_its_recording(server: Sut, root_token: st
     assert track["_links"].get("cover") is None
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-022")
-@allure.story("SCN-MUSIC-022-B")
+@scenario("SCN-MUSIC-022-B")
 def test_an_unsequenced_playlist_position_is_refused(server: Sut, root_token: str) -> None:
     """An index the playlist does not sequence answers 404."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1653,9 +1504,7 @@ def test_an_unsequenced_playlist_position_is_refused(server: Sut, root_token: st
     assert response.status_code == 404, f"unsequenced index answered {response.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-026")
-@allure.story("SCN-MUSIC-026-A")
+@scenario("SCN-MUSIC-026-A")
 def test_a_track_is_removed(server: Sut, root_token: str) -> None:
     """Removing an occurrence answers 204 and leaves the playlist empty."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1678,9 +1527,7 @@ def test_a_track_is_removed(server: Sut, root_token: str) -> None:
     assert get_playlist_track.sync_detailed(playlist["id"], 0, client=server.client(alice)).status_code == 404
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-026")
-@allure.story("SCN-MUSIC-026-B")
+@scenario("SCN-MUSIC-026-B")
 def test_a_removed_tracks_recording_survives(server: Sut, root_token: str) -> None:
     """A removed occurrence leaves the recording readable through its album."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1703,9 +1550,7 @@ def test_a_removed_tracks_recording_survives(server: Sut, root_token: str) -> No
     assert json.loads(track.content)["recording_id"] == SURVIVING_RECORDING
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-026")
-@allure.story("SCN-MUSIC-026-C")
+@scenario("SCN-MUSIC-026-C")
 def test_removing_an_unsequenced_position_is_refused(server: Sut, root_token: str) -> None:
     """Removing an index the playlist does not sequence answers 404."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1719,9 +1564,7 @@ def test_removing_an_unsequenced_position_is_refused(server: Sut, root_token: st
     assert response.status_code == 404, f"unsequenced removal answered {response.status_code}"
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-027")
-@allure.story("SCN-MUSIC-027-A")
+@scenario("SCN-MUSIC-027-A")
 def test_the_tracks_of_a_playlist_are_reordered(server: Sut, root_token: str) -> None:
     """A complete permutation reindexes the tracks in the requested order."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1750,9 +1593,7 @@ def test_the_tracks_of_a_playlist_are_reordered(server: Sut, root_token: str) ->
     assert [track["recording_id"] for track in tracks] == [ORDERED_RECORDINGS[2], *ORDERED_RECORDINGS[:2]]
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-027")
-@allure.story("SCN-MUSIC-027-B")
+@scenario("SCN-MUSIC-027-B")
 def test_an_incomplete_permutation_is_refused(server: Sut, root_token: str) -> None:
     """An incomplete, duplicated or unknown permutation answers 422 and leaves the order unchanged."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1781,9 +1622,7 @@ def test_an_incomplete_permutation_is_refused(server: Sut, root_token: str) -> N
     assert [track["recording_id"] for track in stored["tracks"]] == list(PERMUTATION_RECORDINGS)
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-028")
-@allure.story("SCN-MUSIC-028-A")
+@scenario("SCN-MUSIC-028-A")
 def test_a_playlist_is_deleted(server: Sut, root_token: str) -> None:
     """Deleting a playlist answers 204 and removes it."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1804,9 +1643,7 @@ def test_a_playlist_is_deleted(server: Sut, root_token: str) -> None:
     assert get_playlist.sync_detailed(playlist["id"], client=server.client(alice)).status_code == 404
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-028")
-@allure.story("SCN-MUSIC-028-B")
+@scenario("SCN-MUSIC-028-B")
 def test_a_deleted_playlists_recordings_survive(server: Sut, root_token: str) -> None:
     """A deleted playlist leaves its recordings readable through their album."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1829,9 +1666,7 @@ def test_a_deleted_playlists_recordings_survive(server: Sut, root_token: str) ->
     assert json.loads(track.content)["recording_id"] == DELETED_SURVIVOR_RECORDING
 
 
-@allure.epic("Music")
-@allure.feature("REQ-MUSIC-028")
-@allure.story("SCN-MUSIC-028-C")
+@scenario("SCN-MUSIC-028-C")
 def test_deleting_an_unknown_playlist_is_refused(server: Sut, root_token: str) -> None:
     """Deleting an unknown playlist answers 404."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")

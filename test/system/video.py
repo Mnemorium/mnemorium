@@ -4,9 +4,9 @@ import json
 from datetime import UTC, datetime
 from itertools import count
 
-import allure
 from conftest import SEED_MEDIA_DIRECTORY, upload
 from harness import Sut
+from labels import scenario
 from mnemorium_client.api.asset import get_video
 
 VIDEO_CONTENT_TYPE = "video/mp4"
@@ -36,9 +36,7 @@ def video_bytes() -> bytes:
     )
 
 
-@allure.epic("Video")
-@allure.feature("REQ-VIDEO-001")
-@allure.story("SCN-VIDEO-001-A")
+@scenario("SCN-VIDEO-001-A")
 def test_a_video_file_creates_one_video(server: Sut, root_token: str) -> None:
     """A video upload leaves one video backed by the uploaded file."""
     file = upload(server, root_token, "clip.mp4", video_bytes(), VIDEO_CONTENT_TYPE)
@@ -52,9 +50,7 @@ def test_a_video_file_creates_one_video(server: Sut, root_token: str) -> None:
     assert file["_links"]["video"]["href"].endswith(f"/{video['id']}")
 
 
-@allure.epic("Video")
-@allure.feature("REQ-VIDEO-001")
-@allure.story("SCN-VIDEO-001-B")
+@scenario("SCN-VIDEO-001-B")
 def test_a_file_backs_one_video(server: Sut, root_token: str) -> None:
     """Uploading the same content twice reuses the stored file and its one video."""
     data = video_bytes()
@@ -78,9 +74,7 @@ def test_a_file_backs_one_video(server: Sut, root_token: str) -> None:
     assert second_video["id"] == first_video["id"], "the second registration created a second video"
 
 
-@allure.epic("Video")
-@allure.feature("REQ-VIDEO-001")
-@allure.story("SCN-VIDEO-001-C")
+@scenario("SCN-VIDEO-001-C")
 def test_image_and_audio_content_create_no_video(server: Sut, root_token: str) -> None:
     """Image and audio uploads leave the file without a video."""
     image = upload(
@@ -102,9 +96,7 @@ def test_image_and_audio_content_create_no_video(server: Sut, root_token: str) -
     assert "video" not in audio["_links"]
 
 
-@allure.epic("Video")
-@allure.feature("REQ-VIDEO-002")
-@allure.story("SCN-VIDEO-002-A")
+@scenario("SCN-VIDEO-002-A")
 def test_the_measurements_are_reported(server: Sut, root_token: str) -> None:
     """The representation carries the codec, colour identifier, duration, frame count and dimensions."""
     file = upload(server, root_token, "clip.mp4", video_bytes(), VIDEO_CONTENT_TYPE)
@@ -121,9 +113,7 @@ def test_the_measurements_are_reported(server: Sut, root_token: str) -> None:
     assert (video["width"], video["height"]) == (WIDTH, HEIGHT)
 
 
-@allure.epic("Video")
-@allure.feature("REQ-VIDEO-002")
-@allure.story("SCN-VIDEO-002-B")
+@scenario("SCN-VIDEO-002-B")
 def test_a_progressive_stream_reports_a_progressive_scan(server: Sut, root_token: str) -> None:
     """A stream whose content reports a progressive scan carries `PROGRESSIVE`."""
     file = upload(server, root_token, "clip.mp4", video_bytes(), VIDEO_CONTENT_TYPE)
@@ -136,9 +126,7 @@ def test_a_progressive_stream_reports_a_progressive_scan(server: Sut, root_token
     assert video["scan_type"] == SCAN_TYPE
 
 
-@allure.epic("Video")
-@allure.feature("REQ-VIDEO-002")
-@allure.story("SCN-VIDEO-002-C")
+@scenario("SCN-VIDEO-002-C")
 def test_a_video_carries_no_name(server: Sut, root_token: str) -> None:
     """The representation carries no name field, whatever the uploaded file was called."""
     file = upload(server, root_token, "named-clip.mp4", video_bytes(), VIDEO_CONTENT_TYPE)

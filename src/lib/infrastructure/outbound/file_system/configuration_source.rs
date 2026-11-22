@@ -170,7 +170,6 @@ mod tests {
     use crate::domain::model::SeedProfile;
     use crate::domain::model::{Configuration, PartialAsset, Rotation};
 
-    use allure_cargotest::allure_test;
     use std::error::Error;
     use std::fs;
     use tempfile::tempdir;
@@ -530,13 +529,9 @@ mod tests {
         Ok(())
     }
 
-    #[allure_test]
+    // proves: SCN-CONFIGURATION-004-D
     #[test]
     fn configuration_source_unreadable_path_is_rejected() -> Result<(), Box<dyn Error>> {
-        allure.epic("Configuration");
-        allure.feature("REQ-CONFIGURATION-004");
-        allure.story("SCN-CONFIGURATION-004-D");
-
         // Arrange: a directory stands in for `config.yaml`, so the path exists but holds no readable document.
         let directory = tempdir()?;
         let path = directory.path().join("config.yaml");

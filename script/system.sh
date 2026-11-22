@@ -15,7 +15,6 @@
 #   IMAGE=...   image tag (default: mnemorium:latest), exported as MNEMORIUM_IMAGE
 #   PYTEST_WORKERS=...  run that many pytest-xdist workers in parallel (default: serial)
 #   JUNIT_XML=FILE  also write the JUnit report to FILE
-#   ALLURE_RESULTS_DIR=DIR  also write Allure results to DIR
 #   BUILDX_CACHE_DIR=DIR  build with a local buildx cache at DIR (default: docker build)
 #
 # See docs/development/TechnicalDesign.md, "Testing" and "System test".
@@ -69,9 +68,6 @@ if [[ -n ${PYTEST_WORKERS:-} ]]; then
 fi
 if [[ -n ${JUNIT_XML:-} ]]; then
 	PYTEST_ARGS+=("--junitxml=${JUNIT_XML}")
-fi
-if [[ -n ${ALLURE_RESULTS_DIR:-} ]]; then
-	PYTEST_ARGS+=(--alluredir="${ALLURE_RESULTS_DIR}")
 fi
 
 echo "==> Running system tests"

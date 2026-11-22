@@ -1,6 +1,5 @@
 """Black-box proof of the `api` capability's hypermedia semantics."""
 
-import allure
 import pytest
 from conftest import (
     FIXTURE_DIRECTORY,
@@ -18,6 +17,7 @@ from harness import (
     expand_template,
     link_of,
 )
+from labels import scenario
 from mnemorium_client.api.library import list_movies, post_movie
 from mnemorium_client.api.system import get_api_index
 from mnemorium_client.api.user import get_me
@@ -56,9 +56,7 @@ def create_movie(
     return film
 
 
-@allure.epic("API")
-@allure.feature("REQ-API-015")
-@allure.story("SCN-API-015-A")
+@scenario("SCN-API-015-A")
 def test_the_index_is_public_and_names_itself(server: Sut) -> None:
     """An unauthenticated caller reaches the index, whose self link is the API base."""
     response = get_api_index.sync_detailed(client=server.client())
@@ -67,9 +65,7 @@ def test_the_index_is_public_and_names_itself(server: Sut) -> None:
     assert plain_href(response.parsed.field_links.self_) == API_PREFIX
 
 
-@allure.epic("API")
-@allure.feature("REQ-API-015")
-@allure.story("SCN-API-015-B")
+@scenario("SCN-API-015-B")
 def test_every_index_link_resolves_to_a_served_route(server: Sut, root_token: str) -> None:
     """Following each published link reaches a route rather than the routing fallback."""
     # The walk follows the href each relation publishes, so the requests stay hand-built.
@@ -84,9 +80,7 @@ def test_every_index_link_resolves_to_a_served_route(server: Sut, root_token: st
         assert response.status_code < 500, f"{rel!r} -> {href!r} failed: {response.status_code} {response.text}"
 
 
-@allure.epic("API")
-@allure.feature("REQ-API-015")
-@allure.story("SCN-API-015-C")
+@scenario("SCN-API-015-C")
 def test_a_protected_index_link_answers_the_401_envelope(server: Sut) -> None:
     """Following an index link to a protected entry unauthenticated answers the 401 envelope."""
     # The entry points are the ones the index publishes, so each is followed by its own href.
@@ -107,9 +101,7 @@ def test_a_protected_index_link_answers_the_401_envelope(server: Sut) -> None:
         assert body["_links"]["self"]["href"] == href
 
 
-@allure.epic("API")
-@allure.feature("REQ-API-015")
-@allure.story("SCN-API-015-D")
+@scenario("SCN-API-015-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_the_index_is_identical_for_two_callers(sut: Sut) -> None:
     """The Root Admin and a Standard User read the same public document."""
@@ -125,9 +117,7 @@ def test_the_index_is_identical_for_two_callers(sut: Sut) -> None:
     assert root_index.parsed.to_dict() == alice_index.parsed.to_dict()
 
 
-@allure.epic("API")
-@allure.feature("REQ-API-004")
-@allure.story("SCN-API-004-B")
+@scenario("SCN-API-004-B")
 def test_the_current_user_reports_the_canonical_self(server: Sut, root_token: str) -> None:
     """The `/user/me` alias reports the account's canonical user resource."""
     response = get_me.sync_detailed(client=server.client(root_token))
@@ -137,9 +127,7 @@ def test_the_current_user_reports_the_canonical_self(server: Sut, root_token: st
     assert plain_href(current.field_links.self_) == f"{server.href('user')}/{current.id}"
 
 
-@allure.epic("API")
-@allure.feature("REQ-API-016")
-@allure.story("SCN-API-016-D")
+@scenario("SCN-API-016-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_embedded_catalog_item_reaches_its_detail(sut: Sut) -> None:
     """The partial item's self link reaches the full film representation."""
@@ -160,9 +148,7 @@ def test_an_embedded_catalog_item_reaches_its_detail(sut: Sut) -> None:
     assert film.video.id == created.video.id
 
 
-@allure.epic("API")
-@allure.feature("REQ-API-007")
-@allure.story("SCN-API-007-B")
+@scenario("SCN-API-007-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_collection_page_keeps_its_filter_and_page(sut: Sut) -> None:
     """`self`, `next` and `search` describe the filtered page the caller requested."""

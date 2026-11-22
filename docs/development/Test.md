@@ -4,6 +4,28 @@ This page owns the black-box performance suite. The testing strategy and the uni
 live in [Technical Design](TechnicalDesign.md) § 5; this page is the one home for how the server is measured under load
 and what a failing measurement means.
 
+## Requirements traceability coverage
+
+`docs/development/artifacts/RequirementsTraceabilityCoverage.md` is the generated map of the specification tree's
+requirements and scenarios to the tests that prove them. It is committed, and `script/investigation.sh` (or
+`devenv tasks run system:investigation`) regenerates it from `openspec/specs/**/spec.md`, the `@scenario` decorators in
+`test/system/*.py` and the `// proves:` comments in `src/` — no pytest run and no container.
+
+Status is presence-based: `Tested` means a committed test claims the scenario and CI is green, not that a run passed. In
+a requirement row the eight type columns count the scenarios claimed for each type, so `0` means a type has no proof
+yet; `N/A` is a hand judgement that the type does not apply, and the generator warns in `## Contradictions` when a proof
+appears behind it. A scenario is not a type: every claim carries one of the eight, and one that declares none is counted
+in `Unspecified`. `Tested` counts the scenarios a system case claims and `Untested` the rest, so the two sum to the
+requirement's declared scenario count; a Rust proof alone leaves a scenario untested. In a scenario row, `Evidence` says
+what proves the scenario — `System suite`, `Proven in Rust`, or both — and names neither the case nor the function, so a
+renamed test is not a matrix change. The requirement is not repeated either: the scenario identifier names it. `Cause`
+is the one hand-authored place for "another layer owns this" or "nobody wrote it yet"; a `Not tested` scenario with an
+empty `Cause` and no Rust proof is the worklist.
+
+The generator never overwrites authored text: a type cell survives unless it is empty or a bare integer, a `Cause`
+survives while it is non-empty, and a row whose identifier leaves the specification moves to `## Detached notes` rather
+than disappearing. A regeneration with nothing changed produces no diff.
+
 ## Performance suite
 
 The suite treats the server as a black box: k6 drives the public HTTP API of a disposable, seeded container, and no test
