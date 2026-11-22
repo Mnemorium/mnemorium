@@ -151,12 +151,12 @@ Read the governing material at run time; never work from memory.
   entry does not list them. `docs/development/Glossary.md` holds the domain and
   actor vocabulary.
 - **Dependencies** — `Cargo.toml` lists them and
-  `docs/development/TechnicalDesign.md` § 6 documents their role. The core of
+  `docs/development/DependencyManifest.md` records their role, version and licence. The core of
   the stack: `axum` (HTTP), `sqlx` on SQLite3 (datastore), `utoipa` (OpenAPI),
   `thiserror`/`anyhow` (errors), `serde`/`serde_json` (payloads), `tokio`
   (runtime), `tracing` and `tracing-subscriber` (logs), `arc-swap` + `config`
   (live configuration), `jsonwebtoken` + `argon2` (auth). Test-only: `mockall`,
-  `rstest`, `tempfile`, `wiremock`. Read the files for versions and licenses —
+  `rstest`, `tempfile`, `wiremock`. Read the manifest for versions and licences —
   never recite them from memory.
 - **Code map** (navigation, not rules):
   - `src/lib/app.rs` — the composition root; wires concrete adapters and

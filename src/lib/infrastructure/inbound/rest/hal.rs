@@ -9,7 +9,7 @@ use axum::response::{IntoResponse as _, Response};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-/// Media type of a HAL response, per `API-031`.
+/// Media type of a HAL response, per `API-028`.
 pub(crate) const HAL_CONTENT_TYPE: &str = "application/hal+json";
 
 /// A single HAL link.
@@ -17,7 +17,7 @@ pub(crate) const HAL_CONTENT_TYPE: &str = "application/hal+json";
 #[non_exhaustive]
 pub(crate) struct Link {
     /// Target URI reference of the link, or an RFC 6570 template when the
-    /// link is templated (`API-050`).
+    /// link is templated (`API-047`).
     #[schema(min_length = 1, format = "uri-template", pattern = "^/")]
     pub href: String,
     /// Whether `href` is a URI template, per RFC 6570.
@@ -69,7 +69,7 @@ impl SelfLinks {
 }
 
 /// Wrap `body` in a HAL JSON response, served as `application/hal+json`
-/// (`API-031`).
+/// (`API-028`).
 #[must_use]
 pub(crate) fn hal_json<T>(body: T) -> Response
 where

@@ -171,7 +171,7 @@ pub(crate) struct FileLinks {
 ///
 /// The fetched file and a stored-file collection item are the same resource, so
 /// one representation serves both and `_links.self` of an item is the route
-/// `get_file` serves (`API-032`, `API-037`).
+/// `get_file` serves (`API-029`, `API-034`).
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct FileResponse {
@@ -284,7 +284,7 @@ impl From<GetAssetContentError> for ApiError {
 /// Canonical URI reference of the upload session identified by `upload_id`.
 ///
 /// Shared by the upload-session representations and the completion response so
-/// the `_links.self` target cannot drift (`API-032`).
+/// the `_links.self` target cannot drift (`API-029`).
 #[must_use]
 pub(crate) fn upload_self_href(upload_id: NumericID) -> String {
     format!("/api/v1/asset/upload/{upload_id}")

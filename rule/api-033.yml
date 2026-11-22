@@ -1,19 +1,29 @@
 ---
 id: api-033
 language: Rust
-severity: hint
+severity: error
 message: >-
-  extract a HAL representation struct and its root fields, for API-033
+  expose search and filtering through a URI-templated link: build it with
+  `Link::templated`, never `Link::new`
 rule:
-  kind: struct_item
-  has:
-    kind: attribute_item
-    regex: 'serde\([^)]*rename[[:space:]]*=[[:space:]]*"_links"'
-    stopBy: end
-  not:
-    inside:
-      kind: mod_item
-      stopBy: end
-      follows:
-        kind: attribute_item
-        regex: cfg\(test\)
+  any:
+    - all:
+        - pattern: Link::new($TEMPLATE)
+        - not:
+            inside:
+              kind: field_initializer
+              has:
+                kind: field_identifier
+                regex: "^search$"
+    - kind: field_initializer
+      all:
+        - has:
+            kind: field_identifier
+            regex: "^search$"
+        - has:
+            kind: call_expression
+            pattern: Link::new($HREF)
+constraints:
+  TEMPLATE:
+    kind: string_literal
+    regex: '\{'

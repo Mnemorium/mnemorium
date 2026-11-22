@@ -1,9 +1,15 @@
 ---
 id: api-010
 language: Rust
-severity: hint
+severity: error
 message: >-
-  extract the `#[utoipa::path]` endpoint declaration, for API-010
+  Declare `security` on every operation: `security(("bearer_auth" = []))` for an
+  operation guarded by `authenticate`, or `security(())` for a public operation.
 rule:
-  kind: attribute_item
-  regex: '#\[utoipa::path'
+  all:
+    - kind: attribute_item
+    - regex: '#\[utoipa::path'
+    - not:
+        any:
+          - regex: 'security\(\s*\(\s*\)\s*\)'
+          - regex: 'security\(\s*\(\s*"bearer_auth"\s*=\s*\[\s*\]\s*\)\s*\)'

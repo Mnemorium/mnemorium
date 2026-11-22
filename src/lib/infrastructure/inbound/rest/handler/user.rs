@@ -57,7 +57,7 @@ impl From<GetUserResponseData> for GetUserResponse {
 /// Canonical URI reference of the user resource identified by `id`.
 ///
 /// Shared by the user representations and the registration response so the
-/// `_links.self` target and the `Location` header cannot drift (`API-032`).
+/// `_links.self` target and the `Location` header cannot drift (`API-029`).
 #[must_use]
 pub(crate) fn user_self_href(id: NumericID) -> String {
     format!("/api/v1/user/{id}")

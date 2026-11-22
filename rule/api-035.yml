@@ -3,50 +3,27 @@ id: api-035
 language: Rust
 severity: hint
 message: >-
-  extract an `_embedded` HAL payload use, for API-035
+  extract a struct that carries a HAL navigation field, for API-035
 rule:
   all:
+    - kind: struct_item
     - any:
-        - kind: string_literal
-          regex: '^"_embedded"$'
-        - kind: field_identifier
-          regex: '^_embedded$'
+        - pattern: 'pub struct $NAME { $$$FIELDS }'
+        - pattern: 'pub(crate) struct $NAME { $$$FIELDS }'
+        - pattern: 'struct $NAME { $$$FIELDS }'
     - any:
-        - inside:
-            kind: struct_item
+        - has:
+            kind: attribute_item
+            regex: 'serde\([^)]*rename[[:space:]]*=[[:space:]]*"(_links|_embedded)"'
             stopBy: end
-            has:
-              field: name
-              pattern: $STRUCT
-        - inside:
-            kind: function_item
+        - has:
+            kind: field_declaration
+            regex: '(^|[[:space:]])pub[[:space:]]+(_links|_embedded)[[:space:]]*:'
             stopBy: end
-            has:
-              field: name
-              pattern: $FUNC
-    - not:
-        any:
-          - inside:
-              kind: mod_item
-              stopBy: end
-              follows:
-                kind: attribute_item
-                regex: 'cfg\(test\)'
-          - inside:
-              kind: struct_item
-              stopBy: end
-              follows:
-                kind: attribute_item
-                regex: 'cfg\(test\)'
-                stopBy:
-                  not:
-                    kind: attribute_item
-          - inside:
-              kind: function_item
-              stopBy: end
-              follows:
-                kind: attribute_item
-                regex: 'cfg\(test\)'
-                stopBy:
-                  not:
-                    kind: attribute_item
+  not:
+    inside:
+      kind: mod_item
+      stopBy: end
+      follows:
+        kind: attribute_item
+        regex: cfg\(test\)

@@ -104,16 +104,16 @@ rules:
     module_scoped_helper_roots:
       - src/lib/infrastructure/outbound/sqlx.rs
 
-  API-031:
+  API-028:
     # The response bodies § HAL payload guidelines names as non-representations.
     # The token issue, the token regeneration and the liveness probe are HAL
     # representations now, so the asset content bytes are the only body outside
     # the rule: their stored media type is served whole, not as a representation.
     non_hal_bodies:
       - AssetContent
-  API-033:
+  API-030:
     # The root keys a HAL representation's business data must not be nested
-    # under. `_embedded` is HAL's own nesting key and is governed by API-035;
+    # under. `_embedded` is HAL's own nesting key and is governed by API-032;
     # the rest are the conventional payload-envelope keys of a REST API.
     wrapper_keys:
       - data
@@ -121,10 +121,10 @@ rules:
       - body
       - result
       - resource
-  API-035:
+  API-032:
     # A HAL payload must not use `_embedded` except where a proven performance
     # need is recorded here. HAL nests a representation's related resources
-    # under it, and this API exposes them through `_links` (API-034) — except
+    # under it, and this API exposes them through `_links` (API-031) — except
     # the catalog collections, whose partial page items spare one request per
     # item. A location is the enclosing `<file>::<struct>` (a representation) or
     # `<file>::<function>` (a handler that builds a payload). Empty by default,
@@ -134,14 +134,6 @@ rules:
       - src/lib/infrastructure/inbound/rest/handler/library.rs::MovieListResponse
       - src/lib/infrastructure/inbound/rest/handler/library.rs::SeriesListResponse
       - src/lib/infrastructure/inbound/rest/handler/library.rs::MusicGroupListResponse
-  GOV-001:
-    # Tracked paths exempt from the scope mapping, matched as shell globs. The
-    # OpenSpec workflow tree holds planning artifacts (change proposals, specs)
-    # that belong to no repository area, so no scope owns it. Read by
-    # script/check_scopes.sh; an entry that matches no tracked path is reported.
-    ignore_paths:
-      - "openspec/**"
-
   STY-RUST-082:
     technology_nouns:
       - SHA[0-9]*

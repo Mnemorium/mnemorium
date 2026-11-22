@@ -71,7 +71,7 @@ Target: $ARGUMENTS
    not listed in the subagent catalog. Wait for its final report, next-step
    plan, and unresolved blockers.
 8. **Ship.** In the worktree, stage and commit once with a Conventional Commit
-   whose scope is the dominant `GOV-001` scope, then `git push -u origin
+   whose scope is the dominant area, then `git push -u origin
    <branch>`. Create the pull request with `create_pull_request` (`owner`,
    `repo`, base `main`, head the branch, title `<type>(<scope>): <summary>`),
    with the body from `.github/pull_request_template.md`, opened by

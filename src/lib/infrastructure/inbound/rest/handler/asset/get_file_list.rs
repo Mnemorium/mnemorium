@@ -35,7 +35,7 @@ pub(crate) struct ListFilesQuery {
 ///
 /// The `self` link addresses the collection view the representation is about,
 /// `next` and `prev` navigate that same view when another page exists, and the
-/// templated `search` link exposes the collection filters (`API-036`). The
+/// templated `search` link exposes the collection filters (`API-033`). The
 /// active filter and the page size are carried into every link so a filtered or
 /// paginated listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

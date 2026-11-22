@@ -511,12 +511,6 @@ assets (`*.png` anywhere, or any file under `.github/assets/`). No CI job enforc
 convention, and a `docs` PR that also changes code or tooling makes its changelog entry and release notes misleading.
 Use another type (for example `build` or `chore`) for tooling or dependency updates.
 
-### Scopes
-
-A scope is an optional noun describing the area of the codebase a change touches; a title carries at most one. The
-allowed scopes and the paths each owns are the closed list in
-[TechnicalDesign.md § 7 (Repository Governance), GOV-001](TechnicalDesign.md#repository-governance).
-
 ### Type prefixes
 
 | Prefix   | Description                                  | Version bump |

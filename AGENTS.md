@@ -68,20 +68,16 @@ Rust and SQL conventions and guidelines live in `docs/development/TechnicalDesig
 
 ## Dependencies
 
-See `docs/development/TechnicalDesign.md` § 6 for the direct dependencies and tools this
-project uses.
+See `docs/development/TechnicalDesign.md` § 6 for the rules that govern dependencies and tools,
+and `docs/development/DependencyManifest.md` for the direct dependencies and tools this project
+uses.
 
 When adding a crate or tool: reuse an existing adapter before adding one, never
 use wildcard dependency versions, and keep `cargo deny` clean.
 
-## Repository Governance
-
-See `docs/development/TechnicalDesign.md` § 7 (Repository Governance), `GOV-001`
-for the commit and pull-request scope set and the paths each scope owns.
-
 ## Documentation
 
-See `docs/development/TechnicalDesign.md` § 8 (Documentation), `DOC-001` for the
+See `docs/development/TechnicalDesign.md` § 7 (Documentation), `DOC-001` for the
 code-example conventions: an example cites the source it restates, tracks that
 code, and marks elided regions with `// [...]`.
 
@@ -91,13 +87,13 @@ API — is `docs/Permissions.md`.
 
 ## Logging
 
-See `docs/development/TechnicalDesign.md` § 9 (Logging & Observability),
+See `docs/development/TechnicalDesign.md` § 8 (Logging & Observability),
 `OBS-001`–`OBS-008` for what the server logs, from which layer, at what severity,
 and what must never reach a log sink.
 
 ## Security
 
-See `docs/development/TechnicalDesign.md` § 10 (Security), `SEC-001` for how a
+See `docs/development/TechnicalDesign.md` § 9 (Security), `SEC-001` for how a
 struct carrying a secret (password, hash, key or token) crosses the HTTP
 boundary.
 

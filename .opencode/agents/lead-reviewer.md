@@ -220,8 +220,8 @@ The target is the issue the caller passed and the repository at the base ref
 7. Author `<run directory>/fix-plan.md`: the ordered, file-by-file steps that fix
    the issue, each citing the rule it follows and naming its owner
    (`rust-developer`, `test-specialist`, `database-engineer`, `devops`,
-   `technical-writer`), plus the branch type and `GOV-001` scope and the
-   Conventional-Commit scope. Leave it empty when the verdict is not
+   `technical-writer`), plus the branch type and the Conventional-Commit scope.
+   Leave it empty when the verdict is not
    `investigate`.
 8. Suggest labels only when the issue carries no category: a category from
    `bug`, `enhancement`, `documentation`, and a state (`ready-for-agent` when the

@@ -175,8 +175,8 @@ pub(crate) async fn get_user_list(
         }
     }
     // The email-format rule is the domain's (`User::validate_email`); a filter
-    // value is held to the same constraint the query declares (`API-017`,
-    // `API-045`).
+    // value is held to the same constraint the query declares (`API-016`,
+    // `API-042`).
     if let Some(email) = query.email.as_deref()
         && !email_address::EmailAddress::is_valid(email)
     {

@@ -77,7 +77,7 @@ The surface you own:
 
 Derived artifacts you check but do not own — route the fix to their owner:
 
-- The entity-relationship diagram in `TechnicalDesign.md` § 4 belongs to
+- The entity-relationship diagram in `docs/development/EntityRelationshipDiagram.md` belongs to
   `database-engineer`; you verify it moved with `migrations/` (`PERS-011`).
 - The domain-model and release diagrams in `Overview.md` have no sync rule;
   treat a mismatch there as a potential rule gap, not a violation.
@@ -90,16 +90,14 @@ Read the governing material at run time; never work from memory. Cite one of:
   (under "How this document is extended") — a section move updates `AGENTS.md`
   and `mkdocs.yml` in the same change.
 - `docs/development/TechnicalDesign.md` § 4 (Persistence), `PERS-011`,
-  `PERS-012` and `PERS-013` — the entity-relationship diagram stays in step
-  with `migrations/`, uses only the documented markers, and puts the FK on the
-  child table.
+  `PERS-012` and `PERS-013` — the entity-relationship diagram in
+  `docs/development/EntityRelationshipDiagram.md` stays in step with `migrations/`,
+  uses only the documented markers, and puts the FK on the child table.
 - `docs/development/Overview.md` § "Docs-only PRs" — a `docs` PR may change
   only `docs/**`, any `*.md`, `mkdocs.yml`, or image assets.
 - `docs/development/Overview.md` § "Branch naming and PR title naming" — the
   branch and PR-title format.
-- `docs/development/TechnicalDesign.md` § 7 (Repository Governance), `GOV-001`
-  — the commit and PR scope set, its owning paths, and its enforcement.
-- `docs/development/TechnicalDesign.md` § 8 (Documentation), `DOC-001` — a
+- `docs/development/TechnicalDesign.md` § 7 (Documentation), `DOC-001` — a
   published code example cites the source path it restates, tracks that code,
   and marks elided regions with `// [...]`.
 - `docs/development/UseCases.md` — a business use-case entry describes a

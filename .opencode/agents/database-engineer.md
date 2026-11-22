@@ -95,8 +95,9 @@ Datastore map (navigation):
 
 Read the governing material at run time; never work from memory:
 
-- `docs/development/TechnicalDesign.md` § 4 (Persistence) — the `PERS-*` rules and
-  the entity-relationship diagram.
+- `docs/development/TechnicalDesign.md` § 4 (Persistence) — the `PERS-*` rules.
+- `docs/development/EntityRelationshipDiagram.md` — the entity-relationship diagram and its legend you keep in step
+  with `migrations/`.
 - `docs/development/TechnicalDesign.md` § 1 (Code Style Guidelines) — the
   `STY-SQL-*` rules you own, and the Rust rules the datastore layer must satisfy.
 - `docs/development/UseCases.md` — what the datastore must support.
