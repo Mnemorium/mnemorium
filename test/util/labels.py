@@ -8,8 +8,8 @@ A case declares what it proves with one decorator per scenario:
 
 The identifier carries the capability and the requirement, so neither is repeated at the call site and neither can
 disagree with the specification. A type is optional: an untested-but-written case may cite its scenario before the
-proof's kind is decided, and `docs/development/artifacts/SystemTestCoverage.md` counts that scenario as unclassified
-until it is.
+proof's kind is decided, and `docs/development/artifacts/RequirementsTraceabilityCoverage.md` counts that scenario as
+unspecified until it is.
 
 The type is also a pytest marker, registered in `pyproject.toml`, so `pytest -m security` selects the security proofs
 without a run-time filter. `--strict-markers` turns an unregistered type into a collection error rather than a silent
