@@ -1,33 +1,36 @@
+function addToggle(sidebarSelector, className, label, symbol, bodyClass) {
+  const sidebar = document.querySelector(sidebarSelector);
+  const inner = sidebar?.querySelector(".md-sidebar__inner");
+  if (!inner || inner.querySelector(`.${className}`)) {
+    return;
+  }
+
+  const bar = document.createElement("div");
+  bar.className = "sidebar-toggle-bar";
+
+  const button = document.createElement("button");
+  button.className = `sidebar-toggle ${className}`;
+  button.type = "button";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.textContent = symbol;
+  button.addEventListener("click", () => {
+    document.body.classList.toggle(bodyClass);
+  });
+
+  bar.appendChild(button);
+  inner.insertBefore(bar, inner.firstChild);
+}
+
 function initializeSidebarToggles() {
-  if (!document.querySelector(".sidebar-toggle-left")) {
-    const leftButton = document.createElement("button");
-    leftButton.className = "sidebar-toggle sidebar-toggle-left";
-    leftButton.type = "button";
-    leftButton.title = "Toggle navigation";
-    leftButton.setAttribute("aria-label", "Toggle navigation");
-    leftButton.textContent = "☰";
-
-    leftButton.addEventListener("click", () => {
-      document.body.classList.toggle("hide-left-sidebar");
-    });
-
-    document.body.appendChild(leftButton);
-  }
-
-  if (!document.querySelector(".sidebar-toggle-right")) {
-    const rightButton = document.createElement("button");
-    rightButton.className = "sidebar-toggle sidebar-toggle-right";
-    rightButton.type = "button";
-    rightButton.title = "Toggle table of contents";
-    rightButton.setAttribute("aria-label", "Toggle table of contents");
-    rightButton.textContent = "☷";
-
-    rightButton.addEventListener("click", () => {
-      document.body.classList.toggle("hide-right-sidebar");
-    });
-
-    document.body.appendChild(rightButton);
-  }
+  addToggle(".md-sidebar--primary", "sidebar-toggle-left", "Toggle navigation", "☰", "hide-left-sidebar");
+  addToggle(
+    ".md-sidebar--secondary",
+    "sidebar-toggle-right",
+    "Toggle table of contents",
+    "☷",
+    "hide-right-sidebar",
+  );
 }
 
 /* Supports normal and instant navigation: `document$` emits after every page swap. */
