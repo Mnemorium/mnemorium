@@ -1,24 +1,11 @@
 ---
 id: sty-rust-067
 language: Rust
-severity: error
-message: only the composition root builds AppState or a process-lifetime adapter
+severity: hint
+message: >-
+  extract every `Arc<dyn Trait>` trait object for STY-RUST-067
+files:
+  - src/**/*.rs
 rule:
-  any:
-    - pattern: AppState::new($$$ARGS)
-    - pattern: SqlxUnitOfWorkFactory::new($$$ARGS)
-    - pattern: LoginRateLimiter::new($$$ARGS)
-    - pattern: RuntimeIdentityUseCaseFactory::new($$$ARGS)
-    - pattern: RuntimeUserUseCaseFactory::new($$$ARGS)
-    - pattern: RuntimeLibraryUseCaseFactory::new($$$ARGS)
-    - pattern: RuntimeAssetUseCaseFactory::new($$$ARGS)
-    - pattern: LocalMediaProbe::new($$$ARGS)
-    - pattern: LocalMediaProbe::new_permits($$$ARGS)
-    - pattern: LocalMediaProbe::default($$$ARGS)
-  not:
-    inside:
-      kind: mod_item
-      stopBy: end
-      follows:
-        kind: attribute_item
-        regex: cfg\(test\)
+  kind: generic_type
+  regex: '^Arc<dyn '

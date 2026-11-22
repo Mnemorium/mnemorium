@@ -74,17 +74,58 @@ impl GalleryListLinks {
         returned: usize,
         total: usize,
     ) -> Self {
+        let page_href = |page_offset: usize| {
+            let mut href = String::from("/api/v1/library/gallery?");
+            if let Some(name) = query.name.as_deref() {
+                href.push_str("name=");
+                // Percent-encode the filter value with the unreserved character
+                // set, so it cannot break out of the query string.
+                for byte in name.bytes() {
+                    match byte {
+                        b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                            href.push(char::from(byte));
+                        }
+                        _ => {
+                            let high = char::from_digit(u32::from(byte >> 4u8), 16)
+                                .unwrap_or('0')
+                                .to_ascii_uppercase();
+                            let low = char::from_digit(u32::from(byte & 0x0fu8), 16)
+                                .unwrap_or('0')
+                                .to_ascii_uppercase();
+                            href.push('%');
+                            href.push(high);
+                            href.push(low);
+                        }
+                    }
+                }
+                href.push('&');
+            }
+            if let Some(is_public) = query.is_public {
+                href.push_str("is_public=");
+                href.push_str(if is_public { "true" } else { "false" });
+                href.push('&');
+            }
+            if let Some(owner_id) = query.owner_id {
+                href.push_str("owner_id=");
+                href.push_str(&owner_id.to_string());
+                href.push('&');
+            }
+            href.push_str("limit=");
+            href.push_str(&limit.to_string());
+            href.push_str("&offset=");
+            href.push_str(&page_offset.to_string());
+            href
+        };
         let next = (offset.saturating_add(returned) < total)
-            .then(|| Link::new(&page_href(query, limit, offset.saturating_add(limit))));
-        let prev =
-            (offset > 0).then(|| Link::new(&page_href(query, limit, offset.saturating_sub(limit))));
+            .then(|| Link::new(&page_href(offset.saturating_add(limit))));
+        let prev = (offset > 0).then(|| Link::new(&page_href(offset.saturating_sub(limit))));
         Self {
             next,
             prev,
             search: Link::templated(
                 "/api/v1/library/gallery{?name,is_public,owner_id,limit,offset}",
             ),
-            self_link: Link::new(&page_href(query, limit, offset)),
+            self_link: Link::new(&page_href(offset)),
         }
     }
 }
@@ -108,52 +149,6 @@ impl From<ListGalleriesError> for ApiError {
             ListGalleriesError::Unknown(_) => Self::InternalServerError,
         }
     }
-}
-
-/// Build the href of the gallery collection view at `limit`/`offset`,
-/// preserving the active filters so a filtered page keeps its navigation
-/// (`API-037`).
-fn page_href(query: &ListGalleriesQuery, limit: usize, offset: usize) -> String {
-    let mut href = String::from("/api/v1/library/gallery?");
-    if let Some(name) = query.name.as_deref() {
-        href.push_str("name=");
-        // Percent-encode the filter value with the unreserved character set, so
-        // it cannot break out of the query string.
-        for byte in name.bytes() {
-            match byte {
-                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                    href.push(char::from(byte));
-                }
-                _ => {
-                    let high = char::from_digit(u32::from(byte >> 4u8), 16)
-                        .unwrap_or('0')
-                        .to_ascii_uppercase();
-                    let low = char::from_digit(u32::from(byte & 0x0fu8), 16)
-                        .unwrap_or('0')
-                        .to_ascii_uppercase();
-                    href.push('%');
-                    href.push(high);
-                    href.push(low);
-                }
-            }
-        }
-        href.push('&');
-    }
-    if let Some(is_public) = query.is_public {
-        href.push_str("is_public=");
-        href.push_str(if is_public { "true" } else { "false" });
-        href.push('&');
-    }
-    if let Some(owner_id) = query.owner_id {
-        href.push_str("owner_id=");
-        href.push_str(&owner_id.to_string());
-        href.push('&');
-    }
-    href.push_str("limit=");
-    href.push_str(&limit.to_string());
-    href.push_str("&offset=");
-    href.push_str(&offset.to_string());
-    href
 }
 
 /// List the galleries the caller may see.

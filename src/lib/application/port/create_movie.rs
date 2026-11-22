@@ -171,9 +171,6 @@ pub(crate) enum CreateMovieError {
 pub(crate) trait CreateMovieUseCase: Send + Sync {
     /// Create the film, returning the existing one when the video already backs
     /// a film.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn CreateMovieUseCase>`.
     fn execute<'future>(
         &'future self,
         command: CreateMovieCommand,

@@ -2,7 +2,7 @@ use crate::domain::port::DatastorePresenceError;
 
 /// Port for deciding whether the datastore already exists.
 ///
-/// A missing datastore is a value (`Ok(false)`), never an error (`STY-RUST-016`).
+/// A missing datastore is a value (`Ok(false)`), never an error (`STY-RUST-015`).
 /// An unreadable path is an error, so a lost state file is never replaced beside
 /// a live datastore.
 #[cfg_attr(test, mockall::automock)]

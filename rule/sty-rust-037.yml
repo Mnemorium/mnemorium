@@ -1,0 +1,17 @@
+---
+id: sty-rust-037
+language: Rust
+severity: hint
+message: extract unit-of-work opener call sites for STY-RUST-037
+rule:
+  all:
+    - any:
+        - pattern: $RECV.begin()
+        - pattern: $RECV.begin_write()
+    - inside:
+        kind: function_item
+        pattern: $ENCLOSING
+        has:
+          field: name
+          pattern: $FUNC
+        stopBy: end

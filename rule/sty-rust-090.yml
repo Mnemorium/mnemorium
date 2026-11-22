@@ -3,15 +3,44 @@ id: sty-rust-090
 language: Rust
 severity: hint
 message: >-
-  extract every `pub(crate) mod` declaration with its name, for STY-RUST-090
+  extract every mock-expectation call with the function that configures it, for
+  STY-RUST-090
 files:
   - src/**/*.rs
 rule:
-  all:
-    - kind: mod_item
-    - has:
-        kind: visibility_modifier
-        regex: '^pub\(crate\)$'
-    - has:
-        field: name
-        pattern: $NAME
+  any:
+    - all:
+        - kind: mod_item
+        - has:
+            kind: declaration_list
+            stopBy: neighbor
+        - has:
+            field: name
+            pattern: $MOD
+            stopBy: neighbor
+    # `expect_<method>` is mockall's expectation setter; `.expect("…")` on a
+    # Result or an Option is not, because its field is `expect`.
+    - all:
+        - kind: call_expression
+        - has:
+            field: function
+            kind: field_expression
+            stopBy: neighbor
+            has:
+              field: field
+              regex: '^expect_'
+              stopBy: neighbor
+        - inside:
+            kind: function_item
+            pattern: $ENCLOSING
+            stopBy: end
+            has:
+              field: name
+              pattern: $FUNC
+              stopBy: neighbor
+            # A test double's own impl (`impl Default for TestUnitOfWork`) is the
+            # double, not a setup helper a test arranges with.
+            not:
+              inside:
+                kind: impl_item
+                stopBy: end

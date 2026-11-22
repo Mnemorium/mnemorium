@@ -397,7 +397,7 @@ fn assess_privacy(metadata: &Metadata, directory_owner: u32) -> Privacy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use std::error::Error;
     use std::fs;
     use std::io::Error as IoError;
@@ -410,6 +410,7 @@ mod tests {
     }
 
     /// An identity valid for every adapter test.
+    #[fixture]
     fn state() -> Result<InstanceState, Box<dyn Error>> {
         Ok(InstanceState::try_new(
             1_700_000_000,

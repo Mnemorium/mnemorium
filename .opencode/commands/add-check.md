@@ -7,7 +7,7 @@ Target: $ARGUMENTS
 ## Inputs
 
 - **Target** — the command argument (`$ARGUMENTS`): one rule ID from
-  `docs/development/TechnicalDesign.md`, for example `STY-RUST-010`.
+  `docs/development/TechnicalDesign.md`, for example `STY-RUST-009`.
 
 ## Posture
 

@@ -183,10 +183,6 @@ pub(crate) trait StateSeedSource: Send + Sync {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait LoadStateUseCase: Send + Sync {
     /// Load the persisted state, or create it for a genuinely new instance.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn LoadStateUseCase>`
-    /// (`STY-RUST-070`).
     fn execute<'future>(
         &'future self,
     ) -> Pin<Box<dyn Future<Output = Result<LoadStateResponse, LoadStateError>> + Send + 'future>>;

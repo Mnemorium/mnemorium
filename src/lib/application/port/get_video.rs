@@ -164,9 +164,6 @@ pub(crate) enum GetVideoError {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait GetVideoUseCase: Send + Sync {
     /// Fetch the requested video.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn GetVideoUseCase>`.
     fn execute<'future>(
         &'future self,
         command: GetVideoCommand,

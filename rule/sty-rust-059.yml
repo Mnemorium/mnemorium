@@ -1,20 +1,27 @@
 ---
 id: sty-rust-059
 language: Rust
-severity: error
-message: the use-case trait $TRAIT must be declared last in a use-case port file
+severity: hint
+message: extract the use-case-factory adapter struct and its fields
 files:
-  - src/lib/application/port/*.rs
+  - src/lib/infrastructure/use_case_factory/*.rs
 rule:
-  all:
-    - kind: trait_item
-    - any:
-        - pattern: pub trait $TRAIT
-        - pattern: pub(crate) trait $TRAIT
-        - pattern: trait $TRAIT
-    - regex: '^(pub(\(crate\))? )?trait \w+UseCase\b'
-    - precedes:
-        any:
-          - kind: struct_item
-          - kind: enum_item
-        stopBy: end
+  any:
+    - all:
+        - kind: struct_item
+        - any:
+            - pattern: 'pub struct $FACTORY { $$$BODY }'
+            - pattern: 'pub(crate) struct $FACTORY { $$$BODY }'
+            - pattern: 'struct $FACTORY { $$$BODY }'
+    - all:
+        - kind: field_declaration
+        - pattern: '$FIELD: $TYPE'
+        - inside:
+            kind: field_declaration_list
+            inside:
+              kind: struct_item
+              any:
+                - pattern: 'pub struct $FACTORY { $$$BODY }'
+                - pattern: 'pub(crate) struct $FACTORY { $$$BODY }'
+                - pattern: 'struct $FACTORY { $$$BODY }'
+              stopBy: end

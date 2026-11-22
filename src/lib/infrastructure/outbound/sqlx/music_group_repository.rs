@@ -110,63 +110,10 @@ fn domain_group(row: MusicGroupRow) -> Result<MusicGroup, RepositoryError> {
 mod tests {
     use super::*;
     use crate::domain::NumericID;
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
 
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use std::error::Error;
-
-    /// Open a migrated in-memory database and begin one transaction.
-    /// Seed a credential and a standard user so the image's file resolves.
-    async fn seed_user(
-        transaction: &mut Transaction<'static, Sqlite>,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (?1, ?2)")
-            .bind(user_id)
-            .bind(format!("hash-{user_id}"))
-            .execute(&mut **transaction)
-            .await?;
-        sqlx::query(
-            "INSERT INTO user (user_id, role, username, email, credential_id)
-             VALUES (?1, 'STANDARD', ?2, NULL, ?1)",
-        )
-        .bind(user_id)
-        .bind(format!("user{user_id}"))
-        .execute(&mut **transaction)
-        .await?;
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
-             VALUES (?1, ?2, ?3, 0, 'image/png', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?4)",
-        )
-        .bind(user_id)
-        .bind(format!("cover-{user_id}.png"))
-        .bind(user_id)
-        .bind(format!("{user_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed an image, unattached or already scoped.
-    async fn seed_image(
-        transaction: &mut Transaction<'static, Sqlite>,
-        image_id: i64,
-        file_id: i64,
-        scope: Option<&str>,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO image (
-                image_id, name, width_px, height_px, orientation, created_at, scope, file_id
-             )
-             VALUES (?1, ?2, 10, 10, 'SQUARE', '2026-10-06', ?3, ?4)",
-        )
-        .bind(image_id)
-        .bind(format!("cover-{image_id}.png"))
-        .bind(scope)
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
 
     /// Build a group named `name` with an optional cover.
     fn group(
@@ -181,8 +128,8 @@ mod tests {
     async fn create_round_trips_name_and_cover() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction, 1).await?;
-        seed_image(&mut transaction, 1, 1, None).await?;
+        seed_user_v3(&mut transaction, 1).await?;
+        seed_image_v3(&mut transaction, 1, 1, None).await?;
         let mut repository = SqlxMusicGroupRepository::new(&mut transaction);
 
         // Act
@@ -332,8 +279,8 @@ mod tests {
     async fn update_round_trips_name_and_cover() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction, 1).await?;
-        seed_image(&mut transaction, 1, 1, None).await?;
+        seed_user_v3(&mut transaction, 1).await?;
+        seed_image_v3(&mut transaction, 1, 1, None).await?;
         let mut repository = SqlxMusicGroupRepository::new(&mut transaction);
         let created = repository.create(group(0, "The Group", None)?).await?;
 
@@ -395,8 +342,8 @@ mod tests {
     async fn create_rejects_a_user_cover_image() -> Result<(), Box<dyn Error>> {
         // Arrange: image 1 already belongs to a user.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction, 1).await?;
-        seed_image(&mut transaction, 1, 1, Some("USER")).await?;
+        seed_user_v3(&mut transaction, 1).await?;
+        seed_image_v3(&mut transaction, 1, 1, Some("USER")).await?;
         let mut repository = SqlxMusicGroupRepository::new(&mut transaction);
 
         // Act
@@ -419,8 +366,8 @@ mod tests {
     async fn update_rejects_a_user_cover_image() -> Result<(), Box<dyn Error>> {
         // Arrange: a group without artwork and image 1 owned by a user.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction, 1).await?;
-        seed_image(&mut transaction, 1, 1, Some("USER")).await?;
+        seed_user_v3(&mut transaction, 1).await?;
+        seed_image_v3(&mut transaction, 1, 1, Some("USER")).await?;
         let mut repository = SqlxMusicGroupRepository::new(&mut transaction);
         let created = repository.create(group(0, "The Group", None)?).await?;
 
@@ -434,6 +381,60 @@ mod tests {
             matches!(result, Err(RepositoryError::Conflict)),
             "a library cover must reject a USER image on update too"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn music_group_accepts_a_cover_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: image 1 starts unattached.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act
+        sqlx::query(
+            "INSERT INTO music_group (music_group_id, stage_name, cover_image_id)
+             VALUES (1, 'The Group', 1)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Assert
+        let cover: Option<i64> =
+            sqlx::query_scalar("SELECT cover_image_id FROM music_group WHERE music_group_id = 1")
+                .fetch_one(&pool)
+                .await?;
+        let scope: Option<String> =
+            sqlx::query_scalar("SELECT scope FROM image WHERE image_id = 1")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(cover, Some(1));
+        assert_eq!(
+            scope.as_deref(),
+            Some("LIBRARY"),
+            "a group cover must mark its image LIBRARY"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn music_group_rejects_a_missing_cover_image() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act: image 99 does not exist.
+        let result = sqlx::query(
+            "INSERT INTO music_group (music_group_id, stage_name, cover_image_id)
+             VALUES (1, 'The Group', 99)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
         Ok(())
     }
 }

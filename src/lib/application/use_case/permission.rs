@@ -680,59 +680,6 @@ mod tests {
         )
     }
 
-    /// A user repository resolving only the listed identifiers and roles.
-    fn users_with(entries: Vec<(NumericID, Role)>) -> MockUserRepository {
-        let mut users = MockUserRepository::new();
-        users.expect_search().returning(move |filter| {
-            let found = filter.id.and_then(|id| {
-                entries
-                    .iter()
-                    .find(|entry| entry.0 == id)
-                    .and_then(|entry| {
-                        User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1).ok()
-                    })
-            });
-            Box::pin(async move { Ok(found.into_iter().collect()) })
-        });
-        users
-    }
-
-    /// A resource repository returning one fixed bundle per search.
-    fn resources_with(bundle: ResourceAccess) -> MockResourceRepository {
-        let mut resources = MockResourceRepository::new();
-        resources.expect_search().returning(move |_, _| {
-            let found = bundle.clone();
-            Box::pin(async move { Ok(vec![found]) })
-        });
-        resources
-    }
-
-    /// A resource repository returning nothing.
-    fn no_matches() -> MockResourceRepository {
-        let mut resources = MockResourceRepository::new();
-        resources
-            .expect_search()
-            .returning(|_, _| Box::pin(async { Ok(Vec::new()) }));
-        resources
-    }
-
-    /// A grant repository returning the listed grants on every search.
-    fn grants_with(grants: Vec<Grant>) -> MockGrantRepository {
-        let mut repository = MockGrantRepository::new();
-        repository.expect_search().returning(move |filter| {
-            let found = grants
-                .iter()
-                .copied()
-                .filter(|grant| match filter.principal {
-                    Some(principal) => grant.principal() == principal,
-                    None => true,
-                })
-                .collect::<Vec<_>>();
-            Box::pin(async move { Ok(found) })
-        });
-        repository
-    }
-
     fn user_grant(id: NumericID, principal: Principal, resource_id: NumericID) -> Grant {
         Grant::from_stored(
             id,
@@ -750,14 +697,50 @@ mod tests {
         // Arrange
         let grant = user_grant(4, Principal::User(5), 1);
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(vec![grant]),
-            resources: resources_with(access(
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(vec![grant]),
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::Gallery,
                 Some(5),
                 Visibility::Private,
                 Vec::new(),
             )),
-            users: users_with(vec![(5, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(5, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Summary::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -783,14 +766,50 @@ mod tests {
     async fn an_admin_reads_a_standard_users_summary() -> Result<(), Box<dyn Error>> {
         // Arrange
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(Vec::new()),
-            resources: resources_with(access(
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(Vec::new()),
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::User,
                 Some(1),
                 Visibility::Private,
                 Vec::new(),
             )),
-            users: users_with(vec![(1, Role::Admin), (2, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(1, Role::Admin), (2, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Summary::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -814,14 +833,50 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(Vec::new()),
-            resources: resources_with(access(
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(Vec::new()),
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::User,
                 None,
                 Visibility::Private,
                 Vec::new(),
             )),
-            users: users_with(vec![(2, Role::Standard), (3, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(2, Role::Standard), (3, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Summary::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -844,14 +899,50 @@ mod tests {
         // Arrange
         let grant = user_grant(4, Principal::User(2), 1);
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(Vec::new()),
-            resources: resources_with(access(
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(Vec::new()),
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::Gallery,
                 Some(1),
                 Visibility::Private,
                 vec![grant],
             )),
-            users: users_with(vec![(1, Role::Admin), (2, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(1, Role::Admin), (2, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Summary::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -880,14 +971,50 @@ mod tests {
         // Arrange
         let grant = user_grant(7, Principal::User(9), 1);
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(vec![grant]),
-            resources: resources_with(access(
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(vec![grant]),
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::Gallery,
                 Some(5),
                 Visibility::Private,
                 Vec::new(),
             )),
-            users: users_with(vec![(5, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(5, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Policy::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -914,14 +1041,50 @@ mod tests {
     async fn a_manager_without_manage_permissions_cannot_replace() -> Result<(), Box<dyn Error>> {
         // Arrange
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(Vec::new()),
-            resources: resources_with(access(
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(Vec::new()),
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::Gallery,
                 None,
                 Visibility::Private,
                 Vec::new(),
             )),
-            users: users_with(vec![(6, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(6, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Replace::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -943,7 +1106,14 @@ mod tests {
     #[tokio::test]
     async fn an_owner_replaces_the_visibility_and_grant_set() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let mut resources = resources_with(access(
+        let mut resources = (move |bundle: ResourceAccess| -> MockResourceRepository {
+            let mut resources = MockResourceRepository::new();
+            resources.expect_search().returning(move |_, _| {
+                let found = bundle.clone();
+                Box::pin(async move { Ok(vec![found]) })
+            });
+            resources
+        })(access(
             ResourceKind::Gallery,
             Some(5),
             Visibility::Private,
@@ -961,9 +1131,38 @@ mod tests {
                 })
             });
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(vec![user_grant(7, Principal::User(9), 1)]),
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(vec![user_grant(7, Principal::User(9), 1)]),
             resources,
-            users: users_with(vec![(5, Role::Standard), (9, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(5, Role::Standard), (9, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Replace::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -992,14 +1191,50 @@ mod tests {
     async fn a_replacement_naming_the_owner_role_is_refused() -> Result<(), Box<dyn Error>> {
         // Arrange
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(Vec::new()),
-            resources: resources_with(access(
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(Vec::new()),
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::Gallery,
                 Some(5),
                 Visibility::Private,
                 Vec::new(),
             )),
-            users: users_with(vec![(5, Role::Standard), (9, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(5, Role::Standard), (9, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Replace::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -1030,14 +1265,50 @@ mod tests {
     async fn a_duplicate_grant_is_refused() -> Result<(), Box<dyn Error>> {
         // Arrange
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(Vec::new()),
-            resources: resources_with(access(
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(Vec::new()),
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::Gallery,
                 Some(5),
                 Visibility::Private,
                 Vec::new(),
             )),
-            users: users_with(vec![(5, Role::Standard), (9, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(5, Role::Standard), (9, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Replace::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -1069,14 +1340,50 @@ mod tests {
     async fn a_role_principal_cannot_be_written_over_http() -> Result<(), Box<dyn Error>> {
         // Arrange
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(Vec::new()),
-            resources: resources_with(access(
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(Vec::new()),
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::Gallery,
                 Some(5),
                 Visibility::Private,
                 Vec::new(),
             )),
-            users: users_with(vec![(5, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(5, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Replace::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -1107,14 +1414,50 @@ mod tests {
     async fn admin_creation_cannot_be_granted() -> Result<(), Box<dyn Error>> {
         // Arrange
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(Vec::new()),
-            resources: resources_with(access(
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(Vec::new()),
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::UserCollection,
                 Some(5),
                 Visibility::Private,
                 Vec::new(),
             )),
-            users: users_with(vec![(5, Role::Standard), (9, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(5, Role::Standard), (9, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Replace::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -1144,20 +1487,56 @@ mod tests {
     #[tokio::test]
     async fn a_manager_shares_a_viewer() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let mut grants = grants_with(Vec::new());
+        let mut grants = (move |grants: Vec<Grant>| -> MockGrantRepository {
+            let mut repository = MockGrantRepository::new();
+            repository.expect_search().returning(move |filter| {
+                let found = grants
+                    .iter()
+                    .copied()
+                    .filter(|grant| match filter.principal {
+                        Some(principal) => grant.principal() == principal,
+                        None => true,
+                    })
+                    .collect::<Vec<_>>();
+                Box::pin(async move { Ok(found) })
+            });
+            repository
+        })(Vec::new());
         grants
             .expect_save_grant()
             .times(1)
             .returning(|grant| Box::pin(async move { Ok(grant) }));
         let unit_of_work = TestUnitOfWork {
             grants,
-            resources: resources_with(access(
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::Gallery,
                 Some(5),
                 Visibility::Private,
                 Vec::new(),
             )),
-            users: users_with(vec![(5, Role::Standard), (9, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(5, Role::Standard), (9, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Share::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -1181,14 +1560,50 @@ mod tests {
     async fn sharing_cannot_escalate() -> Result<(), Box<dyn Error>> {
         // Arrange
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(Vec::new()),
-            resources: resources_with(access(
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(Vec::new()),
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::Gallery,
                 Some(5),
                 Visibility::Private,
                 Vec::new(),
             )),
-            users: users_with(vec![(5, Role::Standard), (9, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(5, Role::Standard), (9, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Share::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -1210,7 +1625,21 @@ mod tests {
     #[tokio::test]
     async fn a_grant_is_revoked() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let mut grants = grants_with(Vec::new());
+        let mut grants = (move |grants: Vec<Grant>| -> MockGrantRepository {
+            let mut repository = MockGrantRepository::new();
+            repository.expect_search().returning(move |filter| {
+                let found = grants
+                    .iter()
+                    .copied()
+                    .filter(|grant| match filter.principal {
+                        Some(principal) => grant.principal() == principal,
+                        None => true,
+                    })
+                    .collect::<Vec<_>>();
+                Box::pin(async move { Ok(found) })
+            });
+            repository
+        })(Vec::new());
         grants
             .expect_delete()
             .times(1)
@@ -1221,13 +1650,35 @@ mod tests {
             });
         let unit_of_work = TestUnitOfWork {
             grants,
-            resources: resources_with(access(
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::Gallery,
                 Some(5),
                 Visibility::Private,
                 Vec::new(),
             )),
-            users: users_with(vec![(5, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(5, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Revoke::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -1248,20 +1699,56 @@ mod tests {
     #[tokio::test]
     async fn revoking_an_unknown_grant_is_not_found() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let mut grants = grants_with(Vec::new());
+        let mut grants = (move |grants: Vec<Grant>| -> MockGrantRepository {
+            let mut repository = MockGrantRepository::new();
+            repository.expect_search().returning(move |filter| {
+                let found = grants
+                    .iter()
+                    .copied()
+                    .filter(|grant| match filter.principal {
+                        Some(principal) => grant.principal() == principal,
+                        None => true,
+                    })
+                    .collect::<Vec<_>>();
+                Box::pin(async move { Ok(found) })
+            });
+            repository
+        })(Vec::new());
         grants
             .expect_delete()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok(false) }));
         let unit_of_work = TestUnitOfWork {
             grants,
-            resources: resources_with(access(
+            resources: (move |bundle: ResourceAccess| -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(move |_, _| {
+                    let found = bundle.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                resources
+            })(access(
                 ResourceKind::Gallery,
                 Some(5),
                 Visibility::Private,
                 Vec::new(),
             )),
-            users: users_with(vec![(5, Role::Standard)]),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(vec![(5, Role::Standard)]),
             ..TestUnitOfWork::default()
         };
         let use_case = Revoke::new(Arc::new(TestFactory::new(unit_of_work)));
@@ -1287,8 +1774,28 @@ mod tests {
             .expect_search()
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(Vec::new()),
-            resources: no_matches(),
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(Vec::new()),
+            resources: (move || -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources
+                    .expect_search()
+                    .returning(|_, _| Box::pin(async { Ok(Vec::new()) }));
+                resources
+            })(),
             users,
             ..TestUnitOfWork::default()
         };
@@ -1311,9 +1818,44 @@ mod tests {
     async fn a_missing_caller_is_refused() -> Result<(), Box<dyn Error>> {
         // Arrange
         let unit_of_work = TestUnitOfWork {
-            grants: grants_with(Vec::new()),
-            resources: no_matches(),
-            users: users_with(Vec::new()),
+            grants: (move |grants: Vec<Grant>| -> MockGrantRepository {
+                let mut repository = MockGrantRepository::new();
+                repository.expect_search().returning(move |filter| {
+                    let found = grants
+                        .iter()
+                        .copied()
+                        .filter(|grant| match filter.principal {
+                            Some(principal) => grant.principal() == principal,
+                            None => true,
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+                repository
+            })(Vec::new()),
+            resources: (move || -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources
+                    .expect_search()
+                    .returning(|_, _| Box::pin(async { Ok(Vec::new()) }));
+                resources
+            })(),
+            users: (move |entries: Vec<(NumericID, Role)>| -> MockUserRepository {
+                let mut users = MockUserRepository::new();
+                users.expect_search().returning(move |filter| {
+                    let found = filter.id.and_then(|id| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.0 == id)
+                            .and_then(|entry| {
+                                User::try_new(entry.0, "user".to_owned(), None, entry.0, entry.1)
+                                    .ok()
+                            })
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(Vec::new()),
             ..TestUnitOfWork::default()
         };
         let use_case = Summary::new(Arc::new(TestFactory::new(unit_of_work)));

@@ -258,9 +258,6 @@ pub(crate) enum GetAssetContentError {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait GetAssetContentUseCase: Send + Sync {
     /// Read the requested asset content.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn GetAssetContentUseCase>`.
     fn execute<'future>(
         &'future self,
         command: GetAssetContentCommand,

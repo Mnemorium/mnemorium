@@ -3,27 +3,22 @@ id: sty-rust-022
 language: Rust
 severity: error
 message: >-
-  a catch-all `Err` arm over a port error must default to `500`
-  (`ApiError::InternalServerError`); it must never collapse a server-side
-  failure into a misleading `401` (`ApiError::Unauthorized`)
+  an enum deriving sqlx::Type declares
+  #[sqlx(rename_all = "UPPERCASE")] to match the SQL CHECK constraint strings
 files:
-  - src/lib/infrastructure/inbound/rest/middleware/*.rs
+  - src/lib/infrastructure/outbound/sqlx/model/*.rs
 rule:
-  kind: match_arm
   all:
-    - has:
-        field: pattern
+    - kind: enum_item
+    # The derive attribute precedes the enum as a sibling, so `follows` — not
+    # `has` — reaches it; `stopBy: end` skips intervening attributes such as
+    # #[non_exhaustive] and doc comments.
+    - follows:
+        kind: attribute_item
+        regex: 'derive\([^)]*sqlx::Type'
         stopBy: end
-        has:
-          kind: tuple_struct_pattern
-          regex: '^Err\((_|[a-z][a-z0-9_]*)\)$'
-    - any:
-        - has:
-            field: value
-            regex: 'ApiError::Unauthorized'
-            stopBy: end
-        - not:
-            has:
-              field: value
-              regex: 'ApiError::InternalServerError'
-              stopBy: end
+    - not:
+        follows:
+          kind: attribute_item
+          regex: 'sqlx\(rename_all\s*=\s*"UPPERCASE"\)'
+          stopBy: end

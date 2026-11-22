@@ -2,18 +2,22 @@
 id: sty-rust-056
 language: Rust
 severity: error
-message: declare the command object first in a use-case port file
+message: >-
+  declare the error enum third in a use-case port file: after the command and
+  response objects, before the use-case trait
 rule:
   all:
-    - kind: struct_item
+    - kind: enum_item
+    - regex: '^(pub(\(crate\))? )?enum \w*Error\b'
     - any:
-        - pattern: pub struct $COMMAND
-        - pattern: pub(crate) struct $COMMAND
-        - pattern: struct $COMMAND
-    - regex: '^(pub(\(crate\))? )?struct \w+Command\b'
-    - follows:
-        any:
-          - kind: struct_item
-          - kind: enum_item
-          - kind: trait_item
-        stopBy: end
+        - follows:
+            kind: trait_item
+            stopBy: end
+        - precedes:
+            kind: struct_item
+            regex: 'struct \w*Command\b'
+            stopBy: end
+        - precedes:
+            kind: struct_item
+            regex: 'struct \w*Response\b'
+            stopBy: end

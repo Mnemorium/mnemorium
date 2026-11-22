@@ -1,26 +1,16 @@
 ---
 id: sty-rust-013
 language: Rust
-severity: hint
-message: extract the domain error enums and the model structs
+severity: error
+message: a use-case error enum in src/lib/application/port must declare an Unknown(_) variant
 files:
-  - src/lib/domain/model/*.rs
+  - src/lib/application/port/**/*.rs
 rule:
-  any:
-    - all:
-        - kind: enum_item
-        - any:
-            - pattern: pub enum $ERROR_ENUM
-            - pattern: pub(crate) enum $ERROR_ENUM
-            - pattern: enum $ERROR_ENUM
-        - regex: '^(pub(\(crate\))? )?enum \w+Error\b'
-        - follows:
-            kind: attribute_item
-            regex: 'thiserror::Error'
-            stopBy: end
-    - all:
-        - kind: struct_item
-        - any:
-            - pattern: pub struct $MODEL
-            - pattern: pub(crate) struct $MODEL
-            - pattern: struct $MODEL
+  all:
+    - kind: enum_item
+    - regex: 'enum \w+Error\b'
+    - not:
+        has:
+          kind: enum_variant
+          regex: 'Unknown\s*\('
+          stopBy: end

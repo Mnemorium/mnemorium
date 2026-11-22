@@ -3,13 +3,11 @@ id: sty-rust-036
 language: Rust
 severity: error
 message: >-
-  a repository accessor on a context unit-of-work view must return a
-  short-lived view that borrows the unit of work: `impl <Repository> + '_`
-files:
-  - src/lib/domain/port/**/*_unit_of_work.rs
+  a concrete sqlx adapter must not leave infrastructure; obtain repositories
+  from a unit of work, never name a Sqlx adapter outside src/lib/infrastructure
 rule:
-  all:
-    - kind: function_signature_item
-    - pattern: 'fn $NAME(&mut self) -> $RET'
-    - not:
-        pattern: "fn $NAME(&mut self) -> impl $TRAIT + '_"
+  any:
+    - kind: identifier
+      regex: '^Sqlx'
+    - kind: type_identifier
+      regex: '^Sqlx'

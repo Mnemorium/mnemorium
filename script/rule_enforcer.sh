@@ -7,8 +7,9 @@ set -u -o pipefail
 # through `scan_short <ID> <root> [--globs ...]` or `scan_json <ID> <root>
 # [--globs ...]`, which share one batched `ast-grep scan` per distinct argument
 # tuple (the root plus its globs) and slice the stream by rule id. So a new
-# check adds a rule file and a registry line, not a scanner process. SQL rules
-# share `sql_lint <code>...`, which lints the migrations once for every code.
+# check adds a rule file and a registry line, not a scanner process. A SQL rule
+# `sqlfluff` already enforces is not wrapped here; the remaining SQL checks read
+# the migrations textually.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
@@ -58,15 +59,16 @@ RULES=(
 	"STY-RUST-011:check_sty_rust_011"
 	"STY-RUST-012:check_sty_rust_012"
 	"STY-RUST-013:check_sty_rust_013"
+	"STY-RUST-017:check_sty_rust_017"
 	"STY-RUST-014:check_sty_rust_014"
-	"STY-RUST-019:check_sty_rust_019"
 	"STY-RUST-015:check_sty_rust_015"
 	"STY-RUST-016:check_sty_rust_016"
 	"STY-RUST-018:check_sty_rust_018"
+	"STY-RUST-021:check_sty_rust_021"
 	"STY-RUST-020:check_sty_rust_020"
-	"STY-RUST-023:check_sty_rust_023"
+	"STY-RUST-064:check_sty_rust_064"
 	"STY-RUST-022:check_sty_rust_022"
-	"STY-RUST-067:check_sty_rust_067"
+	"STY-RUST-023:check_sty_rust_023"
 	"STY-RUST-024:check_sty_rust_024"
 	"STY-RUST-025:check_sty_rust_025"
 	"STY-RUST-026:check_sty_rust_026"
@@ -74,13 +76,14 @@ RULES=(
 	"STY-RUST-028:check_sty_rust_028"
 	"STY-RUST-029:check_sty_rust_029"
 	"STY-RUST-030:check_sty_rust_030"
+	"STY-RUST-031:check_sty_rust_031"
 	"STY-RUST-032:check_sty_rust_032"
 	"STY-RUST-033:check_sty_rust_033"
 	"STY-RUST-034:check_sty_rust_034"
-	"STY-RUST-035:check_sty_rust_035"
 	"STY-RUST-036:check_sty_rust_036"
-	"STY-RUST-038:check_sty_rust_038"
+	"STY-RUST-037:check_sty_rust_037"
 	"STY-RUST-039:check_sty_rust_039"
+	"STY-RUST-040:check_sty_rust_040"
 	"STY-RUST-041:check_sty_rust_041"
 	"STY-RUST-042:check_sty_rust_042"
 	"STY-RUST-043:check_sty_rust_043"
@@ -104,8 +107,9 @@ RULES=(
 	"STY-RUST-061:check_sty_rust_061"
 	"STY-RUST-062:check_sty_rust_062"
 	"STY-RUST-063:check_sty_rust_063"
-	"STY-RUST-064:check_sty_rust_064"
 	"STY-RUST-065:check_sty_rust_065"
+	"STY-RUST-066:check_sty_rust_066"
+	"STY-RUST-067:check_sty_rust_067"
 	"STY-RUST-068:check_sty_rust_068"
 	"STY-RUST-069:check_sty_rust_069"
 	"STY-RUST-070:check_sty_rust_070"
@@ -122,6 +126,7 @@ RULES=(
 	"STY-RUST-081:check_sty_rust_081"
 	"STY-RUST-082:check_sty_rust_082"
 	"STY-RUST-083:check_sty_rust_083"
+	"STY-RUST-084:check_sty_rust_084"
 	"STY-RUST-085:check_sty_rust_085"
 	"STY-RUST-086:check_sty_rust_086"
 	"STY-RUST-087:check_sty_rust_087"
@@ -132,8 +137,6 @@ RULES=(
 	"DOC-005:check_doc_005"
 	"DOC-007:check_doc_007"
 	"DOC-008:check_doc_008"
-	"STY-SQL-001:check_sty_sql_001"
-	"STY-SQL-003:check_sty_sql_003"
 	"STY-SQL-004:check_sty_sql_004"
 	"STY-SQL-005:check_sty_sql_005"
 	"STY-SQL-006:check_sty_sql_006"
@@ -174,6 +177,7 @@ RULES=(
 	"OBS-008:check_obs_008"
 	"API-001:check_api_001"
 	"API-002:check_api_002"
+	"API-003:check_api_003"
 	"API-004:check_api_004"
 	"API-005:check_api_005"
 	"API-006:check_api_006"
@@ -186,14 +190,16 @@ RULES=(
 	"API-013:check_api_013"
 	"API-014:check_api_014"
 	"API-015:check_api_015"
-	"API-016:check_api_016"
+	"API-019:check_api_019"
 	"API-020:check_api_020"
 	"API-021:check_api_021"
+	"API-022:check_api_022"
 	"API-023:check_api_023"
 	"API-024:check_api_024"
 	"API-025:check_api_025"
-	"API-026:check_api_026"
 	"API-027:check_api_027"
+	"API-028:check_api_028"
+	"API-029:check_api_029"
 	"API-030:check_api_030"
 	"API-031:check_api_031"
 	"API-032:check_api_032"
@@ -203,10 +209,7 @@ RULES=(
 	"API-036:check_api_036"
 	"API-037:check_api_037"
 	"API-038:check_api_038"
-	"API-039:check_api_039"
 	"API-040:check_api_040"
-	"API-041:check_api_041"
-	"API-043:check_api_043"
 )
 
 # --- Rulebook ---------------------------------------------------------------
@@ -260,7 +263,7 @@ read_rulebook() {
 		function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
 
 		# The preamble carries process material, not rules; its example row would
-		# otherwise duplicate STY-RUST-001.
+		# otherwise duplicate a normative rule.
 		BEGIN { preamble["Purpose"] = 1; preamble["How this document is extended"] = 1 }
 
 		/^## / {
@@ -277,10 +280,9 @@ read_rulebook() {
 			if (id !~ /^`[A-Z][A-Z-]*-[0-9]+`$/) next
 			gsub(/`/, "", id)
 			section = trim(c[3])
-			rule = ""
-			for (i = 4; i <= n - 2; i++) {
-				rule = rule (i > 4 ? "|" : "") c[i]
-			}
+			# Column four is the Rule; the trailing More info and Enforced by
+			# columns are reference data, not part of the statement.
+			rule = trim(c[4])
 			gsub(/[[:space:]]+/, " ", rule)
 			printf "%s\t%s\t%s\n", id, section, trim(rule)
 		}
@@ -559,81 +561,94 @@ require_matches() {
 	return 1
 }
 
-# --- Checks -----------------------------------------------------------------
-
-# check_sty_rust_001 — bound the number of single-call helpers (STY-RUST-001).
-#
-# The rule forbids extracting functionality used in fewer than four places. The
-# check measures the one-use end of it as a budget: a production function whose
-# name is called exactly once across `src` is a single-call helper, and the tree
-# may hold no more of them than `max_single_call_functions` records. Adding one
-# is then a reviewed change to that budget, not an accident. A call is an
-# identifier followed by `(` with comments stripped; the declaration's own line
-# is skipped by position, so a declaration the textual scan does see is not
-# mistaken for a call site. A generic declaration spells `name<...>(` and is no
-# textual occurrence at all, so its real call sites are counted untouched. A
-# name declared more than once is skipped because its occurrences cannot be
-# attributed to one function.
-check_sty_rust_001() {
-	local id="STY-RUST-001"
-	local config budget matches file line hit name lone result=0
-	local -A declarations=()
-	local -A declaration_sites=()
-	local -A calls=()
-
-	config="$(rule_config "$id")" || return 2
-	budget="$(jq -r '.max_single_call_functions // empty' <<<"$config")"
-	if [ -z "$budget" ]; then
-		printf 'error: %s: rule_enforcer.yaml records no max_single_call_functions\n' "$id" >&2
-		return 1
-	fi
-
-	matches="$(scan_json "$id" src)" || return 1
-	require_matches "$id" "production function declaration" "$matches" || return 1
-
-	while IFS=$'\t' read -r file line name; do
-		[ -n "$name" ] || continue
-		declarations["$name"]=$((${declarations["$name"]:-0} + 1))
-		declaration_sites["$file:$line"]+=" $name"
-	done < <(printf '%s\n' "$matches" |
-		jq -r '[.file, .range.start.line + 1, .metaVariables.single.NAME.text] | @tsv')
-
-	# A name's callers are its textual occurrences outside the declaration line.
-	while IFS= read -r file; do
-		[ -n "$file" ] || continue
-		while IFS= read -r hit; do
-			[ -n "$hit" ] || continue
-			line="${hit%%:*}"
-			name="${hit#*:}"
-			[ -n "$name" ] || continue
-			case " ${declaration_sites["$file:$line"]:-} " in
-			*" $name "*) continue ;;
-			esac
-			calls["$name"]=$((${calls["$name"]:-0} + 1))
-		done < <(sed -E 's://.*::' "$file" |
-			grep -onE '[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(' |
-			sed -E 's/[[:space:]]*\($//')
-	done < <(find src -name '*.rs' | sort)
-
-	lone=0
-	for name in "${!declarations[@]}"; do
-		[ "${declarations[$name]}" -eq 1 ] || continue
-		if [ "${calls[$name]:-0}" -eq 1 ]; then
-			lone=$((lone + 1))
-		fi
-	done
-
-	if [ "$lone" -gt "$budget" ]; then
-		printf 'error: %s: %s single-call helpers; the recorded budget is %s. Inline the new helper or raise max_single_call_functions in rule_enforcer.yaml\n' \
-			"$id" "$lone" "$budget" >&2
-		result=1
-	fi
-
-	return "$result"
+# decl_roles <file> <line>... — classify the declarations that start at the given 1-based lines by
+# the contiguous attribute block above each: `<line>\t<role>\t<gate>`, where `role` is `test` (a test
+# attribute marks a test case), `fixture` (`#[fixture]`) or `helper` (neither), and `gate` is `gated`
+# when the block also carries `#[cfg(test)]`. A declaration's attributes are siblings in the syntax
+# tree, never children, so no ast-grep rule can read them; blank lines and line comments inside the
+# run are tolerated, and a multi-line attribute is walked back to its `#[`.
+decl_roles() {
+	local file="$1"
+	shift
+	awk -v wanted="$*" '
+		BEGIN {
+			n_test = split("#[test] #[test( #[tokio::test] #[tokio::test( #[rstest] #[rstest( #[rstest::rstest] #[rstest::rstest( #[traced_test] #[traced_test( #[allure_test] #[allure_test(", test_attrs, " ")
+			n_fixture = split("#[fixture] #[fixture( #[rstest::fixture] #[rstest::fixture(", fixture_attrs, " ")
+		}
+		{ src[NR] = $0 }
+		END {
+			n = split(wanted, lines, " ")
+			for (k = 1; k <= n; k++) {
+				start = lines[k] + 0
+				if (start < 1) continue
+				depth = 0
+				first = 0
+				for (i = start - 1; i >= 1; i--) {
+					t = src[i]
+					sub(/^[[:space:]]+/, "", t)
+					if (depth == 0) {
+						if (t == "" || t ~ /^\/\//) continue
+						if (t !~ /^#!?\[/ && t !~ /^[)\]}]/) break
+					}
+					s = t; opens = gsub(/\[/, "", s)
+					s = t; closes = gsub(/\]/, "", s)
+					depth += closes - opens
+					if (depth < 0) depth = 0
+					first = i
+				}
+				block = ""
+				if (first > 0) for (j = first; j < start; j++) block = block " " src[j]
+				gsub(/[[:space:]]+/, "", block)
+				role = "helper"
+				for (q = 1; q <= n_test; q++) if (index(block, test_attrs[q]) > 0) role = "test"
+				for (q = 1; q <= n_fixture; q++) if (index(block, fixture_attrs[q]) > 0) role = "fixture"
+				gate = (index(block, "#[cfg(test)]") > 0) ? "gated" : "open"
+				printf "%d\t%s\t%s\n", start, role, gate
+			}
+		}
+	' "$file"
 }
 
-check_sty_rust_002() {
-	local id="STY-RUST-002"
+# enclosing_module <line> <starts> <ends> <names> <gates> — the innermost inline module of the
+# named arrays that contains the 1-based line, as `<name>\t<gate>`; nothing when the line lies
+# outside every module. The arrays are the module records of one file, in file order.
+enclosing_module() {
+	local line="$1"
+	local -n starts="$2" ends="$3" names="$4" gates="$5"
+	local i best=-1
+	for i in "${!starts[@]}"; do
+		if [ "${starts[$i]}" -le "$line" ] && [ "$line" -le "${ends[$i]}" ]; then
+			if [ "$best" -lt 0 ] || [ "${starts[$i]}" -gt "${starts[$best]}" ]; then
+				best="$i"
+			fi
+		fi
+	done
+	[ "$best" -ge 0 ] || return 0
+	printf '%s\t%s\n' "${names[$best]}" "${gates[$best]}"
+}
+
+# unit_return <type> — true when a return type carries no value: absent, `()`, or `Result<(), _>`.
+unit_return() {
+	case "$1" in
+	"" | "()" | "Result<(),"*) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+# datastore_fn <file> <line> — true when the function starting at the 1-based line names a
+# datastore type in its signature (a `SqlitePool`, a `Transaction<'static, Sqlite>` or a `sqlx::`
+# path). A `seed_*` helper that delegates to other seeds inserts no row itself, so the signature is
+# the evidence that it is still a datastore seed and not configuration test data.
+datastore_fn() {
+	local file="$1" line="$2"
+	sed -n "${line},$((line + 30))p" "$file" | sed '/{/q' |
+		grep -qE 'Sqlite|sqlx::|Transaction<'
+}
+
+# --- Checks -----------------------------------------------------------------
+
+check_sty_rust_001() {
+	local id="STY-RUST-001"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local context name dir
 	local -a contexts=()
@@ -667,20 +682,20 @@ check_sty_rust_002() {
 	return "$result"
 }
 
-check_sty_rust_003() { scan_short STY-RUST-003 --globs 'src/lib/infrastructure/inbound/rest/handler/*/*.rs' src; }
+check_sty_rust_002() { scan_short STY-RUST-002 --globs 'src/lib/infrastructure/inbound/rest/handler/*/*.rs' src; }
+
+check_sty_rust_003() { scan_short STY-RUST-003 src; }
 
 check_sty_rust_004() { scan_short STY-RUST-004 src; }
 
-check_sty_rust_005() { scan_short STY-RUST-005 src; }
-
-check_sty_rust_006() {
-	local id="STY-RUST-006"
+check_sty_rust_005() {
+	local id="STY-RUST-005"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches declared file fn base matched result=0
 
 	need_dir "$id" "$handler_dir" || return 1
 
-	# sty-rust-006 extracts the handler — the function carrying the endpoint's `#[utoipa::path]` attribute.
+	# sty-rust-005 extracts the handler — the function carrying the endpoint's `#[utoipa::path]` attribute.
 	matches="$(scan_json "$id" "$handler_dir")" || return 1
 	require_matches "$id" "handler from $handler_dir" "$matches" || return 1
 
@@ -712,16 +727,16 @@ check_sty_rust_006() {
 	return "$result"
 }
 
-check_sty_rust_007() { scan_short STY-RUST-007 src; }
+check_sty_rust_006() { scan_short STY-RUST-006 src; }
 
-check_sty_rust_014() { scan_short STY-RUST-014 src; }
+check_sty_rust_013() { scan_short STY-RUST-013 src; }
 
-check_sty_rust_015() {
-	local id="STY-RUST-015"
+check_sty_rust_014() {
+	local id="STY-RUST-014"
 	local target="src/lib/domain/port/error.rs"
 	local matches file result=0
 
-	# sty-rust-015 extracts every outbound-port error enum declared under src/lib/domain/port/; the file comparison below holds them all to error.rs, so a one-per-port family (e.g. UserRepositoryError beside RepositoryError) is rejected.
+	# sty-rust-014 extracts every outbound-port error enum declared under src/lib/domain/port/; the file comparison below holds them all to error.rs, so a one-per-port family (e.g. UserRepositoryError beside RepositoryError) is rejected.
 	matches="$(scan_json "$id" src/lib/domain/port)" || return 1
 
 	while IFS= read -r file; do
@@ -736,21 +751,21 @@ check_sty_rust_015() {
 	return "$result"
 }
 
-check_sty_rust_016() { scan_short STY-RUST-016 src; }
+check_sty_rust_015() { scan_short STY-RUST-015 src; }
 
-check_sty_rust_018() { need_dir "STY-RUST-018" "src/lib/domain/model" && scan_short STY-RUST-018 "src/lib/domain/model"; }
+check_sty_rust_016() { need_dir "STY-RUST-016" "src/lib/domain/model" && scan_short STY-RUST-016 "src/lib/domain/model"; }
 
-check_sty_rust_020() { scan_short STY-RUST-020 src; }
+check_sty_rust_018() { scan_short STY-RUST-018 src; }
 
-check_sty_rust_023() {
-	local id="STY-RUST-023"
+check_sty_rust_021() {
+	local id="STY-RUST-021"
 	local model_dir="src/lib/infrastructure/outbound/sqlx/model"
 	local matches file enum field type base expected key result=0
 	local -A enums=()
 
 	need_dir "$id" "$model_dir" || return 1
 
-	# sty-rust-023 extracts each sqlx CHECK-constraint enum and each model field; the field-name-to-enum-name pairing happens here because an ast-grep rule cannot relate two identifiers.
+	# sty-rust-021 extracts each sqlx CHECK-constraint enum and each model field; the field-name-to-enum-name pairing happens here because an ast-grep rule cannot relate two identifiers.
 	matches="$(scan_json "$id" "$model_dir")" || return 1
 	require_matches "$id" "enum or field from $model_dir" "$matches" || return 1
 
@@ -783,17 +798,17 @@ check_sty_rust_023() {
 	return "$result"
 }
 
-check_sty_rust_022() { need_dir "STY-RUST-022" "src/lib/infrastructure/inbound/rest/middleware" && scan_short STY-RUST-022 "src/lib/infrastructure/inbound/rest/middleware"; }
+check_sty_rust_020() { need_dir "STY-RUST-020" "src/lib/infrastructure/inbound/rest/middleware" && scan_short STY-RUST-020 "src/lib/infrastructure/inbound/rest/middleware"; }
 
-check_sty_rust_013() {
-	local id="STY-RUST-013"
+check_sty_rust_012() {
+	local id="STY-RUST-012"
 	local model_dir="src/lib/domain/model"
 	local matches file line name base key result=0
 	local -A struct_line=()
 
 	need_dir "$id" "$model_dir" || return 1
 
-	# sty-rust-013 extracts each domain error enum and each model struct; the `<Model>Error`-before-`<Model>` pairing happens here because an ast-grep rule cannot relate two identifiers.
+	# sty-rust-012 extracts each domain error enum and each model struct; the `<Model>Error`-before-`<Model>` pairing happens here because an ast-grep rule cannot relate two identifiers.
 	matches="$(scan_json "$id" "$model_dir")" || return 1
 	require_matches "$id" "domain error or model struct from $model_dir" "$matches" || return 1
 
@@ -825,8 +840,8 @@ check_sty_rust_013() {
 	return "$result"
 }
 
-check_sty_rust_019() {
-	local id="STY-RUST-019"
+check_sty_rust_017() {
+	local id="STY-RUST-017"
 	local model_dir="src/lib/domain/model"
 	local matches file struct impl name ret key result=0
 	local -A fields=()
@@ -835,7 +850,7 @@ check_sty_rust_019() {
 
 	need_dir "$id" "$model_dir" || return 1
 
-	# sty-rust-019 extracts each struct field and each `&self` method; the field-name-to-getter pairing happens here because an ast-grep rule cannot relate two identifiers.
+	# sty-rust-017 extracts each struct field and each `&self` method; the field-name-to-getter pairing happens here because an ast-grep rule cannot relate two identifiers.
 	matches="$(scan_json "$id" "$model_dir")" || return 1
 	require_matches "$id" "field or getter from $model_dir" "$matches" || return 1
 
@@ -864,20 +879,20 @@ check_sty_rust_019() {
 	return "$result"
 }
 
+check_sty_rust_007() { scan_short STY-RUST-007 src; }
+
 check_sty_rust_008() { scan_short STY-RUST-008 src; }
 
 check_sty_rust_009() { scan_short STY-RUST-009 src; }
 
 check_sty_rust_010() { scan_short STY-RUST-010 src; }
 
-check_sty_rust_011() { scan_short STY-RUST-011 src; }
-
-check_sty_rust_012() {
-	local id="STY-RUST-012"
+check_sty_rust_011() {
+	local id="STY-RUST-011"
 	local target="src/lib/infrastructure/inbound/rest/api_error.rs"
 	local matches file result=0
 
-	# sty-rust-012 is a positive rule: it matches a compliant `enum ApiError` — one not derived with `thiserror`.
+	# sty-rust-011 is a positive rule: it matches a compliant `enum ApiError` — one not derived with `thiserror`.
 	matches="$(scan_json "$id" src)" || return 1
 
 	if [ -z "$matches" ]; then
@@ -898,12 +913,12 @@ check_sty_rust_012() {
 	return "$result"
 }
 
-check_sty_rust_067() { scan_short_filtered STY-RUST-067 '^src/lib/app\.rs:' src '!src/lib/app.rs'; }
+check_sty_rust_064() { scan_short_filtered STY-RUST-064 '^src/lib/app\.rs:' src '!src/lib/app.rs'; }
 
-check_sty_rust_024() { scan_short STY-RUST-024 src; }
+check_sty_rust_022() { scan_short STY-RUST-022 src; }
 
-check_sty_rust_025() {
-	local id="STY-RUST-025"
+check_sty_rust_023() {
+	local id="STY-RUST-023"
 	local model_dir="src/lib/infrastructure/outbound/sqlx/model"
 	local migrations_dir="migrations"
 	local matches raw values enum variants variant value result=0
@@ -912,7 +927,7 @@ check_sty_rust_025() {
 
 	need_dir "$id" "$model_dir" || return 1
 
-	# sty-rust-025 extracts each `sqlx::Type` enum that maps its variants to uppercase SQL strings; the comparison against the allowed values of the SQL CHECK constraints happens here because an ast-grep rule cannot read migrations/.
+	# sty-rust-023 extracts each `sqlx::Type` enum that maps its variants to uppercase SQL strings; the comparison against the allowed values of the SQL CHECK constraints happens here because an ast-grep rule cannot read migrations/.
 	matches="$(scan_json "$id" "$model_dir")" || return 1
 	require_matches "$id" "SQL CHECK-constraint enum from $model_dir" "$matches" || return 1
 
@@ -959,30 +974,105 @@ check_sty_rust_025() {
 	return "$result"
 }
 
+check_sty_rust_024() { scan_short STY-RUST-024 src; }
+
+check_sty_rust_025() { scan_short STY-RUST-025 src; }
+
 check_sty_rust_026() { scan_short STY-RUST-026 src; }
 
 check_sty_rust_027() { scan_short STY-RUST-027 src; }
 
 check_sty_rust_028() { scan_short STY-RUST-028 src; }
 
-check_sty_rust_029() { scan_short STY-RUST-029 src; }
+# check_sty_rust_029 — a zero-argument value builder in a test module is an rstest #[fixture]
+# function (TechnicalDesign.md § 5, STY-RUST-029). A function inside a #[cfg(test)] mod tests that
+# is not a test case, not a #[fixture], not a seed_*/assert_* helper (STY-RUST-088, STY-RUST-087),
+# takes no parameters and returns a value other than () or Result<(), _> builds a fixed value: the
+# test must inject it. A builder that takes a runtime parameter cannot be a fixture (rstest
+# resolves a fixture argument as another fixture, never as a caller-supplied value), so it stays a
+# function. The attribute block above the function decides test and fixture status and the module
+# extent decides membership, because an ast-grep rule reads neither.
+check_sty_rust_029() {
+	local id="STY-RUST-029"
+	local matches mods items file record start end name line ret role gate result=0
+	local module mod_name
+	local i
+	local -a records=() mod_starts=() mod_ends=() mod_names=() mod_gates=() starts=() item_lines=()
+	local -A role_of=() gate_of=()
+
+	need_dir "$id" src || return 1
+
+	# sty-rust-029 extracts every value-returning free function and every inline module.
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "value-returning function or inline module from src" "$matches" || return 1
+
+	mods="$(printf '%s\n' "$matches" | jq -r 'select(.metaVariables.single.MOD) |
+		[.file, ((.range.start.line + 1) | tostring), ((.range.end.line + 1) | tostring),
+		 .metaVariables.single.MOD.text] | @tsv' | sort -t$'\t' -k1,1 -k2,2n)"
+	items="$(printf '%s\n' "$matches" | jq -r 'select(.metaVariables.single.FN) |
+		[.file, ((.range.start.line + 1) | tostring), .metaVariables.single.FN.text,
+		 (.metaVariables.single.RET.text // ""), (.metaVariables.single.PARAMS.text // "()")] |
+		@tsv' | sort -t$'\t' -k1,1 -k2,2n)"
+
+	# One attribute-block read and one module scan per file: the awk pass is the expensive part.
+	while IFS= read -r file; do
+		[ -n "$file" ] || continue
+		mapfile -t records < <(printf '%s\n' "$mods" | awk -F'\t' -v f="$file" '$1 == f')
+		[ "${#records[@]}" -gt 0 ] || continue
+		mod_starts=() mod_ends=() mod_names=() mod_gates=() starts=()
+		for record in "${records[@]}"; do
+			IFS=$'\t' read -r _ start end name <<<"$record"
+			mod_starts+=("$start") mod_ends+=("$end") mod_names+=("$name") starts+=("$start")
+		done
+		item_lines=()
+		mapfile -t item_lines < <(printf '%s\n' "$items" | awk -F'\t' -v f="$file" '$1 == f { print $2 }')
+		[ "${#item_lines[@]}" -gt 0 ] || continue
+		starts+=("${item_lines[@]}")
+		role_of=() gate_of=()
+		while IFS=$'\t' read -r line role gate; do
+			role_of["$file:$line"]="$role" gate_of["$file:$line"]="$gate"
+		done < <(decl_roles "$file" "${starts[@]}")
+		for ((i = 0; i < ${#mod_starts[@]}; i++)); do
+			record="$file:${mod_starts[$i]}"
+			mod_gates+=("${gate_of[$record]:-open}")
+		done
+		while IFS=$'\t' read -r _ line name ret params; do
+			[ -n "$name" ] || continue
+			# A parameterised builder cannot be injected: rstest resolves every
+			# fixture argument as another fixture, never as a runtime value.
+			[ "$params" = "()" ] || continue
+			[ "${role_of["$file:$line"]:-helper}" = "helper" ] || continue
+			case "$name" in
+			seed_* | assert_*) continue ;;
+			esac
+			unit_return "$ret" && continue
+			module="$(enclosing_module "$line" mod_starts mod_ends mod_names mod_gates)"
+			[ -n "$module" ] || continue
+			IFS=$'\t' read -r mod_name gate <<<"$module"
+			[ "$gate" = "gated" ] && [ "$mod_name" = "tests" ] || continue
+			printf 'error: %s: %s:%s: %s builds a fixed value; make it an rstest #[fixture] and inject it\n' \
+				"$id" "$file" "$line" "$name" >&2
+			result=1
+		done < <(printf '%s\n' "$items" | awk -F'\t' -v f="$file" '$1 == f')
+	done < <(printf '%s\n' "$mods" | cut -f1 | sort -u)
+
+	return "$result"
+}
 
 check_sty_rust_030() { scan_short STY-RUST-030 src; }
 
-check_sty_rust_032() { scan_short STY-RUST-032 src; }
+check_sty_rust_031() { scan_short STY-RUST-031 src/lib/application/use_case; }
 
-check_sty_rust_033() { scan_short STY-RUST-033 src/lib/application/use_case; }
+check_sty_rust_032() { scan_short STY-RUST-032 src/lib/application/use_case; }
 
-check_sty_rust_034() { scan_short STY-RUST-034 src/lib/application/use_case; }
+check_sty_rust_033() { scan_short STY-RUST-033 src; }
 
-check_sty_rust_035() { scan_short STY-RUST-035 src; }
+check_sty_rust_034() { scan_short STY-RUST-034 src; }
 
-check_sty_rust_036() { scan_short STY-RUST-036 src; }
+check_sty_rust_036() { scan_short_filtered STY-RUST-036 '^(src/lib/infrastructure/|src/lib/infrastructure\.rs:|src/lib/app\.rs:)' src '!src/lib/infrastructure/**' '!src/lib/infrastructure.rs' '!src/lib/app.rs'; }
 
-check_sty_rust_038() { scan_short_filtered STY-RUST-038 '^(src/lib/infrastructure/|src/lib/infrastructure\.rs:|src/lib/app\.rs:)' src '!src/lib/infrastructure/**' '!src/lib/infrastructure.rs' '!src/lib/app.rs'; }
-
-check_sty_rust_039() {
-	local id="STY-RUST-039"
+check_sty_rust_037() {
+	local id="STY-RUST-037"
 	local target="src/lib/application/use_case"
 	local matches file func enc key line a b i text result=0
 	local -a lines=()
@@ -991,7 +1081,7 @@ check_sty_rust_039() {
 
 	need_dir "$id" "$target" || return 1
 
-	# sty-rust-039 extracts every unit-of-work `begin()` call with the function that encloses it; counting and ordering happen here because an ast-grep rule cannot compare two matches.
+	# sty-rust-037 extracts every unit-of-work `begin()` call with the function that encloses it; counting and ordering happen here because an ast-grep rule cannot compare two matches.
 	matches="$(scan_json "$id" "$target")" || return 1
 	[ -n "$matches" ] || return 0
 
@@ -1027,18 +1117,18 @@ check_sty_rust_039() {
 	return "$result"
 }
 
-check_sty_rust_041() { scan_short STY-RUST-041 src; }
+check_sty_rust_039() { scan_short STY-RUST-039 src; }
 
-check_sty_rust_042() { need_file "STY-RUST-042" "src/lib/domain/port/unit_of_work.rs" && scan_short STY-RUST-042 "src/lib/domain/port/unit_of_work.rs"; }
+check_sty_rust_040() { need_file "STY-RUST-040" "src/lib/domain/port/unit_of_work.rs" && scan_short STY-RUST-040 "src/lib/domain/port/unit_of_work.rs"; }
 
-check_sty_rust_043() {
-	local id="STY-RUST-043"
+check_sty_rust_041() {
+	local id="STY-RUST-041"
 	local target="src/lib/domain/port/unit_of_work.rs"
 	local matches line name second="" count=0 result=0
 
 	need_file "$id" "$target" || return 1
 
-	# sty-rust-043 extracts every top-level trait declaration in the unit-of-work port file; the "second" position is compared here because an ast-grep rule cannot relate two declarations.
+	# sty-rust-041 extracts every top-level trait declaration in the unit-of-work port file; the "second" position is compared here because an ast-grep rule cannot relate two declarations.
 	matches="$(scan_json "$id" "$target")" || return 1
 
 	while IFS=$'\t' read -r line name; do
@@ -1059,13 +1149,13 @@ check_sty_rust_043() {
 	return "$result"
 }
 
-check_sty_rust_044() {
-	local id="STY-RUST-044"
+check_sty_rust_042() {
+	local id="STY-RUST-042"
 	local matches file func sql table_name cols identity returning result=0
 
 	need_dir "$id" "src/lib/infrastructure/outbound/sqlx" || return 1
 
-	# sty-rust-044 extracts every `INSERT INTO` of a repository adapter `create` together with the enclosing function; the identity-column check happens here because an ast-grep rule cannot read inside the SQL string.
+	# sty-rust-042 extracts every `INSERT INTO` of a repository adapter `create` together with the enclosing function; the identity-column check happens here because an ast-grep rule cannot read inside the SQL string.
 	matches="$(scan_json "$id" --globs 'src/lib/infrastructure/outbound/sqlx/*_repository.rs' --globs '!src/lib/infrastructure/outbound/sqlx/configuration_repository.rs' src)" || return 1
 	require_matches "$id" "repository create insert" "$matches" || return 1
 
@@ -1094,25 +1184,25 @@ check_sty_rust_044() {
 	return "$result"
 }
 
+check_sty_rust_043() { scan_short STY-RUST-043 src; }
+
+check_sty_rust_044() { scan_short STY-RUST-044 src; }
+
 check_sty_rust_045() { scan_short STY-RUST-045 src; }
 
 check_sty_rust_046() { scan_short STY-RUST-046 src; }
 
 check_sty_rust_047() { scan_short STY-RUST-047 src; }
 
-check_sty_rust_048() { scan_short STY-RUST-048 src; }
-
-check_sty_rust_049() { scan_short STY-RUST-049 src; }
-
-check_sty_rust_050() {
-	local id="STY-RUST-050"
+check_sty_rust_048() {
+	local id="STY-RUST-048"
 	local mapping="src/lib/infrastructure/outbound/sqlx/error_mapping.rs"
 	local result=0
 
 	need_file "$id" "$mapping" || return 1
 
 	# Clause 1: sqlx types never cross into the domain or application layers.
-	scan_short STY-RUST-050 src || result=1
+	scan_short STY-RUST-048 src || result=1
 
 	# Clause 2: sqlx::Error is mapped to RepositoryError in error_mapping.rs.
 	if ! grep -qE '^use sqlx::Error;' "$mapping" ||
@@ -1124,22 +1214,22 @@ check_sty_rust_050() {
 	return "$result"
 }
 
-check_sty_rust_051() { scan_short STY-RUST-051 --globs 'src/lib/domain/port/*_repository.rs' src; }
+check_sty_rust_049() { scan_short STY-RUST-049 --globs 'src/lib/domain/port/*_repository.rs' src; }
+
+check_sty_rust_050() { scan_short STY-RUST-050 src; }
+
+check_sty_rust_051() { scan_short STY-RUST-051 src; }
 
 check_sty_rust_052() { scan_short STY-RUST-052 src; }
 
-check_sty_rust_053() { scan_short STY-RUST-053 src; }
-
-check_sty_rust_054() { scan_short STY-RUST-054 src; }
-
-check_sty_rust_055() {
-	local id="STY-RUST-055"
+check_sty_rust_053() {
+	local id="STY-RUST-053"
 	local use_case_dir="src/lib/application/use_case"
 	local matches file trait impl_type base expected result=0 count=0
 
 	need_dir "$id" "$use_case_dir" || return 1
 
-	# sty-rust-055 extracts each use-case trait implementation; the trait-to-struct comparison happens here because an ast-grep rule cannot strip the `UseCase` suffix from one identifier and compare it to another.
+	# sty-rust-053 extracts each use-case trait implementation; the trait-to-struct comparison happens here because an ast-grep rule cannot strip the `UseCase` suffix from one identifier and compare it to another.
 	matches="$(scan_json "$id" "$use_case_dir")" || return 1
 	require_matches "$id" "use-case implementation from $use_case_dir" "$matches" || return 1
 
@@ -1164,23 +1254,23 @@ check_sty_rust_055() {
 	return "$result"
 }
 
-check_sty_rust_056() { need_dir "STY-RUST-056" "src/lib/application/port" && scan_short STY-RUST-056 "src/lib/application/port"; }
+check_sty_rust_054() { need_dir "STY-RUST-054" "src/lib/application/port" && scan_short STY-RUST-054 "src/lib/application/port"; }
 
-check_sty_rust_057() { scan_short STY-RUST-057 src; }
+check_sty_rust_055() { scan_short STY-RUST-055 src; }
 
-check_sty_rust_058() { need_dir "STY-RUST-058" "src/lib/application/port" && scan_short STY-RUST-058 --globs 'src/lib/application/port/*.rs' --globs '!src/lib/application/port/*_use_case_factory.rs' src; }
+check_sty_rust_056() { need_dir "STY-RUST-056" "src/lib/application/port" && scan_short STY-RUST-056 --globs 'src/lib/application/port/*.rs' --globs '!src/lib/application/port/*_use_case_factory.rs' src; }
 
-check_sty_rust_059() { need_dir "STY-RUST-059" "src/lib/application/port" && scan_short STY-RUST-059 "src/lib/application/port"; }
+check_sty_rust_057() { need_dir "STY-RUST-057" "src/lib/application/port" && scan_short STY-RUST-057 "src/lib/application/port"; }
 
-check_sty_rust_060() {
-	local id="STY-RUST-060"
+check_sty_rust_058() {
+	local id="STY-RUST-058"
 	local port_dir="src/lib/application/port"
 	local method_re='^fn ([a-z_][a-z0-9_]*)\(&self\) -> Arc<dyn ([A-Za-z0-9_]+)>;$'
 	local matches file expected trait bounds line text method use_case result=0
 
 	need_dir "$id" "$port_dir" || return 1
 
-	# sty-rust-060 extracts each use-case-factory trait and each accessor declared inside one; the trait's file, name, supertraits and the accessor's signature are paired here because an ast-grep rule cannot see a file path or relate two identifiers.
+	# sty-rust-058 extracts each use-case-factory trait and each accessor declared inside one; the trait's file, name, supertraits and the accessor's signature are paired here because an ast-grep rule cannot see a file path or relate two identifiers.
 	matches="$(scan_json "$id" src)" || return 1
 	require_matches "$id" "use-case-factory trait under $port_dir" "$matches" || return 1
 
@@ -1264,8 +1354,8 @@ check_sty_rust_060() {
 	return "$result"
 }
 
-check_sty_rust_061() {
-	local id="STY-RUST-061"
+check_sty_rust_059() {
+	local id="STY-RUST-059"
 	local factory_dir="src/lib/infrastructure/use_case_factory"
 	local matches file name base expected field type result=0
 	local -A struct_name=()
@@ -1275,7 +1365,7 @@ check_sty_rust_061() {
 
 	need_dir "$id" "$factory_dir" || return 1
 
-	# sty-rust-061 extracts each factory adapter struct and each of its fields; the file-name-to-struct-name pairing and the field-type checks happen here because an ast-grep rule cannot see the file it is matching in.
+	# sty-rust-059 extracts each factory adapter struct and each of its fields; the file-name-to-struct-name pairing and the field-type checks happen here because an ast-grep rule cannot see the file it is matching in.
 	matches="$(scan_json "$id" "$factory_dir")" || return 1
 	require_matches "$id" "factory struct from $factory_dir" "$matches" || return 1
 
@@ -1336,8 +1426,8 @@ check_sty_rust_061() {
 	return "$result"
 }
 
-check_sty_rust_062() {
-	local id="STY-RUST-062"
+check_sty_rust_060() {
+	local id="STY-RUST-060"
 	local factory_dir="src/lib/infrastructure/use_case_factory"
 	local file name struct_block result=0
 	local -a forbidden=()
@@ -1373,17 +1463,17 @@ check_sty_rust_062() {
 	return "$result"
 }
 
-check_sty_rust_063() { need_dir "STY-RUST-063" "src/lib/infrastructure/use_case_factory" && scan_short STY-RUST-063 "src/lib/infrastructure/use_case_factory"; }
+check_sty_rust_061() { need_dir "STY-RUST-061" "src/lib/infrastructure/use_case_factory" && scan_short STY-RUST-061 "src/lib/infrastructure/use_case_factory"; }
 
-check_sty_rust_064() {
-	local id="STY-RUST-064"
+check_sty_rust_062() {
+	local id="STY-RUST-062"
 	local app_state="src/lib/infrastructure/inbound/rest/app_state.rs"
 	local server="src/lib/app.rs"
 	local matches app_matches file bindings binding_count binding executions result=0
 
 	need_file "$id" "$app_state" || return 1
 
-	# sty-rust-064 is a positive rule: it matches the compliant `AppState` field and the composition root's `LoadConfiguration` binding. It scans all of `src` so the file comparison below also catches an `AppState` declared in the wrong file.
+	# sty-rust-062 is a positive rule: it matches the compliant `AppState` field and the composition root's `LoadConfiguration` binding. It scans all of `src` so the file comparison below also catches an `AppState` declared in the wrong file.
 	matches="$(scan_json "$id" src)" || return 1
 	# Clause A: AppState stores the immutable configuration as `Arc<Configuration>`. The rule is positive, so a missing match is the violation.
 	app_matches="$(printf '%s\n' "$matches" |
@@ -1425,15 +1515,15 @@ check_sty_rust_064() {
 	return "$result"
 }
 
-check_sty_rust_065() {
-	local id="STY-RUST-065"
+check_sty_rust_063() {
+	local id="STY-RUST-063"
 	local long_lived="src/lib/infrastructure"
 	local matches file field type result=0
 	local -a forbidden_names=("pepper" "secret" "ttl" "jwt_secret" "jwt_ttl")
 
 	need_dir "$id" "$long_lived" || return 1
 
-	# sty-rust-065 extracts every field of a long-lived adapter struct in the inbound layer and the use-case factories.
+	# sty-rust-063 extracts every field of a long-lived adapter struct in the inbound layer and the use-case factories.
 	matches="$(scan_json "$id" src)" || return 1
 	require_matches "$id" "long-lived adapter field from $long_lived" "$matches" || return 1
 
@@ -1458,15 +1548,15 @@ check_sty_rust_065() {
 	return "$result"
 }
 
-check_sty_rust_068() {
-	local id="STY-RUST-068"
+check_sty_rust_065() {
+	local id="STY-RUST-065"
 	local app_state="src/lib/infrastructure/inbound/rest/app_state.rs"
 	local matches structs getters refs file name ret body result=0
 	local clone_re='^Arc::clone\(&self\.[A-Za-z_][A-Za-z0-9_]*\)$'
 
 	need_file "$id" "$app_state" || return 1
 
-	# sty-rust-068 extracts the AppState struct, its `&self` getters and its FromRef impls; the single-declaration, file-location and getter-return decisions happen here because an ast-grep rule cannot see the file it matched in and cannot classify a polymorphic return type.
+	# sty-rust-065 extracts the AppState struct, its `&self` getters and its FromRef impls; the single-declaration, file-location and getter-return decisions happen here because an ast-grep rule cannot see the file it matched in and cannot classify a polymorphic return type.
 	matches="$(scan_json "$id" src)" || return 1
 	require_matches "$id" "AppState declaration from src" "$matches" || return 1
 
@@ -1524,8 +1614,8 @@ check_sty_rust_068() {
 	return "$result"
 }
 
-check_sty_rust_069() {
-	local id="STY-RUST-069"
+check_sty_rust_066() {
+	local id="STY-RUST-066"
 	local port_dir="src/lib/domain/port"
 	local matches trait bounds file result=0 changed super
 	local -A supertraits=()
@@ -1534,7 +1624,7 @@ check_sty_rust_069() {
 
 	need_dir "$id" "$port_dir" || return 1
 
-	# sty-rust-069 extracts every outbound-port trait with its supertrait bounds; whether a trait is `Send + Sync` directly or through a supertrait is resolved here because an ast-grep rule cannot follow a supertrait.
+	# sty-rust-066 extracts every outbound-port trait with its supertrait bounds; whether a trait is `Send + Sync` directly or through a supertrait is resolved here because an ast-grep rule cannot follow a supertrait.
 	matches="$(scan_json "$id" src)" || return 1
 	require_matches "$id" "outbound port trait from $port_dir" "$matches" || return 1
 
@@ -1579,8 +1669,8 @@ check_sty_rust_069() {
 	return "$result"
 }
 
-check_sty_rust_070() {
-	local id="STY-RUST-070"
+check_sty_rust_067() {
+	local id="STY-RUST-067"
 	local port_dir="src/lib/domain/port"
 	local matches file text base result=0
 	local -A dyn_unsafe=()
@@ -1601,7 +1691,7 @@ check_sty_rust_070() {
 		return 1
 	fi
 
-	# sty-rust-070 extracts every `Arc<dyn Trait>` in the tree.
+	# sty-rust-067 extracts every `Arc<dyn Trait>` in the tree.
 	matches="$(scan_json "$id" src)" || return 1
 
 	while IFS=$'\t' read -r file text; do
@@ -1621,14 +1711,14 @@ check_sty_rust_070() {
 	return "$result"
 }
 
-check_sty_rust_071() {
-	local id="STY-RUST-071"
+check_sty_rust_068() {
+	local id="STY-RUST-068"
 	local port_dir="src/lib/domain/port"
 	local matches file line method receiver ret result=0
 
 	need_dir "$id" "$port_dir" || return 1
 
-	# sty-rust-071 extracts every repository-trait method signature; the receiver-and-return validation runs here because an ast-grep rule cannot compare a parameter to a literal or assert a bound token.
+	# sty-rust-068 extracts every repository-trait method signature; the receiver-and-return validation runs here because an ast-grep rule cannot compare a parameter to a literal or assert a bound token.
 	matches="$(scan_json "$id" "$port_dir")" || return 1
 	require_matches "$id" "repository method from $port_dir" "$matches" || return 1
 
@@ -1650,10 +1740,10 @@ check_sty_rust_071() {
 	return "$result"
 }
 
-check_sty_rust_072() { scan_short STY-RUST-072 src; }
+check_sty_rust_069() { scan_short STY-RUST-069 src; }
 
-check_sty_rust_073() {
-	local id="STY-RUST-073"
+check_sty_rust_070() {
+	local id="STY-RUST-070"
 	local domain_port="src/lib/domain/port"
 	local app_port="src/lib/application/port"
 	local file trait type name result=0
@@ -1731,15 +1821,15 @@ check_sty_rust_073() {
 	return "$result"
 }
 
-check_sty_rust_074() {
-	local id="STY-RUST-074"
+check_sty_rust_071() {
+	local id="STY-RUST-071"
 	local server="src/lib/app.rs"
 	local matches installs install_count install_file var
 	local install_line execute_line result=0
 
 	need_file "$id" "$server" || return 1
 
-	# sty-rust-074 extracts the `logging::setup` install call and the composition root's `LoadConfiguration` binding; the count, path and ordering logic happens here because an ast-grep rule cannot see how many call sites exist, which file they are in, or the order of two statements.
+	# sty-rust-071 extracts the `logging::setup` install call and the composition root's `LoadConfiguration` binding; the count, path and ordering logic happens here because an ast-grep rule cannot see how many call sites exist, which file they are in, or the order of two statements.
 	matches="$(scan_json "$id" src)" || return 1
 
 	# Clause A: the subscriber is installed exactly once, by the logging install call, from the composition root.
@@ -1782,8 +1872,8 @@ check_sty_rust_074() {
 	return "$result"
 }
 
-check_sty_rust_075() {
-	local id="STY-RUST-075"
+check_sty_rust_072() {
+	local id="STY-RUST-072"
 	local use_case_dir="src/lib/application/use_case"
 	local matches file text root result=0
 	local -A allowed=()
@@ -1803,7 +1893,7 @@ check_sty_rust_075() {
 
 	need_dir "$id" "$use_case_dir" || return 1
 
-	# sty-rust-075 extracts each non-test `use`; parsing the path root and comparing it against the allowed set happens here because an ast-grep rule cannot read rule_enforcer.yaml.
+	# sty-rust-072 extracts each non-test `use`; parsing the path root and comparing it against the allowed set happens here because an ast-grep rule cannot read rule_enforcer.yaml.
 	matches="$(scan_json "$id" "$use_case_dir")" || return 1
 	require_matches "$id" "use declaration from $use_case_dir" "$matches" || return 1
 
@@ -1825,8 +1915,8 @@ check_sty_rust_075() {
 	return "$result"
 }
 
-check_sty_rust_076() {
-	local id="STY-RUST-076"
+check_sty_rust_073() {
+	local id="STY-RUST-073"
 	local matches path feedback result=0
 	local -A registered=()
 
@@ -1865,8 +1955,8 @@ check_sty_rust_076() {
 	return "$result"
 }
 
-check_sty_rust_077() {
-	local id="STY-RUST-077"
+check_sty_rust_074() {
+	local id="STY-RUST-074"
 	local model_dir="src/lib/domain/model"
 	local output
 	local -a files=()
@@ -1879,7 +1969,7 @@ check_sty_rust_077() {
 		return 1
 	fi
 
-	# STY-RUST-077 pairs a model struct's own attributes with the inherent `impl` that declares `try_new`.
+	# STY-RUST-074 pairs a model struct's own attributes with the inherent `impl` that declares `try_new`.
 	if output="$(awk '
 		function self_type(s,   t, idx) {
 			t = s
@@ -1954,7 +2044,7 @@ check_sty_rust_077() {
 			bad = 0
 			for (key in names) {
 				if (deser[key] && !routed[key] && validates[key]) {
-					printf "error: STY-RUST-077: %s: %s derives Deserialize but validates in try_new; route serde through #[serde(try_from = \"…\")] plus TryFrom\n", files_of[key], names[key]
+					printf "error: STY-RUST-074: %s: %s derives Deserialize but validates in try_new; route serde through #[serde(try_from = \"…\")] plus TryFrom\n", files_of[key], names[key]
 					bad = 1
 				}
 			}
@@ -1968,16 +2058,16 @@ check_sty_rust_077() {
 	return 1
 }
 
-check_sty_rust_078() { scan_short STY-RUST-078 src; }
+check_sty_rust_075() { scan_short STY-RUST-075 src; }
 
-check_sty_rust_079() {
-	local id="STY-RUST-079"
+check_sty_rust_076() {
+	local id="STY-RUST-076"
 	local port_dir="src/lib/domain/port"
 	local matches counts file trait count methods result=0
 
 	need_dir "$id" "$port_dir" || return 1
 
-	# sty-rust-079 extracts each repository-port trait and its `create*` method signatures; the per-trait count happens here because an ast-grep rule cannot count matches within one trait.
+	# sty-rust-076 extracts each repository-port trait and its `create*` method signatures; the per-trait count happens here because an ast-grep rule cannot count matches within one trait.
 	matches="$(scan_json "$id" "$port_dir")" || return 1
 
 	counts="$(printf '%s\n' "$matches" |
@@ -2013,15 +2103,15 @@ check_sty_rust_079() {
 	return "$result"
 }
 
-check_sty_rust_080() {
-	local id="STY-RUST-080"
+check_sty_rust_077() {
+	local id="STY-RUST-077"
 	local matches filter field aggregate accessor result=0
 	local -A accessors=()
 
 	need_dir "$id" "src/lib/domain/port" || return 1
 	need_dir "$id" "src/lib/domain/model" || return 1
 
-	# sty-rust-080 extracts each public `*Filter` field and each aggregate accessor; the field-to-aggregate pairing happens here because an ast-grep rule cannot relate two identifiers.
+	# sty-rust-077 extracts each public `*Filter` field and each aggregate accessor; the field-to-aggregate pairing happens here because an ast-grep rule cannot relate two identifiers.
 	matches="$(scan_json "$id" src)" || return 1
 	require_matches "$id" "filter field or aggregate accessor" "$matches" || return 1
 
@@ -2038,7 +2128,7 @@ check_sty_rust_080() {
 		*) continue ;;
 		esac
 		# A join constraint names a child field rather than an aggregate field
-		# (`STY-RUST-080`'s documented exception).
+		# (`STY-RUST-077`'s documented exception).
 		if [ "$filter" = "MusicAlbumFilter" ] && [ "$field" = "audio_id" ]; then
 			continue
 		fi
@@ -2054,15 +2144,15 @@ check_sty_rust_080() {
 	return "$result"
 }
 
-check_sty_rust_081() {
-	local id="STY-RUST-081"
+check_sty_rust_078() {
+	local id="STY-RUST-078"
 	local port_dir="src/lib/domain/port"
 	local matches file ret element key result=0
 	local -A models=()
 
 	need_dir "$id" "$port_dir" || return 1
 
-	# sty-rust-081 extracts the classic `search` signature of every repository port together with the domain models each port file imports; the pairing happens here because an ast-grep rule cannot relate two identifiers.
+	# sty-rust-078 extracts the classic `search` signature of every repository port together with the domain models each port file imports; the pairing happens here because an ast-grep rule cannot relate two identifiers.
 	matches="$(scan_json "$id" "$port_dir")" || return 1
 	require_matches "$id" "classic query signature from $port_dir" "$matches" || return 1
 
@@ -2099,14 +2189,14 @@ check_sty_rust_081() {
 	return "$result"
 }
 
-check_sty_rust_082() {
-	local id="STY-RUST-082"
+check_sty_rust_079() {
+	local id="STY-RUST-079"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file context item op result=0
 
 	need_dir "$id" "$handler_dir" || return 1
 
-	# sty-rust-082 extracts every endpoint-file path that reaches into a bounded context (`handler::<context>::<next>`); the pairing below decides whether `<next>` names the context's operation submodule — a fact an ast-grep rule cannot see, because it cannot read the file system.
+	# sty-rust-079 extracts every endpoint-file path that reaches into a bounded context (`handler::<context>::<next>`); the pairing below decides whether `<next>` names the context's operation submodule — a fact an ast-grep rule cannot see, because it cannot read the file system.
 	matches="$(scan_json "$id" --globs 'src/lib/infrastructure/inbound/rest/handler/*/*.rs' src)" || return 1
 
 	# Flat and bare imports: `handler::<context>::<next>`.
@@ -2135,8 +2225,8 @@ check_sty_rust_082() {
 	return "$result"
 }
 
-check_sty_rust_083() {
-	local id="STY-RUST-083"
+check_sty_rust_080() {
+	local id="STY-RUST-080"
 	local rest_dir="src/lib/infrastructure/inbound/rest"
 	local handler_dir="$rest_dir/handler"
 	local context name entry result=0
@@ -2178,14 +2268,14 @@ check_sty_rust_083() {
 	return "$result"
 }
 
-check_sty_rust_085() {
-	local id="STY-RUST-085"
+check_sty_rust_081() {
+	local id="STY-RUST-081"
 	local matches rows file line name site enclosing result=0
 
 	matches="$(scan_json "$id" src)" || return 1
 	require_matches "$id" "production constant or static declaration" "$matches" || return 1
 
-	# The extractor reports every production declaration with its site; the path test happens here because an ast-grep rule cannot read the file system. A constant's visibility is STY-RUST-088's.
+	# The extractor reports every production declaration with its site; the path test happens here because an ast-grep rule cannot read the file system. A constant's visibility is STY-RUST-084's.
 	rows="$(printf '%s\n' "$matches" | jq -r '
 		(.metaVariables.single.NAME.text // .metaVariables.single.STATIC.text) as $name
 		| (if .metaVariables.single.STATIC then "static"
@@ -2249,8 +2339,8 @@ check_sty_rust_085() {
 	return "$result"
 }
 
-check_sty_rust_086() {
-	local id="STY-RUST-086"
+check_sty_rust_082() {
+	local id="STY-RUST-082"
 	local matches config rows file line name value threshold target doc
 	local number noun token layer layers owner group_key first_dir
 	local result=0 count=0
@@ -2404,7 +2494,7 @@ check_sty_rust_086() {
 	return "$result"
 }
 
-check_sty_rust_087() { scan_short STY-RUST-087 src; }
+check_sty_rust_083() { scan_short STY-RUST-083 src; }
 
 check_doc_003() {
 	local id="DOC-003"
@@ -2897,61 +2987,6 @@ check_doc_008() {
 	' "$catalog")
 
 	return "$result"
-}
-
-# sql_lint <code>... — lint the migrations once for every SQL rule and print the violations of the named codes.
-# CP02, RF04 and RF06 are parse-bound: one lint pass costs what one rule costs, so the rules share it.
-sql_lint() {
-	local -a codes=("$@")
-	local dir rc output
-	dir="$(scan_dir "sql-lint")"
-	mkdir -p "$dir"
-	(
-		flock 9 || exit 0
-		if [ -f "$dir/.done" ]; then
-			exit 0
-		fi
-		sqlfluff lint --config .sqlfluff --rules CP02,RF04,RF06 --nocolor --format json \
-			migrations >"$dir/out.json" 2>"$dir/err"
-		printf '%s\n' "$?" >"$dir/rc"
-		: >"$dir/.done"
-		exit 0
-	) 9>"$dir/.lock"
-
-	rc="$(<"$dir/rc")"
-	if [ "$rc" -gt 1 ]; then
-		cat "$dir/err" >&2
-		return 2
-	fi
-	output="$(jq -r --args '
-		.[] | .filepath as $file |
-		.violations[] |
-		select(.code as $code | $ARGS.positional | index($code)) |
-		"\($file):\(.start_line_no):\(.start_line_pos): \(.code): \(.description)"
-	' "${codes[@]}" <"$dir/out.json")" || return 2
-	[ -n "$output" ] || return 0
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_sql_001() {
-	local config=".sqlfluff"
-	local migrations_dir="migrations"
-
-	need_file "STY-SQL-001" "$config" || return 1
-	need_dir "STY-SQL-001" "$migrations_dir" || return 1
-
-	# sqlfluff already performs this check: CP02 holds every unquoted identifier to the `.sqlfluff` `capitalisation_policy = lower` (snake_case), and RF06 flags a quoted identifier whose quotes are unnecessary.
-	sql_lint CP02 RF06
-}
-
-check_sty_sql_003() {
-	local migrations_dir="migrations"
-
-	need_dir "STY-SQL-003" "$migrations_dir" || return 1
-
-	# sqlfluff's RF04 (`references.keywords`) is the SQLite dialect's implementation of the rule: an unreserved keyword used as a name (date, key) is reported as RF04, while a reserved keyword (order, group, select) cannot be an unquoted identifier at all and surfaces as an unparsable PRS section.
-	sql_lint RF04
 }
 
 check_sty_sql_004() {
@@ -4673,15 +4708,15 @@ check_api_002() {
 	return "$result"
 }
 
-check_api_004() {
-	local id="API-004"
+check_api_003() {
+	local id="API-003"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file line value result=0
 	local -A seen=()
 
 	need_dir "$id" "$handler_dir" || return 1
 
-	# api-004 extracts each `#[utoipa::path(...)]` attribute of the handler tree; presence and uniqueness of its operation_id are compared here because an ast-grep rule cannot relate two matches.
+	# api-003 extracts each `#[utoipa::path(...)]` attribute of the handler tree; presence and uniqueness of its operation_id are compared here because an ast-grep rule cannot relate two matches.
 	matches="$(scan_json "$id" "$handler_dir")" || return 1
 	require_matches "$id" "#[utoipa::path] attribute from $handler_dir" "$matches" || return 1
 
@@ -4708,21 +4743,21 @@ check_api_004() {
 	return "$result"
 }
 
-# check_api_005 — every endpoint handler's `#[utoipa::path(...)]` declares the HTTP method (`get`/`post`/`put`/`patch`/`delete`) as the bare method token (TechnicalDesign.md API-005).
+# check_api_004 — every endpoint handler's `#[utoipa::path(...)]` declares the HTTP method (`get`/`post`/`put`/`patch`/`delete`) as the bare method token (TechnicalDesign.md API-004).
+check_api_004() { need_dir "API-004" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-004 "src/lib/infrastructure/inbound/rest/handler"; }
+
+# check_api_005 — every endpoint handler annotation declares `path`, the route of the endpoint (API-005).
 check_api_005() { need_dir "API-005" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-005 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_006 — every endpoint handler annotation declares `path`, the route of the endpoint (API-006).
-check_api_006() { need_dir "API-006" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-006 "src/lib/infrastructure/inbound/rest/handler"; }
-
-# check_api_007 — every endpoint's `#[utoipa::path]` attribute declares `tag`, the bounded context the endpoint belongs to (API-007).
-check_api_007() {
-	local id="API-007"
+# check_api_006 — every endpoint's `#[utoipa::path]` attribute declares `tag`, the bounded context the endpoint belongs to (API-006).
+check_api_006() {
+	local id="API-006"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file text tag rel expected result=0
 
 	need_dir "$id" "$handler_dir" || return 1
 
-	# api-007 extracts each endpoint's `#[utoipa::path]` attribute; the attribute text carries the declared keys.
+	# api-006 extracts each endpoint's `#[utoipa::path]` attribute; the attribute text carries the declared keys.
 	matches="$(scan_json "$id" "$handler_dir")" || return 1
 	require_matches "$id" "endpoint from $handler_dir" "$matches" || return 1
 
@@ -4756,15 +4791,15 @@ check_api_007() {
 	return "$result"
 }
 
-# check_api_008 — an endpoint whose handler extracts a request body declares `request_body` in its `#[utoipa::path(...)]` annotation (TechnicalDesign.md § API, API-008).
+# check_api_007 — an endpoint whose handler extracts a request body declares `request_body` in its `#[utoipa::path(...)]` annotation (TechnicalDesign.md § API, API-007).
+check_api_007() { need_dir "API-007" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-007 "src/lib/infrastructure/inbound/rest/handler"; }
+
+# check_api_008 — an endpoint that carries a path, query, header or cookie parameter declares it in `params(...)` inside its `#[utoipa::path(...)]` (TechnicalDesign.md § API, API-008). api-008 matches a `#[utoipa::path]` annotation that omits `params(...)` while the route template names a path parameter (`{name}`) or the handler signature extracts one through `Path`/`Query`/`HeaderMap`/`TypedHeader`/`Cookie`.
 check_api_008() { need_dir "API-008" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-008 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_009 — an endpoint that carries a path, query, header or cookie parameter declares it in `params(...)` inside its `#[utoipa::path(...)]` (TechnicalDesign.md § API, API-009). api-009 matches a `#[utoipa::path]` annotation that omits `params(...)` while the route template names a path parameter (`{name}`) or the handler signature extracts one through `Path`/`Query`/`HeaderMap`/`TypedHeader`/`Cookie`.
-check_api_009() { need_dir "API-009" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-009 "src/lib/infrastructure/inbound/rest/handler"; }
-
-# check_api_010 — every endpoint handler annotation declares `responses(...)` with at least one status row and at most one row per status code (TechnicalDesign.md § API, API-010). api-010 extracts each `#[utoipa::path(...)]` attribute of the handler tree; the presence of `responses(...)` and the one-row-per-status-code comparison happen here because an ast-grep rule cannot relate two matches inside one attribute token tree.
-check_api_010() {
-	local id="API-010"
+# check_api_009 — every endpoint handler annotation declares `responses(...)` with at least one status row and at most one row per status code (TechnicalDesign.md § API, API-009). api-009 extracts each `#[utoipa::path(...)]` attribute of the handler tree; the presence of `responses(...)` and the one-row-per-status-code comparison happen here because an ast-grep rule cannot relate two matches inside one attribute token tree.
+check_api_009() {
+	local id="API-009"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file line block body statuses dups result=0
 
@@ -4838,18 +4873,18 @@ check_api_010() {
 	return "$result"
 }
 
-# check_api_011 — every operation declares its security requirement (API-011). api-011 reports an `#[utoipa::path(...)]` attribute whose `security` is absent or is not one of the two sanctioned requirements.
+# check_api_010 — every operation declares its security requirement (API-010). api-010 reports an `#[utoipa::path(...)]` attribute whose `security` is absent or is not one of the two sanctioned requirements.
+check_api_010() { need_dir "API-010" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-010 "src/lib/infrastructure/inbound/rest/handler"; }
+
+# check_api_011 — every endpoint handler declares `summary`, a one-line human-readable summary, in its `#[utoipa::path(...)]` annotation (TechnicalDesign.md § API, API-011). api-011 matches a `#[utoipa::path]` attribute that carries no top-level `summary` key.
 check_api_011() { need_dir "API-011" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-011 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_012 — every endpoint handler declares `summary`, a one-line human-readable summary, in its `#[utoipa::path(...)]` annotation (TechnicalDesign.md § API, API-012). api-012 matches a `#[utoipa::path]` attribute that carries no top-level `summary` key.
+# check_api_012 — every parameter declared as an inline tuple inside `params(...)` in a `#[utoipa::path(...)]` attribute carries `name`, the parameter name as it appears in the URL, header or cookie (TechnicalDesign.md § API, API-012). api-012 matches a parameter tuple whose first element is not a string literal; `params(<IntoParams>)` names its parameters through the struct's fields and is not an inline tuple.
 check_api_012() { need_dir "API-012" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-012 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_013 — every parameter declared as an inline tuple inside `params(...)` in a `#[utoipa::path(...)]` attribute carries `name`, the parameter name as it appears in the URL, header or cookie (TechnicalDesign.md § API, API-013). api-013 matches a parameter tuple whose first element is not a string literal; `params(<IntoParams>)` names its parameters through the struct's fields and is not an inline tuple.
-check_api_013() { need_dir "API-013" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-013 "src/lib/infrastructure/inbound/rest/handler"; }
-
-# check_api_014 — every inline parameter declared by a `#[utoipa::path(...)]` annotation names its location (API-014).
-check_api_014() {
-	local id="API-014"
+# check_api_013 — every inline parameter declared by a `#[utoipa::path(...)]` annotation names its location (API-013).
+check_api_013() {
+	local id="API-013"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file line b64 text name location tuples=0 result=0
 
@@ -4924,32 +4959,32 @@ check_api_014() {
 	return "$result"
 }
 
-# check_api_015 — an inline parameter in `params(...)` writes its Rust type as `= Type` immediately after the name: the binding is introduced by `=`, never by `:` or a bare element (TechnicalDesign.md § API, API-015). api-015 matches a parameter tuple whose quoted name is followed by anything other than `=` or the element separator, so a type written some other way is reported.
-check_api_015() { need_dir "API-015" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-015 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_api_014 — an inline parameter in `params(...)` writes its Rust type as `= Type` immediately after the name: the binding is introduced by `=`, never by `:` or a bare element (TechnicalDesign.md § API, API-014). api-014 matches a parameter tuple whose quoted name is followed by anything other than `=` or the element separator, so a type written some other way is reported.
+check_api_014() { need_dir "API-014" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-014 "src/lib/infrastructure/inbound/rest/handler"; }
 
-check_api_016() { scan_short API-016 src; }
+check_api_015() { scan_short API-015 src; }
 
-# check_api_020 — a `request_body(...)` block in a `#[utoipa::path(...)]` annotation declares `content_type`, the media type of the body (TechnicalDesign.md § API, API-020). api-020 matches a request_body token tree that carries no `content_type`; the media type must be read from the request body, never from a `responses(...)` row.
+# check_api_019 — a `request_body(...)` block in a `#[utoipa::path(...)]` annotation declares `content_type`, the media type of the body (TechnicalDesign.md § API, API-019). api-019 matches a request_body token tree that carries no `content_type`; the media type must be read from the request body, never from a `responses(...)` row.
+check_api_019() { need_dir "API-019" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-019 "src/lib/infrastructure/inbound/rest/handler"; }
+
+# check_api_020 — a `request_body(...)` declaration names the schema of the body (TechnicalDesign.md § API, API-020).
 check_api_020() { need_dir "API-020" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-020 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_021 — a `request_body(...)` declaration names the schema of the body (TechnicalDesign.md § API, API-021).
-check_api_021() { need_dir "API-021" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-021 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_api_021 — every response declared inside a handler's `responses(...)` must name its HTTP `status` (API-021).
+check_api_021() { scan_short API-021 src; }
 
-# check_api_023 — every response declared inside a handler's `responses(...)` must name its HTTP `status` (API-023).
-check_api_023() { scan_short API-023 src; }
+# check_api_022 — every response declared by a `responses(...)` entry in a `#[utoipa::path(...)]` annotation carries `description`, a human-readable description (TechnicalDesign.md § API, API-022). api-022 matches a response entry token tree that declares no top-level `description`; a `description` nested in `headers(...)`/`content(...)` or a `"description"` string inside an `example` does not satisfy it.
+check_api_022() { need_dir "API-022" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-022 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_024 — every response declared by a `responses(...)` entry in a `#[utoipa::path(...)]` annotation carries `description`, a human-readable description (TechnicalDesign.md § API, API-024). api-024 matches a response entry token tree that declares no top-level `description`; a `description` nested in `headers(...)`/`content(...)` or a `"description"` string inside an `example` does not satisfy it.
+# check_api_023 — a response row that declares a payload media type declares the schema of that payload (TechnicalDesign.md § API, API-023). api-023 matches a row inside a `responses(...)` group that carries a `content_type` but no `body`; a row without a media type (a `NO_CONTENT` response) carries no payload and is out of scope.
+check_api_023() { need_dir "API-023" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-023 "src/lib/infrastructure/inbound/rest/handler"; }
+
+# check_api_024 — a response in a `#[utoipa::path(...)]` annotation that declares a payload declares the payload media type (TechnicalDesign.md § API, API-024). api-024 matches a response row of `responses(...)` that carries a `body` identifier and no `content_type` identifier; a bodyless row, and a `content(...)` entry that names its media type as the entry key, are not matched.
 check_api_024() { need_dir "API-024" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-024 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_025 — a response row that declares a payload media type declares the schema of that payload (TechnicalDesign.md § API, API-025). api-025 matches a row inside a `responses(...)` group that carries a `content_type` but no `body`; a row without a media type (a `NO_CONTENT` response) carries no payload and is out of scope.
-check_api_025() { need_dir "API-025" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-025 "src/lib/infrastructure/inbound/rest/handler"; }
-
-# check_api_026 — a response in a `#[utoipa::path(...)]` annotation that declares a payload declares the payload media type (TechnicalDesign.md § API, API-026). api-026 matches a response row of `responses(...)` that carries a `body` identifier and no `content_type` identifier; a bodyless row, and a `content(...)` entry that names its media type as the entry key, are not matched.
-check_api_026() { need_dir "API-026" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-026 "src/lib/infrastructure/inbound/rest/handler"; }
-
-# check_api_027 — every response header a handler sets at runtime is declared in the endpoint's `#[utoipa::path]` `headers(...)` (TechnicalDesign.md § API, API-027). api-027 extracts each `#[utoipa::path]` attribute and each response-header insert (`...headers_mut().insert(header::CONST, ...)` / `headers.insert(header::CONST, ...)`); pairing the constant with the name a `headers(...)` block declares happens here because an ast-grep rule cannot relate two matches, and because the names are compared case-insensitively (HTTP header names are).
-check_api_027() {
-	local id="API-027"
+# check_api_025 — every response header a handler sets at runtime is declared in the endpoint's `#[utoipa::path]` `headers(...)` (TechnicalDesign.md § API, API-025). api-025 extracts each `#[utoipa::path]` attribute and each response-header insert (`...headers_mut().insert(header::CONST, ...)` / `headers.insert(header::CONST, ...)`); pairing the constant with the name a `headers(...)` block declares happens here because an ast-grep rule cannot relate two matches, and because the names are compared case-insensitively (HTTP header names are).
+check_api_025() {
+	local id="API-025"
 	local handler_dir="${1:-src/lib/infrastructure/inbound/rest/handler}"
 	local matches file text const name names result=0
 	local -A declared_by=()
@@ -5023,9 +5058,9 @@ check_api_027() {
 	return "$result"
 }
 
-# check_api_030 — every handler's `responses(...)` declares the success case and every error status the handler can return (TechnicalDesign.md § API, API-030). api-030 extracts each `#[utoipa::path]` attribute, each `impl ... for ApiError` mapping and each `ApiError::Variant` value a handler constructs; the variant-to-status table is read from `api_error.rs`'s exhaustive `status_and_message` match, and the per-file comparison happens here because an ast-grep rule cannot relate two matches or read a second file.
-check_api_030() {
-	local id="API-030"
+# check_api_027 — every handler's `responses(...)` declares the success case and every error status the handler can return (TechnicalDesign.md § API, API-027). api-027 extracts each `#[utoipa::path]` attribute, each `impl ... for ApiError` mapping and each `ApiError::Variant` value a handler constructs; the variant-to-status table is read from `api_error.rs`'s exhaustive `status_and_message` match, and the per-file comparison happens here because an ast-grep rule cannot relate two matches or read a second file.
+check_api_027() {
+	local id="API-027"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local api_error="src/lib/infrastructure/inbound/rest/api_error.rs"
 	local matches file payload kind variant status declared result=0
@@ -5107,7 +5142,7 @@ check_api_030() {
 			esac
 		done
 		# A redirect endpoint's success is `303 See Other`, so it is the success
-		# row API-030 requires; every other endpoint answers a 2xx.
+		# row API-027 requires; every other endpoint answers a 2xx.
 		if ! printf '%s\n' "$declared" |
 			grep -qE ' (OK|CREATED|ACCEPTED|NO_CONTENT|PARTIAL_CONTENT|SEE_OTHER|20[0-9]) '; then
 			printf 'error: %s: %s: responses(...) declares no success (2xx) row\n' \
@@ -5119,8 +5154,8 @@ check_api_030() {
 	return "$result"
 }
 
-check_api_031() {
-	local id="API-031"
+check_api_028() {
+	local id="API-028"
 	local matches body file line result=0
 	local -a bodies=()
 	local -A non_hal=()
@@ -5131,7 +5166,7 @@ check_api_031() {
 		non_hal["$body"]=1
 	done
 
-	# api-031 extracts every response entry that carries a body but does not declare the HAL media type; excluding the allowlisted non-HAL bodies happens here because an ast-grep rule cannot read rule_enforcer.yaml.
+	# api-028 extracts every response entry that carries a body but does not declare the HAL media type; excluding the allowlisted non-HAL bodies happens here because an ast-grep rule cannot read rule_enforcer.yaml.
 	matches="$(scan_json "$id" src)" || return 1
 	[ -n "$matches" ] || return 0
 
@@ -5149,9 +5184,9 @@ check_api_031() {
 	return "$result"
 }
 
-# check_api_032 — every resource representation carries `_links.self` (TechnicalDesign.md § HAL payload guidelines, API-032). api-032 extracts each response row of a `#[utoipa::path]` annotation and each serde-renamed `_links` or `self` struct field.
-check_api_032() {
-	local id="API-032"
+# check_api_029 — every resource representation carries `_links.self` (TechnicalDesign.md § HAL payload guidelines, API-029). api-029 extracts each response row of a `#[utoipa::path]` annotation and each serde-renamed `_links` or `self` struct field.
+check_api_029() {
+	local id="API-029"
 	local target="${1:-src/lib/infrastructure/inbound/rest}"
 	local matches file text rep rename ty body result=0
 	local -A links_type=()
@@ -5212,9 +5247,9 @@ check_api_032() {
 	return "$result"
 }
 
-# check_api_033 — a HAL representation keeps its business data at the root of the payload, beside `_links` (TechnicalDesign.md § API, API-033; detail § HAL payload guidelines).
-check_api_033() {
-	local id="API-033"
+# check_api_030 — a HAL representation keeps its business data at the root of the payload, beside `_links` (TechnicalDesign.md § API, API-030; detail § HAL payload guidelines).
+check_api_030() {
+	local id="API-030"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local file line b64 text key name result=0
 	local -a wrapper_keys=()
@@ -5223,7 +5258,7 @@ check_api_033() {
 
 	config_list "$id" wrapper_keys wrapper_keys || return 2
 
-	# api-033 extracts each HAL representation struct; the wrapper-key comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
+	# api-030 extracts each HAL representation struct; the wrapper-key comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
 	matches="$(scan_json "$id" "$surface")" || return 1
 	if [ -z "$matches" ]; then
 		printf 'error: %s: extracted no HAL representation struct from %s\n' "$id" "$surface" >&2
@@ -5271,9 +5306,9 @@ check_api_033() {
 	return "$result"
 }
 
-# check_api_034 — `_links` is reserved for navigation and related resources (TechnicalDesign.md § API, API-034; detail § HAL payload guidelines).
-check_api_034() {
-	local id="API-034"
+# check_api_031 — `_links` is reserved for navigation and related resources (TechnicalDesign.md § API, API-031; detail § HAL payload guidelines).
+check_api_031() {
+	local id="API-031"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local matches rep ty member result=0
 	local -A links_type=()
@@ -5281,7 +5316,7 @@ check_api_034() {
 
 	need_dir "$id" "$surface" || return 1
 
-	# api-034 extracts each `_links` field and every struct field; the type-to-members resolution happens here because an ast-grep rule cannot relate two matches.
+	# api-031 extracts each `_links` field and every struct field; the type-to-members resolution happens here because an ast-grep rule cannot relate two matches.
 	matches="$(scan_json "$id" "$surface")" || return 1
 	if [ -z "$matches" ]; then
 		printf 'error: %s: extracted no HAL links field from %s\n' "$id" "$surface" >&2
@@ -5331,9 +5366,9 @@ check_api_034() {
 	return "$result"
 }
 
-# check_api_035 — a HAL payload does not use `_embedded` (TechnicalDesign.md § API, API-035; detail § HAL payload guidelines).
-check_api_035() {
-	local id="API-035"
+# check_api_032 — a HAL payload does not use `_embedded` (TechnicalDesign.md § API, API-032; detail § HAL payload guidelines).
+check_api_032() {
+	local id="API-032"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local config matches file line item location result=0
 	local -A allowed=()
@@ -5346,7 +5381,7 @@ check_api_035() {
 		allowed["$location"]=1
 	done < <(jq -r '.allowed_locations[]?' <<<"$config")
 
-	# api-035 extracts every `_embedded` use together with its enclosing struct or function; the waiver comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
+	# api-032 extracts every `_embedded` use together with its enclosing struct or function; the waiver comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
 	matches="$(scan_json "$id" "$surface")" || return 1
 	[ -n "$matches" ] || return 0
 
@@ -5369,18 +5404,18 @@ check_api_035() {
 	return "$result"
 }
 
-# check_api_036 — a link that exposes search and filtering is a URI template and carries `templated: true` (TechnicalDesign.md § API, API-036; detail § HAL payload guidelines, "Search and filtering"). api-036 matches two violation shapes: a URI-template href built with `Link::new` (which serializes no `templated`), and the `search` link built with `Link::new` (the field that exposes the collection filters).
-check_api_036() { need_dir "API-036" "${1:-src/lib/infrastructure/inbound/rest}" && scan_short API-036 "${1:-src/lib/infrastructure/inbound/rest}"; }
+# check_api_033 — a link that exposes search and filtering is a URI template and carries `templated: true` (TechnicalDesign.md § API, API-033; detail § HAL payload guidelines, "Search and filtering"). api-033 matches two violation shapes: a URI-template href built with `Link::new` (which serializes no `templated`), and the `search` link built with `Link::new` (the field that exposes the collection filters).
+check_api_033() { need_dir "API-033" "${1:-src/lib/infrastructure/inbound/rest}" && scan_short API-033 "${1:-src/lib/infrastructure/inbound/rest}"; }
 
-# check_api_037 — every HAL link href is a root-relative URI reference, never a hardcoded absolute URL (TechnicalDesign.md § API, API-037; detail § HAL payload guidelines, which shows `self` = `/orders/123` and the search link as `/orders{?status,page,size}`). api-037 extracts each HAL link constructor (`Link::new`, `Link::templated`, `SelfLinks::new`) and each href helper (`fn *_href`), and this function reads the href literal each carries, flagging a URL that hardcodes an origin (`scheme://`) or that is not root-relative (so the client would have to construct the URL itself).
-check_api_037() {
-	local id="API-037"
+# check_api_034 — every HAL link href is a root-relative URI reference, never a hardcoded absolute URL (TechnicalDesign.md § API, API-034; detail § HAL payload guidelines, which shows `self` = `/orders/123` and the search link as `/orders{?status,page,size}`). api-034 extracts each HAL link constructor (`Link::new`, `Link::templated`, `SelfLinks::new`) and each href helper (`fn *_href`), and this function reads the href literal each carries, flagging a URL that hardcodes an origin (`scheme://`) or that is not root-relative (so the client would have to construct the URL itself).
+check_api_034() {
+	local id="API-034"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local matches file line b64 text href result=0 count=0
 
 	need_dir "$id" "$surface" || return 1
 
-	# api-037 extracts each HAL link constructor and each href helper.
+	# api-034 extracts each HAL link constructor and each href helper.
 	matches="$(scan_json "$id" "$surface")" || return 1
 	if [ -z "$matches" ]; then
 		printf 'error: %s: extracted no HAL link or href helper from %s\n' "$id" "$surface" >&2
@@ -5416,8 +5451,8 @@ check_api_037() {
 	return "$result"
 }
 
-check_api_038() {
-	local id="API-038"
+check_api_035() {
+	local id="API-035"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local matches file line name result=0
 	local -A hal=()
@@ -5426,7 +5461,7 @@ check_api_038() {
 
 	need_dir "$id" "$surface" || return 1
 
-	# api-038 extracts every struct that carries a HAL navigation field (`_links`/`_embedded`) — the marker of a HAL representation (`API-033`).
+	# api-035 extracts every struct that carries a HAL navigation field (`_links`/`_embedded`) — the marker of a HAL representation (`API-030`).
 	matches="$(scan_json "$id" "$surface")" || return 1
 
 	while IFS=$'\t' read -r file line name; do
@@ -5472,9 +5507,9 @@ check_api_038() {
 	return 1
 }
 
-# check_api_039 — the HAL error envelope is the one response returned for every error the server emits (TechnicalDesign.md § 2.5, API-039). api-039 extracts the `ErrorBody` envelope struct and the root router's `setup_routes` middleware layers; the envelope's serialized root keys and the outermost layer are decided here because an ast-grep rule can neither enumerate a struct's keys nor order a method chain.
-check_api_039() {
-	local id="API-039"
+# check_api_036 — the HAL error envelope is the one response returned for every error the server emits (TechnicalDesign.md § Error public payload, API-036). api-036 extracts the `ErrorBody` envelope struct and the root router's `setup_routes` middleware layers; the envelope's serialized root keys and the outermost layer are decided here because an ast-grep rule can neither enumerate a struct's keys nor order a method chain.
+check_api_036() {
+	local id="API-036"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local matches result=0 envelopes=0 layers=0 file line mw b64 text sorted key
 	local -a keys=()
@@ -5534,7 +5569,7 @@ check_api_039() {
 		')
 		sorted="$(printf '%s\n' "${keys[@]}" | LC_ALL=C sort | paste -sd' ' -)"
 		if [ "$sorted" != "_links error" ]; then
-			printf 'error: %s: %s: the error envelope root keys are [%s]; they must be exactly error and _links (API-039)\n' \
+			printf 'error: %s: %s: the error envelope root keys are [%s]; they must be exactly error and _links (API-036)\n' \
 				"$id" "$file" "$sorted" >&2
 			result=1
 		fi
@@ -5555,7 +5590,7 @@ check_api_039() {
 		[ -n "$file" ] || continue
 		mw="${layer_last_mw[$file]}"
 		if ! printf '%s' "$mw" | grep -qE '(^|[^A-Za-z0-9_])hal_errors([^A-Za-z0-9_]|$)'; then
-			printf 'error: %s: %s: the outermost setup_routes layer is %s, not hal_errors; the error envelope must be applied last so it wraps routing fallbacks and extractor rejections (API-039)\n' \
+			printf 'error: %s: %s: the outermost setup_routes layer is %s, not hal_errors; the error envelope must be applied last so it wraps routing fallbacks and extractor rejections (API-036)\n' \
 				"$id" "$file" "$mw" >&2
 			result=1
 		fi
@@ -5564,12 +5599,12 @@ check_api_039() {
 	return "$result"
 }
 
-# check_api_040 — the HAL `error` message is a stable, server-authored, client-safe string: it carries no extractor or framework wording and no internal detail — field paths, expected types, parse positions, type names (API-040, § 2.5).
-check_api_040() { need_file "API-040" "src/lib/infrastructure/inbound/rest/api_error.rs" && scan_short API-040 "src/lib/infrastructure/inbound/rest/api_error.rs"; }
+# check_api_037 — the HAL `error` message is a stable, server-authored, client-safe string: it carries no extractor or framework wording and no internal detail — field paths, expected types, parse positions, type names (API-037, § Error public payload).
+check_api_037() { need_file "API-037" "src/lib/infrastructure/inbound/rest/api_error.rs" && scan_short API-037 "src/lib/infrastructure/inbound/rest/api_error.rs"; }
 
-# check_api_041 — the status code a failed request returns is the one its classification names (TechnicalDesign.md § API, API-041). api-041 extracts the `ApiError` variant -> `StatusCode` arms of `status_and_message` and the `JsonRejection` arms of `impl From<JsonRejection> for ApiError`; the name-to-status correspondence and the class-to-status comparison happen here because an ast-grep rule can neither transform an identifier nor relate two matches.
-check_api_041() {
-	local id="API-041"
+# check_api_038 — the status code a failed request returns is the one its classification names (TechnicalDesign.md § API, API-038). api-038 extracts the `ApiError` variant -> `StatusCode` arms of `status_and_message` and the `JsonRejection` arms of `impl From<JsonRejection> for ApiError`; the name-to-status correspondence and the class-to-status comparison happen here because an ast-grep rule can neither transform an identifier nor relate two matches.
+check_api_038() {
+	local id="API-038"
 	local api_error="src/lib/infrastructure/inbound/rest/api_error.rs"
 	local matches file line text variant status classifier expected entry result=0
 	local -A status_of=()
@@ -5603,7 +5638,7 @@ check_api_041() {
 			if [ "$variant" != "$expected" ]; then
 				status="$(printf '%s' "$expected" |
 					sed -E 's/([a-z0-9])([A-Z])/\1_\2/g' | tr '[:lower:]' '[:upper:]')"
-				printf 'error: %s: %s:%s: %s is classified as ApiError::%s; API-041 assigns %s to that failure class\n' \
+				printf 'error: %s: %s:%s: %s is classified as ApiError::%s; API-038 assigns %s to that failure class\n' \
 					"$id" "$file" "$line" "$classifier" "$variant" "$status" >&2
 				result=1
 			fi
@@ -5631,7 +5666,7 @@ check_api_041() {
 		expected="$(printf '%s' "$variant" |
 			sed -E 's/([a-z0-9])([A-Z])/\1_\2/g' | tr '[:lower:]' '[:upper:]')"
 		if [ "$status" != "$expected" ]; then
-			printf 'error: %s: %s:%s: ApiError::%s maps to %s; API-041 requires the status that names the failure class (%s)\n' \
+			printf 'error: %s: %s:%s: ApiError::%s maps to %s; API-038 requires the status that names the failure class (%s)\n' \
 				"$id" "$file" "$line" "$variant" "$status" "$expected" >&2
 			result=1
 		fi
@@ -5645,7 +5680,7 @@ check_api_041() {
 			IFS=$'\t' read -r file line variant <<<"$entry"
 			[ -n "${status_of[$variant]:-}" ] || continue
 			if [ "${status_of[$variant]}" != "INTERNAL_SERVER_ERROR" ]; then
-				printf 'error: %s: %s:%s: the unclassified JsonRejection arm classifies the failure as ApiError::%s (%s); API-041 requires a server fault\n' \
+				printf 'error: %s: %s:%s: the unclassified JsonRejection arm classifies the failure as ApiError::%s (%s); API-038 requires a server fault\n' \
 					"$id" "$file" "$line" "$variant" "${status_of[$variant]}" >&2
 				result=1
 			fi
@@ -5666,15 +5701,15 @@ check_api_041() {
 	return "$result"
 }
 
-# check_api_043 — an error envelope's `_links.self` carries the request path component of the request URI, never the query string (API-043, § 2.5).
-check_api_043() {
-	local id="API-043"
+# check_api_040 — an error envelope's `_links.self` carries the request path component of the request URI, never the query string (API-040, § Error public payload).
+check_api_040() {
+	local id="API-040"
 	local rest="src/lib/infrastructure/inbound/rest"
 	local matches file line arg name expr result=0
 
 	need_dir "$id" "$rest" || return 1
 
-	# api-043 extracts every call to the one error-envelope builder, with its path argument; the binding that argument names is resolved below because an ast-grep rule cannot follow a value to its source.
+	# api-040 extracts every call to the one error-envelope builder, with its path argument; the binding that argument names is resolved below because an ast-grep rule cannot follow a value to its source.
 	matches="$(scan_json "$id" "$rest")" || return 1
 	if [ -z "$matches" ]; then
 		printf 'error: %s: no call to the error-envelope builder error_response found under %s\n' \
@@ -5754,10 +5789,10 @@ check_arch_001() {
 # check_arch_005 — a domain model never invokes a domain service (ARCH-005).
 check_arch_005() { need_dir "ARCH-005" "src/lib/domain/model" && scan_short ARCH-005 "src/lib/domain/model"; }
 
-# check_sty_rust_088 — a declaration is private, `pub(crate)` when another module
-# names it, and `pub` only at the crate entry point (STY-RUST-088).
-check_sty_rust_088() {
-	local id="STY-RUST-088"
+# check_sty_rust_084 — a declaration is private, `pub(crate)` when another module
+# names it, and `pub` only at the crate entry point (STY-RUST-084).
+check_sty_rust_084() {
+	local id="STY-RUST-084"
 	local matches index file line vis name key result=0
 	local -A files_of=()
 	local -A mentions=()
@@ -5767,12 +5802,12 @@ check_sty_rust_088() {
 	require_matches "$id" "item carrying a visibility modifier" "$matches" || return 1
 
 	# "Another module names it" is an identifier occurrence in another file,
-	# comments excluded: the approximation STY-RUST-085 already shipped. The index
+	# comments excluded: the approximation STY-RUST-081 already shipped. The index
 	# records, per identifier, how many distinct files name it and how often the
 	# declaring file does, so a type a wider signature in its own module exposes
 	# (the signature lower bound) stays legal while a declaration nothing names
 	# does not.
-	index="$(mktemp "${TMPDIR:-/tmp}/sty-rust-088.XXXXXX")" || return 1
+	index="$(mktemp "${TMPDIR:-/tmp}/sty-rust-084.XXXXXX")" || return 1
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
 		sed -E 's://.*::' "$file" |
@@ -5822,11 +5857,11 @@ check_sty_rust_088() {
 	return "$result"
 }
 
-# check_sty_rust_089 — a pair of adjacent imports from one parent module is one
-# brace group (STY-RUST-089). The extractor reports each later import of a pair;
+# check_sty_rust_085 — a pair of adjacent imports from one parent module is one
+# brace group (STY-RUST-085). The extractor reports each later import of a pair;
 # the budget ratchets the count down as the tree merges them, and never up.
-check_sty_rust_089() {
-	local id="STY-RUST-089"
+check_sty_rust_085() {
+	local id="STY-RUST-085"
 	local config budget matches count result=0
 
 	config="$(rule_config "$id")" || return 2
@@ -5848,11 +5883,11 @@ check_sty_rust_089() {
 	return "$result"
 }
 
-# check_sty_rust_090 — a child module that is not itself a module root is private
-# (STY-RUST-090). A leaf declared pub(crate) would let an outside module name the
+# check_sty_rust_086 — a child module that is not itself a module root is private
+# (STY-RUST-086). A leaf declared pub(crate) would let an outside module name the
 # child directly again and defeat the compiler check the facade relies on.
-check_sty_rust_090() {
-	local id="STY-RUST-090"
+check_sty_rust_086() {
+	local id="STY-RUST-086"
 	local matches result=0
 	matches="$(scan_json "$id" src)" || return 1
 	while IFS=$'\t' read -r file name; do
@@ -5872,6 +5907,332 @@ check_sty_rust_090() {
 		fi
 	done < <(printf '%s\n' "$matches" |
 		jq -r '[.file, .metaVariables.single.NAME.text] | @tsv')
+	return "$result"
+}
+
+# check_sty_rust_087 — a test module declares no assertion helper (TechnicalDesign.md § Test
+# helpers, STY-RUST-087): assert_eq!/assert!/matches! run inline in the test that owns the
+# assertion. Every assert_* function inside a #[cfg(test)] module is a finding; one that itself
+# carries a test attribute is a test case, reported as a note instead.
+check_sty_rust_087() {
+	local id="STY-RUST-087"
+	local matches mods items file record start end name line role gate result=0
+	local module mod_name i
+	local -a records=() mod_starts=() mod_ends=() mod_names=() mod_gates=() starts=() item_lines=()
+	local -A role_of=() gate_of=()
+
+	need_dir "$id" src || return 1
+
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "assertion-named function or inline module from src" "$matches" || return 1
+
+	mods="$(printf '%s\n' "$matches" | jq -r 'select(.metaVariables.single.MOD) |
+		[.file, ((.range.start.line + 1) | tostring), ((.range.end.line + 1) | tostring),
+		 .metaVariables.single.MOD.text] | @tsv' | sort -t$'\t' -k1,1 -k2,2n)"
+	items="$(printf '%s\n' "$matches" | jq -r 'select(.metaVariables.single.FN) |
+		[.file, ((.range.start.line + 1) | tostring), .metaVariables.single.FN.text] | @tsv' |
+		sort -t$'\t' -k1,1 -k2,2n)"
+
+	while IFS= read -r file; do
+		[ -n "$file" ] || continue
+		mapfile -t records < <(printf '%s\n' "$mods" | awk -F'\t' -v f="$file" '$1 == f')
+		[ "${#records[@]}" -gt 0 ] || continue
+		mod_starts=() mod_ends=() mod_names=() mod_gates=() starts=()
+		for record in "${records[@]}"; do
+			IFS=$'\t' read -r _ start end name <<<"$record"
+			mod_starts+=("$start") mod_ends+=("$end") mod_names+=("$name") starts+=("$start")
+		done
+		item_lines=()
+		mapfile -t item_lines < <(printf '%s\n' "$items" | awk -F'\t' -v f="$file" '$1 == f { print $2 }')
+		[ "${#item_lines[@]}" -gt 0 ] || continue
+		starts+=("${item_lines[@]}")
+		role_of=() gate_of=()
+		while IFS=$'\t' read -r line role gate; do
+			role_of["$file:$line"]="$role" gate_of["$file:$line"]="$gate"
+		done < <(decl_roles "$file" "${starts[@]}")
+		for ((i = 0; i < ${#mod_starts[@]}; i++)); do
+			record="$file:${mod_starts[$i]}"
+			mod_gates+=("${gate_of[$record]:-open}")
+		done
+		while IFS=$'\t' read -r _ line name; do
+			[ -n "$name" ] || continue
+			module="$(enclosing_module "$line" mod_starts mod_ends mod_names mod_gates)"
+			[ -n "$module" ] || continue
+			IFS=$'\t' read -r mod_name gate <<<"$module"
+			[ "$gate" = "gated" ] || continue
+			if [ "${role_of["$file:$line"]:-helper}" = "test" ]; then
+				printf 'note: %s: %s:%s: %s carries a test attribute; treat it as a test case\n' \
+					"$id" "$file" "$line" "$name" >&2
+				continue
+			fi
+			printf 'error: %s: %s:%s: %s is an assertion helper; assert in the test case instead\n' \
+				"$id" "$file" "$line" "$name" >&2
+			result=1
+		done < <(printf '%s\n' "$items" | awk -F'\t' -v f="$file" '$1 == f')
+	done < <(printf '%s\n' "$mods" | cut -f1 | sort -u)
+
+	return "$result"
+}
+
+# check_sty_rust_088 — a datastore seed is declared once, in the mod test_helpers of the SQLite
+# adapter root (TechnicalDesign.md § Test helpers, STY-RUST-088). A seed_* function in any other
+# #[cfg(test)] module is a finding; so is a non-test function of another file whose body runs an
+# INSERT INTO statement, which is a seed helper under another name; and so is a seed_* function of
+# the root itself when it sits in mod tests instead of the configured helper module. The file, the
+# helper module and the name prefix are data in rule_enforcer.yaml.
+check_sty_rust_088() {
+	local id="STY-RUST-088"
+	local matches mods items inserts config file record start end name line func role gate result=0
+	local module mod_name seed_module helper_module seed_prefix i
+	local -a records=() mod_starts=() mod_ends=() mod_names=() mod_gates=() starts=() item_lines=()
+	local -A role_of=() gate_of=() insert_of=()
+
+	config="$(rule_config "$id")" || return 2
+	seed_module="$(jq -r '.seed_module // empty' <<<"$config")"
+	helper_module="$(jq -r '.helper_module // empty' <<<"$config")"
+	seed_prefix="$(jq -r '.seed_prefix // empty' <<<"$config")"
+	if [ -z "$seed_module" ] || [ -z "$helper_module" ] || [ -z "$seed_prefix" ]; then
+		printf 'error: %s: rule_enforcer.yaml declares no seed_module, helper_module or seed_prefix\n' "$id" >&2
+		return 2
+	fi
+
+	need_dir "$id" src || return 1
+	need_file "$id" "$seed_module" || return 1
+
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "seed helper, SQL insert or inline module from src" "$matches" || return 1
+
+	mods="$(printf '%s\n' "$matches" | jq -r 'select(.metaVariables.single.MOD) |
+		[.file, ((.range.start.line + 1) | tostring), ((.range.end.line + 1) | tostring),
+		 .metaVariables.single.MOD.text] | @tsv' | sort -t$'\t' -k1,1 -k2,2n)"
+	items="$(printf '%s\n' "$matches" | jq -r 'select(.metaVariables.single.FN) |
+		[.file, ((.range.start.line + 1) | tostring), .metaVariables.single.FN.text] | @tsv' |
+		sort -t$'\t' -k1,1 -k2,2n)"
+	inserts="$(printf '%s\n' "$matches" | jq -r 'select(.metaVariables.single.ENCLOSING) |
+		[.file, ((.metaVariables.single.ENCLOSING.range.start.line + 1) | tostring),
+		 .metaVariables.single.FUNC.text] | @tsv' | sort -t$'\t' -k1,1 -k2,2n |
+		awk -F'\t' '!seen[$0]++')"
+	insert_of=()
+	while IFS=$'\t' read -r ins_file ins_line _; do
+		[ -n "$ins_file" ] || continue
+		insert_of["$ins_file:$ins_line"]=1
+	done < <(printf '%s\n' "$inserts")
+
+	while IFS= read -r file; do
+		[ -n "$file" ] || continue
+		mapfile -t records < <(printf '%s\n' "$mods" | awk -F'\t' -v f="$file" '$1 == f')
+		[ "${#records[@]}" -gt 0 ] || continue
+		mod_starts=() mod_ends=() mod_names=() mod_gates=() starts=()
+		for record in "${records[@]}"; do
+			IFS=$'\t' read -r _ start end name <<<"$record"
+			mod_starts+=("$start") mod_ends+=("$end") mod_names+=("$name") starts+=("$start")
+		done
+		item_lines=()
+		mapfile -t item_lines < <(
+			printf '%s\n' "$items" | awk -F'\t' -v f="$file" '$1 == f { print $2 }'
+			printf '%s\n' "$inserts" | awk -F'\t' -v f="$file" '$1 == f { print $2 }'
+		)
+		[ "${#item_lines[@]}" -gt 0 ] || continue
+		starts+=("${item_lines[@]}")
+		role_of=() gate_of=()
+		while IFS=$'\t' read -r line role gate; do
+			role_of["$file:$line"]="$role" gate_of["$file:$line"]="$gate"
+		done < <(decl_roles "$file" "${starts[@]}")
+		for ((i = 0; i < ${#mod_starts[@]}; i++)); do
+			record="$file:${mod_starts[$i]}"
+			mod_gates+=("${gate_of[$record]:-open}")
+		done
+
+		# Clause A and C: a seed_* function outside the configured helper module.
+		while IFS=$'\t' read -r _ line name; do
+			[ -n "$name" ] || continue
+			module="$(enclosing_module "$line" mod_starts mod_ends mod_names mod_gates)"
+			[ -n "$module" ] || continue
+			IFS=$'\t' read -r mod_name gate <<<"$module"
+			[ "$gate" = "gated" ] || continue
+			# Only a function that inserts a row, or whose signature names the
+			# datastore, is a seed helper; a `seed_*` name alone can be configuration
+			# test data (the `seed` configuration section).
+			record="$file:$line"
+			if [ -z "${insert_of[$record]+set}" ] && ! datastore_fn "$file" "$line"; then
+				continue
+			fi
+			if [ "$file" != "$seed_module" ]; then
+				printf 'error: %s: %s:%s: %s is a seed helper declared outside %s; declare it in the %s module there\n' \
+					"$id" "$file" "$line" "$name" "$seed_module" "$helper_module" >&2
+				result=1
+			elif [ "$mod_name" != "$helper_module" ]; then
+				printf 'error: %s: %s:%s: %s is declared in mod %s; a seed helper belongs to the %s module\n' \
+					"$id" "$file" "$line" "$name" "$mod_name" "$helper_module" >&2
+				result=1
+			fi
+		done < <(printf '%s\n' "$items" | awk -F'\t' -v f="$file" '$1 == f')
+
+		# Clause B: an INSERT INTO in a non-test function of another file is a seed helper
+		# under another name. A test case may insert the row it exercises; the root file may.
+		[ "$file" = "$seed_module" ] && continue
+		while IFS=$'\t' read -r _ line func; do
+			[ -n "$func" ] || continue
+			case "$func" in
+			"$seed_prefix"*) continue ;;
+			esac
+			module="$(enclosing_module "$line" mod_starts mod_ends mod_names mod_gates)"
+			[ -n "$module" ] || continue
+			IFS=$'\t' read -r mod_name gate <<<"$module"
+			[ "$gate" = "gated" ] || continue
+			[ "${role_of["$file:$line"]:-helper}" = "test" ] && continue
+			printf 'error: %s: %s:%s: %s runs INSERT INTO in a test module; a datastore seed helper belongs to the %s module of %s\n' \
+				"$id" "$file" "$line" "$func" "$helper_module" "$seed_module" >&2
+			result=1
+		done < <(printf '%s\n' "$inserts" | awk -F'\t' -v f="$file" '$1 == f')
+	done < <(printf '%s\n' "$mods" | cut -f1 | sort -u)
+
+	return "$result"
+}
+
+# check_sty_rust_089 — a file declares at most one #[cfg(test)] mod tests, and the one module root
+# that keeps tests of its own root code keeps only the configured prefix (TechnicalDesign.md
+# § Test helpers, STY-RUST-089). Clause A counts the gated mod tests of each file. Clause B holds
+# the root named in rule_enforcer.yaml to its root_test_prefix. Whether a test in another root's
+# mod tests exercises a descendant is review-only: a test may legitimately name a type from any
+# module, so a static "own code" test would be noise.
+check_sty_rust_089() {
+	local id="STY-RUST-089"
+	local matches mods items config file record start end name line role gate result=0
+	local module mod_name root_module root_prefix tests_count i
+	local -a records=() mod_starts=() mod_ends=() mod_names=() mod_gates=() starts=() item_lines=()
+	local -A role_of=() gate_of=()
+
+	config="$(rule_config "$id")" || return 2
+	root_module="$(jq -r '.root_test_module // empty' <<<"$config")"
+	root_prefix="$(jq -r '.root_test_prefix // empty' <<<"$config")"
+	if [ -z "$root_module" ] || [ -z "$root_prefix" ]; then
+		printf 'error: %s: rule_enforcer.yaml declares no root_test_module or root_test_prefix\n' "$id" >&2
+		return 2
+	fi
+
+	need_dir "$id" src || return 1
+	need_file "$id" "$root_module" || return 1
+
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "function or inline module from src" "$matches" || return 1
+
+	mods="$(printf '%s\n' "$matches" | jq -r 'select(.metaVariables.single.MOD) |
+		[.file, ((.range.start.line + 1) | tostring), ((.range.end.line + 1) | tostring),
+		 .metaVariables.single.MOD.text] | @tsv' | sort -t$'\t' -k1,1 -k2,2n)"
+	items="$(printf '%s\n' "$matches" | jq -r 'select(.metaVariables.single.FN) |
+		[.file, ((.range.start.line + 1) | tostring), .metaVariables.single.FN.text] | @tsv' |
+		sort -t$'\t' -k1,1 -k2,2n)"
+
+	while IFS= read -r file; do
+		[ -n "$file" ] || continue
+		mapfile -t records < <(printf '%s\n' "$mods" | awk -F'\t' -v f="$file" '$1 == f')
+		[ "${#records[@]}" -gt 0 ] || continue
+		mod_starts=() mod_ends=() mod_names=() mod_gates=() starts=()
+		for record in "${records[@]}"; do
+			IFS=$'\t' read -r _ start end name <<<"$record"
+			mod_starts+=("$start") mod_ends+=("$end") mod_names+=("$name") starts+=("$start")
+		done
+		item_lines=()
+		mapfile -t item_lines < <(printf '%s\n' "$items" | awk -F'\t' -v f="$file" '$1 == f { print $2 }')
+		[ "${#item_lines[@]}" -gt 0 ] && starts+=("${item_lines[@]}")
+		role_of=() gate_of=()
+		while IFS=$'\t' read -r line role gate; do
+			role_of["$file:$line"]="$role" gate_of["$file:$line"]="$gate"
+		done < <(decl_roles "$file" "${starts[@]}")
+		tests_count=0
+		for ((i = 0; i < ${#mod_starts[@]}; i++)); do
+			record="$file:${mod_starts[$i]}"
+			gate="${gate_of[$record]:-open}"
+			mod_gates+=("$gate")
+			if [ "${mod_names[$i]}" = "tests" ] && [ "$gate" = "gated" ]; then
+				tests_count=$((tests_count + 1))
+			fi
+		done
+		if [ "$tests_count" -gt 1 ]; then
+			printf 'error: %s: %s declares %s #[cfg(test)] mod tests; a file declares one\n' \
+				"$id" "$file" "$tests_count" >&2
+			result=1
+		fi
+		[ "$file" = "$root_module" ] || continue
+		[ "${#item_lines[@]}" -gt 0 ] || continue
+		while IFS=$'\t' read -r _ line name; do
+			[ -n "$name" ] || continue
+			[ "${role_of["$file:$line"]:-helper}" = "test" ] || continue
+			module="$(enclosing_module "$line" mod_starts mod_ends mod_names mod_gates)"
+			[ -n "$module" ] || continue
+			IFS=$'\t' read -r mod_name gate <<<"$module"
+			[ "$gate" = "gated" ] && [ "$mod_name" = "tests" ] || continue
+			case "$name" in
+			"$root_prefix"*) continue ;;
+			esac
+			printf 'error: %s: %s:%s: %s tests a descendant of the module root; test it in that descendant module (%s* is all that stays)\n' \
+				"$id" "$file" "$line" "$name" "$root_prefix" >&2
+			result=1
+		done < <(printf '%s\n' "$items" | awk -F'\t' -v f="$file" '$1 == f')
+	done < <(printf '%s\n' "$mods" | cut -f1 | sort -u)
+
+	return "$result"
+}
+
+# check_sty_rust_090 — a test configures its mocks in its own body (TechnicalDesign.md § Test
+# helpers, STY-RUST-090). Every `expect_<method>` call of a #[cfg(test)] module is paired with the
+# function that encloses it; when that function is not a test case — a helper, a fixture, or an
+# impl method of a hand-written double — the expectation is configured outside the test.
+check_sty_rust_090() {
+	local id="STY-RUST-090"
+	local matches mods calls file record start end name line func role gate result=0
+	local module mod_name i
+	local -a records=() mod_starts=() mod_ends=() mod_names=() mod_gates=() starts=() item_lines=()
+	local -A role_of=() gate_of=()
+
+	need_dir "$id" src || return 1
+
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "mock expectation call or inline module from src" "$matches" || return 1
+
+	mods="$(printf '%s\n' "$matches" | jq -r 'select(.metaVariables.single.MOD) |
+		[.file, ((.range.start.line + 1) | tostring), ((.range.end.line + 1) | tostring),
+		 .metaVariables.single.MOD.text] | @tsv' | sort -t$'\t' -k1,1 -k2,2n)"
+	calls="$(printf '%s\n' "$matches" | jq -r 'select(.metaVariables.single.ENCLOSING) |
+		[.file, ((.metaVariables.single.ENCLOSING.range.start.line + 1) | tostring),
+		 .metaVariables.single.FUNC.text] | @tsv' | sort -t$'\t' -k1,1 -k2,2n |
+		awk -F'\t' '!seen[$0]++')"
+
+	while IFS= read -r file; do
+		[ -n "$file" ] || continue
+		mapfile -t records < <(printf '%s\n' "$mods" | awk -F'\t' -v f="$file" '$1 == f')
+		[ "${#records[@]}" -gt 0 ] || continue
+		mod_starts=() mod_ends=() mod_names=() mod_gates=() starts=()
+		for record in "${records[@]}"; do
+			IFS=$'\t' read -r _ start end name <<<"$record"
+			mod_starts+=("$start") mod_ends+=("$end") mod_names+=("$name") starts+=("$start")
+		done
+		item_lines=()
+		mapfile -t item_lines < <(printf '%s\n' "$calls" | awk -F'\t' -v f="$file" '$1 == f { print $2 }')
+		[ "${#item_lines[@]}" -gt 0 ] || continue
+		starts+=("${item_lines[@]}")
+		role_of=() gate_of=()
+		while IFS=$'\t' read -r line role gate; do
+			role_of["$file:$line"]="$role" gate_of["$file:$line"]="$gate"
+		done < <(decl_roles "$file" "${starts[@]}")
+		for ((i = 0; i < ${#mod_starts[@]}; i++)); do
+			record="$file:${mod_starts[$i]}"
+			mod_gates+=("${gate_of[$record]:-open}")
+		done
+		while IFS=$'\t' read -r _ line func; do
+			[ -n "$func" ] || continue
+			[ "${role_of["$file:$line"]:-helper}" = "test" ] && continue
+			module="$(enclosing_module "$line" mod_starts mod_ends mod_names mod_gates)"
+			[ -n "$module" ] || continue
+			IFS=$'\t' read -r mod_name gate <<<"$module"
+			[ "$gate" = "gated" ] || continue
+			printf 'error: %s: %s:%s: %s configures a mock expectation outside a test case; configure it inline in the test body\n' \
+				"$id" "$file" "$line" "$func" >&2
+			result=1
+		done < <(printf '%s\n' "$calls" | awk -F'\t' -v f="$file" '$1 == f')
+	done < <(printf '%s\n' "$mods" | cut -f1 | sort -u)
+
 	return "$result"
 }
 

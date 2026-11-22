@@ -3,8 +3,8 @@ id: api-027
 language: Rust
 severity: hint
 message: >-
-  extract the #[utoipa::path] declaration and every response header the handler
-  inserts, for API-027
+  extract the #[utoipa::path] response declaration, the ApiError mapping and the
+  ApiError values a handler returns, for API-027
 rule:
   all:
     - not:
@@ -17,4 +17,6 @@ rule:
     - any:
         - kind: attribute_item
           regex: '#\[utoipa::path'
-        - pattern: $RECV.insert(header::$CONST, $$$REST)
+        - kind: impl_item
+          regex: 'for ApiError\b'
+        - pattern: ApiError::$VARIANT

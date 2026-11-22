@@ -1,21 +1,76 @@
 ---
 id: sty-rust-006
 language: Rust
-severity: hint
-message: REST endpoint handler function, named after its file
+severity: error
+message: >-
+  declare the request body, query and response objects, the ApiError mapping,
+  then the endpoint handler, in that order
+files:
+  - src/lib/infrastructure/inbound/rest/handler/**/*.rs
 rule:
   all:
-    - kind: function_item
-    - follows:
-        kind: attribute_item
-        regex: '#\[utoipa::path'
-        stopBy: end
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: cfg\(test\)
     - any:
-        - any:
-            - pattern: pub async fn $FUNC($$$A) -> $$$RET { $$$BODY }
-            - pattern: pub(crate) async fn $FUNC($$$A) -> $$$RET { $$$BODY }
-            - pattern: async fn $FUNC($$$A) -> $$$RET { $$$BODY }
-        - any:
-            - pattern: pub async fn $FUNC($$$A) { $$$BODY }
-            - pattern: pub(crate) async fn $FUNC($$$A) { $$$BODY }
-            - pattern: async fn $FUNC($$$A) { $$$BODY }
+        # request body object (rank 1) must precede query/response/mapping/handler
+        - all:
+            - kind: struct_item
+            - regex: 'struct \w*Request\b'
+            - follows:
+                any:
+                  - all:
+                      - kind: struct_item
+                      - regex: 'struct \w*Query\b'
+                  - all:
+                      - kind: struct_item
+                      - regex: 'struct \w*Response\b'
+                  - pattern: impl From<$E> for ApiError { $$$BODY }
+                  - all:
+                      - kind: function_item
+                      - follows:
+                          kind: attribute_item
+                          regex: '#\[utoipa::path'
+                          stopBy: end
+        # query object (rank 2) must precede response/mapping/handler
+        - all:
+            - kind: struct_item
+            - regex: 'struct \w*Query\b'
+            - follows:
+                any:
+                  - all:
+                      - kind: struct_item
+                      - regex: 'struct \w*Response\b'
+                  - pattern: impl From<$E> for ApiError { $$$BODY }
+                  - all:
+                      - kind: function_item
+                      - follows:
+                          kind: attribute_item
+                          regex: '#\[utoipa::path'
+                          stopBy: end
+        # response body object (rank 3) must precede mapping/handler
+        - all:
+            - kind: struct_item
+            - regex: 'struct \w*Response\b'
+            - follows:
+                any:
+                  - pattern: impl From<$E> for ApiError { $$$BODY }
+                  - all:
+                      - kind: function_item
+                      - follows:
+                          kind: attribute_item
+                          regex: '#\[utoipa::path'
+                          stopBy: end
+        # ApiError mapping (rank 4) must precede the handler
+        - all:
+            - pattern: impl From<$E> for ApiError { $$$BODY }
+            - follows:
+                kind: function_item
+                follows:
+                  kind: attribute_item
+                  regex: '#\[utoipa::path'
+                  stopBy: end

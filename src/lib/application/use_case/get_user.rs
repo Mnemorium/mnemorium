@@ -137,63 +137,59 @@ mod tests {
         use_case: UseCase,
     }
 
-    fn use_case_with(
-        setup: impl FnOnce(&mut MockUserRepository) -> Result<(), Box<dyn Error>>,
-    ) -> Result<Harness, Box<dyn Error>> {
-        let mut user_repository = MockUserRepository::new();
-        setup(&mut user_repository)?;
-
-        let unit_of_work = TestUnitOfWork {
-            resources: no_resources(),
-            users: user_repository,
-            ..TestUnitOfWork::default()
-        };
-        let committed = Arc::clone(&unit_of_work.committed);
-        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
-        let factory = TestFactory::new(unit_of_work);
-
-        Ok(Harness {
-            use_case: GetUser::new(Arc::new(factory)),
-            committed,
-            rolled_back,
-        })
-    }
-
     fn user(id: i64, username: &str, email: Option<&str>, role: Role) -> Result<User, UserError> {
         User::try_new(id, username.to_owned(), email.map(str::to_owned), id, role)
-    }
-
-    fn expect_admin_and(
-        user_repository: &mut MockUserRepository,
-        target: Result<User, UserError>,
-    ) -> Result<(), Box<dyn Error>> {
-        let admin = user(1, "admin", None, Role::Admin)?;
-        let fetched = target?;
-        user_repository
-            .expect_search()
-            .times(2)
-            .withf(|filter| filter.id == Some(1) || filter.id == Some(2))
-            .returning(move |filter| {
-                if filter.id == Some(1) {
-                    let found = admin.clone();
-                    Box::pin(async move { Ok(vec![found]) })
-                } else {
-                    let found = fetched.clone();
-                    Box::pin(async move { Ok(vec![found]) })
-                }
-            });
-        Ok(())
     }
 
     #[tokio::test]
     async fn get_user_admin_caller_returns_standard_target_profile() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository| {
-            expect_admin_and(
-                user_repository,
-                user(2, "brad", Some("brad@example.com"), Role::Standard),
-            )
-        })?;
+        let harness = {
+            let setup: Box<dyn FnOnce(&mut MockUserRepository) -> Result<(), Box<dyn Error>>> =
+                Box::new(|user_repository| {
+                    (move |user_repository: &mut MockUserRepository,
+                           target: Result<User, UserError>|
+                          -> Result<(), Box<dyn Error>> {
+                        let admin = user(1, "admin", None, Role::Admin)?;
+                        let fetched = target?;
+                        user_repository
+                            .expect_search()
+                            .times(2)
+                            .withf(|filter| filter.id == Some(1) || filter.id == Some(2))
+                            .returning(move |filter| {
+                                if filter.id == Some(1) {
+                                    let found = admin.clone();
+                                    Box::pin(async move { Ok(vec![found]) })
+                                } else {
+                                    let found = fetched.clone();
+                                    Box::pin(async move { Ok(vec![found]) })
+                                }
+                            });
+                        Ok(())
+                    })(
+                        user_repository,
+                        user(2, "brad", Some("brad@example.com"), Role::Standard),
+                    )
+                });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                setup(&mut user_repository)?;
+
+                let unit_of_work = TestUnitOfWork {
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: GetUser::new(Arc::new(factory)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = GetUserCommand::new(1, 2);
 
         // Act
@@ -211,9 +207,49 @@ mod tests {
     #[tokio::test]
     async fn get_user_target_without_email_returns_none() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository| {
-            expect_admin_and(user_repository, user(2, "brad", None, Role::Admin))
-        })?;
+        let harness = {
+            let setup: Box<dyn FnOnce(&mut MockUserRepository) -> Result<(), Box<dyn Error>>> =
+                Box::new(|user_repository| {
+                    (move |user_repository: &mut MockUserRepository,
+                           target: Result<User, UserError>|
+                          -> Result<(), Box<dyn Error>> {
+                        let admin = user(1, "admin", None, Role::Admin)?;
+                        let fetched = target?;
+                        user_repository
+                            .expect_search()
+                            .times(2)
+                            .withf(|filter| filter.id == Some(1) || filter.id == Some(2))
+                            .returning(move |filter| {
+                                if filter.id == Some(1) {
+                                    let found = admin.clone();
+                                    Box::pin(async move { Ok(vec![found]) })
+                                } else {
+                                    let found = fetched.clone();
+                                    Box::pin(async move { Ok(vec![found]) })
+                                }
+                            });
+                        Ok(())
+                    })(user_repository, user(2, "brad", None, Role::Admin))
+                });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                setup(&mut user_repository)?;
+
+                let unit_of_work = TestUnitOfWork {
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: GetUser::new(Arc::new(factory)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = GetUserCommand::new(1, 2);
 
         // Act
@@ -227,9 +263,49 @@ mod tests {
     #[tokio::test]
     async fn get_user_admin_caller_fetching_self_returns_profile() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository| {
-            expect_admin_and(user_repository, user(1, "admin", None, Role::Admin))
-        })?;
+        let harness = {
+            let setup: Box<dyn FnOnce(&mut MockUserRepository) -> Result<(), Box<dyn Error>>> =
+                Box::new(|user_repository| {
+                    (move |user_repository: &mut MockUserRepository,
+                           target: Result<User, UserError>|
+                          -> Result<(), Box<dyn Error>> {
+                        let admin = user(1, "admin", None, Role::Admin)?;
+                        let fetched = target?;
+                        user_repository
+                            .expect_search()
+                            .times(2)
+                            .withf(|filter| filter.id == Some(1) || filter.id == Some(2))
+                            .returning(move |filter| {
+                                if filter.id == Some(1) {
+                                    let found = admin.clone();
+                                    Box::pin(async move { Ok(vec![found]) })
+                                } else {
+                                    let found = fetched.clone();
+                                    Box::pin(async move { Ok(vec![found]) })
+                                }
+                            });
+                        Ok(())
+                    })(user_repository, user(1, "admin", None, Role::Admin))
+                });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                setup(&mut user_repository)?;
+
+                let unit_of_work = TestUnitOfWork {
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: GetUser::new(Arc::new(factory)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = GetUserCommand::new(1, 1);
 
         // Act
@@ -243,13 +319,34 @@ mod tests {
     #[tokio::test]
     async fn get_user_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository| {
-            user_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<dyn FnOnce(&mut MockUserRepository) -> Result<(), Box<dyn Error>>> =
+                Box::new(|user_repository| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                    Ok(())
+                });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                setup(&mut user_repository)?;
+
+                let unit_of_work = TestUnitOfWork {
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: GetUser::new(Arc::new(factory)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = GetUserCommand::new(999, 2);
 
         // Act
@@ -264,23 +361,44 @@ mod tests {
     #[tokio::test]
     async fn get_user_unknown_target_returns_no_such_user() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository| {
-            let admin = user(1, "admin", None, Role::Admin)?;
-            user_repository
-                .expect_search()
-                .times(1)
-                .withf(|filter| filter.id == Some(1))
-                .return_once(move |_| {
-                    let found = admin;
-                    Box::pin(async move { Ok(vec![found]) })
+        let harness = {
+            let setup: Box<dyn FnOnce(&mut MockUserRepository) -> Result<(), Box<dyn Error>>> =
+                Box::new(|user_repository| {
+                    let admin = user(1, "admin", None, Role::Admin)?;
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .withf(|filter| filter.id == Some(1))
+                        .return_once(move |_| {
+                            let found = admin;
+                            Box::pin(async move { Ok(vec![found]) })
+                        });
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .withf(|filter| filter.id == Some(2))
+                        .return_once(|_| Box::pin(async { Ok(Vec::new()) }));
+                    Ok(())
                 });
-            user_repository
-                .expect_search()
-                .times(1)
-                .withf(|filter| filter.id == Some(2))
-                .return_once(|_| Box::pin(async { Ok(Vec::new()) }));
-            Ok(())
-        })?;
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                setup(&mut user_repository)?;
+
+                let unit_of_work = TestUnitOfWork {
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: GetUser::new(Arc::new(factory)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = GetUserCommand::new(1, 2);
 
         // Act
@@ -295,13 +413,34 @@ mod tests {
     #[tokio::test]
     async fn get_user_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository| {
-            user_repository
-                .expect_search()
-                .times(1)
-                .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<dyn FnOnce(&mut MockUserRepository) -> Result<(), Box<dyn Error>>> =
+                Box::new(|user_repository| {
+                    user_repository
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+                    Ok(())
+                });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                let mut user_repository = MockUserRepository::new();
+                setup(&mut user_repository)?;
+
+                let unit_of_work = TestUnitOfWork {
+                    users: user_repository,
+                    ..TestUnitOfWork::default()
+                };
+                let committed = Arc::clone(&unit_of_work.committed);
+                let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                let factory = TestFactory::new(unit_of_work);
+
+                Ok(Harness {
+                    use_case: GetUser::new(Arc::new(factory)),
+                    committed,
+                    rolled_back,
+                })
+            })()
+        }?;
         let command = GetUserCommand::new(1, 2);
 
         // Act

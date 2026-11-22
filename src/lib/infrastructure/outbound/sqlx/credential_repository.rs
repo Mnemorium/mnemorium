@@ -96,6 +96,7 @@ mod tests {
     use crate::domain::model::CredentialError;
     use crate::domain::port::PasswordHasher as _;
     use crate::infrastructure::outbound::argon2::Argon2PasswordHasher;
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
 
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use chrono::NaiveDateTime;
@@ -111,19 +112,6 @@ mod tests {
         updated_at: NaiveDateTime,
     ) -> Result<Credential, CredentialError> {
         Credential::try_new(id, password_hash.to_owned(), updated_at)
-    }
-
-    async fn seed_credential(
-        transaction: &mut Transaction<'static, Sqlite>,
-        id: i64,
-        password_hash: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (?1, ?2)")
-            .bind(id)
-            .bind(password_hash)
-            .execute(&mut **transaction)
-            .await?;
-        Ok(())
     }
 
     #[tokio::test]

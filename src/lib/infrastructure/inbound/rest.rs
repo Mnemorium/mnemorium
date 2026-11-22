@@ -53,7 +53,7 @@ use crate::infrastructure::inbound::rest::handler::{
     __path_get_api_index, __path_get_health, get_api_index, get_health,
 };
 
-/// A relative URI reference published as a response header value (`API-048`).
+/// A relative URI reference published as a response header value (`API-045`).
 ///
 /// `utoipa` collects component schemas from response media types only, so a
 /// named type in a `headers(...)` tuple is published with `inline(...)` and
@@ -80,7 +80,7 @@ impl ToSchema for UriReference {
     fn schemas(_schemas: &mut Vec<(String, RefOr<Schema>)>) {}
 }
 
-/// An integer `Content-Length` (`API-048`).
+/// An integer `Content-Length` (`API-045`).
 #[derive(Debug)]
 #[non_exhaustive]
 pub(crate) struct ContentLength;
@@ -103,7 +103,7 @@ impl ToSchema for ContentLength {
     fn schemas(_schemas: &mut Vec<(String, RefOr<Schema>)>) {}
 }
 
-/// An HTTP-date `Last-Modified` (`API-048`).
+/// An HTTP-date `Last-Modified` (`API-045`).
 ///
 /// The value is an IMF-fixdate, not an RFC 3339 timestamp: the header
 /// validator rejects a date-time value against this header.
@@ -128,7 +128,7 @@ impl ToSchema for HttpDate {
     fn schemas(_schemas: &mut Vec<(String, RefOr<Schema>)>) {}
 }
 
-/// An `ETag` validator (`API-048`).
+/// An `ETag` validator (`API-045`).
 #[derive(Debug)]
 #[non_exhaustive]
 pub(crate) struct EntityTag;
@@ -147,7 +147,7 @@ impl ToSchema for EntityTag {
     fn schemas(_schemas: &mut Vec<(String, RefOr<Schema>)>) {}
 }
 
-/// A `Content-Range` value (`API-048`).
+/// A `Content-Range` value (`API-045`).
 #[derive(Debug)]
 #[non_exhaustive]
 pub(crate) struct ContentRangeHeader;
@@ -169,7 +169,7 @@ impl ToSchema for ContentRangeHeader {
     fn schemas(_schemas: &mut Vec<(String, RefOr<Schema>)>) {}
 }
 
-/// An `Allow` value (`API-048`).
+/// An `Allow` value (`API-045`).
 #[derive(Debug)]
 #[non_exhaustive]
 pub(crate) struct AllowMethods;
@@ -188,7 +188,7 @@ impl ToSchema for AllowMethods {
     fn schemas(_schemas: &mut Vec<(String, RefOr<Schema>)>) {}
 }
 
-/// An `Accept-Ranges` value (`API-048`).
+/// An `Accept-Ranges` value (`API-045`).
 #[derive(Debug)]
 #[non_exhaustive]
 pub(crate) struct AcceptRangesHeader;
@@ -207,7 +207,7 @@ impl ToSchema for AcceptRangesHeader {
     fn schemas(_schemas: &mut Vec<(String, RefOr<Schema>)>) {}
 }
 
-/// A `Cache-Control` value (`API-048`).
+/// A `Cache-Control` value (`API-045`).
 #[derive(Debug)]
 #[non_exhaustive]
 pub(crate) struct CacheControlHeader;
@@ -229,7 +229,7 @@ impl ToSchema for CacheControlHeader {
     fn schemas(_schemas: &mut Vec<(String, RefOr<Schema>)>) {}
 }
 
-/// A `Content-Disposition` value (`API-048`).
+/// A `Content-Disposition` value (`API-045`).
 #[derive(Debug)]
 #[non_exhaustive]
 pub(crate) struct ContentDispositionHeader;
@@ -251,7 +251,7 @@ impl ToSchema for ContentDispositionHeader {
     fn schemas(_schemas: &mut Vec<(String, RefOr<Schema>)>) {}
 }
 
-/// A `WWW-Authenticate` bearer challenge (`API-048`).
+/// A `WWW-Authenticate` bearer challenge (`API-045`).
 #[derive(Debug)]
 #[non_exhaustive]
 #[cfg(feature = "api-docs")]
@@ -438,7 +438,7 @@ fn operations_mut(path_item: &mut PathItem) -> impl Iterator<Item = &mut Operati
 }
 
 /// Build a string schema with a pattern, for a response header whose value
-/// obeys a shape (`API-048`).
+/// obeys a shape (`API-045`).
 fn patterned_string(description: &str, pattern: &str) -> RefOr<Schema> {
     ObjectBuilder::new()
         .schema_type(Type::String)

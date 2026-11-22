@@ -3,11 +3,23 @@ id: sty-rust-033
 language: Rust
 severity: error
 message: >-
-  a rollback failure must return the original business error; discard the
-  rollback result (OBS-002 logs it), never propagate it with `?`
+  a repository view borrows the unit of work mutably: the accessor must take
+  `&mut self`, so no view can be alive across commit/rollback
 rule:
-  kind: try_expression
-  has:
-    kind: field_identifier
-    regex: '^rollback$'
-    stopBy: end
+  all:
+    # A context-view accessor is a method returning a repository view; it is
+    # declared without a body (trait) or with one (impl).
+    - any:
+        - kind: function_item
+        - kind: function_signature_item
+    - has:
+        field: return_type
+        regex: "Repository \\+ '_"
+    # "borrow the unit of work mutably" is exactly `&mut self`: a shared or
+    # by-value receiver does not borrow, so a view could outlive commit/rollback.
+    - has:
+        field: parameters
+        has:
+          kind: self_parameter
+          not:
+            regex: '^&mut '

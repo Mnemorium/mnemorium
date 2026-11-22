@@ -225,6 +225,7 @@ mod tests {
     use super::*;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::{ChunkBitmap, File, IntegrityHash, Origin, Upload};
+    use rstest::fixture;
 
     use crate::domain::port::{
         MockFileRepository, MockFileStorage, MockUploadRepository, MockUserRepository,
@@ -250,30 +251,7 @@ mod tests {
         use_case: UseCase,
     }
 
-    fn use_case_with(
-        uploads: MockUploadRepository,
-        files: MockFileRepository,
-        file_storage: MockFileStorage,
-    ) -> Harness {
-        let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
-            files,
-            uploads,
-            ..TestUnitOfWork::default()
-        };
-        let harness = AssetFactoryHarness::new(unit_of_work);
-        Harness {
-            use_case: GetUpload::new(
-                Arc::clone(&harness.factory),
-                Arc::new(file_storage),
-                TTL_SECONDS,
-            ),
-            committed: harness.committed,
-            commit_fails: harness.commit_fails,
-            rolled_back: harness.rolled_back,
-        }
-    }
-
+    #[fixture]
     fn timestamp() -> NaiveDateTime {
         chrono::Utc::now().naive_utc()
     }
@@ -312,20 +290,6 @@ mod tests {
         .map_err(|_| RepositoryError::OperationFailed)
     }
 
-    fn expect_upload(uploads: &mut MockUploadRepository, upload: Upload) {
-        uploads.expect_search().times(1).returning(move |_| {
-            let stored = upload.clone();
-            Box::pin(async move { Ok(vec![stored]) })
-        });
-    }
-
-    fn expect_upload_failure(uploads: &mut MockUploadRepository) {
-        uploads
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-    }
-
     fn file(id: i64, user_id: i64) -> Result<File, RepositoryError> {
         File::try_new(
             id,
@@ -352,13 +316,38 @@ mod tests {
     async fn get_upload_partial_upload_returns_bitmap() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 10, &[0, 2], false, timestamp())?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 10, &[0, 2], false, timestamp())?);
         let mut files = MockFileRepository::new();
         files
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = use_case_with(uploads, files, MockFileStorage::new());
+        let harness = (move |uploads: MockUploadRepository,
+                             files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let harness = AssetFactoryHarness::new(unit_of_work);
+            Harness {
+                use_case: GetUpload::new(
+                    Arc::clone(&harness.factory),
+                    Arc::new(file_storage),
+                    TTL_SECONDS,
+                ),
+                committed: harness.committed,
+                commit_fails: harness.commit_fails,
+                rolled_back: harness.rolled_back,
+            }
+        })(uploads, files, MockFileStorage::new());
         let command = GetUploadCommand::new(5, 3);
 
         // Act
@@ -378,13 +367,38 @@ mod tests {
     {
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 10, &[0, 2], false, timestamp())?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 10, &[0, 2], false, timestamp())?);
         let mut files = MockFileRepository::new();
         files.expect_search().times(1).returning(|_| {
             let stored = file(11, 3);
             Box::pin(async move { stored.map(|file| vec![file]) })
         });
-        let harness = use_case_with(uploads, files, MockFileStorage::new());
+        let harness = (move |uploads: MockUploadRepository,
+                             files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let harness = AssetFactoryHarness::new(unit_of_work);
+            Harness {
+                use_case: GetUpload::new(
+                    Arc::clone(&harness.factory),
+                    Arc::new(file_storage),
+                    TTL_SECONDS,
+                ),
+                committed: harness.committed,
+                commit_fails: harness.commit_fails,
+                rolled_back: harness.rolled_back,
+            }
+        })(uploads, files, MockFileStorage::new());
         let command = GetUploadCommand::new(5, 3);
 
         // Act
@@ -400,13 +414,38 @@ mod tests {
     async fn get_upload_finished_upload_returns_file_id() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 4, &[0], true, timestamp())?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 4, &[0], true, timestamp())?);
         let mut files = MockFileRepository::new();
         files.expect_search().times(1).returning(|_| {
             let stored = file(11, 3);
             Box::pin(async move { stored.map(|file| vec![file]) })
         });
-        let harness = use_case_with(uploads, files, MockFileStorage::new());
+        let harness = (move |uploads: MockUploadRepository,
+                             files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let harness = AssetFactoryHarness::new(unit_of_work);
+            Harness {
+                use_case: GetUpload::new(
+                    Arc::clone(&harness.factory),
+                    Arc::new(file_storage),
+                    TTL_SECONDS,
+                ),
+                committed: harness.committed,
+                commit_fails: harness.commit_fails,
+                rolled_back: harness.rolled_back,
+            }
+        })(uploads, files, MockFileStorage::new());
         let command = GetUploadCommand::new(5, 3);
 
         // Act
@@ -427,7 +466,27 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = use_case_with(uploads, MockFileRepository::new(), MockFileStorage::new());
+        let harness = (move |uploads: MockUploadRepository,
+                             files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let harness = AssetFactoryHarness::new(unit_of_work);
+            Harness {
+                use_case: GetUpload::new(
+                    Arc::clone(&harness.factory),
+                    Arc::new(file_storage),
+                    TTL_SECONDS,
+                ),
+                committed: harness.committed,
+                commit_fails: harness.commit_fails,
+                rolled_back: harness.rolled_back,
+            }
+        })(uploads, MockFileRepository::new(), MockFileStorage::new());
         let command = GetUploadCommand::new(999, 3);
 
         // Act
@@ -477,7 +536,12 @@ mod tests {
             ))
             .unwrap_or_else(timestamp);
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 4, &[0], false, expired_at)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 4, &[0], false, expired_at)?);
         uploads
             .expect_delete()
             .times(1)
@@ -487,7 +551,27 @@ mod tests {
             .expect_delete_upload_file()
             .times(1)
             .returning(|_| Box::pin(async { Ok(()) }));
-        let harness = use_case_with(uploads, MockFileRepository::new(), file_storage);
+        let harness = (move |uploads: MockUploadRepository,
+                             files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let harness = AssetFactoryHarness::new(unit_of_work);
+            Harness {
+                use_case: GetUpload::new(
+                    Arc::clone(&harness.factory),
+                    Arc::new(file_storage),
+                    TTL_SECONDS,
+                ),
+                committed: harness.committed,
+                commit_fails: harness.commit_fails,
+                rolled_back: harness.rolled_back,
+            }
+        })(uploads, MockFileRepository::new(), file_storage);
         let command = GetUploadCommand::new(5, 3);
 
         // Act
@@ -510,7 +594,12 @@ mod tests {
             ))
             .unwrap_or_else(timestamp);
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 4, &[0], false, expired_at)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 4, &[0], false, expired_at)?);
         uploads
             .expect_delete()
             .times(1)
@@ -520,7 +609,27 @@ mod tests {
             .expect_delete_upload_file()
             .times(1)
             .returning(|_| Box::pin(async { Ok(()) }));
-        let harness = use_case_with(uploads, MockFileRepository::new(), file_storage);
+        let harness = (move |uploads: MockUploadRepository,
+                             files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let harness = AssetFactoryHarness::new(unit_of_work);
+            Harness {
+                use_case: GetUpload::new(
+                    Arc::clone(&harness.factory),
+                    Arc::new(file_storage),
+                    TTL_SECONDS,
+                ),
+                committed: harness.committed,
+                commit_fails: harness.commit_fails,
+                rolled_back: harness.rolled_back,
+            }
+        })(uploads, MockFileRepository::new(), file_storage);
         harness.commit_fails.store(true, Ordering::SeqCst);
         let command = GetUploadCommand::new(5, 3);
 
@@ -538,8 +647,33 @@ mod tests {
     async fn get_upload_search_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload_failure(&mut uploads);
-        let harness = use_case_with(uploads, MockFileRepository::new(), MockFileStorage::new());
+        (move |uploads: &mut MockUploadRepository| {
+            uploads
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+        })(&mut uploads);
+        let harness = (move |uploads: MockUploadRepository,
+                             files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let harness = AssetFactoryHarness::new(unit_of_work);
+            Harness {
+                use_case: GetUpload::new(
+                    Arc::clone(&harness.factory),
+                    Arc::new(file_storage),
+                    TTL_SECONDS,
+                ),
+                committed: harness.committed,
+                commit_fails: harness.commit_fails,
+                rolled_back: harness.rolled_back,
+            }
+        })(uploads, MockFileRepository::new(), MockFileStorage::new());
         let command = GetUploadCommand::new(5, 3);
 
         // Act

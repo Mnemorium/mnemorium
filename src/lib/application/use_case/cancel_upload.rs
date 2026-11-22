@@ -254,6 +254,7 @@ mod tests {
     use super::*;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::{ChunkBitmap, IntegrityHash, Upload};
+    use rstest::fixture;
 
     use crate::domain::port::{
         MockFileStorage, MockUploadRepository, RepositoryError, StorageError,
@@ -276,24 +277,7 @@ mod tests {
         use_case: UseCase,
     }
 
-    fn use_case_with(uploads: MockUploadRepository, file_storage: MockFileStorage) -> Harness {
-        let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
-            uploads,
-            ..TestUnitOfWork::default()
-        };
-        let harness = AssetFactoryHarness::new(unit_of_work);
-        Harness {
-            use_case: CancelUpload::new(
-                Arc::clone(&harness.factory),
-                Arc::new(file_storage),
-                TTL_SECONDS,
-            ),
-            committed: harness.committed,
-            rolled_back: harness.rolled_back,
-        }
-    }
-
+    #[fixture]
     fn timestamp() -> NaiveDateTime {
         chrono::Utc::now().naive_utc()
     }
@@ -334,33 +318,45 @@ mod tests {
         .map_err(|_| RepositoryError::OperationFailed)
     }
 
-    fn expect_upload(uploads: &mut MockUploadRepository, upload: Upload) {
-        uploads.expect_search().times(1).returning(move |_| {
-            let stored = upload.clone();
-            Box::pin(async move { Ok(vec![stored]) })
-        });
-    }
-
-    fn expect_staged_delete(file_storage: &mut MockFileStorage) {
-        file_storage
-            .expect_delete_upload_file()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(()) }));
-    }
-
     #[tokio::test]
     async fn cancel_upload_pending_session_deletes_the_session_and_its_content()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(3, false, false, timestamp())?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(3, false, false, timestamp())?);
         uploads
             .expect_delete()
             .times(1)
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut file_storage = MockFileStorage::new();
-        expect_staged_delete(&mut file_storage);
-        let harness = use_case_with(uploads, file_storage);
+        (move |file_storage: &mut MockFileStorage| {
+            file_storage
+                .expect_delete_upload_file()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(()) }));
+        })(&mut file_storage);
+        let harness =
+            (move |uploads: MockUploadRepository, file_storage: MockFileStorage| -> Harness {
+                let unit_of_work = TestUnitOfWork {
+                    uploads,
+                    ..TestUnitOfWork::with_any_caller()
+                };
+                let harness = AssetFactoryHarness::new(unit_of_work);
+                Harness {
+                    use_case: CancelUpload::new(
+                        Arc::clone(&harness.factory),
+                        Arc::new(file_storage),
+                        TTL_SECONDS,
+                    ),
+                    committed: harness.committed,
+                    rolled_back: harness.rolled_back,
+                }
+            })(uploads, file_storage);
 
         // Act
         let result = harness
@@ -380,24 +376,109 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(3, false, false, timestamp())?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(3, false, false, timestamp())?);
         uploads
             .expect_delete()
             .times(1)
             .returning(|_| Box::pin(async { Ok(true) }));
-        let mut resources = caller_owned_resources();
+        let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+            let mut resources = crate::domain::port::MockResourceRepository::new();
+            resources.expect_search().returning(|filter, caller| {
+                let user_id = caller.id();
+                let resource = crate::domain::model::Resource::from_stored(
+                    1,
+                    filter
+                        .kind
+                        .unwrap_or(crate::domain::model::ResourceKind::Library),
+                    filter.entity_id.unwrap_or_default(),
+                    Some(user_id),
+                    None,
+                    crate::domain::model::Visibility::Private,
+                );
+                let grant = crate::domain::model::Grant::from_stored(
+                    1,
+                    crate::domain::model::Principal::User(user_id),
+                    1,
+                    crate::domain::model::ResourceRole::Downloader,
+                    crate::domain::model::ChildKind::All,
+                    crate::domain::model::GrantEffect::Allow,
+                );
+                Box::pin(async move {
+                    Ok(vec![crate::domain::model::ResourceAccess::new(
+                        resource,
+                        Vec::new(),
+                        vec![grant],
+                        Vec::new(),
+                    )])
+                })
+            });
+            resources
+                .expect_search_many()
+                .returning(|addresses, caller| {
+                    let user_id = caller.id();
+                    let found = addresses
+                        .iter()
+                        .map(|address| {
+                            let resource = crate::domain::model::Resource::from_stored(
+                                1,
+                                address.kind(),
+                                address.id(),
+                                Some(user_id),
+                                None,
+                                crate::domain::model::Visibility::Private,
+                            );
+                            let grant = crate::domain::model::Grant::from_stored(
+                                1,
+                                crate::domain::model::Principal::User(user_id),
+                                1,
+                                crate::domain::model::ResourceRole::Downloader,
+                                crate::domain::model::ChildKind::All,
+                                crate::domain::model::GrantEffect::Allow,
+                            );
+                            crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    Box::pin(async move { Ok(found) })
+                });
+            resources.expect_create().returning(|new_resource| {
+                let resource = crate::domain::model::Resource::from_stored(
+                    1,
+                    new_resource.kind,
+                    new_resource.entity_id,
+                    new_resource.owner_id,
+                    None,
+                    new_resource.visibility,
+                );
+                Box::pin(async move { Ok(resource) })
+            });
+            resources
+        })();
         resources
             .expect_delete()
             .times(1)
             .withf(|address| address.kind() == ResourceKind::Upload && address.id() == 5)
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut file_storage = MockFileStorage::new();
-        expect_staged_delete(&mut file_storage);
+        (move |file_storage: &mut MockFileStorage| {
+            file_storage
+                .expect_delete_upload_file()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(()) }));
+        })(&mut file_storage);
         let unit_of_work = TestUnitOfWork {
             resources,
             uploads,
-            users: any_caller(),
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let harness = AssetFactoryHarness::new(unit_of_work);
         let use_case = CancelUpload::new(
@@ -424,7 +505,23 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = use_case_with(uploads, MockFileStorage::new());
+        let harness =
+            (move |uploads: MockUploadRepository, file_storage: MockFileStorage| -> Harness {
+                let unit_of_work = TestUnitOfWork {
+                    uploads,
+                    ..TestUnitOfWork::with_any_caller()
+                };
+                let harness = AssetFactoryHarness::new(unit_of_work);
+                Harness {
+                    use_case: CancelUpload::new(
+                        Arc::clone(&harness.factory),
+                        Arc::new(file_storage),
+                        TTL_SECONDS,
+                    ),
+                    committed: harness.committed,
+                    rolled_back: harness.rolled_back,
+                }
+            })(uploads, MockFileStorage::new());
 
         // Act
         let result = harness
@@ -442,8 +539,29 @@ mod tests {
     {
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(3, true, false, timestamp())?);
-        let harness = use_case_with(uploads, MockFileStorage::new());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(3, true, false, timestamp())?);
+        let harness =
+            (move |uploads: MockUploadRepository, file_storage: MockFileStorage| -> Harness {
+                let unit_of_work = TestUnitOfWork {
+                    uploads,
+                    ..TestUnitOfWork::with_any_caller()
+                };
+                let harness = AssetFactoryHarness::new(unit_of_work);
+                Harness {
+                    use_case: CancelUpload::new(
+                        Arc::clone(&harness.factory),
+                        Arc::new(file_storage),
+                        TTL_SECONDS,
+                    ),
+                    committed: harness.committed,
+                    rolled_back: harness.rolled_back,
+                }
+            })(uploads, MockFileStorage::new());
 
         // Act
         let result = harness
@@ -462,8 +580,29 @@ mod tests {
     {
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(3, false, true, timestamp())?);
-        let harness = use_case_with(uploads, MockFileStorage::new());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(3, false, true, timestamp())?);
+        let harness =
+            (move |uploads: MockUploadRepository, file_storage: MockFileStorage| -> Harness {
+                let unit_of_work = TestUnitOfWork {
+                    uploads,
+                    ..TestUnitOfWork::with_any_caller()
+                };
+                let harness = AssetFactoryHarness::new(unit_of_work);
+                Harness {
+                    use_case: CancelUpload::new(
+                        Arc::clone(&harness.factory),
+                        Arc::new(file_storage),
+                        TTL_SECONDS,
+                    ),
+                    committed: harness.committed,
+                    rolled_back: harness.rolled_back,
+                }
+            })(uploads, MockFileStorage::new());
 
         // Act
         let result = harness
@@ -481,14 +620,40 @@ mod tests {
     async fn cancel_upload_expired_session_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(3, false, false, expire(timestamp()))?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(3, false, false, expire(timestamp()))?);
         uploads
             .expect_delete()
             .times(1)
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut file_storage = MockFileStorage::new();
-        expect_staged_delete(&mut file_storage);
-        let harness = use_case_with(uploads, file_storage);
+        (move |file_storage: &mut MockFileStorage| {
+            file_storage
+                .expect_delete_upload_file()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(()) }));
+        })(&mut file_storage);
+        let harness =
+            (move |uploads: MockUploadRepository, file_storage: MockFileStorage| -> Harness {
+                let unit_of_work = TestUnitOfWork {
+                    uploads,
+                    ..TestUnitOfWork::with_any_caller()
+                };
+                let harness = AssetFactoryHarness::new(unit_of_work);
+                Harness {
+                    use_case: CancelUpload::new(
+                        Arc::clone(&harness.factory),
+                        Arc::new(file_storage),
+                        TTL_SECONDS,
+                    ),
+                    committed: harness.committed,
+                    rolled_back: harness.rolled_back,
+                }
+            })(uploads, file_storage);
 
         // Act
         let result = harness
@@ -507,7 +672,12 @@ mod tests {
         // Arrange: a failed staged-file deletion is best-effort; the reaper
         // removes the orphan.
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(3, false, false, timestamp())?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(3, false, false, timestamp())?);
         uploads
             .expect_delete()
             .times(1)
@@ -517,7 +687,23 @@ mod tests {
             .expect_delete_upload_file()
             .times(1)
             .returning(|_| Box::pin(async { Err(StorageError::OperationFailed) }));
-        let harness = use_case_with(uploads, file_storage);
+        let harness =
+            (move |uploads: MockUploadRepository, file_storage: MockFileStorage| -> Harness {
+                let unit_of_work = TestUnitOfWork {
+                    uploads,
+                    ..TestUnitOfWork::with_any_caller()
+                };
+                let harness = AssetFactoryHarness::new(unit_of_work);
+                Harness {
+                    use_case: CancelUpload::new(
+                        Arc::clone(&harness.factory),
+                        Arc::new(file_storage),
+                        TTL_SECONDS,
+                    ),
+                    committed: harness.committed,
+                    rolled_back: harness.rolled_back,
+                }
+            })(uploads, file_storage);
 
         // Act
         let result = harness
@@ -539,7 +725,23 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-        let harness = use_case_with(uploads, MockFileStorage::new());
+        let harness =
+            (move |uploads: MockUploadRepository, file_storage: MockFileStorage| -> Harness {
+                let unit_of_work = TestUnitOfWork {
+                    uploads,
+                    ..TestUnitOfWork::with_any_caller()
+                };
+                let harness = AssetFactoryHarness::new(unit_of_work);
+                Harness {
+                    use_case: CancelUpload::new(
+                        Arc::clone(&harness.factory),
+                        Arc::new(file_storage),
+                        TTL_SECONDS,
+                    ),
+                    committed: harness.committed,
+                    rolled_back: harness.rolled_back,
+                }
+            })(uploads, MockFileStorage::new());
 
         // Act
         let result = harness

@@ -361,26 +361,6 @@ mod tests {
 
     type UseCase = LoadConfiguration<MockConfigurationSource, MockEnvironmentConfiguration>;
 
-    /// Build a file layer returning `partial` and the given file-created flag.
-    fn file_layer(partial: PartialConfiguration, file_created: bool) -> MockConfigurationSource {
-        let mut source = MockConfigurationSource::new();
-        source.expect_load().times(1).returning(move || {
-            let settings = partial.clone();
-            Box::pin(async move { Ok(LoadedFileConfiguration::new(settings, file_created)) })
-        });
-        source
-    }
-
-    /// Build an environment layer returning `partial`.
-    fn environment_layer(partial: PartialConfiguration) -> MockEnvironmentConfiguration {
-        let mut source = MockEnvironmentConfiguration::new();
-        source.expect_load().times(1).returning(move || {
-            let settings = partial.clone();
-            Box::pin(async move { Ok(settings) })
-        });
-        source
-    }
-
     /// A use case composed of the given layers.
     fn use_case(
         file: MockConfigurationSource,
@@ -490,53 +470,28 @@ mod tests {
         })
     }
 
-    /// Assert the file layer naming `partial` is rejected and the message names `setting`.
-    /// The environment layer must not be consulted: a file value that fails validation stops the
-    /// merge before the higher layer runs.
-    async fn assert_rejected_naming(partial: PartialConfiguration, setting: &str) {
-        // Arrange
-        let mut environment = MockEnvironmentConfiguration::new();
-        environment.expect_load().times(0);
-        let use_case = use_case(file_layer(partial, false), environment);
-
-        // Act
-        let result = use_case.execute().await;
-
-        // Assert
-        assert!(
-            matches!(
-                result.as_ref(),
-                Err(LoadConfigurationError::InvalidConfiguration(_))
-            ),
-            "an invalid merged value must be reported as such, got: {result:?}"
-        );
-        let error = result.as_ref().err();
-        let message = error.map(ToString::to_string).unwrap_or_default();
-        assert!(
-            message.contains(setting),
-            "the rejection must name {setting}, got: {message:?}"
-        );
-        // Every rejection fixture carries a `sentinel` key, so a leak is
-        // detectable in both the message and the debug chain (`OBS-004`).
-        let debug = error
-            .map(|failure| format!("{failure:?}"))
-            .unwrap_or_default();
-        assert!(
-            !message.contains("sentinel"),
-            "the rejection must not carry an API key, got: {message:?}"
-        );
-        assert!(
-            !debug.contains("sentinel"),
-            "the debug chain must not carry an API key, got: {debug:?}"
-        );
-    }
-
     #[tokio::test]
     async fn load_configuration_empty_layers_yield_the_defaults() -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = use_case(
-            file_layer(PartialConfiguration::default(), true),
-            environment_layer(PartialConfiguration::default()),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(PartialConfiguration::default(), true),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(PartialConfiguration::default()),
         );
 
         // Act
@@ -559,8 +514,24 @@ mod tests {
     async fn load_configuration_file_layer_overrides_the_defaults() -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = use_case(
-            file_layer(logging_level("info"), false),
-            environment_layer(PartialConfiguration::default()),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(logging_level("info"), false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(PartialConfiguration::default()),
         );
 
         // Act
@@ -581,8 +552,24 @@ mod tests {
     {
         // Arrange
         let use_case = use_case(
-            file_layer(logging_level("info"), false),
-            environment_layer(logging_level("warn")),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(logging_level("info"), false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(logging_level("warn")),
         );
 
         // Act
@@ -608,8 +595,24 @@ mod tests {
         // Arrange: the file raises the level, the environment brings it back to
         // the built-in default.
         let use_case = use_case(
-            file_layer(logging_level("info"), false),
-            environment_layer(logging_level(Configuration::default().logging().level())),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(logging_level("info"), false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(logging_level(Configuration::default().logging().level())),
         );
 
         // Act
@@ -640,8 +643,24 @@ mod tests {
             ..PartialConfiguration::default()
         };
         let use_case = use_case(
-            file_layer(PartialConfiguration::default(), false),
-            environment_layer(partial),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(PartialConfiguration::default(), false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(partial),
         );
 
         // Act
@@ -674,7 +693,19 @@ mod tests {
         // before the environment layer is consulted.
         let mut environment = MockEnvironmentConfiguration::new();
         environment.expect_load().times(0);
-        let use_case = use_case(file_layer(logging_level(""), false), environment);
+        let use_case = use_case(
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(logging_level(""), false),
+            environment,
+        );
 
         // Act
         let result = use_case.execute().await;
@@ -785,7 +816,16 @@ mod tests {
             })
         });
         let use_case = use_case(
-            file_layer(PartialConfiguration::default(), false),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(PartialConfiguration::default(), false),
             environment,
         );
 
@@ -812,8 +852,24 @@ mod tests {
             ..PartialConfiguration::default()
         };
         let use_case = use_case(
-            file_layer(file, false),
-            environment_layer(logging_level("warn")),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(file, false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(logging_level("warn")),
         );
 
         // Act
@@ -844,8 +900,24 @@ mod tests {
             ..PartialConfiguration::default()
         };
         let use_case = use_case(
-            file_layer(PartialConfiguration::default(), false),
-            environment_layer(partial),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(PartialConfiguration::default(), false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(partial),
         );
 
         // Act
@@ -877,7 +949,58 @@ mod tests {
         let partial = upload_settings(|upload| upload.chunk_size_bytes = Some(0));
 
         // Act & Assert
-        assert_rejected_naming(partial, "asset.upload").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "asset.upload")
+        .await;
     }
 
     #[tokio::test]
@@ -886,7 +1009,58 @@ mod tests {
         let partial = upload_settings(|upload| upload.expiry_seconds = Some(0));
 
         // Act & Assert
-        assert_rejected_naming(partial, "asset.upload").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "asset.upload")
+        .await;
     }
 
     #[tokio::test]
@@ -895,7 +1069,58 @@ mod tests {
         let partial = upload_settings(|upload| upload.max_file_size_bytes = Some(0));
 
         // Act & Assert
-        assert_rejected_naming(partial, "asset.upload").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "asset.upload")
+        .await;
     }
 
     #[tokio::test]
@@ -904,7 +1129,58 @@ mod tests {
         let partial = upload_settings(|upload| upload.max_file_size_bytes = Some(u64::MAX));
 
         // Act & Assert
-        assert_rejected_naming(partial, "asset.upload").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "asset.upload")
+        .await;
     }
 
     #[tokio::test]
@@ -913,7 +1189,58 @@ mod tests {
         let partial = upload_settings(|upload| upload.reap_batch_size = Some(0));
 
         // Act & Assert
-        assert_rejected_naming(partial, "asset.upload").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "asset.upload")
+        .await;
     }
 
     #[rstest::rstest]
@@ -925,7 +1252,58 @@ mod tests {
         let partial = upload_settings(|upload| upload.reap_interval_seconds = Some(seconds));
 
         // Act & Assert
-        assert_rejected_naming(partial, "asset.upload").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "asset.upload")
+        .await;
     }
 
     #[tokio::test]
@@ -936,8 +1314,24 @@ mod tests {
             upload.reap_interval_seconds = Some(60);
         });
         let use_case = use_case(
-            file_layer(PartialConfiguration::default(), false),
-            environment_layer(partial),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(PartialConfiguration::default(), false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(partial),
         );
 
         // Act
@@ -981,7 +1375,58 @@ mod tests {
         };
 
         // Act & Assert
-        assert_rejected_naming(partial, "security.jwt.ttl").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "security.jwt.ttl")
+        .await;
     }
 
     #[tokio::test]
@@ -990,7 +1435,58 @@ mod tests {
         let partial = rate_limit_settings(|rate_limit| rate_limit.burst_size = Some(0));
 
         // Act & Assert
-        assert_rejected_naming(partial, "security.rate_limit.burst_size").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "security.rate_limit.burst_size")
+        .await;
     }
 
     #[tokio::test]
@@ -999,7 +1495,58 @@ mod tests {
         let partial = rate_limit_settings(|rate_limit| rate_limit.period_seconds = Some(0));
 
         // Act & Assert
-        assert_rejected_naming(partial, "security.rate_limit.period_seconds").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "security.rate_limit.period_seconds")
+        .await;
     }
 
     #[tokio::test]
@@ -1010,7 +1557,58 @@ mod tests {
         });
 
         // Act & Assert
-        assert_rejected_naming(partial, "security.rate_limit.client_ip_header").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "security.rate_limit.client_ip_header")
+        .await;
     }
 
     #[tokio::test]
@@ -1021,7 +1619,58 @@ mod tests {
         });
 
         // Act & Assert
-        assert_rejected_naming(partial, "security.rate_limit.trusted_proxies").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "security.rate_limit.trusted_proxies")
+        .await;
     }
 
     #[tokio::test]
@@ -1030,7 +1679,58 @@ mod tests {
         let partial = logging_level("off");
 
         // Act & Assert
-        assert_rejected_naming(partial, "logging.level").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "logging.level")
+        .await;
     }
 
     #[tokio::test]
@@ -1039,7 +1739,58 @@ mod tests {
         let partial = logging_level("none");
 
         // Act & Assert
-        assert_rejected_naming(partial, "logging.level").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "logging.level")
+        .await;
     }
 
     #[tokio::test]
@@ -1048,7 +1799,58 @@ mod tests {
         let partial = logging_level("warn,security=info");
 
         // Act & Assert
-        assert_rejected_naming(partial, "logging.level").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "logging.level")
+        .await;
     }
 
     // proves: SCN-METADATA-ENRICHMENT-015-B
@@ -1056,8 +1858,24 @@ mod tests {
     async fn load_configuration_defaults_have_no_video_provider() -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = use_case(
-            file_layer(PartialConfiguration::default(), false),
-            environment_layer(PartialConfiguration::default()),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(PartialConfiguration::default(), false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(PartialConfiguration::default()),
         );
 
         // Act
@@ -1086,8 +1904,24 @@ mod tests {
             provider("omdb", 2, "sentinel-omdb"),
         ]);
         let use_case = use_case(
-            file_layer(partial, false),
-            environment_layer(PartialConfiguration::default()),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(partial, false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(PartialConfiguration::default()),
         );
 
         // Act
@@ -1137,8 +1971,24 @@ mod tests {
             provider("tmdb", 1, "sentinel-tmdb"),
         ]);
         let use_case = use_case(
-            file_layer(partial, false),
-            environment_layer(PartialConfiguration::default()),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(partial, false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(PartialConfiguration::default()),
         );
 
         // Act
@@ -1169,7 +2019,58 @@ mod tests {
         let partial = video_providers(vec![provider("tvdb", 1, "sentinel-key")]);
 
         // Act & Assert
-        assert_rejected_naming(partial, "library.metadata.video.providers").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "library.metadata.video.providers")
+        .await;
     }
 
     // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
@@ -1182,7 +2083,58 @@ mod tests {
         ]);
 
         // Act & Assert
-        assert_rejected_naming(partial, "library.metadata.video.providers").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "library.metadata.video.providers")
+        .await;
     }
 
     // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
@@ -1195,7 +2147,58 @@ mod tests {
         ]);
 
         // Act & Assert
-        assert_rejected_naming(partial, "library.metadata.video.providers").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "library.metadata.video.providers")
+        .await;
     }
 
     // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
@@ -1205,7 +2208,58 @@ mod tests {
         let partial = video_providers(vec![provider("tmdb", 0, "sentinel-key")]);
 
         // Act & Assert
-        assert_rejected_naming(partial, "library.metadata.video.providers").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "library.metadata.video.providers")
+        .await;
     }
 
     // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
@@ -1219,7 +2273,58 @@ mod tests {
         }]);
 
         // Act & Assert
-        assert_rejected_naming(partial, "library.metadata.video.providers").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "library.metadata.video.providers")
+        .await;
     }
 
     // proves: SCN-METADATA-ENRICHMENT-015-E
@@ -1228,8 +2333,24 @@ mod tests {
         // Arrange: a music provider needs no credential.
         let partial = music_providers(vec![music_provider("musicbrainz", 1)]);
         let use_case = use_case(
-            file_layer(partial, false),
-            environment_layer(PartialConfiguration::default()),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(partial, false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(PartialConfiguration::default()),
         );
 
         // Act
@@ -1268,7 +2389,58 @@ mod tests {
         let partial = music_providers(vec![music_provider("tmdb", 1)]);
 
         // Act & Assert
-        assert_rejected_naming(partial, "library.metadata.music.providers").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "library.metadata.music.providers")
+        .await;
     }
 
     // proves: SCN-METADATA-ENRICHMENT-015-D, SCN-METADATA-ENRICHMENT-016-B
@@ -1278,7 +2450,58 @@ mod tests {
         let partial = video_providers(vec![provider("musicbrainz", 1, "sentinel-key")]);
 
         // Act & Assert
-        assert_rejected_naming(partial, "library.metadata.video.providers").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "library.metadata.video.providers")
+        .await;
     }
 
     // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
@@ -1288,7 +2511,58 @@ mod tests {
         let partial = music_providers(vec![music_provider("lastfm", 1)]);
 
         // Act & Assert
-        assert_rejected_naming(partial, "library.metadata.music.providers").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "library.metadata.music.providers")
+        .await;
     }
 
     // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
@@ -1301,7 +2575,58 @@ mod tests {
         ]);
 
         // Act & Assert
-        assert_rejected_naming(partial, "library.metadata.music.providers").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "library.metadata.music.providers")
+        .await;
     }
 
     // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
@@ -1311,15 +2636,82 @@ mod tests {
         let partial = music_providers(vec![music_provider("musicbrainz", 0)]);
 
         // Act & Assert
-        assert_rejected_naming(partial, "library.metadata.music.providers").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "library.metadata.music.providers")
+        .await;
     }
 
     #[tokio::test]
     async fn load_configuration_startup_defaults() -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = use_case(
-            file_layer(PartialConfiguration::default(), false),
-            environment_layer(PartialConfiguration::default()),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(PartialConfiguration::default(), false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(PartialConfiguration::default()),
         );
 
         // Act
@@ -1346,8 +2738,24 @@ mod tests {
             ..PartialConfiguration::default()
         };
         let use_case = use_case(
-            file_layer(partial, false),
-            environment_layer(PartialConfiguration::default()),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(partial, false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(PartialConfiguration::default()),
         );
 
         // Act
@@ -1375,7 +2783,58 @@ mod tests {
         };
 
         // Act & Assert
-        assert_rejected_naming(partial, "library.startup").await;
+        (async move |partial: PartialConfiguration, setting: &str| {
+            // Arrange
+            let mut environment = MockEnvironmentConfiguration::new();
+            environment.expect_load().times(0);
+            let use_case = use_case(
+                (move |partial: PartialConfiguration,
+                       file_created: bool|
+                      -> MockConfigurationSource {
+                    let mut source = MockConfigurationSource::new();
+                    source.expect_load().times(1).returning(move || {
+                        let settings = partial.clone();
+                        Box::pin(
+                            async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                        )
+                    });
+                    source
+                })(partial, false),
+                environment,
+            );
+
+            // Act
+            let result = use_case.execute().await;
+
+            // Assert
+            assert!(
+                matches!(
+                    result.as_ref(),
+                    Err(LoadConfigurationError::InvalidConfiguration(_))
+                ),
+                "an invalid merged value must be reported as such, got: {result:?}"
+            );
+            let error = result.as_ref().err();
+            let message = error.map(ToString::to_string).unwrap_or_default();
+            assert!(
+                message.contains(setting),
+                "the rejection must name {setting}, got: {message:?}"
+            );
+            // Every rejection fixture carries a `sentinel` key, so a leak is
+            // detectable in both the message and the debug chain (`OBS-004`).
+            let debug = error
+                .map(|failure| format!("{failure:?}"))
+                .unwrap_or_default();
+            assert!(
+                !message.contains("sentinel"),
+                "the rejection must not carry an API key, got: {message:?}"
+            );
+            assert!(
+                !debug.contains("sentinel"),
+                "the debug chain must not carry an API key, got: {debug:?}"
+            );
+        })(partial, "library.startup")
+        .await;
     }
 
     // proves: SCN-METADATA-ENRICHMENT-015-B
@@ -1383,8 +2842,24 @@ mod tests {
     async fn load_configuration_defaults_have_no_music_provider() -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = use_case(
-            file_layer(PartialConfiguration::default(), false),
-            environment_layer(PartialConfiguration::default()),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(PartialConfiguration::default(), false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(PartialConfiguration::default()),
         );
 
         // Act
@@ -1422,8 +2897,24 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = use_case(
-            file_layer(seed_profile(declared)?, false),
-            environment_layer(PartialConfiguration::default()),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(seed_profile(declared)?, false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(PartialConfiguration::default()),
         );
 
         // Act
@@ -1441,14 +2932,30 @@ mod tests {
         // Arrange: the layer names the section but not the profile.
         let section: PartialSeed = serde_json::from_str("{}")?;
         let use_case = use_case(
-            file_layer(
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(
                 PartialConfiguration {
                     seed: section,
                     ..PartialConfiguration::default()
                 },
                 false,
             ),
-            environment_layer(PartialConfiguration::default()),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(PartialConfiguration::default()),
         );
 
         // Act
@@ -1473,8 +2980,24 @@ mod tests {
     {
         // Arrange: the environment layer is the highest one.
         let use_case = use_case(
-            file_layer(PartialConfiguration::default(), false),
-            environment_layer(seed_profile("system")?),
+            (move |partial: PartialConfiguration, file_created: bool| -> MockConfigurationSource {
+                let mut source = MockConfigurationSource::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(
+                        async move { Ok(LoadedFileConfiguration::new(settings, file_created)) },
+                    )
+                });
+                source
+            })(PartialConfiguration::default(), false),
+            (move |partial: PartialConfiguration| -> MockEnvironmentConfiguration {
+                let mut source = MockEnvironmentConfiguration::new();
+                source.expect_load().times(1).returning(move || {
+                    let settings = partial.clone();
+                    Box::pin(async move { Ok(settings) })
+                });
+                source
+            })(seed_profile("system")?),
         );
 
         // Act

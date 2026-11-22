@@ -141,27 +141,29 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = ListSeries<TestFactory>;
 
-    /// Build a Library test harness around the given mocks.
-    fn harness_with(
-        users: MockUserRepository,
-        series: MockSeriesRepository,
-    ) -> GalleryFactoryHarness {
-        let unit_of_work = TestUnitOfWork {
-            resources: no_resources(),
-            series,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        GalleryFactoryHarness::new(unit_of_work)
-    }
-
     // proves: SCN-SERIES-001-D
     #[tokio::test]
     async fn list_series_projects_only_the_identifier_and_name() -> Result<(), Box<dyn Error>> {
         // Arrange: the aggregate carries a season, an episode, a genre and
         // dates, so the projection has something to drop.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let season = sample_season(1, vec![sample_episode(1, 11)?]);
         let first = sample_series(1, vec![season])?;
         let second = sample_series(2, Vec::new())?;
@@ -171,7 +173,16 @@ mod tests {
             .times(1)
             .withf(|filter| filter.id.is_none() && filter.name.is_none())
             .return_once(move |_| Box::pin(async move { Ok(vec![first, second]) }));
-        let harness = harness_with(users, series);
+        let harness = (move |users: MockUserRepository,
+                             series: MockSeriesRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                series,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, series);
         let use_case: UseCase = ListSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -201,7 +212,23 @@ mod tests {
     async fn list_series_carries_the_cover_of_a_show_with_artwork() -> Result<(), Box<dyn Error>> {
         // Arrange: one covered show beside one without artwork.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let covered = Series::try_new(
             1,
             "Series 1".to_owned(),
@@ -228,7 +255,16 @@ mod tests {
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![covered, uncovered]) }));
-        let harness = harness_with(users, series);
+        let harness = (move |users: MockUserRepository,
+                             series: MockSeriesRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                series,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, series);
         let use_case: UseCase = ListSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -259,7 +295,23 @@ mod tests {
     async fn list_series_forwards_the_filter_and_paginates() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let first = sample_series(1, Vec::new())?;
         let second = sample_series(2, Vec::new())?;
         let third = sample_series(3, Vec::new())?;
@@ -269,7 +321,16 @@ mod tests {
             .times(1)
             .withf(|filter| filter.name.as_deref() == Some("Series"))
             .return_once(move |_| Box::pin(async move { Ok(vec![first, second, third]) }));
-        let harness = harness_with(users, series);
+        let harness = (move |users: MockUserRepository,
+                             series: MockSeriesRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                series,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, series);
         let use_case: UseCase = ListSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -301,7 +362,16 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, MockSeriesRepository::new());
+        let harness = (move |users: MockUserRepository,
+                             series: MockSeriesRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                series,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, MockSeriesRepository::new());
         let use_case: UseCase = ListSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -326,13 +396,38 @@ mod tests {
     async fn list_series_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut series = MockSeriesRepository::new();
         series
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-        let harness = harness_with(users, series);
+        let harness = (move |users: MockUserRepository,
+                             series: MockSeriesRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                series,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, series);
         let use_case: UseCase = ListSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -357,13 +452,38 @@ mod tests {
     async fn list_series_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut series = MockSeriesRepository::new();
         series
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, series);
+        let harness = (move |users: MockUserRepository,
+                             series: MockSeriesRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                series,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, series);
         harness.commit_fails.store(true, Ordering::SeqCst);
         let use_case: UseCase = ListSeries::new(Arc::clone(&harness.factory));
 

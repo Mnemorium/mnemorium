@@ -3,20 +3,25 @@ id: api-023
 language: Rust
 severity: error
 message: >-
-  Response inside `responses(...)` declares no `status`; declare the HTTP
-  status code.
-files:
-  - src/lib/infrastructure/inbound/rest/handler/**/*.rs
+  a response row that declares a payload media type must declare its body
+  schema: add `body = <Type>` inside the `responses(...)` row
 rule:
   all:
     - kind: token_tree
-    - regex: '^\('
-    - not:
-        regex: '(?s)\bstatus\s*='
     - inside:
         kind: token_tree
-        stopBy: neighbor
         follows:
           kind: identifier
-          regex: '^responses$'
-          stopBy: neighbor
+          regex: "^responses$"
+    - inside:
+        kind: attribute_item
+        regex: '#\[utoipa::path'
+        stopBy: end
+    - has:
+        kind: identifier
+        regex: "^content_type$"
+    - not:
+        has:
+          kind: identifier
+          regex: "^body$"
+          stopBy: end

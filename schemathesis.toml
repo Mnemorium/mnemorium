@@ -225,7 +225,7 @@ generation = { mode = "positive", max-examples = 1 }
 phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
 
 # A body or query value naming a resource rather than the URI is a body value
-# under `API-044`, so a missing reference is a `422`, not a `404`. The target is a
+# under `API-041`, so a missing reference is a `422`, not a `404`. The target is a
 # playlist no other write mutates, and the replacement carries no grants, so it
 # cannot wipe a share another operation reads. The body names no resource, but
 # the generated grant set can; the mismatch warning is therefore suppressed

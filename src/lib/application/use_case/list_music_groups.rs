@@ -152,25 +152,27 @@ mod tests {
         Ok(MusicGroup::try_new(id, name.to_owned(), cover_image_id)?)
     }
 
-    /// Build a Library test harness around the given mocks.
-    fn harness_with(
-        users: MockUserRepository,
-        groups: MockMusicGroupRepository,
-    ) -> GalleryFactoryHarness {
-        let unit_of_work = TestUnitOfWork {
-            music_groups: groups,
-            resources: no_resources(),
-            users,
-            ..TestUnitOfWork::default()
-        };
-        GalleryFactoryHarness::new(unit_of_work)
-    }
-
     #[tokio::test]
     async fn list_music_groups_returns_the_page() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         let first = group(1, "The Group", Some(19))?;
         let second = group(2, "Another Group", None)?;
@@ -182,7 +184,16 @@ mod tests {
                 let found = vec![first.clone(), second.clone()];
                 Box::pin(async move { Ok(found) })
             });
-        let harness = harness_with(users, groups);
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, groups);
         let use_case: UseCase = ListMusicGroups::new(Arc::clone(&harness.factory));
 
         // Act
@@ -209,7 +220,23 @@ mod tests {
     async fn list_music_groups_forwards_the_filter_and_paginates() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         let first = group(1, "Group 1", None)?;
         let second = group(2, "Group 2", None)?;
@@ -222,7 +249,16 @@ mod tests {
                 let found = vec![first.clone(), second.clone(), third.clone()];
                 Box::pin(async move { Ok(found) })
             });
-        let harness = harness_with(users, groups);
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, groups);
         let use_case: UseCase = ListMusicGroups::new(Arc::clone(&harness.factory));
 
         // Act
@@ -252,7 +288,16 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, MockMusicGroupRepository::new());
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, MockMusicGroupRepository::new());
         let use_case: UseCase = ListMusicGroups::new(Arc::clone(&harness.factory));
 
         // Act
@@ -270,13 +315,38 @@ mod tests {
     async fn list_music_groups_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-        let harness = harness_with(users, groups);
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, groups);
         let use_case: UseCase = ListMusicGroups::new(Arc::clone(&harness.factory));
 
         // Act
@@ -294,13 +364,38 @@ mod tests {
     async fn list_music_groups_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, groups);
+        let harness = (move |users: MockUserRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, groups);
         harness.commit_fails.store(true, Ordering::SeqCst);
         let use_case: UseCase = ListMusicGroups::new(Arc::clone(&harness.factory));
 

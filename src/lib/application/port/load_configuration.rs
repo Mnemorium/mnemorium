@@ -75,13 +75,6 @@ pub(crate) trait LoadConfigurationUseCase: Send + Sync {
     ///
     /// The configuration is resolved as defaults → configuration file →
     /// environment, without touching the datastore.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned. `dyn` erases the concrete future type, which is what makes this
-    /// method object-safe so the use case can be stored as
-    /// `Arc<dyn LoadConfigurationUseCase>`. `Box` keeps the future on the heap
-    /// at a stable address. `Pin` encodes the guarantee that the future is not
-    /// moved once it has started executing.
     fn execute<'future>(
         &'future self,
     ) -> Pin<

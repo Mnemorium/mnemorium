@@ -381,109 +381,9 @@ fn domain_item(
 mod tests {
     use super::*;
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
     use rstest::rstest;
     use std::error::Error;
-
-    /// Open a migrated in-memory database and begin one transaction.
-    /// Seed a credential and a standard user so foreign keys resolve.
-    async fn seed_user(
-        transaction: &mut Transaction<'static, Sqlite>,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (?1, ?2)")
-            .bind(user_id)
-            .bind(format!("hash-{user_id}"))
-            .execute(&mut **transaction)
-            .await?;
-        sqlx::query(
-            "INSERT INTO user (user_id, role, username, email, credential_id)
-             VALUES (?1, 'STANDARD', ?2, NULL, ?1)",
-        )
-        .bind(user_id)
-        .bind(format!("user{user_id}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a file owned by `user_id` with a per-file unique digest.
-    async fn seed_file(
-        transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
-        user_id: i64,
-        path: &str,
-        mime_type_id: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
-             VALUES (?1, ?2, ?3, 0, ?4, 1024, '2026-10-06 00:00:00', 'UPLOADED', ?5)",
-        )
-        .bind(file_id)
-        .bind(path)
-        .bind(user_id)
-        .bind(mime_type_id)
-        .bind(format!("{file_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed an image backed by `file_id`.
-    async fn seed_image(
-        transaction: &mut Transaction<'static, Sqlite>,
-        image_id: i64,
-        file_id: i64,
-        name: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO image (image_id, name, width_px, height_px, orientation, created_at, file_id)
-             VALUES (?1, ?2, 10, 10, 'SQUARE', '2026-10-06', ?3)",
-        )
-        .bind(image_id)
-        .bind(name)
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a video backed by `file_id`.
-    async fn seed_video(
-        transaction: &mut Transaction<'static, Sqlite>,
-        video_id: i64,
-        file_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO video (
-                video_id, duration_ms, codec, frame_count, width, height, color_id, scan_type, file_id
-             )
-             VALUES (?1, 1000.0, 'H264', 30, 10, 10, 'YCbCr', 'PROGRESSIVE', ?2)",
-        )
-        .bind(video_id)
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a private gallery directly, to reach constraint violations the
-    /// repository API cannot produce.
-    async fn seed_gallery(
-        transaction: &mut Transaction<'static, Sqlite>,
-        gallery_id: i64,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO gallery (gallery_id, name, created_at, last_modified_at, is_public, user_id)
-             VALUES (?1, ?2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, ?3)",
-        )
-        .bind(gallery_id)
-        .bind(format!("gallery {gallery_id}"))
-        .bind(user_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
 
     /// Build a domain gallery.
     fn gallery(gallery_id: i64, user_id: Option<i64>, name: &str, is_public: bool) -> Gallery {
@@ -719,7 +619,7 @@ mod tests {
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
         seed_file(&mut transaction, 1, 1, "a.png", "image/png").await?;
-        seed_image(&mut transaction, 1, 1, "a.png").await?;
+        seed_image_v4(&mut transaction, 1, 1, "a.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let created = repository
             .create(gallery(0, Some(1), "Holidays", false))
@@ -920,7 +820,7 @@ mod tests {
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
         seed_file(&mut transaction, 10, 1, "a.png", "image/png").await?;
-        seed_image(&mut transaction, 5, 10, "a.png").await?;
+        seed_image_v4(&mut transaction, 5, 10, "a.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let created = repository
             .create(gallery(0, Some(1), "Holidays", false))
@@ -963,8 +863,8 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         seed_file(&mut transaction, 10, 1, "a.png", "image/png").await?;
         seed_file(&mut transaction, 11, 1, "b.png", "image/png").await?;
-        seed_image(&mut transaction, 5, 10, "a.png").await?;
-        seed_image(&mut transaction, 6, 11, "b.png").await?;
+        seed_image_v4(&mut transaction, 5, 10, "a.png").await?;
+        seed_image_v4(&mut transaction, 6, 11, "b.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let created = repository
             .create(gallery(0, Some(1), "Holidays", false))
@@ -999,7 +899,7 @@ mod tests {
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
         seed_file(&mut transaction, 10, 1, "a.png", "image/png").await?;
-        seed_image(&mut transaction, 5, 10, "a.png").await?;
+        seed_image_v4(&mut transaction, 5, 10, "a.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let first = repository
             .create(gallery(0, Some(1), "First", false))
@@ -1029,7 +929,7 @@ mod tests {
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
         seed_file(&mut transaction, 10, 1, "a.png", "image/png").await?;
-        seed_image(&mut transaction, 5, 10, "a.png").await?;
+        seed_image_v4(&mut transaction, 5, 10, "a.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
 
         // Act
@@ -1081,8 +981,8 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         seed_file(&mut transaction, 10, 1, "files/photo.png", "image/png").await?;
         seed_file(&mut transaction, 11, 1, "files/clip.mp4", "video/mp4").await?;
-        seed_image(&mut transaction, 5, 10, "photo.png").await?;
-        seed_video(&mut transaction, 6, 11).await?;
+        seed_image_v4(&mut transaction, 5, 10, "photo.png").await?;
+        seed_video_v3(&mut transaction, 6, 11).await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let created = repository
             .create(gallery(0, Some(1), "Holidays", false))
@@ -1131,7 +1031,7 @@ mod tests {
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
         seed_file(&mut transaction, 10, 1, "files/photo.png", "image/png").await?;
-        seed_image(&mut transaction, 5, 10, "photo.png").await?;
+        seed_image_v4(&mut transaction, 5, 10, "photo.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let first = repository
             .create(gallery(0, Some(1), "First", false))
@@ -1221,9 +1121,9 @@ mod tests {
         seed_file(&mut transaction, 10, 1, "files/10.png", "image/png").await?;
         seed_file(&mut transaction, 11, 1, "files/11.png", "image/png").await?;
         seed_file(&mut transaction, 12, 1, "files/12.png", "image/png").await?;
-        seed_image(&mut transaction, 5, 10, "10.png").await?;
-        seed_image(&mut transaction, 6, 11, "11.png").await?;
-        seed_image(&mut transaction, 7, 12, "12.png").await?;
+        seed_image_v4(&mut transaction, 5, 10, "10.png").await?;
+        seed_image_v4(&mut transaction, 6, 11, "11.png").await?;
+        seed_image_v4(&mut transaction, 7, 12, "12.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         repository
             .save(gallery(1, Some(1), "Counted", false))
@@ -1259,7 +1159,7 @@ mod tests {
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
         seed_file(&mut transaction, 10, 1, "a.png", "image/png").await?;
-        seed_image(&mut transaction, 5, 10, "a.png").await?;
+        seed_image_v4(&mut transaction, 5, 10, "a.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let created = repository
             .create(gallery(0, Some(1), "Holidays", false))
@@ -1300,9 +1200,9 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         seed_file(&mut transaction, 10, 1, "a.png", "image/png").await?;
         seed_file(&mut transaction, 11, 1, "b.mp4", "video/mp4").await?;
-        seed_image(&mut transaction, 5, 10, "a.png").await?;
-        seed_video(&mut transaction, 6, 11).await?;
-        seed_gallery(&mut transaction, 1, 1).await?;
+        seed_image_v4(&mut transaction, 5, 10, "a.png").await?;
+        seed_video_v3(&mut transaction, 6, 11).await?;
+        seed_gallery_v2(&mut transaction, 1, 1).await?;
 
         // Act
         let result = sqlx::query(
@@ -1326,7 +1226,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_gallery(&mut transaction, 1, 1).await?;
+        seed_gallery_v2(&mut transaction, 1, 1).await?;
 
         // Act
         let result = sqlx::query(
@@ -1351,8 +1251,8 @@ mod tests {
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
         seed_file(&mut transaction, 10, 1, "a.png", "image/png").await?;
-        seed_image(&mut transaction, 5, 10, "a.png").await?;
-        seed_gallery(&mut transaction, 1, 1).await?;
+        seed_image_v4(&mut transaction, 5, 10, "a.png").await?;
+        seed_gallery_v2(&mut transaction, 1, 1).await?;
 
         // Act
         let result = sqlx::query(
@@ -1378,8 +1278,8 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         seed_file(&mut transaction, 10, 1, "a.png", "image/png").await?;
         seed_file(&mut transaction, 11, 1, "b.png", "image/png").await?;
-        seed_image(&mut transaction, 5, 10, "a.png").await?;
-        seed_image(&mut transaction, 6, 11, "b.png").await?;
+        seed_image_v4(&mut transaction, 5, 10, "a.png").await?;
+        seed_image_v4(&mut transaction, 6, 11, "b.png").await?;
         let first = {
             let mut repository = SqlxGalleryRepository::new(&mut transaction);
             repository
@@ -1416,6 +1316,237 @@ mod tests {
         assert_eq!(
             items.first().map(|detail| detail.item().media()),
             Some(GalleryItemMedia::Image(6))
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn gallery_item_rejects_duplicate_index_within_a_gallery() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_gallery(&pool, 1).await?;
+        sqlx::query(
+            "INSERT INTO gallery_item (gallery_item_id, gallery_id, image_id, item_index)
+             VALUES (1, 1, 1, 0)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO gallery_item (gallery_item_id, gallery_id, video_id, item_index)
+             VALUES (2, 1, 1, 0)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn gallery_item_rejects_media_already_assigned() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_gallery(&pool, 1).await?;
+        seed_gallery(&pool, 2).await?;
+        sqlx::query(
+            "INSERT INTO gallery_item (gallery_item_id, gallery_id, image_id, item_index)
+             VALUES (1, 1, 1, 0)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO gallery_item (gallery_item_id, gallery_id, image_id, item_index)
+             VALUES (2, 2, 1, 0)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn deleting_gallery_cascades_its_items() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_gallery(&pool, 1).await?;
+        sqlx::query(
+            "INSERT INTO gallery_item (gallery_item_id, gallery_id, image_id, item_index)
+             VALUES (1, 1, 1, 0)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        sqlx::query("DELETE FROM gallery WHERE gallery_id = 1")
+            .execute(&pool)
+            .await?;
+
+        // Assert
+        let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM gallery_item")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(remaining, 0, "deleting a gallery must cascade its items");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn default_gallery_cannot_be_deleted() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act
+        let result = sqlx::query("DELETE FROM gallery WHERE gallery_id = 0")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::Conflict)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn default_gallery_cannot_be_renamed() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act
+        let result = sqlx::query("UPDATE gallery SET name = 'Other' WHERE gallery_id = 0")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::Conflict)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn default_gallery_cannot_change_owner() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act
+        let result = sqlx::query("UPDATE gallery SET user_id = 1 WHERE gallery_id = 0")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::Conflict)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn default_gallery_cannot_be_rekeyed() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act
+        let result = sqlx::query("UPDATE gallery SET gallery_id = 5 WHERE gallery_id = 0")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::Conflict)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn default_gallery_cannot_be_replaced() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT OR REPLACE INTO gallery
+             (gallery_id, name, created_at, last_modified_at, is_public, user_id)
+             VALUES (0, 'Replaced', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, NULL)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::Conflict)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn default_gallery_last_modified_at_can_be_touched() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act
+        let affected = sqlx::query(
+            "UPDATE gallery SET last_modified_at = '2099-01-01 00:00:00' WHERE gallery_id = 0",
+        )
+        .execute(&pool)
+        .await?
+        .rows_affected();
+
+        // Assert
+        assert_eq!(affected, 1, "touching last_modified_at must be allowed");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn gallery_rejects_a_library_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: image 1 is a library cover, so it is LIBRARY.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_covered_owners(&pool, 1).await?;
+
+        // Act
+        let result = seed_gallery_image(&pool, 1)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "gallery media must reject a LIBRARY image as a conflict"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn gallery_rejects_a_library_video() -> Result<(), Box<dyn Error>> {
+        // Arrange: video 1 is marked LIBRARY, which gallery media may not use.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_gallery(&pool, 1).await?;
+        sqlx::query("UPDATE video SET scope = 'LIBRARY' WHERE video_id = 1")
+            .execute(&pool)
+            .await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO gallery_item (gallery_item_id, gallery_id, video_id, item_index)
+             VALUES (1, 1, 1, 0)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "gallery media must reject a LIBRARY video as a conflict"
         );
         Ok(())
     }

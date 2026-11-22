@@ -167,7 +167,7 @@ pub(crate) async fn put_upload_chunk(
 ) -> Result<Response, ApiError> {
     // Resolve the extractor result first: an oversized body must produce the
     // `413` and its catalogued `limit_exceeded` event regardless of the path
-    // parameters or headers, which fail independently (`OBS-006`, `API-041`).
+    // parameters or headers, which fail independently (`OBS-006`, `API-038`).
     let body = raw_body.map_err(ApiError::from)?;
 
     let Ok(upload_id) = upload_id_value.parse::<NumericID>() else {

@@ -147,9 +147,6 @@ pub(crate) enum GetImageError {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait GetImageUseCase: Send + Sync {
     /// Fetch the requested image.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn GetImageUseCase>`.
     fn execute<'future>(
         &'future self,
         command: GetImageCommand,

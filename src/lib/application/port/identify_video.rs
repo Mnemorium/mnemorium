@@ -99,9 +99,6 @@ pub(crate) enum IdentifyVideoError {
 pub(crate) trait IdentifyVideoUseCase: Send + Sync {
     /// Interpret the command's name, search the configured chain and return the
     /// candidates of the first query that yields any.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn IdentifyVideoUseCase>`.
     fn execute<'future>(
         &'future self,
         command: IdentifyVideoCommand,

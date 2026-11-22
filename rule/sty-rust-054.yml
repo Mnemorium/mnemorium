@@ -2,21 +2,18 @@
 id: sty-rust-054
 language: Rust
 severity: error
-message: a use-case trait is named `<UseCaseName>UseCase`
-files:
-  - src/lib/application/port/**/*.rs
+message: declare the command object first in a use-case port file
 rule:
   all:
-    - kind: trait_item
-    - has:
+    - kind: struct_item
+    - any:
+        - pattern: pub struct $COMMAND
+        - pattern: pub(crate) struct $COMMAND
+        - pattern: struct $COMMAND
+    - regex: '^(pub(\(crate\))? )?struct \w+Command\b'
+    - follows:
         any:
-          - kind: function_signature_item
-          - kind: function_item
-        has:
-          field: name
-          regex: '^execute$'
+          - kind: struct_item
+          - kind: enum_item
+          - kind: trait_item
         stopBy: end
-    - has:
-        field: name
-        not:
-          regex: '^[A-Z][A-Za-z0-9]*UseCase$'

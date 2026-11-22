@@ -1,25 +1,21 @@
 ---
 id: api-037
 language: Rust
-severity: hint
+severity: error
 message: >-
-  extract every HAL link constructor and every href helper, for API-037
+  attach a stable, server-authored `error` message: an extractor or framework
+  rejection is logged, never returned (API-037)
 rule:
-  all:
-    - any:
-        - pattern: Link::new($ARG)
-        - pattern: Link::templated($ARG)
-        - pattern: SelfLinks::new($ARG)
-        - kind: function_item
-          has:
-            field: name
-            regex: "_href$"
-    # A link built inside a #[cfg(test)] module is a fixture, not a served
-    # representation.
-    - not:
-        inside:
-          kind: mod_item
-          stopBy: end
-          follows:
-            kind: attribute_item
-            regex: cfg\(test\)
+  pattern: $TYPE::$VARIANT($ARG)
+constraints:
+  TYPE:
+    regex: '^(ApiError|Self)$'
+  VARIANT:
+    regex: "^(BadRequest|Conflict|Forbidden|Gone|NotFound|PayloadTooLarge|\
+      TooManyRequests|Unauthorized|UnprocessableEntity|UnsupportedMediaType)$"
+  # The message is a string literal (`"…"`), optionally wrapped by
+  # `.to_owned()`/`.to_string()`; anything else is a value the server did not
+  # author — the rejection, a field of it, or its `Display`/`Debug`.
+  ARG:
+    not:
+      regex: '^\s*(r#)?"'

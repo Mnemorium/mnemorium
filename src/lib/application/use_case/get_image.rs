@@ -175,45 +175,53 @@ mod tests {
         )?)
     }
 
-    fn harness(
-        users: MockUserRepository,
-        files: MockFileRepository,
-        images: MockImageRepository,
-    ) -> AssetFactoryHarness {
-        AssetFactoryHarness::new(TestUnitOfWork {
-            files,
-            images,
-            resources: no_resources(),
-            users,
-            ..TestUnitOfWork::default()
-        })
-    }
-
-    fn expect_image(images: &mut MockImageRepository, stored: Image) {
-        images
-            .expect_search()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
-    }
-
-    fn expect_file(files: &mut MockFileRepository, stored: File) {
-        files
-            .expect_search()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
-    }
-
     // proves: SCN-IMAGE-003-A
     #[tokio::test]
     async fn get_image_projects_the_typed_representation() -> Result<(), Box<dyn Error>> {
         // Arrange: a library image readable through `ViewMetadata` on the catalogue.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 9)?;
         let mut images = MockImageRepository::new();
-        expect_image(&mut images, image(19, 100, Some(AssetScope::Library))?);
+        (move |images: &mut MockImageRepository, stored: Image| {
+            images
+                .expect_search()
+                .times(1)
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut images, image(19, 100, Some(AssetScope::Library))?);
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, file(100, 3, Some(AssetOwner::Library))?);
-        let harness = harness(users, files, images);
+        (move |files: &mut MockFileRepository, stored: File| {
+            files
+                .expect_search()
+                .times(1)
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut files, file(100, 3, Some(AssetOwner::Library))?);
+        let harness = (move |users: MockUserRepository,
+                             files: MockFileRepository,
+                             images: MockImageRepository|
+              -> AssetFactoryHarness {
+            AssetFactoryHarness::new(TestUnitOfWork {
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            })
+        })(users, files, images);
         let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory));
 
         // Act
@@ -234,13 +242,39 @@ mod tests {
     async fn get_image_unknown_image_returns_no_such_image() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 9)?;
         let mut images = MockImageRepository::new();
         images
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness(users, MockFileRepository::new(), images);
+        let harness = (move |users: MockUserRepository,
+                             files: MockFileRepository,
+                             images: MockImageRepository|
+              -> AssetFactoryHarness {
+            AssetFactoryHarness::new(TestUnitOfWork {
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            })
+        })(users, MockFileRepository::new(), images);
         let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory));
 
         // Act
@@ -259,7 +293,17 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness(users, MockFileRepository::new(), MockImageRepository::new());
+        let harness = (move |users: MockUserRepository,
+                             files: MockFileRepository,
+                             images: MockImageRepository|
+              -> AssetFactoryHarness {
+            AssetFactoryHarness::new(TestUnitOfWork {
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            })
+        })(users, MockFileRepository::new(), MockImageRepository::new());
         let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory));
 
         // Act
@@ -279,7 +323,17 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-        let harness = harness(users, MockFileRepository::new(), MockImageRepository::new());
+        let harness = (move |users: MockUserRepository,
+                             files: MockFileRepository,
+                             images: MockImageRepository|
+              -> AssetFactoryHarness {
+            AssetFactoryHarness::new(TestUnitOfWork {
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            })
+        })(users, MockFileRepository::new(), MockImageRepository::new());
         let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory));
 
         // Act

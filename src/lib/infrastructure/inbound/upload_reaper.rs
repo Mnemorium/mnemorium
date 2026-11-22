@@ -145,31 +145,28 @@ mod tests {
     /// The long interval the shutdown test configures, in seconds.
     const LONG_REAP_INTERVAL_SECONDS: u64 = 30;
 
-    /// Build a factory whose reap use case records that it ran in `ran`.
-    fn factory(ran: Arc<AtomicBool>) -> MockAssetUseCaseFactory {
-        let mut use_case = MockReapUploadsUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .with(eq(ReapUploadsCommand::new()))
-            .returning(move |_| {
-                ran.store(true, Ordering::SeqCst);
-                Box::pin(async { Ok(ReapUploadsResponse::new(0, 0, 0)) })
-            });
-        let mut factory = MockAssetUseCaseFactory::new();
-        factory
-            .expect_reap_uploads()
-            .times(1)
-            .return_once(move || Arc::new(use_case) as Arc<dyn ReapUploadsUseCase>);
-        factory
-    }
-
     #[tokio::test]
     async fn upload_reaper_runs_on_its_interval_and_stops() -> Result<(), Box<dyn Error>> {
         // Arrange
         let ran = Arc::new(AtomicBool::new(false));
         let tasks = UploadReaperRunner::new(
-            Arc::new(factory(Arc::clone(&ran))),
+            Arc::new((move |ran: Arc<AtomicBool>| -> MockAssetUseCaseFactory {
+                let mut use_case = MockReapUploadsUseCase::new();
+                use_case
+                    .expect_execute()
+                    .times(1)
+                    .with(eq(ReapUploadsCommand::new()))
+                    .returning(move |_| {
+                        ran.store(true, Ordering::SeqCst);
+                        Box::pin(async { Ok(ReapUploadsResponse::new(0, 0, 0)) })
+                    });
+                let mut factory = MockAssetUseCaseFactory::new();
+                factory
+                    .expect_reap_uploads()
+                    .times(1)
+                    .return_once(move || Arc::new(use_case) as Arc<dyn ReapUploadsUseCase>);
+                factory
+            })(Arc::clone(&ran))),
             Duration::from_millis(SHORT_REAP_INTERVAL_MILLISECONDS),
         )
         .start();

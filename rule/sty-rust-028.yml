@@ -3,33 +3,30 @@ id: sty-rust-028
 language: Rust
 severity: error
 message: >-
-  keep test setup inline: no helper `fn` nested inside another `fn`, and no
-  module-level `static` in a `#[cfg(test)]` module (STY-RUST-028)
+  a test loops over an inline case list and asserts each case; express the cases
+  as rstest #[case] rows instead
 rule:
-  any:
-    # A helper function nested inside another function, in a test module.
-    - all:
-        - kind: function_item
-        - inside:
-            kind: function_item
-            stopBy: end
-        - inside:
-            kind: mod_item
-            stopBy: end
-            follows:
-              kind: attribute_item
-              regex: 'cfg\(test\)'
+  all:
+    - kind: for_expression
+    - any:
+        - has:
+            field: value
+            kind: array_expression
+        - has:
+            field: value
+            has:
+              kind: array_expression
               stopBy: end
-    # A module-level `static` — distant global state, in a test module.
-    - all:
-        - kind: static_item
-        - inside:
-            kind: declaration_list
-            stopBy: neighbor
-            inside:
-              kind: mod_item
-              stopBy: end
-              follows:
-                kind: attribute_item
-                regex: 'cfg\(test\)'
-                stopBy: end
+    - has:
+        field: body
+        has:
+          kind: macro_invocation
+          regex: 'assert'
+          stopBy: end
+    - inside:
+        kind: function_item
+        follows:
+          kind: attribute_item
+          regex: '#\[([A-Za-z_][A-Za-z0-9_]*::)*(test|rstest)\]'
+          stopBy: end
+        stopBy: end

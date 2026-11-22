@@ -235,6 +235,7 @@ impl MovieRepository for SqlxMovieRepository<'_> {
 mod tests {
     use super::*;
     use crate::domain::model::ScanType;
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
 
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use crate::test_helpers::*;
@@ -242,203 +243,12 @@ mod tests {
     use std::error::Error;
     use tracing_test::traced_test;
 
-    /// Assert the captured output is exactly one `output_validation_failed`
-    /// event with `reason`, carrying neither a stored value nor an `sqlx`
-    /// detail.
-    fn assert_output_validation_failed(lines: &[&str], reason: &str) -> Result<(), String> {
-        let ours: Vec<&str> = lines
-            .iter()
-            .copied()
-            .filter(|line| line.contains("security:"))
-            .collect();
-        let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
-        if warn_count != 1 {
-            return Err(format!(
-                "rejected stored data must emit exactly one warn event (found {warn_count})"
-            ));
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains("event=\"output_validation_failed\""))
-        {
-            return Err("the event must be output_validation_failed".to_owned());
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains(&format!("reason=\"{reason}\"")))
-        {
-            return Err(format!("the event must carry the stable reason `{reason}`"));
-        }
-        if ours.iter().any(|line| line.contains("sqlx")) {
-            return Err("the event must not carry the sqlx detail".to_owned());
-        }
-        Ok(())
-    }
-
-    /// Open a migrated in-memory database and begin one transaction.
-    /// Seed a credential and a standard user so foreign keys resolve.
-    async fn seed_user(transaction: &mut Transaction<'static, Sqlite>) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (1, 'hash')")
-            .execute(&mut **transaction)
-            .await?;
-        sqlx::query(
-            "INSERT INTO user (user_id, role, username, email, credential_id)
-             VALUES (1, 'STANDARD', 'tester', NULL, 1)",
-        )
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a video file owned by the seeded user.
-    async fn seed_video_file(
-        transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
-             VALUES (?1, ?2, 1, 0, 'video/mp4', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?3)",
-        )
-        .bind(file_id)
-        .bind(format!("{file_id}.mp4"))
-        .bind(format!("{file_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed an image row of `image_id` on `file_id`, in a square orientation.
-    async fn seed_image(
-        transaction: &mut Transaction<'static, Sqlite>,
-        image_id: i64,
-        file_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO image (image_id, name, width_px, height_px, orientation, created_at, file_id)
-             VALUES (?1, ?2, 10, 10, 'SQUARE', '2026-10-06', ?3)",
-        )
-        .bind(image_id)
-        .bind(format!("{image_id}.png"))
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed an image file of `file_id`.
-    async fn seed_image_file(
-        transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
-             VALUES (?1, ?2, 1, 0, 'image/png', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?3)",
-        )
-        .bind(file_id)
-        .bind(format!("{file_id}.png"))
-        .bind(format!("{file_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a progressive video of `width` pixels on `file_id`.
-    async fn seed_video(
-        transaction: &mut Transaction<'static, Sqlite>,
-        video_id: i64,
-        file_id: i64,
-        width: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO video (
-                video_id, duration_ms, codec, frame_count, width, height, color_id, scan_type, file_id
-             )
-             VALUES (?1, 1000.0, 'H264', 30, ?2, 10, 'YCbCr', 'PROGRESSIVE', ?3)",
-        )
-        .bind(video_id)
-        .bind(width)
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a film backed by `video_id`, with a lowercase country of origin.
-    async fn seed_movie(
-        transaction: &mut Transaction<'static, Sqlite>,
-        movie_id: i64,
-        name: &str,
-        video_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO movie (
-                movie_id, name, plot, country_of_origin, release_date, video_id
-             )
-             VALUES (?1, ?2, 'A plot', 'us', '1959-08-17', ?3)",
-        )
-        .bind(movie_id)
-        .bind(name)
-        .bind(video_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a genre.
-    async fn seed_genre(
-        transaction: &mut Transaction<'static, Sqlite>,
-        genre_id: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO genre (genre_id) VALUES (?1)")
-            .bind(genre_id)
-            .execute(&mut **transaction)
-            .await?;
-        Ok(())
-    }
-
-    /// Attach `genre_id` to `movie_id`.
-    async fn seed_movie_genre(
-        transaction: &mut Transaction<'static, Sqlite>,
-        movie_id: i64,
-        genre_id: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO movie_genre (movie_id, genre_id) VALUES (?1, ?2)")
-            .bind(movie_id)
-            .bind(genre_id)
-            .execute(&mut **transaction)
-            .await?;
-        Ok(())
-    }
-
-    /// Seed a show holding one season and an episode backed by `video_id`.
-    async fn seed_episode_backed_by(
-        transaction: &mut Transaction<'static, Sqlite>,
-        video_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO series (series_id, name, plot) VALUES (1, 'Twin Peaks', 'A plot')",
-        )
-        .execute(&mut **transaction)
-        .await?;
-        sqlx::query("INSERT INTO season (season_id, series_id, season_index) VALUES (1, 1, 1)")
-            .execute(&mut **transaction)
-            .await?;
-        sqlx::query(
-            "INSERT INTO episode (episode_id, season_id, episode_index, name, plot, video_id)
-             VALUES (1, 1, 1, 'Pilot', 'A plot', ?1)",
-        )
-        .bind(video_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
     #[tokio::test]
     async fn search_reports_an_absent_release_date_and_country_as_none()
     -> Result<(), Box<dyn Error>> {
         // Arrange: a film storing neither a release date nor a country.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         sqlx::query(
@@ -471,7 +281,7 @@ mod tests {
     async fn insert_rejects_a_video_already_backing_an_episode() -> Result<(), Box<dyn Error>> {
         // Arrange: an episode already backs video 20.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         seed_episode_backed_by(&mut transaction, 20).await?;
@@ -497,7 +307,7 @@ mod tests {
     async fn update_rejects_a_video_already_backing_an_episode() -> Result<(), Box<dyn Error>> {
         // Arrange: film 1 backs video 21 and an episode backs video 20.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video_file(&mut transaction, 11).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
@@ -523,7 +333,7 @@ mod tests {
     async fn search_returns_movies_with_genres_and_their_video() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video_file(&mut transaction, 11).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
@@ -581,7 +391,7 @@ mod tests {
     async fn search_projects_the_cover_image() -> Result<(), Box<dyn Error>> {
         // Arrange: one covered film and one without artwork.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video_file(&mut transaction, 11).await?;
         sqlx::query(
@@ -616,7 +426,7 @@ mod tests {
     async fn search_filters_by_name_and_identifier() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video_file(&mut transaction, 11).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
@@ -651,7 +461,7 @@ mod tests {
     async fn search_returns_movies_ordered_by_identifier() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video_file(&mut transaction, 11).await?;
         seed_video_file(&mut transaction, 12).await?;
@@ -676,7 +486,7 @@ mod tests {
     async fn search_returns_empty_for_unknown_name() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         seed_movie(&mut transaction, 1, "Some Like It Hot", 20).await?;
@@ -700,7 +510,7 @@ mod tests {
     async fn search_rejects_a_stored_video_the_domain_cannot_hold() -> Result<(), Box<dyn Error>> {
         // Arrange: the width check is probed by relaxing it for this seed.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         sqlx::query("PRAGMA ignore_check_constraints = ON")
             .execute(&mut *transaction)
@@ -717,7 +527,37 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "invalid_video"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "invalid_video")
+        });
         Ok(())
     }
 
@@ -727,7 +567,7 @@ mod tests {
         // Arrange: the scan-type check admits only the known tokens, so the
         // defensive mapping is probed by relaxing it for this seed.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         seed_movie(&mut transaction, 1, "Some Like It Hot", 20).await?;
@@ -747,7 +587,37 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "unknown_scan_type"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "unknown_scan_type")
+        });
         Ok(())
     }
 
@@ -757,7 +627,7 @@ mod tests {
         // Arrange: `movie.name` has no non-empty check, so the domain guard is
         // probed by seeding an empty name.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         seed_movie(&mut transaction, 1, "", 20).await?;
@@ -771,7 +641,37 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "invalid_movie"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "invalid_movie")
+        });
         Ok(())
     }
 
@@ -780,7 +680,7 @@ mod tests {
         // Arrange: a free video and a library cover, with two genre identifiers
         // the catalogue does not hold yet.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_image_file(&mut transaction, 12).await?;
         seed_image(&mut transaction, 12, 12).await?;
@@ -827,7 +727,7 @@ mod tests {
     async fn create_rejects_a_video_already_backing_a_film() -> Result<(), Box<dyn Error>> {
         // Arrange: film 1 already backs video 20.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         seed_movie(&mut transaction, 1, "Some Like It Hot", 20).await?;
@@ -858,7 +758,7 @@ mod tests {
     async fn create_rejects_a_video_already_backing_an_episode() -> Result<(), Box<dyn Error>> {
         // Arrange: an episode already backs video 20.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         seed_episode_backed_by(&mut transaction, 20).await?;
@@ -890,7 +790,7 @@ mod tests {
         // Arrange: image 12 is attached to a user asset, so it cannot become a
         // film cover.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_image_file(&mut transaction, 12).await?;
         seed_image(&mut transaction, 12, 12).await?;
@@ -926,7 +826,7 @@ mod tests {
         // Arrange: film 1 backs video 20; the update names a different, existing
         // video to prove the adapter never rewrites it.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video_file(&mut transaction, 11).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
@@ -973,7 +873,7 @@ mod tests {
     async fn save_inserts_an_absent_film() -> Result<(), Box<dyn Error>> {
         // Arrange: the identifier 404 carries no film, and video 10 is free.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         let pending = Movie::try_new(
@@ -1002,7 +902,7 @@ mod tests {
     {
         // Arrange: video 20 backs a film, video 21 is unattached.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 10).await?;
         seed_video_file(&mut transaction, 11).await?;
@@ -1038,7 +938,7 @@ mod tests {
     async fn delete_removes_the_film_and_its_genres() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 10).await?;
         seed_movie(&mut transaction, 5, "Vertigo", 20).await?;

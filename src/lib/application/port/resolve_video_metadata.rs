@@ -91,10 +91,6 @@ pub(crate) enum ResolveVideoMetadataError {
 pub(crate) trait ResolveVideoMetadataUseCase: Send + Sync {
     /// Resolve the command's target through the configured provider, reporting
     /// an item the provider does not know as `Ok(None)`.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as
-    /// `Arc<dyn ResolveVideoMetadataUseCase>`.
     fn execute<'future>(
         &'future self,
         command: ResolveVideoMetadataCommand,

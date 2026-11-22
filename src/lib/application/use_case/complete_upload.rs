@@ -89,7 +89,7 @@ enum Probed {
 /// Completion spans two bounded contexts: for a supported image, video or audio
 /// file the Asset completion writes and the Library media insert share one
 /// mutating unit of work, so the file is never committed without its media row
-/// (`ARCH-003`, `STY-RUST-040`). A file whose mime type is another family
+/// (`ARCH-003`, `STY-RUST-038`). A file whose mime type is another family
 /// completes without a media row.
 ///
 /// The session is sealed before its content is verified, so a chunk written
@@ -449,7 +449,7 @@ where
                 };
 
                 // The media insert shares the completion's unit of work, so the
-                // file row and its media row commit together (`STY-RUST-040`).
+                // file row and its media row commit together (`STY-RUST-038`).
                 let mut asset = None;
                 if let Some(media) = probed {
                     let registered = match media {
@@ -898,6 +898,7 @@ mod tests {
     use super::*;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::{ChunkBitmap, IntegrityHash};
+    use rstest::fixture;
 
     use crate::domain::port::{
         MockAudioRepository, MockFileRepository, MockFileStorage, MockImageRepository,
@@ -935,232 +936,13 @@ mod tests {
         use_case: UseCase,
     }
 
-    /// Tolerate a best-effort unseal through `uploads`, recording that it ran.
-    fn expect_unseal(uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>) {
-        let flag = Arc::clone(&unsealed);
-        uploads.expect_search().times(0..).returning(move |_| {
-            flag.store(true, Ordering::SeqCst);
-            Box::pin(async { Ok(Vec::new()) })
-        });
-        uploads.expect_save().times(0..).returning(move |upload| {
-            unsealed.store(true, Ordering::SeqCst);
-            Box::pin(async move { Ok(upload) })
-        });
-    }
-
-    /// Build the unit of work a failed completion unseals through.
-    ///
-    /// Its upload repository records that the seal was cleared, and tolerates
-    /// never being reached on a successful completion.
-    fn unseal_unit_of_work(unsealed: Arc<AtomicBool>) -> TestUow {
-        let mut uploads = MockUploadRepository::new();
-        uploads.expect_search().times(0..).returning(move |_| {
-            unsealed.store(true, Ordering::SeqCst);
-            Box::pin(async { Ok(Vec::new()) })
-        });
-        uploads
-            .expect_save()
-            .times(0..)
-            .returning(|upload| Box::pin(async move { Ok(upload) }));
-        TestUnitOfWork {
-            uploads,
-            ..TestUnitOfWork::default()
-        }
-    }
-
-    /// Build a completion whose two phases each open their own unit of work.
-    ///
-    /// `resolve` runs in both phases, so each phase needs its own mocked
-    /// repositories; the same upload is usually expected on both upload
-    /// repositories.
-    fn use_case_with(
-        mut phase_one_uploads: MockUploadRepository,
-        phase_one_files: MockFileRepository,
-        mut phase_two_uploads: MockUploadRepository,
-        phase_two_files: MockFileRepository,
-        file_storage: MockFileStorage,
-    ) -> Harness {
-        let unsealed = Arc::new(AtomicBool::new(false));
-        expect_unseal(&mut phase_one_uploads, Arc::clone(&unsealed));
-        expect_unseal(&mut phase_two_uploads, Arc::clone(&unsealed));
-        let phase_one = TestUnitOfWork {
-            users: any_caller(),
-            files: phase_one_files,
-            uploads: phase_one_uploads,
-            ..TestUnitOfWork::default()
-        };
-        let phase_one_committed = Arc::clone(&phase_one.committed);
-        let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
-        let phase_two = TestUnitOfWork {
-            users: any_caller(),
-            files: phase_two_files,
-            uploads: phase_two_uploads,
-            ..TestUnitOfWork::default()
-        };
-        let phase_two_committed = Arc::clone(&phase_two.committed);
-        let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
-        let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
-        let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![
-                phase_one,
-                phase_two,
-                unseal_unit_of_work(Arc::clone(&unsealed)),
-            ]),
-        };
-        Harness {
-            phase_one_commit_fails,
-            phase_one_committed,
-            phase_one_rolled_back,
-            phase_two_commit_fails,
-            phase_two_committed,
-            phase_two_rolled_back,
-            unsealed,
-            use_case: CompleteUpload::new(
-                Arc::new(factory),
-                Arc::new(file_storage),
-                Arc::new(MockMediaProbe::new()),
-                TTL_SECONDS,
-            ),
-        }
-    }
-
-    /// Build one phase's unit of work around explicit media repositories.
-    fn phase_unit_of_work(
-        uploads: MockUploadRepository,
-        files: MockFileRepository,
-        images: MockImageRepository,
-        audios: MockAudioRepository,
-        videos: MockVideoRepository,
-    ) -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
-        let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
-            audios,
-            files,
-            images,
-            uploads,
-            videos,
-            ..TestUnitOfWork::default()
-        };
-        let committed = Arc::clone(&unit_of_work.committed);
-        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
-        (unit_of_work, committed, rolled_back)
-    }
-
-    /// Build a completion whose phases carry explicit media repositories and a
-    /// configured media probe, for the registration paths.
-    fn use_case_with_media(
-        mut phase_one_uploads: MockUploadRepository,
-        phase_one_files: MockFileRepository,
-        phase_one_images: MockImageRepository,
-        phase_one_videos: MockVideoRepository,
-        mut phase_two_uploads: MockUploadRepository,
-        phase_two_files: MockFileRepository,
-        phase_two_images: MockImageRepository,
-        phase_two_videos: MockVideoRepository,
-        file_storage: MockFileStorage,
-        media_probe: MockMediaProbe,
-    ) -> Harness {
-        let unsealed = Arc::new(AtomicBool::new(false));
-        expect_unseal(&mut phase_one_uploads, Arc::clone(&unsealed));
-        expect_unseal(&mut phase_two_uploads, Arc::clone(&unsealed));
-        let (phase_one, phase_one_committed, phase_one_rolled_back) = phase_unit_of_work(
-            phase_one_uploads,
-            phase_one_files,
-            phase_one_images,
-            MockAudioRepository::new(),
-            phase_one_videos,
-        );
-        let (phase_two, phase_two_committed, phase_two_rolled_back) = phase_unit_of_work(
-            phase_two_uploads,
-            phase_two_files,
-            phase_two_images,
-            MockAudioRepository::new(),
-            phase_two_videos,
-        );
-        let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
-        let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![
-                phase_one,
-                phase_two,
-                unseal_unit_of_work(Arc::clone(&unsealed)),
-            ]),
-        };
-        Harness {
-            phase_one_commit_fails,
-            phase_one_committed,
-            phase_one_rolled_back,
-            phase_two_commit_fails,
-            phase_two_committed,
-            phase_two_rolled_back,
-            unsealed,
-            use_case: CompleteUpload::new(
-                Arc::new(factory),
-                Arc::new(file_storage),
-                Arc::new(media_probe),
-                TTL_SECONDS,
-            ),
-        }
-    }
-
-    /// Build a completion whose mutating phase carries an audio repository.
-    fn use_case_with_audio(
-        mut phase_one_uploads: MockUploadRepository,
-        mut phase_two_uploads: MockUploadRepository,
-        phase_two_files: MockFileRepository,
-        phase_two_audios: MockAudioRepository,
-        file_storage: MockFileStorage,
-        media_probe: MockMediaProbe,
-    ) -> Harness {
-        let unsealed = Arc::new(AtomicBool::new(false));
-        expect_unseal(&mut phase_one_uploads, Arc::clone(&unsealed));
-        expect_unseal(&mut phase_two_uploads, Arc::clone(&unsealed));
-        let (phase_one, phase_one_committed, phase_one_rolled_back) = phase_unit_of_work(
-            phase_one_uploads,
-            MockFileRepository::new(),
-            MockImageRepository::new(),
-            MockAudioRepository::new(),
-            MockVideoRepository::new(),
-        );
-        let (phase_two, phase_two_committed, phase_two_rolled_back) = phase_unit_of_work(
-            phase_two_uploads,
-            phase_two_files,
-            MockImageRepository::new(),
-            phase_two_audios,
-            MockVideoRepository::new(),
-        );
-        let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
-        let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![
-                phase_one,
-                phase_two,
-                unseal_unit_of_work(Arc::clone(&unsealed)),
-            ]),
-        };
-        Harness {
-            phase_one_commit_fails,
-            phase_one_committed,
-            phase_one_rolled_back,
-            phase_two_commit_fails,
-            phase_two_committed,
-            phase_two_rolled_back,
-            unsealed,
-            use_case: CompleteUpload::new(
-                Arc::new(factory),
-                Arc::new(file_storage),
-                Arc::new(media_probe),
-                TTL_SECONDS,
-            ),
-        }
-    }
-
+    #[fixture]
     fn timestamp() -> NaiveDateTime {
         chrono::Utc::now().naive_utc()
     }
 
     /// Metadata of the file a successful promote writes into the media root.
+    #[fixture]
     fn promoted_file() -> PromotedFile {
         PromotedFile {
             modified_at: NaiveDate::from_ymd_opt(2026, 1, 1)
@@ -1232,6 +1014,7 @@ mod tests {
     }
 
     /// Build an upload whose creation instant is one second past the TTL.
+    #[fixture]
     fn expired_upload() -> Result<Upload, RepositoryError> {
         let ttl_seconds = i64::try_from(TTL_SECONDS).unwrap_or(i64::MAX);
         let expired_at = chrono::Utc::now()
@@ -1261,22 +1044,6 @@ mod tests {
         .map_err(|_| RepositoryError::OperationFailed)
     }
 
-    fn expect_upload(uploads: &mut MockUploadRepository, upload: Upload) {
-        uploads.expect_search().times(1).returning(move |_| {
-            let stored = upload.clone();
-            Box::pin(async move { Ok(vec![stored]) })
-        });
-    }
-
-    /// Expect a pending upload that resolves and wins its verification seal.
-    fn expect_pending_upload(uploads: &mut MockUploadRepository, upload: Upload) {
-        expect_upload(uploads, upload);
-        uploads
-            .expect_save()
-            .times(1)
-            .returning(|saved| Box::pin(async move { Ok(saved) }));
-    }
-
     fn stored_file(id: i64, user_id: i64) -> Result<File, RepositoryError> {
         File::try_new(
             id,
@@ -1299,27 +1066,29 @@ mod tests {
         .map_err(|_| RepositoryError::OperationFailed)
     }
 
-    fn expect_integrity_hash(file_storage: &mut MockFileStorage, digest: &'static str) {
-        file_storage
-            .expect_integrity_hash()
-            .times(1)
-            .returning(move |_| {
-                let hash = IntegrityHash::try_new(digest.to_owned())
-                    .map(Some)
-                    .map_err(|_| StorageError::OperationFailed);
-                Box::pin(async move { hash })
-            });
-    }
-
     #[tokio::test]
     async fn complete_upload_complete_upload_promotes_file() -> Result<(), Box<dyn Error>> {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         let mut phase_two_files = MockFileRepository::new();
         phase_two_files
             .expect_search()
@@ -1347,12 +1116,103 @@ mod tests {
                 Box::pin(async move { Ok(Some(stored)) })
             });
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -1379,9 +1239,23 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         phase_two_uploads
             .expect_finish()
             .times(1)
@@ -1396,7 +1270,17 @@ mod tests {
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -1405,7 +1289,88 @@ mod tests {
             .expect_restore()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok(()) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -1430,16 +1395,121 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         // The mismatch is detected before any digest lookup, so the file table
         // is never probed.
         let mut phase_two_files = MockFileRepository::new();
         phase_two_files.expect_search().times(0);
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, WRONG_DIGEST);
-        let harness = use_case_with(
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, WRONG_DIGEST);
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -1469,7 +1539,88 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockUploadRepository::new(),
@@ -1490,7 +1641,12 @@ mod tests {
     async fn complete_upload_expired_upload_returns_expired() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, expired_upload()?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_one_uploads, expired_upload()?);
         phase_one_uploads
             .expect_delete()
             .times(1)
@@ -1501,7 +1657,88 @@ mod tests {
             .expect_delete_upload_file()
             .times(1)
             .returning(|_| Box::pin(async { Ok(()) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockUploadRepository::new(),
@@ -1524,7 +1761,12 @@ mod tests {
     async fn complete_upload_expiry_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, expired_upload()?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_one_uploads, expired_upload()?);
         phase_one_uploads
             .expect_delete()
             .times(1)
@@ -1535,7 +1777,88 @@ mod tests {
             .expect_delete_upload_file()
             .times(1)
             .returning(|_| Box::pin(async { Ok(()) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockUploadRepository::new(),
@@ -1559,11 +1882,97 @@ mod tests {
     async fn complete_upload_incomplete_upload_returns_incomplete() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, upload(5, 3, 8, &[0], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_one_uploads, upload(5, 3, 8, &[0], false)?);
         // The incomplete upload is rejected before any digest lookup.
         let mut phase_one_files = MockFileRepository::new();
         phase_one_files.expect_search().times(0);
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             phase_one_files,
             MockUploadRepository::new(),
@@ -1586,12 +1995,98 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, upload(5, 3, 8, &[0], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_one_uploads, upload(5, 3, 8, &[0], false)?);
         // A cross-user digest must not be probed: the incomplete upload is
         // rejected by can_finish before any file-table lookup happens.
         let mut phase_one_files = MockFileRepository::new();
         phase_one_files.expect_search().times(0);
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             phase_one_files,
             MockUploadRepository::new(),
@@ -1613,13 +2108,99 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], true)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_one_uploads, upload(5, 3, 4, &[0], true)?);
         let mut phase_one_files = MockFileRepository::new();
         phase_one_files.expect_search().times(1).returning(|_| {
             let stored = stored_file(11, 3);
             Box::pin(async move { stored.map(|file| vec![file]) })
         });
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             phase_one_files,
             MockUploadRepository::new(),
@@ -1644,9 +2225,23 @@ mod tests {
         let resolved = upload(5, 3, 4, &[0], false)?;
         let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         let mut phase_two_files = MockFileRepository::new();
         phase_two_files
             .expect_search()
@@ -1671,12 +2266,103 @@ mod tests {
                 Box::pin(async move { Ok(Some(stored)) })
             });
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -1701,17 +2387,122 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         let mut phase_two_files = MockFileRepository::new();
         phase_two_files.expect_search().times(1).returning(|_| {
             let stored = stored_file(11, 3);
             Box::pin(async move { stored.map(|file| vec![file]) })
         });
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
-        let harness = use_case_with(
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -1737,9 +2528,23 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         let mut phase_two_files = MockFileRepository::new();
         let mut search_order = mockall::Sequence::new();
         phase_two_files
@@ -1760,7 +2565,17 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -1769,7 +2584,88 @@ mod tests {
             .expect_restore()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok(()) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -1795,15 +2691,120 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         // The mismatch is detected before the duplicate lookup.
         let mut phase_two_files = MockFileRepository::new();
         phase_two_files.expect_search().times(0);
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, WRONG_DIGEST);
-        let harness = use_case_with(
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, WRONG_DIGEST);
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -1830,21 +2831,126 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         let mut phase_two_files = MockFileRepository::new();
         phase_two_files
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
             .returning(|_, _| Box::pin(async { Err(StorageError::Unavailable) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -1870,9 +2976,23 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         phase_two_uploads
             .expect_finish()
             .times(1)
@@ -1887,7 +3007,17 @@ mod tests {
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -1896,7 +3026,88 @@ mod tests {
             .expect_restore()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok(()) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -1919,9 +3130,23 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         let mut phase_two_files = MockFileRepository::new();
         phase_two_files
             .expect_search()
@@ -1932,7 +3157,17 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -1941,7 +3176,88 @@ mod tests {
             .expect_restore()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok(()) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -1965,9 +3281,23 @@ mod tests {
         let resolved = upload(5, 3, 4, &[0], false)?;
         let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         phase_two_uploads
             .expect_finish()
             .times(1)
@@ -1985,7 +3315,17 @@ mod tests {
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -1994,7 +3334,88 @@ mod tests {
             .expect_restore()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok(()) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -2019,11 +3440,19 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let phase_one = TestUnitOfWork {
-            users: any_caller(),
             uploads: phase_one_uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let _phase_one_committed = Arc::clone(&phase_one.committed);
         let phase_one_committed = Arc::clone(&phase_one.committed);
@@ -2087,10 +3516,9 @@ mod tests {
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
         let phase_two = TestUnitOfWork {
-            users: any_caller(),
             files: phase_two_files,
             uploads: phase_two_uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let phase_two_committed = Arc::clone(&phase_two.committed);
         let _phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
@@ -2121,17 +3549,122 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, upload(5, 3, 4, &[0], true)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, upload(5, 3, 4, &[0], true)?);
         let mut phase_two_files = MockFileRepository::new();
         phase_two_files.expect_search().times(1).returning(|_| {
             let stored = stored_file(11, 3);
             Box::pin(async move { stored.map(|file| vec![file]) })
         });
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
-        let harness = use_case_with(
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -2156,23 +3689,128 @@ mod tests {
     {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
         // The upload expires between the phases; the re-check cleans it up in
         // the mutating phase and reports the expiry.
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, expired_upload()?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, expired_upload()?);
         phase_two_uploads
             .expect_delete()
             .times(1)
             .withf(|filter| filter.upload_id == Some(5))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_delete_upload_file()
             .times(1)
             .returning(|_| Box::pin(async { Ok(()) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -2196,7 +3834,16 @@ mod tests {
     {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
         let mut file_storage = MockFileStorage::new();
         // The digest cannot be computed with no unit of work open, so the
         // mutating phase is never reached.
@@ -2204,7 +3851,88 @@ mod tests {
             .expect_integrity_hash()
             .times(1)
             .returning(|_| Box::pin(async { Err(StorageError::OperationFailed) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockUploadRepository::new(),
@@ -2229,13 +3957,103 @@ mod tests {
         // Arrange: the staged file no longer exists, so the adapter reports
         // absence while the phase-1 resolve still finds the upload row.
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_integrity_hash()
             .times(1)
             .returning(|_| Box::pin(async { Ok(None) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockUploadRepository::new(),
@@ -2259,16 +4077,121 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         // The freshly-read digest is compared before the file table is probed,
         // so a mismatching caller cannot use completion as a membership oracle.
         let mut phase_two_files = MockFileRepository::new();
         phase_two_files.expect_search().times(0);
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, WRONG_DIGEST);
-        let harness = use_case_with(
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, WRONG_DIGEST);
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,
@@ -2295,9 +4218,23 @@ mod tests {
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "image/png")?;
         let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         phase_two_uploads
             .expect_finish()
             .times(1)
@@ -2321,7 +4258,17 @@ mod tests {
             .withf(|image| image.file_id() == 0 && image.width_px() == 640)
             .returning(|image| Box::pin(async move { Ok(image) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -2331,7 +4278,129 @@ mod tests {
             .expect_probe_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
-        let harness = use_case_with_media(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             phase_one_images: MockImageRepository,
+                             phase_one_videos: MockVideoRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_images: MockImageRepository,
+                             phase_two_videos: MockVideoRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    phase_one_files,
+                    phase_one_images,
+                    MockAudioRepository::new(),
+                    phase_one_videos,
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    phase_two_images,
+                    MockAudioRepository::new(),
+                    phase_two_videos,
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockImageRepository::new(),
@@ -2363,9 +4432,23 @@ mod tests {
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?;
         let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         phase_two_uploads
             .expect_finish()
             .times(1)
@@ -2389,7 +4472,17 @@ mod tests {
             .withf(|video| video.file_id() == 0 && video.codec() == "h264")
             .returning(|video| Box::pin(async move { Ok(video) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -2399,7 +4492,129 @@ mod tests {
             .expect_probe_video()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_video())) }));
-        let harness = use_case_with_media(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             phase_one_images: MockImageRepository,
+                             phase_one_videos: MockVideoRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_images: MockImageRepository,
+                             phase_two_videos: MockVideoRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    phase_one_files,
+                    phase_one_images,
+                    MockAudioRepository::new(),
+                    phase_one_videos,
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    phase_two_images,
+                    MockAudioRepository::new(),
+                    phase_two_videos,
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockImageRepository::new(),
@@ -2430,9 +4645,23 @@ mod tests {
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?;
         let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         phase_two_uploads
             .expect_finish()
             .times(1)
@@ -2455,7 +4684,17 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -2465,7 +4704,129 @@ mod tests {
             .expect_probe_video()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_video())) }));
-        let harness = use_case_with_media(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             phase_one_images: MockImageRepository,
+                             phase_one_videos: MockVideoRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_images: MockImageRepository,
+                             phase_two_videos: MockVideoRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    phase_one_files,
+                    phase_one_images,
+                    MockAudioRepository::new(),
+                    phase_one_videos,
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    phase_two_images,
+                    MockAudioRepository::new(),
+                    phase_two_videos,
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockImageRepository::new(),
@@ -2495,9 +4856,23 @@ mod tests {
         // Arrange
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         let mut phase_two_files = MockFileRepository::new();
         phase_two_files
             .expect_search()
@@ -2513,7 +4888,17 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -2527,7 +4912,129 @@ mod tests {
             .expect_probe_video()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_video())) }));
-        let harness = use_case_with_media(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             phase_one_images: MockImageRepository,
+                             phase_one_videos: MockVideoRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_images: MockImageRepository,
+                             phase_two_videos: MockVideoRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    phase_one_files,
+                    phase_one_images,
+                    MockAudioRepository::new(),
+                    phase_one_videos,
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    phase_two_images,
+                    MockAudioRepository::new(),
+                    phase_two_videos,
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockImageRepository::new(),
@@ -2558,18 +5065,159 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?,
         );
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
             .expect_probe_video()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::UnsupportedMedia) }));
-        let harness = use_case_with_media(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             phase_one_images: MockImageRepository,
+                             phase_one_videos: MockVideoRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_images: MockImageRepository,
+                             phase_two_videos: MockVideoRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    phase_one_files,
+                    phase_one_images,
+                    MockAudioRepository::new(),
+                    phase_one_videos,
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    phase_two_images,
+                    MockAudioRepository::new(),
+                    phase_two_videos,
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockImageRepository::new(),
@@ -2599,12 +5247,31 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?,
         );
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         // The upload row exists but the staged bytes vanished between the hash
         // and the probe.
         let mut media_probe = MockMediaProbe::new();
@@ -2612,7 +5279,129 @@ mod tests {
             .expect_probe_video()
             .times(1)
             .returning(|_| Box::pin(async { Ok(None) }));
-        let harness = use_case_with_media(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             phase_one_images: MockImageRepository,
+                             phase_one_videos: MockVideoRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_images: MockImageRepository,
+                             phase_two_videos: MockVideoRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    phase_one_files,
+                    phase_one_images,
+                    MockAudioRepository::new(),
+                    phase_one_videos,
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    phase_two_images,
+                    MockAudioRepository::new(),
+                    phase_two_videos,
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockImageRepository::new(),
@@ -2641,18 +5430,159 @@ mod tests {
     async fn complete_upload_probe_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?,
         );
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
             .expect_probe_video()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::Timeout) }));
-        let harness = use_case_with_media(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             phase_one_images: MockImageRepository,
+                             phase_one_videos: MockVideoRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_images: MockImageRepository,
+                             phase_two_videos: MockVideoRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    phase_one_files,
+                    phase_one_images,
+                    MockAudioRepository::new(),
+                    phase_one_videos,
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    phase_two_images,
+                    MockAudioRepository::new(),
+                    phase_two_videos,
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockImageRepository::new(),
@@ -2677,52 +5607,165 @@ mod tests {
         Ok(())
     }
 
-    /// Wire a phase-two file repository that finds no duplicate and inserts the row.
-    fn expect_file_create(files: &mut MockFileRepository) {
-        files
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        files
-            .expect_create()
-            .times(1)
-            .returning(|file| Box::pin(async move { Ok(file) }));
-    }
-
-    /// Wire a file storage that promotes the staged file.
-    fn expect_promote(file_storage: &mut MockFileStorage) {
-        file_storage
-            .expect_promote()
-            .times(1)
-            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
-    }
-
-    /// Wire a file storage that restores the promoted file after a failed write.
-    fn expect_restore(file_storage: &mut MockFileStorage) {
-        file_storage
-            .expect_restore()
-            .times(1)
-            .returning(|_, _| Box::pin(async { Ok(()) }));
-    }
-
     #[tokio::test]
     async fn complete_upload_absent_staged_image_returns_no_such_upload()
     -> Result<(), Box<dyn Error>> {
         // Arrange: the upload row exists but the staged bytes vanished between
         // the hash and the image probe.
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "image/png")?,
         );
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
             .expect_probe_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(None) }));
-        let harness = use_case_with_media(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             phase_one_images: MockImageRepository,
+                             phase_one_videos: MockVideoRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_images: MockImageRepository,
+                             phase_two_videos: MockVideoRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    phase_one_files,
+                    phase_one_images,
+                    MockAudioRepository::new(),
+                    phase_one_videos,
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    phase_two_images,
+                    MockAudioRepository::new(),
+                    phase_two_videos,
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockImageRepository::new(),
@@ -2751,18 +5794,159 @@ mod tests {
     async fn complete_upload_image_probe_timeout_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "image/png")?,
         );
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
             .expect_probe_image()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::Timeout) }));
-        let harness = use_case_with_media(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             phase_one_images: MockImageRepository,
+                             phase_one_videos: MockVideoRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_images: MockImageRepository,
+                             phase_two_videos: MockVideoRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    phase_one_files,
+                    phase_one_images,
+                    MockAudioRepository::new(),
+                    phase_one_videos,
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    phase_two_images,
+                    MockAudioRepository::new(),
+                    phase_two_videos,
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockImageRepository::new(),
@@ -2792,18 +5976,159 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "image/png")?,
         );
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
             .expect_probe_image()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::UnsupportedMedia) }));
-        let harness = use_case_with_media(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             phase_one_images: MockImageRepository,
+                             phase_one_videos: MockVideoRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_images: MockImageRepository,
+                             phase_two_videos: MockVideoRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    phase_one_files,
+                    phase_one_images,
+                    MockAudioRepository::new(),
+                    phase_one_videos,
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    phase_two_images,
+                    MockAudioRepository::new(),
+                    phase_two_videos,
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockImageRepository::new(),
@@ -2834,9 +6159,23 @@ mod tests {
         // Arrange
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "image/png")?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved.clone()));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved.clone()));
         phase_two_uploads
             .expect_finish()
             .times(1)
@@ -2845,21 +6184,167 @@ mod tests {
                 Box::pin(async move { Ok(Some(stored)) })
             });
         let mut phase_two_files = MockFileRepository::new();
-        expect_file_create(&mut phase_two_files);
+        (move |files: &mut MockFileRepository| {
+            files
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            files
+                .expect_create()
+                .times(1)
+                .returning(|file| Box::pin(async move { Ok(file) }));
+        })(&mut phase_two_files);
         let mut phase_two_images = MockImageRepository::new();
         phase_two_images
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
-        expect_promote(&mut file_storage);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage| {
+            file_storage
+                .expect_promote()
+                .times(1)
+                .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
+        })(&mut file_storage);
         let mut media_probe = MockMediaProbe::new();
         media_probe
             .expect_probe_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
-        let harness = use_case_with_media(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             phase_one_images: MockImageRepository,
+                             phase_one_videos: MockVideoRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_images: MockImageRepository,
+                             phase_two_videos: MockVideoRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    phase_one_files,
+                    phase_one_images,
+                    MockAudioRepository::new(),
+                    phase_one_videos,
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    phase_two_images,
+                    MockAudioRepository::new(),
+                    phase_two_videos,
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockImageRepository::new(),
@@ -2889,26 +6374,191 @@ mod tests {
         // Arrange
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "image/png")?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         let mut phase_two_files = MockFileRepository::new();
-        expect_file_create(&mut phase_two_files);
+        (move |files: &mut MockFileRepository| {
+            files
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            files
+                .expect_create()
+                .times(1)
+                .returning(|file| Box::pin(async move { Ok(file) }));
+        })(&mut phase_two_files);
         let mut phase_two_images = MockImageRepository::new();
         phase_two_images
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
-        expect_promote(&mut file_storage);
-        expect_restore(&mut file_storage);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage| {
+            file_storage
+                .expect_promote()
+                .times(1)
+                .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
+        })(&mut file_storage);
+        (move |file_storage: &mut MockFileStorage| {
+            file_storage
+                .expect_restore()
+                .times(1)
+                .returning(|_, _| Box::pin(async { Ok(()) }));
+        })(&mut file_storage);
         let mut media_probe = MockMediaProbe::new();
         media_probe
             .expect_probe_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
-        let harness = use_case_with_media(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             phase_one_images: MockImageRepository,
+                             phase_one_videos: MockVideoRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_images: MockImageRepository,
+                             phase_two_videos: MockVideoRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    phase_one_files,
+                    phase_one_images,
+                    MockAudioRepository::new(),
+                    phase_one_videos,
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    phase_two_images,
+                    MockAudioRepository::new(),
+                    phase_two_videos,
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockImageRepository::new(),
@@ -2940,9 +6590,23 @@ mod tests {
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "audio/mpeg")?;
         let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, sealed(resolved));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, sealed(resolved));
         phase_two_uploads
             .expect_finish()
             .times(1)
@@ -2971,7 +6635,17 @@ mod tests {
             })
             .returning(|audio| Box::pin(async move { Ok(audio) }));
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -2981,7 +6655,125 @@ mod tests {
             .expect_probe_audio()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_audio())) }));
-        let harness = use_case_with_audio(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_audios: MockAudioRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    MockFileRepository::new(),
+                    MockImageRepository::new(),
+                    MockAudioRepository::new(),
+                    MockVideoRepository::new(),
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    MockImageRepository::new(),
+                    phase_two_audios,
+                    MockVideoRepository::new(),
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             phase_two_uploads,
             phase_two_files,
@@ -3007,18 +6799,155 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "audio/mpeg")?,
         );
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
             .expect_probe_audio()
             .times(1)
             .returning(|_| Box::pin(async { Ok(None) }));
-        let harness = use_case_with_audio(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_audios: MockAudioRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    MockFileRepository::new(),
+                    MockImageRepository::new(),
+                    MockAudioRepository::new(),
+                    MockVideoRepository::new(),
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    MockImageRepository::new(),
+                    phase_two_audios,
+                    MockVideoRepository::new(),
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockUploadRepository::new(),
             MockFileRepository::new(),
@@ -3044,18 +6973,155 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "audio/mpeg")?,
         );
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
             .expect_probe_audio()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::UnsupportedMedia) }));
-        let harness = use_case_with_audio(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_audios: MockAudioRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    MockFileRepository::new(),
+                    MockImageRepository::new(),
+                    MockAudioRepository::new(),
+                    MockVideoRepository::new(),
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    MockImageRepository::new(),
+                    phase_two_audios,
+                    MockVideoRepository::new(),
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockUploadRepository::new(),
             MockFileRepository::new(),
@@ -3080,18 +7146,155 @@ mod tests {
     async fn complete_upload_audio_probe_timeout_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "audio/mpeg")?,
         );
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
             .expect_probe_audio()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::Timeout) }));
-        let harness = use_case_with_audio(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             phase_two_audios: MockAudioRepository,
+                             file_storage: MockFileStorage,
+                             media_probe: MockMediaProbe|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let (phase_one, phase_one_committed, phase_one_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_one_uploads,
+                    MockFileRepository::new(),
+                    MockImageRepository::new(),
+                    MockAudioRepository::new(),
+                    MockVideoRepository::new(),
+                );
+            let (phase_two, phase_two_committed, phase_two_rolled_back) =
+                (move |uploads: MockUploadRepository,
+                       files: MockFileRepository,
+                       images: MockImageRepository,
+                       audios: MockAudioRepository,
+                       videos: MockVideoRepository|
+                      -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
+                    let unit_of_work = TestUnitOfWork {
+                        audios,
+                        files,
+                        images,
+                        uploads,
+                        videos,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let committed = Arc::clone(&unit_of_work.committed);
+                    let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+                    (unit_of_work, committed, rolled_back)
+                })(
+                    phase_two_uploads,
+                    phase_two_files,
+                    MockImageRepository::new(),
+                    phase_two_audios,
+                    MockVideoRepository::new(),
+                );
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(media_probe),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockUploadRepository::new(),
             MockFileRepository::new(),
@@ -3123,11 +7326,34 @@ mod tests {
         let finished = upload(5, 3, 4, &[0], true)?;
         let stored = stored_file(7, 3)?;
         let mut first_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut first_uploads, pending.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut first_uploads, pending.clone());
         let mut second_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut second_uploads, pending.clone());
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut second_uploads, pending.clone());
         let mut commit_uploads = MockUploadRepository::new();
-        expect_upload(&mut commit_uploads, sealed(pending));
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut commit_uploads, sealed(pending));
         commit_uploads.expect_finish().times(1).returning(move |_| {
             let sealed_upload = finished.clone();
             Box::pin(async move { Ok(Some(sealed_upload)) })
@@ -3146,7 +7372,17 @@ mod tests {
             .expect_integrity_hash()
             .times(1)
             .returning(|_| Box::pin(async { Err(StorageError::OperationFailed) }));
-        expect_integrity_hash(&mut file_storage, DIGEST);
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -3155,21 +7391,32 @@ mod tests {
         let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![
                 TestUnitOfWork {
-                    users: any_caller(),
                     uploads: first_uploads,
-                    ..TestUnitOfWork::default()
+                    ..TestUnitOfWork::with_any_caller()
                 },
-                unseal_unit_of_work(Arc::clone(&unsealed)),
+                (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                    let mut uploads = MockUploadRepository::new();
+                    uploads.expect_search().times(0..).returning(move |_| {
+                        unsealed.store(true, Ordering::SeqCst);
+                        Box::pin(async { Ok(Vec::new()) })
+                    });
+                    uploads
+                        .expect_save()
+                        .times(0..)
+                        .returning(|upload| Box::pin(async move { Ok(upload) }));
+                    TestUnitOfWork {
+                        uploads,
+                        ..TestUnitOfWork::default()
+                    }
+                })(Arc::clone(&unsealed)),
                 TestUnitOfWork {
-                    users: any_caller(),
                     uploads: second_uploads,
-                    ..TestUnitOfWork::default()
+                    ..TestUnitOfWork::with_any_caller()
                 },
                 TestUnitOfWork {
                     files,
                     uploads: commit_uploads,
-                    users: any_caller(),
-                    ..TestUnitOfWork::default()
+                    ..TestUnitOfWork::with_any_caller()
                 },
             ]),
         };
@@ -3213,7 +7460,88 @@ mod tests {
                 Box::pin(async move { Ok(vec![stored]) })
             });
         phase_one_uploads.expect_save().times(0);
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             MockUploadRepository::new(),
@@ -3265,7 +7593,88 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(vec![stored_file(7, 3)?]) }));
-        let harness = use_case_with(
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             phase_one_files,
             MockUploadRepository::new(),
@@ -3311,12 +7720,117 @@ mod tests {
             timestamp(),
         )?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_pending_upload(&mut phase_one_uploads, resolved);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+            uploads
+                .expect_save()
+                .times(1)
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut phase_one_uploads, resolved);
         let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, unsealed);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut phase_two_uploads, unsealed);
         let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
-        let harness = use_case_with(
+        (move |file_storage: &mut MockFileStorage, digest: &'static str| {
+            file_storage
+                .expect_integrity_hash()
+                .times(1)
+                .returning(move |_| {
+                    let hash = IntegrityHash::try_new(digest.to_owned())
+                        .map(Some)
+                        .map_err(|_| StorageError::OperationFailed);
+                    Box::pin(async move { hash })
+                });
+        })(&mut file_storage, DIGEST);
+        let harness = (move |mut phase_one_uploads: MockUploadRepository,
+                             phase_one_files: MockFileRepository,
+                             mut phase_two_uploads: MockUploadRepository,
+                             phase_two_files: MockFileRepository,
+                             file_storage: MockFileStorage|
+              -> Harness {
+            let unsealed = Arc::new(AtomicBool::new(false));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_one_uploads, Arc::clone(&unsealed));
+            (move |uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>| {
+                let flag = Arc::clone(&unsealed);
+                uploads.expect_search().times(0..).returning(move |_| {
+                    flag.store(true, Ordering::SeqCst);
+                    Box::pin(async { Ok(Vec::new()) })
+                });
+                uploads.expect_save().times(0..).returning(move |upload| {
+                    unsealed.store(true, Ordering::SeqCst);
+                    Box::pin(async move { Ok(upload) })
+                });
+            })(&mut phase_two_uploads, Arc::clone(&unsealed));
+            let phase_one = TestUnitOfWork {
+                files: phase_one_files,
+                uploads: phase_one_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_one_committed = Arc::clone(&phase_one.committed);
+            let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+            let phase_two = TestUnitOfWork {
+                files: phase_two_files,
+                uploads: phase_two_uploads,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let phase_two_committed = Arc::clone(&phase_two.committed);
+            let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
+            let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+            let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+            let factory = TestUnitOfWorkFactory {
+                unit_of_works: Mutex::new(vec![
+                    phase_one,
+                    phase_two,
+                    (move |unsealed: Arc<AtomicBool>| -> TestUow {
+                        let mut uploads = MockUploadRepository::new();
+                        uploads.expect_search().times(0..).returning(move |_| {
+                            unsealed.store(true, Ordering::SeqCst);
+                            Box::pin(async { Ok(Vec::new()) })
+                        });
+                        uploads
+                            .expect_save()
+                            .times(0..)
+                            .returning(|upload| Box::pin(async move { Ok(upload) }));
+                        TestUnitOfWork {
+                            uploads,
+                            ..TestUnitOfWork::default()
+                        }
+                    })(Arc::clone(&unsealed)),
+                ]),
+            };
+            Harness {
+                phase_one_commit_fails,
+                phase_one_committed,
+                phase_one_rolled_back,
+                phase_two_commit_fails,
+                phase_two_committed,
+                phase_two_rolled_back,
+                unsealed,
+                use_case: CompleteUpload::new(
+                    Arc::new(factory),
+                    Arc::new(file_storage),
+                    Arc::new(MockMediaProbe::new()),
+                    TTL_SECONDS,
+                ),
+            }
+        })(
             phase_one_uploads,
             MockFileRepository::new(),
             phase_two_uploads,

@@ -226,20 +226,6 @@ mod tests {
         Ok(User::try_new(id, "caller".to_owned(), None, id, role)?)
     }
 
-    /// Expect the caller lookup to answer `caller_id`.
-    fn expect_caller(
-        users: &mut MockUserRepository,
-        caller_id: NumericID,
-    ) -> Result<(), Box<dyn Error>> {
-        let found = caller(caller_id, Role::Standard)?;
-        users
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.id == Some(caller_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![found]) }));
-        Ok(())
-    }
-
     /// Build the fixture around the mocked repositories.
     fn harness(
         users: MockUserRepository,
@@ -258,32 +244,6 @@ mod tests {
             videos,
             ..TestUnitOfWork::default()
         })
-    }
-
-    /// Expect one typed-media lookup per family for `file_id`, empty by default.
-    fn expect_media_lookups(
-        images: &mut MockImageRepository,
-        audios: &mut MockAudioRepository,
-        videos: &mut MockVideoRepository,
-        file_id: NumericID,
-    ) -> Result<(), Box<dyn Error>> {
-        let stored = image(19, file_id)?;
-        images
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.file_id == Some(file_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
-        audios
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.file_id == Some(file_id))
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        videos
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.file_id == Some(file_id))
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        Ok(())
     }
 
     /// Build a `FILE` resource access the caller may discover.
@@ -311,7 +271,17 @@ mod tests {
     async fn list_files_forwards_the_path_filter_and_paginates() -> Result<(), Box<dyn Error>> {
         // Arrange: three files match the collection; the page selects the second.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let found = caller(caller_id, Role::Standard)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![found]) }));
+            Ok(())
+        })(&mut users, 4)?;
         let mut files = MockFileRepository::new();
         let first = file(1, 4)?;
         let second = file(2, 4)?;
@@ -327,14 +297,112 @@ mod tests {
         let mut images = MockImageRepository::new();
         let mut audios = MockAudioRepository::new();
         let mut videos = MockVideoRepository::new();
-        expect_media_lookups(&mut images, &mut audios, &mut videos, 2)?;
+        (move |images: &mut MockImageRepository,
+               audios: &mut MockAudioRepository,
+               videos: &mut MockVideoRepository,
+               file_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let stored = image(19, file_id)?;
+            images
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+            audios
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            videos
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            Ok(())
+        })(&mut images, &mut audios, &mut videos, 2)?;
         let harness = harness(
             users,
             files,
             images,
             audios,
             videos,
-            caller_owned_resources(),
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = crate::domain::port::MockResourceRepository::new();
+                resources.expect_search().returning(|filter, caller| {
+                    let user_id = caller.id();
+                    let resource = crate::domain::model::Resource::from_stored(
+                        1,
+                        filter
+                            .kind
+                            .unwrap_or(crate::domain::model::ResourceKind::Library),
+                        filter.entity_id.unwrap_or_default(),
+                        Some(user_id),
+                        None,
+                        crate::domain::model::Visibility::Private,
+                    );
+                    let grant = crate::domain::model::Grant::from_stored(
+                        1,
+                        crate::domain::model::Principal::User(user_id),
+                        1,
+                        crate::domain::model::ResourceRole::Downloader,
+                        crate::domain::model::ChildKind::All,
+                        crate::domain::model::GrantEffect::Allow,
+                    );
+                    Box::pin(async move {
+                        Ok(vec![crate::domain::model::ResourceAccess::new(
+                            resource,
+                            Vec::new(),
+                            vec![grant],
+                            Vec::new(),
+                        )])
+                    })
+                });
+                resources
+                    .expect_search_many()
+                    .returning(|addresses, caller| {
+                        let user_id = caller.id();
+                        let found = addresses
+                            .iter()
+                            .map(|address| {
+                                let resource = crate::domain::model::Resource::from_stored(
+                                    1,
+                                    address.kind(),
+                                    address.id(),
+                                    Some(user_id),
+                                    None,
+                                    crate::domain::model::Visibility::Private,
+                                );
+                                let grant = crate::domain::model::Grant::from_stored(
+                                    1,
+                                    crate::domain::model::Principal::User(user_id),
+                                    1,
+                                    crate::domain::model::ResourceRole::Downloader,
+                                    crate::domain::model::ChildKind::All,
+                                    crate::domain::model::GrantEffect::Allow,
+                                );
+                                crate::domain::model::ResourceAccess::new(
+                                    resource,
+                                    Vec::new(),
+                                    vec![grant],
+                                    Vec::new(),
+                                )
+                            })
+                            .collect::<Vec<_>>();
+                        Box::pin(async move { Ok(found) })
+                    });
+                resources.expect_create().returning(|new_resource| {
+                    let resource = crate::domain::model::Resource::from_stored(
+                        1,
+                        new_resource.kind,
+                        new_resource.entity_id,
+                        new_resource.owner_id,
+                        None,
+                        new_resource.visibility,
+                    );
+                    Box::pin(async move { Ok(resource) })
+                });
+                resources
+            })(),
         );
         let use_case: UseCase = ListFiles::new(Arc::clone(&harness.factory));
 
@@ -376,7 +444,17 @@ mod tests {
         // Arrange: only the second file carries a resource the caller may
         // discover, so the first is filtered out of both the page and the total.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let found = caller(caller_id, Role::Standard)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![found]) }));
+            Ok(())
+        })(&mut users, 4)?;
         let mut files = MockFileRepository::new();
         let hidden = file(1, 3)?;
         let visible = file(2, 4)?;
@@ -403,7 +481,29 @@ mod tests {
         let mut images = MockImageRepository::new();
         let mut audios = MockAudioRepository::new();
         let mut videos = MockVideoRepository::new();
-        expect_media_lookups(&mut images, &mut audios, &mut videos, 2)?;
+        (move |images: &mut MockImageRepository,
+               audios: &mut MockAudioRepository,
+               videos: &mut MockVideoRepository,
+               file_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let stored = image(19, file_id)?;
+            images
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+            audios
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            videos
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            Ok(())
+        })(&mut images, &mut audios, &mut videos, 2)?;
         let harness = harness(users, files, images, audios, videos, resources);
         let use_case: UseCase = ListFiles::new(Arc::clone(&harness.factory));
 
@@ -433,7 +533,83 @@ mod tests {
             MockImageRepository::new(),
             MockAudioRepository::new(),
             MockVideoRepository::new(),
-            caller_owned_resources(),
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = crate::domain::port::MockResourceRepository::new();
+                resources.expect_search().returning(|filter, caller| {
+                    let user_id = caller.id();
+                    let resource = crate::domain::model::Resource::from_stored(
+                        1,
+                        filter
+                            .kind
+                            .unwrap_or(crate::domain::model::ResourceKind::Library),
+                        filter.entity_id.unwrap_or_default(),
+                        Some(user_id),
+                        None,
+                        crate::domain::model::Visibility::Private,
+                    );
+                    let grant = crate::domain::model::Grant::from_stored(
+                        1,
+                        crate::domain::model::Principal::User(user_id),
+                        1,
+                        crate::domain::model::ResourceRole::Downloader,
+                        crate::domain::model::ChildKind::All,
+                        crate::domain::model::GrantEffect::Allow,
+                    );
+                    Box::pin(async move {
+                        Ok(vec![crate::domain::model::ResourceAccess::new(
+                            resource,
+                            Vec::new(),
+                            vec![grant],
+                            Vec::new(),
+                        )])
+                    })
+                });
+                resources
+                    .expect_search_many()
+                    .returning(|addresses, caller| {
+                        let user_id = caller.id();
+                        let found = addresses
+                            .iter()
+                            .map(|address| {
+                                let resource = crate::domain::model::Resource::from_stored(
+                                    1,
+                                    address.kind(),
+                                    address.id(),
+                                    Some(user_id),
+                                    None,
+                                    crate::domain::model::Visibility::Private,
+                                );
+                                let grant = crate::domain::model::Grant::from_stored(
+                                    1,
+                                    crate::domain::model::Principal::User(user_id),
+                                    1,
+                                    crate::domain::model::ResourceRole::Downloader,
+                                    crate::domain::model::ChildKind::All,
+                                    crate::domain::model::GrantEffect::Allow,
+                                );
+                                crate::domain::model::ResourceAccess::new(
+                                    resource,
+                                    Vec::new(),
+                                    vec![grant],
+                                    Vec::new(),
+                                )
+                            })
+                            .collect::<Vec<_>>();
+                        Box::pin(async move { Ok(found) })
+                    });
+                resources.expect_create().returning(|new_resource| {
+                    let resource = crate::domain::model::Resource::from_stored(
+                        1,
+                        new_resource.kind,
+                        new_resource.entity_id,
+                        new_resource.owner_id,
+                        None,
+                        new_resource.visibility,
+                    );
+                    Box::pin(async move { Ok(resource) })
+                });
+                resources
+            })(),
         );
         let use_case: UseCase = ListFiles::new(Arc::clone(&harness.factory));
 
@@ -452,7 +628,17 @@ mod tests {
     async fn list_files_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let found = caller(caller_id, Role::Standard)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![found]) }));
+            Ok(())
+        })(&mut users, 4)?;
         let mut files = MockFileRepository::new();
         files
             .expect_search()
@@ -464,7 +650,83 @@ mod tests {
             MockImageRepository::new(),
             MockAudioRepository::new(),
             MockVideoRepository::new(),
-            caller_owned_resources(),
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = crate::domain::port::MockResourceRepository::new();
+                resources.expect_search().returning(|filter, caller| {
+                    let user_id = caller.id();
+                    let resource = crate::domain::model::Resource::from_stored(
+                        1,
+                        filter
+                            .kind
+                            .unwrap_or(crate::domain::model::ResourceKind::Library),
+                        filter.entity_id.unwrap_or_default(),
+                        Some(user_id),
+                        None,
+                        crate::domain::model::Visibility::Private,
+                    );
+                    let grant = crate::domain::model::Grant::from_stored(
+                        1,
+                        crate::domain::model::Principal::User(user_id),
+                        1,
+                        crate::domain::model::ResourceRole::Downloader,
+                        crate::domain::model::ChildKind::All,
+                        crate::domain::model::GrantEffect::Allow,
+                    );
+                    Box::pin(async move {
+                        Ok(vec![crate::domain::model::ResourceAccess::new(
+                            resource,
+                            Vec::new(),
+                            vec![grant],
+                            Vec::new(),
+                        )])
+                    })
+                });
+                resources
+                    .expect_search_many()
+                    .returning(|addresses, caller| {
+                        let user_id = caller.id();
+                        let found = addresses
+                            .iter()
+                            .map(|address| {
+                                let resource = crate::domain::model::Resource::from_stored(
+                                    1,
+                                    address.kind(),
+                                    address.id(),
+                                    Some(user_id),
+                                    None,
+                                    crate::domain::model::Visibility::Private,
+                                );
+                                let grant = crate::domain::model::Grant::from_stored(
+                                    1,
+                                    crate::domain::model::Principal::User(user_id),
+                                    1,
+                                    crate::domain::model::ResourceRole::Downloader,
+                                    crate::domain::model::ChildKind::All,
+                                    crate::domain::model::GrantEffect::Allow,
+                                );
+                                crate::domain::model::ResourceAccess::new(
+                                    resource,
+                                    Vec::new(),
+                                    vec![grant],
+                                    Vec::new(),
+                                )
+                            })
+                            .collect::<Vec<_>>();
+                        Box::pin(async move { Ok(found) })
+                    });
+                resources.expect_create().returning(|new_resource| {
+                    let resource = crate::domain::model::Resource::from_stored(
+                        1,
+                        new_resource.kind,
+                        new_resource.entity_id,
+                        new_resource.owner_id,
+                        None,
+                        new_resource.visibility,
+                    );
+                    Box::pin(async move { Ok(resource) })
+                });
+                resources
+            })(),
         );
         let use_case: UseCase = ListFiles::new(Arc::clone(&harness.factory));
 

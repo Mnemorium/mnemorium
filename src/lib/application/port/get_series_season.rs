@@ -133,9 +133,6 @@ pub(crate) enum GetSeriesSeasonError {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait GetSeriesSeasonUseCase: Send + Sync {
     /// Fetch the requested season, scoped to its show.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn GetSeriesSeasonUseCase>`.
     fn execute<'future>(
         &'future self,
         command: GetSeriesSeasonCommand,

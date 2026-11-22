@@ -385,6 +385,7 @@ mod tests {
     use super::*;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::{ChunkBitmap, Upload};
+    use rstest::fixture;
 
     use crate::domain::port::{
         ContentHasherError, MockContentHasher, MockContentHasherSession, MockFileRepository,
@@ -405,6 +406,7 @@ mod tests {
     const WRONG_CHUNK_DIGEST: &str =
         "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
+    #[fixture]
     fn timestamp() -> chrono::NaiveDateTime {
         chrono::Utc::now().naive_utc()
     }
@@ -441,27 +443,6 @@ mod tests {
         .map_err(|_| RepositoryError::OperationFailed)
     }
 
-    fn expect_upload(uploads: &mut MockUploadRepository, upload: Upload) {
-        uploads.expect_search().times(1).returning(move |_| {
-            let stored = upload.clone();
-            Box::pin(async move { Ok(vec![stored]) })
-        });
-    }
-
-    /// Queue the results the use case's `search` calls return, in order: the
-    /// initial read and, after a successful `record_chunk`, the re-read.
-    fn expect_search_results(uploads: &mut MockUploadRepository, results: Vec<Vec<Upload>>) {
-        let queue = Arc::new(Mutex::new(VecDeque::from(results)));
-        uploads.expect_search().times(1..).returning(move |_| {
-            let next = queue
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .pop_front()
-                .unwrap_or_default();
-            Box::pin(async move { Ok(next) })
-        });
-    }
-
     #[tokio::test]
     async fn write_upload_chunk_valid_chunk_persists_bitmap() -> Result<(), Box<dyn Error>> {
         let mut hasher = MockContentHasher::new();
@@ -480,7 +461,17 @@ mod tests {
         });
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_search_results(
+        (move |uploads: &mut MockUploadRepository, results: Vec<Vec<Upload>>| {
+            let queue = Arc::new(Mutex::new(VecDeque::from(results)));
+            uploads.expect_search().times(1..).returning(move |_| {
+                let next = queue
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .pop_front()
+                    .unwrap_or_default();
+                Box::pin(async move { Ok(next) })
+            });
+        })(
             &mut uploads,
             vec![
                 vec![upload(5, 3, 8, &[], false)?],
@@ -508,10 +499,9 @@ mod tests {
                 })
             });
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             files: file_repository,
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let committed = Arc::clone(&unit_of_work.committed);
         let rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -557,7 +547,17 @@ mod tests {
         });
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_search_results(&mut uploads, vec![vec![upload(5, 3, 8, &[], false)?]]);
+        (move |uploads: &mut MockUploadRepository, results: Vec<Vec<Upload>>| {
+            let queue = Arc::new(Mutex::new(VecDeque::from(results)));
+            uploads.expect_search().times(1..).returning(move |_| {
+                let next = queue
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .pop_front()
+                    .unwrap_or_default();
+                Box::pin(async move { Ok(next) })
+            });
+        })(&mut uploads, vec![vec![upload(5, 3, 8, &[], false)?]]);
         // The upload row vanished between the read and the write, so the
         // repository reports a missing target.
         uploads
@@ -570,9 +570,8 @@ mod tests {
             .times(1)
             .returning(|_, _, _| Box::pin(async { Ok(true) }));
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let _committed = Arc::clone(&unit_of_work.committed);
         let rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -606,9 +605,8 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let _committed = Arc::clone(&unit_of_work.committed);
         let rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -660,16 +658,20 @@ mod tests {
         )
         .map_err(|_| RepositoryError::OperationFailed)?;
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, expired);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, expired);
         uploads
             .expect_delete()
             .times(1)
             .withf(|filter| filter.upload_id == Some(5))
             .returning(|_| Box::pin(async { Ok(true) }));
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let committed = Arc::clone(&unit_of_work.committed);
         let rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -729,7 +731,12 @@ mod tests {
         )
         .map_err(|_| RepositoryError::OperationFailed)?;
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, expired);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, expired);
         uploads
             .expect_delete()
             .times(1)
@@ -741,9 +748,8 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(()) }));
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let harness = AssetFactoryHarness::new(unit_of_work);
         harness.commit_fails.store(true, Ordering::SeqCst);
@@ -772,11 +778,15 @@ mod tests {
         let hasher = MockContentHasher::new();
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 4, &[0], true)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 4, &[0], true)?);
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let _committed = Arc::clone(&unit_of_work.committed);
         let _rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -825,11 +835,15 @@ mod tests {
             timestamp(),
         )?;
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, sealed);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, sealed);
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
@@ -858,11 +872,15 @@ mod tests {
         let hasher = MockContentHasher::new();
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 4, &[], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 4, &[], false)?);
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let _committed = Arc::clone(&unit_of_work.committed);
         let _rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -906,11 +924,15 @@ mod tests {
         });
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 8, &[], false)?);
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let _committed = Arc::clone(&unit_of_work.committed);
         let _rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -941,11 +963,15 @@ mod tests {
         let hasher = MockContentHasher::new();
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 8, &[], false)?);
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let _committed = Arc::clone(&unit_of_work.committed);
         let _rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -985,11 +1011,15 @@ mod tests {
         });
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 8, &[], false)?);
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let _committed = Arc::clone(&unit_of_work.committed);
         let _rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -1032,16 +1062,20 @@ mod tests {
         });
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 8, &[], false)?);
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_add_chunk()
             .times(1)
             .returning(|_, _, _| Box::pin(async { Err(StorageError::Unavailable) }));
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let _committed = Arc::clone(&unit_of_work.committed);
         let rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -1083,16 +1117,20 @@ mod tests {
         });
         // Arrange: the staged file is gone, so the adapter reports absence.
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 8, &[], false)?);
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_add_chunk()
             .times(1)
             .returning(|_, _, _| Box::pin(async { Ok(false) }));
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let _committed = Arc::clone(&unit_of_work.committed);
         let rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -1135,7 +1173,12 @@ mod tests {
         // Arrange: the finished-guard trigger rejects the chunk insert because a
         // concurrent completion won the race.
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 8, &[], false)?);
         uploads
             .expect_save()
             .times(1)
@@ -1146,9 +1189,8 @@ mod tests {
             .times(1)
             .returning(|_, _, _| Box::pin(async { Ok(true) }));
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let _committed = Arc::clone(&unit_of_work.committed);
         let rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -1178,11 +1220,15 @@ mod tests {
     async fn write_upload_chunk_hasher_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        (move |uploads: &mut MockUploadRepository, upload: Upload| {
+            uploads.expect_search().times(1).returning(move |_| {
+                let stored = upload.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        })(&mut uploads, upload(5, 3, 8, &[], false)?);
         let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
             uploads,
-            ..TestUnitOfWork::default()
+            ..TestUnitOfWork::with_any_caller()
         };
         let _committed = Arc::clone(&unit_of_work.committed);
         let rolled_back = Arc::clone(&unit_of_work.rolled_back);

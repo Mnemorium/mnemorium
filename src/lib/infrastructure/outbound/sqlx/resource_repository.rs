@@ -634,30 +634,10 @@ mod tests {
     };
     use crate::domain::port::GrantRepository as _;
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
     use rstest::rstest;
     use std::error::Error;
     use std::io;
-
-    /// Seed a credential and a standard user so a resource can be owned.
-    async fn seed_user(
-        transaction: &mut Transaction<'static, Sqlite>,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (?1, ?2)")
-            .bind(user_id)
-            .bind(format!("hash-{user_id}"))
-            .execute(&mut **transaction)
-            .await?;
-        sqlx::query(
-            "INSERT INTO user (user_id, role, username, email, credential_id)
-             VALUES (?1, 'STANDARD', ?2, NULL, ?1)",
-        )
-        .bind(user_id)
-        .bind(format!("user{user_id}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
 
     #[tokio::test]
     async fn insert_then_load_reads_the_resource_chain_and_grants() -> Result<(), Box<dyn Error>> {

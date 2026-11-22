@@ -81,10 +81,6 @@ pub(crate) trait EnsureStorageDirectoriesUseCase: Send + Sync {
     /// report whether the library root is present.
     ///
     /// The library root is never created.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned, so the method is object-safe and the use case can be stored as
-    /// `Arc<dyn EnsureStorageDirectoriesUseCase>`.
     fn execute<'future>(
         &'future self,
         command: EnsureStorageDirectoriesCommand,

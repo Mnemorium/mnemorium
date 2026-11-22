@@ -357,74 +357,6 @@ mod tests {
         use_case: UseCase,
     }
 
-    fn use_case_with(
-        setup: impl FnOnce(
-            &mut MockUploadRepository,
-            &mut MockMimeTypeRepository,
-            &mut MockFileStorage,
-        ) -> Result<(), Box<dyn Error>>,
-    ) -> Result<Harness, Box<dyn Error>> {
-        use_case_with_all(setup, TTL_SECONDS, DEFAULT_MAX_FILE_SIZE, true, CHUNK_SIZE)
-    }
-
-    /// Build a use case whose configured maximum file size is
-    /// `max_file_size_bytes`.
-    fn use_case_with_max(
-        setup: impl FnOnce(
-            &mut MockUploadRepository,
-            &mut MockMimeTypeRepository,
-            &mut MockFileStorage,
-        ) -> Result<(), Box<dyn Error>>,
-        max_file_size_bytes: u64,
-    ) -> Result<Harness, Box<dyn Error>> {
-        use_case_with_all(setup, TTL_SECONDS, max_file_size_bytes, true, CHUNK_SIZE)
-    }
-
-    /// Build a use case configured with `expiry_seconds` and
-    /// `max_file_size_bytes`.
-    fn use_case_with_all(
-        setup: impl FnOnce(
-            &mut MockUploadRepository,
-            &mut MockMimeTypeRepository,
-            &mut MockFileStorage,
-        ) -> Result<(), Box<dyn Error>>,
-        expiry_seconds: u64,
-        max_file_size_bytes: u64,
-        library_root_exists: bool,
-        chunk_size: u64,
-    ) -> Result<Harness, Box<dyn Error>> {
-        let mut uploads = MockUploadRepository::new();
-        let mut mime_types = MockMimeTypeRepository::new();
-        let mut file_storage = MockFileStorage::new();
-        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
-        // The library root is present unless the caller says otherwise. The
-        // expectation tolerates being unreached: a request rejected on its
-        // declared size or name never looks at the root.
-        file_storage
-            .expect_directory_exist()
-            .times(0..)
-            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
-        let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
-            mime_types,
-            uploads,
-            ..TestUnitOfWork::default()
-        };
-        let harness = AssetFactoryHarness::new(unit_of_work);
-        Ok(Harness {
-            use_case: BeginUpload::new(
-                Arc::clone(&harness.factory),
-                Arc::new(file_storage),
-                chunk_size,
-                expiry_seconds,
-                max_file_size_bytes,
-            ),
-            commit_fails: harness.commit_fails,
-            committed: harness.committed,
-            rolled_back: harness.rolled_back,
-        })
-    }
-
     fn command(file_size: u64) -> BeginUploadCommand {
         BeginUploadCommand::new(
             "clip.mp4".to_owned(),
@@ -433,20 +365,6 @@ mod tests {
             hash(DIGEST),
             3,
         )
-    }
-
-    fn expect_mime_type(mime_types: &mut MockMimeTypeRepository, exists: bool) {
-        mime_types.expect_search().times(1).returning(move |_| {
-            let found: Vec<MimeType> = if exists {
-                MimeType::try_new("video/mp4".to_owned())
-                    .ok()
-                    .into_iter()
-                    .collect()
-            } else {
-                Vec::new()
-            };
-            Box::pin(async move { Ok(found) })
-        });
     }
 
     fn stored_upload(command: &BeginUploadCommand) -> Result<Upload, RepositoryError> {
@@ -509,18 +427,84 @@ mod tests {
     #[tokio::test]
     async fn begin_upload_valid_request_creates_staging_file() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|uploads, mime_types, file_storage| {
-            expect_mime_type(mime_types, true);
-            uploads
-                .expect_create()
-                .times(1)
-                .returning(|upload| Box::pin(async move { Ok(upload) }));
-            file_storage
-                .expect_create_upload_file()
-                .times(1)
-                .returning(|_, _| Box::pin(async { Ok(()) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|uploads, mime_types, file_storage| {
+                (move |mime_types: &mut MockMimeTypeRepository, exists: bool| {
+                    mime_types.expect_search().times(1).returning(move |_| {
+                        let found: Vec<MimeType> = if exists {
+                            MimeType::try_new("video/mp4".to_owned())
+                                .ok()
+                                .into_iter()
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        Box::pin(async move { Ok(found) })
+                    });
+                })(mime_types, true);
+                uploads
+                    .expect_create()
+                    .times(1)
+                    .returning(|upload| Box::pin(async move { Ok(upload) }));
+                file_storage
+                    .expect_create_upload_file()
+                    .times(1)
+                    .returning(|_, _| Box::pin(async { Ok(()) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                {
+                    let setup: Box<
+                        dyn FnOnce(
+                            &mut MockUploadRepository,
+                            &mut MockMimeTypeRepository,
+                            &mut MockFileStorage,
+                        ) -> Result<(), Box<dyn Error>>,
+                    > = Box::new(setup);
+                    (move |expiry_seconds: u64,
+                           max_file_size_bytes: u64,
+                           library_root_exists: bool,
+                           chunk_size: u64|
+                          -> Result<Harness, Box<dyn Error>> {
+                        let mut uploads = MockUploadRepository::new();
+                        let mut mime_types = MockMimeTypeRepository::new();
+                        let mut file_storage = MockFileStorage::new();
+                        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                        // The library root is present unless the caller says otherwise. The
+                        // expectation tolerates being unreached: a request rejected on its
+                        // declared size or name never looks at the root.
+                        file_storage
+                            .expect_directory_exist()
+                            .times(0..)
+                            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                        let unit_of_work = TestUnitOfWork {
+                            mime_types,
+                            uploads,
+                            ..TestUnitOfWork::with_any_caller()
+                        };
+                        let harness = AssetFactoryHarness::new(unit_of_work);
+                        Ok(Harness {
+                            use_case: BeginUpload::new(
+                                Arc::clone(&harness.factory),
+                                Arc::new(file_storage),
+                                chunk_size,
+                                expiry_seconds,
+                                max_file_size_bytes,
+                            ),
+                            commit_fails: harness.commit_fails,
+                            committed: harness.committed,
+                            rolled_back: harness.rolled_back,
+                        })
+                    })(TTL_SECONDS, DEFAULT_MAX_FILE_SIZE, true, CHUNK_SIZE)
+                }
+            })()
+        }?;
         let command = command(10);
 
         // Act
@@ -537,10 +521,76 @@ mod tests {
     #[tokio::test]
     async fn begin_upload_unsupported_media_type_returns_error() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|_, mime_types, _| {
-            expect_mime_type(mime_types, false);
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|_, mime_types, _| {
+                (move |mime_types: &mut MockMimeTypeRepository, exists: bool| {
+                    mime_types.expect_search().times(1).returning(move |_| {
+                        let found: Vec<MimeType> = if exists {
+                            MimeType::try_new("video/mp4".to_owned())
+                                .ok()
+                                .into_iter()
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        Box::pin(async move { Ok(found) })
+                    });
+                })(mime_types, false);
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                {
+                    let setup: Box<
+                        dyn FnOnce(
+                            &mut MockUploadRepository,
+                            &mut MockMimeTypeRepository,
+                            &mut MockFileStorage,
+                        ) -> Result<(), Box<dyn Error>>,
+                    > = Box::new(setup);
+                    (move |expiry_seconds: u64,
+                           max_file_size_bytes: u64,
+                           library_root_exists: bool,
+                           chunk_size: u64|
+                          -> Result<Harness, Box<dyn Error>> {
+                        let mut uploads = MockUploadRepository::new();
+                        let mut mime_types = MockMimeTypeRepository::new();
+                        let mut file_storage = MockFileStorage::new();
+                        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                        // The library root is present unless the caller says otherwise. The
+                        // expectation tolerates being unreached: a request rejected on its
+                        // declared size or name never looks at the root.
+                        file_storage
+                            .expect_directory_exist()
+                            .times(0..)
+                            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                        let unit_of_work = TestUnitOfWork {
+                            mime_types,
+                            uploads,
+                            ..TestUnitOfWork::with_any_caller()
+                        };
+                        let harness = AssetFactoryHarness::new(unit_of_work);
+                        Ok(Harness {
+                            use_case: BeginUpload::new(
+                                Arc::clone(&harness.factory),
+                                Arc::new(file_storage),
+                                chunk_size,
+                                expiry_seconds,
+                                max_file_size_bytes,
+                            ),
+                            commit_fails: harness.commit_fails,
+                            committed: harness.committed,
+                            rolled_back: harness.rolled_back,
+                        })
+                    })(TTL_SECONDS, DEFAULT_MAX_FILE_SIZE, true, CHUNK_SIZE)
+                }
+            })()
+        }?;
         let command = command(10);
 
         // Act
@@ -558,18 +608,84 @@ mod tests {
     #[tokio::test]
     async fn begin_upload_valid_digest_reaches_repository() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|uploads, mime_types, file_storage| {
-            expect_mime_type(mime_types, true);
-            uploads
-                .expect_create()
-                .times(1)
-                .returning(|upload| Box::pin(async move { Ok(upload) }));
-            file_storage
-                .expect_create_upload_file()
-                .times(1)
-                .returning(|_, _| Box::pin(async { Ok(()) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|uploads, mime_types, file_storage| {
+                (move |mime_types: &mut MockMimeTypeRepository, exists: bool| {
+                    mime_types.expect_search().times(1).returning(move |_| {
+                        let found: Vec<MimeType> = if exists {
+                            MimeType::try_new("video/mp4".to_owned())
+                                .ok()
+                                .into_iter()
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        Box::pin(async move { Ok(found) })
+                    });
+                })(mime_types, true);
+                uploads
+                    .expect_create()
+                    .times(1)
+                    .returning(|upload| Box::pin(async move { Ok(upload) }));
+                file_storage
+                    .expect_create_upload_file()
+                    .times(1)
+                    .returning(|_, _| Box::pin(async { Ok(()) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                {
+                    let setup: Box<
+                        dyn FnOnce(
+                            &mut MockUploadRepository,
+                            &mut MockMimeTypeRepository,
+                            &mut MockFileStorage,
+                        ) -> Result<(), Box<dyn Error>>,
+                    > = Box::new(setup);
+                    (move |expiry_seconds: u64,
+                           max_file_size_bytes: u64,
+                           library_root_exists: bool,
+                           chunk_size: u64|
+                          -> Result<Harness, Box<dyn Error>> {
+                        let mut uploads = MockUploadRepository::new();
+                        let mut mime_types = MockMimeTypeRepository::new();
+                        let mut file_storage = MockFileStorage::new();
+                        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                        // The library root is present unless the caller says otherwise. The
+                        // expectation tolerates being unreached: a request rejected on its
+                        // declared size or name never looks at the root.
+                        file_storage
+                            .expect_directory_exist()
+                            .times(0..)
+                            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                        let unit_of_work = TestUnitOfWork {
+                            mime_types,
+                            uploads,
+                            ..TestUnitOfWork::with_any_caller()
+                        };
+                        let harness = AssetFactoryHarness::new(unit_of_work);
+                        Ok(Harness {
+                            use_case: BeginUpload::new(
+                                Arc::clone(&harness.factory),
+                                Arc::new(file_storage),
+                                chunk_size,
+                                expiry_seconds,
+                                max_file_size_bytes,
+                            ),
+                            commit_fails: harness.commit_fails,
+                            committed: harness.committed,
+                            rolled_back: harness.rolled_back,
+                        })
+                    })(TTL_SECONDS, DEFAULT_MAX_FILE_SIZE, true, CHUNK_SIZE)
+                }
+            })()
+        }?;
         let command = command(10);
 
         // Act
@@ -585,10 +701,76 @@ mod tests {
     #[traced_test]
     async fn begin_upload_invalid_file_name_returns_error() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|_, mime_types, _| {
-            expect_mime_type(mime_types, true);
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|_, mime_types, _| {
+                (move |mime_types: &mut MockMimeTypeRepository, exists: bool| {
+                    mime_types.expect_search().times(1).returning(move |_| {
+                        let found: Vec<MimeType> = if exists {
+                            MimeType::try_new("video/mp4".to_owned())
+                                .ok()
+                                .into_iter()
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        Box::pin(async move { Ok(found) })
+                    });
+                })(mime_types, true);
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                {
+                    let setup: Box<
+                        dyn FnOnce(
+                            &mut MockUploadRepository,
+                            &mut MockMimeTypeRepository,
+                            &mut MockFileStorage,
+                        ) -> Result<(), Box<dyn Error>>,
+                    > = Box::new(setup);
+                    (move |expiry_seconds: u64,
+                           max_file_size_bytes: u64,
+                           library_root_exists: bool,
+                           chunk_size: u64|
+                          -> Result<Harness, Box<dyn Error>> {
+                        let mut uploads = MockUploadRepository::new();
+                        let mut mime_types = MockMimeTypeRepository::new();
+                        let mut file_storage = MockFileStorage::new();
+                        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                        // The library root is present unless the caller says otherwise. The
+                        // expectation tolerates being unreached: a request rejected on its
+                        // declared size or name never looks at the root.
+                        file_storage
+                            .expect_directory_exist()
+                            .times(0..)
+                            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                        let unit_of_work = TestUnitOfWork {
+                            mime_types,
+                            uploads,
+                            ..TestUnitOfWork::with_any_caller()
+                        };
+                        let harness = AssetFactoryHarness::new(unit_of_work);
+                        Ok(Harness {
+                            use_case: BeginUpload::new(
+                                Arc::clone(&harness.factory),
+                                Arc::new(file_storage),
+                                chunk_size,
+                                expiry_seconds,
+                                max_file_size_bytes,
+                            ),
+                            commit_fails: harness.commit_fails,
+                            committed: harness.committed,
+                            rolled_back: harness.rolled_back,
+                        })
+                    })(TTL_SECONDS, DEFAULT_MAX_FILE_SIZE, true, CHUNK_SIZE)
+                }
+            })()
+        }?;
         let command = BeginUploadCommand::new(
             "../escape.mp4".to_owned(),
             10,
@@ -643,18 +825,84 @@ mod tests {
     #[tokio::test]
     async fn begin_upload_single_chunk_file_succeeds() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|uploads, mime_types, file_storage| {
-            expect_mime_type(mime_types, true);
-            uploads
-                .expect_create()
-                .times(1)
-                .returning(|upload| Box::pin(async move { Ok(upload) }));
-            file_storage
-                .expect_create_upload_file()
-                .times(1)
-                .returning(|_, _| Box::pin(async { Ok(()) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|uploads, mime_types, file_storage| {
+                (move |mime_types: &mut MockMimeTypeRepository, exists: bool| {
+                    mime_types.expect_search().times(1).returning(move |_| {
+                        let found: Vec<MimeType> = if exists {
+                            MimeType::try_new("video/mp4".to_owned())
+                                .ok()
+                                .into_iter()
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        Box::pin(async move { Ok(found) })
+                    });
+                })(mime_types, true);
+                uploads
+                    .expect_create()
+                    .times(1)
+                    .returning(|upload| Box::pin(async move { Ok(upload) }));
+                file_storage
+                    .expect_create_upload_file()
+                    .times(1)
+                    .returning(|_, _| Box::pin(async { Ok(()) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                {
+                    let setup: Box<
+                        dyn FnOnce(
+                            &mut MockUploadRepository,
+                            &mut MockMimeTypeRepository,
+                            &mut MockFileStorage,
+                        ) -> Result<(), Box<dyn Error>>,
+                    > = Box::new(setup);
+                    (move |expiry_seconds: u64,
+                           max_file_size_bytes: u64,
+                           library_root_exists: bool,
+                           chunk_size: u64|
+                          -> Result<Harness, Box<dyn Error>> {
+                        let mut uploads = MockUploadRepository::new();
+                        let mut mime_types = MockMimeTypeRepository::new();
+                        let mut file_storage = MockFileStorage::new();
+                        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                        // The library root is present unless the caller says otherwise. The
+                        // expectation tolerates being unreached: a request rejected on its
+                        // declared size or name never looks at the root.
+                        file_storage
+                            .expect_directory_exist()
+                            .times(0..)
+                            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                        let unit_of_work = TestUnitOfWork {
+                            mime_types,
+                            uploads,
+                            ..TestUnitOfWork::with_any_caller()
+                        };
+                        let harness = AssetFactoryHarness::new(unit_of_work);
+                        Ok(Harness {
+                            use_case: BeginUpload::new(
+                                Arc::clone(&harness.factory),
+                                Arc::new(file_storage),
+                                chunk_size,
+                                expiry_seconds,
+                                max_file_size_bytes,
+                            ),
+                            commit_fails: harness.commit_fails,
+                            committed: harness.committed,
+                            rolled_back: harness.rolled_back,
+                        })
+                    })(TTL_SECONDS, DEFAULT_MAX_FILE_SIZE, true, CHUNK_SIZE)
+                }
+            })()
+        }?;
         let command = command(4);
 
         // Act
@@ -668,14 +916,80 @@ mod tests {
     #[tokio::test]
     async fn begin_upload_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|uploads, mime_types, _| {
-            expect_mime_type(mime_types, true);
-            uploads
-                .expect_create()
-                .times(1)
-                .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|uploads, mime_types, _| {
+                (move |mime_types: &mut MockMimeTypeRepository, exists: bool| {
+                    mime_types.expect_search().times(1).returning(move |_| {
+                        let found: Vec<MimeType> = if exists {
+                            MimeType::try_new("video/mp4".to_owned())
+                                .ok()
+                                .into_iter()
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        Box::pin(async move { Ok(found) })
+                    });
+                })(mime_types, true);
+                uploads
+                    .expect_create()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                {
+                    let setup: Box<
+                        dyn FnOnce(
+                            &mut MockUploadRepository,
+                            &mut MockMimeTypeRepository,
+                            &mut MockFileStorage,
+                        ) -> Result<(), Box<dyn Error>>,
+                    > = Box::new(setup);
+                    (move |expiry_seconds: u64,
+                           max_file_size_bytes: u64,
+                           library_root_exists: bool,
+                           chunk_size: u64|
+                          -> Result<Harness, Box<dyn Error>> {
+                        let mut uploads = MockUploadRepository::new();
+                        let mut mime_types = MockMimeTypeRepository::new();
+                        let mut file_storage = MockFileStorage::new();
+                        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                        // The library root is present unless the caller says otherwise. The
+                        // expectation tolerates being unreached: a request rejected on its
+                        // declared size or name never looks at the root.
+                        file_storage
+                            .expect_directory_exist()
+                            .times(0..)
+                            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                        let unit_of_work = TestUnitOfWork {
+                            mime_types,
+                            uploads,
+                            ..TestUnitOfWork::with_any_caller()
+                        };
+                        let harness = AssetFactoryHarness::new(unit_of_work);
+                        Ok(Harness {
+                            use_case: BeginUpload::new(
+                                Arc::clone(&harness.factory),
+                                Arc::new(file_storage),
+                                chunk_size,
+                                expiry_seconds,
+                                max_file_size_bytes,
+                            ),
+                            commit_fails: harness.commit_fails,
+                            committed: harness.committed,
+                            rolled_back: harness.rolled_back,
+                        })
+                    })(TTL_SECONDS, DEFAULT_MAX_FILE_SIZE, true, CHUNK_SIZE)
+                }
+            })()
+        }?;
         let command = command(10);
 
         // Act
@@ -690,25 +1004,91 @@ mod tests {
     #[tokio::test]
     async fn begin_upload_storage_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|uploads, mime_types, file_storage| {
-            expect_mime_type(mime_types, true);
-            let stored = stored_upload(&command(10))?;
-            uploads.expect_create().times(1).returning(move |_| {
-                let created = stored.clone();
-                Box::pin(async move { Ok(created) })
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|uploads, mime_types, file_storage| {
+                (move |mime_types: &mut MockMimeTypeRepository, exists: bool| {
+                    mime_types.expect_search().times(1).returning(move |_| {
+                        let found: Vec<MimeType> = if exists {
+                            MimeType::try_new("video/mp4".to_owned())
+                                .ok()
+                                .into_iter()
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        Box::pin(async move { Ok(found) })
+                    });
+                })(mime_types, true);
+                let stored = stored_upload(&command(10))?;
+                uploads.expect_create().times(1).returning(move |_| {
+                    let created = stored.clone();
+                    Box::pin(async move { Ok(created) })
+                });
+                file_storage
+                    .expect_create_upload_file()
+                    .times(1)
+                    .returning(|_, _| Box::pin(async { Err(StorageError::Unavailable) }));
+                // The failed create may have left a file behind, so the rollback
+                // must also discard the staging file of the created row.
+                file_storage
+                    .expect_delete_upload_file()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(()) }));
+                Ok(())
             });
-            file_storage
-                .expect_create_upload_file()
-                .times(1)
-                .returning(|_, _| Box::pin(async { Err(StorageError::Unavailable) }));
-            // The failed create may have left a file behind, so the rollback
-            // must also discard the staging file of the created row.
-            file_storage
-                .expect_delete_upload_file()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok(()) }));
-            Ok(())
-        })?;
+            (move || -> Result<Harness, Box<dyn Error>> {
+                {
+                    let setup: Box<
+                        dyn FnOnce(
+                            &mut MockUploadRepository,
+                            &mut MockMimeTypeRepository,
+                            &mut MockFileStorage,
+                        ) -> Result<(), Box<dyn Error>>,
+                    > = Box::new(setup);
+                    (move |expiry_seconds: u64,
+                           max_file_size_bytes: u64,
+                           library_root_exists: bool,
+                           chunk_size: u64|
+                          -> Result<Harness, Box<dyn Error>> {
+                        let mut uploads = MockUploadRepository::new();
+                        let mut mime_types = MockMimeTypeRepository::new();
+                        let mut file_storage = MockFileStorage::new();
+                        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                        // The library root is present unless the caller says otherwise. The
+                        // expectation tolerates being unreached: a request rejected on its
+                        // declared size or name never looks at the root.
+                        file_storage
+                            .expect_directory_exist()
+                            .times(0..)
+                            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                        let unit_of_work = TestUnitOfWork {
+                            mime_types,
+                            uploads,
+                            ..TestUnitOfWork::with_any_caller()
+                        };
+                        let harness = AssetFactoryHarness::new(unit_of_work);
+                        Ok(Harness {
+                            use_case: BeginUpload::new(
+                                Arc::clone(&harness.factory),
+                                Arc::new(file_storage),
+                                chunk_size,
+                                expiry_seconds,
+                                max_file_size_bytes,
+                            ),
+                            commit_fails: harness.commit_fails,
+                            committed: harness.committed,
+                            rolled_back: harness.rolled_back,
+                        })
+                    })(TTL_SECONDS, DEFAULT_MAX_FILE_SIZE, true, CHUNK_SIZE)
+                }
+            })()
+        }?;
         let command = command(10);
 
         // Act
@@ -726,9 +1106,27 @@ mod tests {
         // Arrange
         // An expiry that does not fit in `i64` aborts the begin after the row
         // and the staging file exist, exercising the compensation path.
-        let harness = use_case_with_all(
-            |uploads, mime_types, file_storage| {
-                expect_mime_type(mime_types, true);
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|uploads, mime_types, file_storage| {
+                (move |mime_types: &mut MockMimeTypeRepository, exists: bool| {
+                    mime_types.expect_search().times(1).returning(move |_| {
+                        let found: Vec<MimeType> = if exists {
+                            MimeType::try_new("video/mp4".to_owned())
+                                .ok()
+                                .into_iter()
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        Box::pin(async move { Ok(found) })
+                    });
+                })(mime_types, true);
                 uploads
                     .expect_create()
                     .times(1)
@@ -742,12 +1140,43 @@ mod tests {
                     .times(1)
                     .returning(|_| Box::pin(async { Ok(()) }));
                 Ok(())
-            },
-            u64::MAX,
-            DEFAULT_MAX_FILE_SIZE,
-            true,
-            CHUNK_SIZE,
-        )?;
+            });
+            (move |expiry_seconds: u64,
+                   max_file_size_bytes: u64,
+                   library_root_exists: bool,
+                   chunk_size: u64|
+                  -> Result<Harness, Box<dyn Error>> {
+                let mut uploads = MockUploadRepository::new();
+                let mut mime_types = MockMimeTypeRepository::new();
+                let mut file_storage = MockFileStorage::new();
+                setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                // The library root is present unless the caller says otherwise. The
+                // expectation tolerates being unreached: a request rejected on its
+                // declared size or name never looks at the root.
+                file_storage
+                    .expect_directory_exist()
+                    .times(0..)
+                    .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                let unit_of_work = TestUnitOfWork {
+                    mime_types,
+                    uploads,
+                    ..TestUnitOfWork::with_any_caller()
+                };
+                let harness = AssetFactoryHarness::new(unit_of_work);
+                Ok(Harness {
+                    use_case: BeginUpload::new(
+                        Arc::clone(&harness.factory),
+                        Arc::new(file_storage),
+                        chunk_size,
+                        expiry_seconds,
+                        max_file_size_bytes,
+                    ),
+                    commit_fails: harness.commit_fails,
+                    committed: harness.committed,
+                    rolled_back: harness.rolled_back,
+                })
+            })(u64::MAX, DEFAULT_MAX_FILE_SIZE, true, CHUNK_SIZE)
+        }?;
         let command = command(10);
 
         // Act
@@ -763,22 +1192,88 @@ mod tests {
     #[tokio::test]
     async fn begin_upload_commit_failure_deletes_staging_file() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|uploads, mime_types, file_storage| {
-            expect_mime_type(mime_types, true);
-            uploads
-                .expect_create()
-                .times(1)
-                .returning(|upload| Box::pin(async move { Ok(upload) }));
-            file_storage
-                .expect_create_upload_file()
-                .times(1)
-                .returning(|_, _| Box::pin(async { Ok(()) }));
-            file_storage
-                .expect_delete_upload_file()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok(()) }));
-            Ok(())
-        })?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|uploads, mime_types, file_storage| {
+                (move |mime_types: &mut MockMimeTypeRepository, exists: bool| {
+                    mime_types.expect_search().times(1).returning(move |_| {
+                        let found: Vec<MimeType> = if exists {
+                            MimeType::try_new("video/mp4".to_owned())
+                                .ok()
+                                .into_iter()
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        Box::pin(async move { Ok(found) })
+                    });
+                })(mime_types, true);
+                uploads
+                    .expect_create()
+                    .times(1)
+                    .returning(|upload| Box::pin(async move { Ok(upload) }));
+                file_storage
+                    .expect_create_upload_file()
+                    .times(1)
+                    .returning(|_, _| Box::pin(async { Ok(()) }));
+                file_storage
+                    .expect_delete_upload_file()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(()) }));
+                Ok(())
+            });
+            (move || -> Result<Harness, Box<dyn Error>> {
+                {
+                    let setup: Box<
+                        dyn FnOnce(
+                            &mut MockUploadRepository,
+                            &mut MockMimeTypeRepository,
+                            &mut MockFileStorage,
+                        ) -> Result<(), Box<dyn Error>>,
+                    > = Box::new(setup);
+                    (move |expiry_seconds: u64,
+                           max_file_size_bytes: u64,
+                           library_root_exists: bool,
+                           chunk_size: u64|
+                          -> Result<Harness, Box<dyn Error>> {
+                        let mut uploads = MockUploadRepository::new();
+                        let mut mime_types = MockMimeTypeRepository::new();
+                        let mut file_storage = MockFileStorage::new();
+                        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                        // The library root is present unless the caller says otherwise. The
+                        // expectation tolerates being unreached: a request rejected on its
+                        // declared size or name never looks at the root.
+                        file_storage
+                            .expect_directory_exist()
+                            .times(0..)
+                            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                        let unit_of_work = TestUnitOfWork {
+                            mime_types,
+                            uploads,
+                            ..TestUnitOfWork::with_any_caller()
+                        };
+                        let harness = AssetFactoryHarness::new(unit_of_work);
+                        Ok(Harness {
+                            use_case: BeginUpload::new(
+                                Arc::clone(&harness.factory),
+                                Arc::new(file_storage),
+                                chunk_size,
+                                expiry_seconds,
+                                max_file_size_bytes,
+                            ),
+                            commit_fails: harness.commit_fails,
+                            committed: harness.committed,
+                            rolled_back: harness.rolled_back,
+                        })
+                    })(TTL_SECONDS, DEFAULT_MAX_FILE_SIZE, true, CHUNK_SIZE)
+                }
+            })()
+        }?;
         harness.commit_fails.store(true, Ordering::SeqCst);
         let command = command(10);
 
@@ -797,9 +1292,27 @@ mod tests {
     async fn begin_upload_file_at_max_size_succeeds() -> Result<(), Box<dyn Error>> {
         // Arrange
         let max_file_size = 10;
-        let harness = use_case_with_max(
-            |uploads, mime_types, file_storage| {
-                expect_mime_type(mime_types, true);
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|uploads, mime_types, file_storage| {
+                (move |mime_types: &mut MockMimeTypeRepository, exists: bool| {
+                    mime_types.expect_search().times(1).returning(move |_| {
+                        let found: Vec<MimeType> = if exists {
+                            MimeType::try_new("video/mp4".to_owned())
+                                .ok()
+                                .into_iter()
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        Box::pin(async move { Ok(found) })
+                    });
+                })(mime_types, true);
                 uploads
                     .expect_create()
                     .times(1)
@@ -809,9 +1322,54 @@ mod tests {
                     .times(1)
                     .returning(|_, _| Box::pin(async { Ok(()) }));
                 Ok(())
-            },
-            max_file_size,
-        )?;
+            });
+            (move |max_file_size_bytes: u64| -> Result<Harness, Box<dyn Error>> {
+                {
+                    let setup: Box<
+                        dyn FnOnce(
+                            &mut MockUploadRepository,
+                            &mut MockMimeTypeRepository,
+                            &mut MockFileStorage,
+                        ) -> Result<(), Box<dyn Error>>,
+                    > = Box::new(setup);
+                    (move |expiry_seconds: u64,
+                           max_file_size_bytes: u64,
+                           library_root_exists: bool,
+                           chunk_size: u64|
+                          -> Result<Harness, Box<dyn Error>> {
+                        let mut uploads = MockUploadRepository::new();
+                        let mut mime_types = MockMimeTypeRepository::new();
+                        let mut file_storage = MockFileStorage::new();
+                        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                        // The library root is present unless the caller says otherwise. The
+                        // expectation tolerates being unreached: a request rejected on its
+                        // declared size or name never looks at the root.
+                        file_storage
+                            .expect_directory_exist()
+                            .times(0..)
+                            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                        let unit_of_work = TestUnitOfWork {
+                            mime_types,
+                            uploads,
+                            ..TestUnitOfWork::with_any_caller()
+                        };
+                        let harness = AssetFactoryHarness::new(unit_of_work);
+                        Ok(Harness {
+                            use_case: BeginUpload::new(
+                                Arc::clone(&harness.factory),
+                                Arc::new(file_storage),
+                                chunk_size,
+                                expiry_seconds,
+                                max_file_size_bytes,
+                            ),
+                            commit_fails: harness.commit_fails,
+                            committed: harness.committed,
+                            rolled_back: harness.rolled_back,
+                        })
+                    })(TTL_SECONDS, max_file_size_bytes, true, CHUNK_SIZE)
+                }
+            })(max_file_size)
+        }?;
         let command = command(max_file_size);
 
         // Act
@@ -834,7 +1392,61 @@ mod tests {
         // Arrange
         // No repository or storage expectation: the rejection must happen before
         // any of them is reached (mockall fails the test on an unexpected call).
-        let harness = use_case_with_max(|_, _, _| Ok(()), 10)?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|_, _, _| Ok(()));
+            (move |max_file_size_bytes: u64| -> Result<Harness, Box<dyn Error>> {
+                {
+                    let setup: Box<
+                        dyn FnOnce(
+                            &mut MockUploadRepository,
+                            &mut MockMimeTypeRepository,
+                            &mut MockFileStorage,
+                        ) -> Result<(), Box<dyn Error>>,
+                    > = Box::new(setup);
+                    (move |expiry_seconds: u64,
+                           max_file_size_bytes: u64,
+                           library_root_exists: bool,
+                           chunk_size: u64|
+                          -> Result<Harness, Box<dyn Error>> {
+                        let mut uploads = MockUploadRepository::new();
+                        let mut mime_types = MockMimeTypeRepository::new();
+                        let mut file_storage = MockFileStorage::new();
+                        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                        // The library root is present unless the caller says otherwise. The
+                        // expectation tolerates being unreached: a request rejected on its
+                        // declared size or name never looks at the root.
+                        file_storage
+                            .expect_directory_exist()
+                            .times(0..)
+                            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                        let unit_of_work = TestUnitOfWork {
+                            mime_types,
+                            uploads,
+                            ..TestUnitOfWork::with_any_caller()
+                        };
+                        let harness = AssetFactoryHarness::new(unit_of_work);
+                        Ok(Harness {
+                            use_case: BeginUpload::new(
+                                Arc::clone(&harness.factory),
+                                Arc::new(file_storage),
+                                chunk_size,
+                                expiry_seconds,
+                                max_file_size_bytes,
+                            ),
+                            commit_fails: harness.commit_fails,
+                            committed: harness.committed,
+                            rolled_back: harness.rolled_back,
+                        })
+                    })(TTL_SECONDS, max_file_size_bytes, true, CHUNK_SIZE)
+                }
+            })(10)
+        }?;
         let command = command(11);
 
         // Act
@@ -888,7 +1500,61 @@ mod tests {
         // Arrange
         // No repository or storage expectation: the rejection must happen before
         // any of them is reached (mockall fails the test on an unexpected call).
-        let harness = use_case_with_max(|_, _, _| Ok(()), DEFAULT_MAX_FILE_SIZE)?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|_, _, _| Ok(()));
+            (move |max_file_size_bytes: u64| -> Result<Harness, Box<dyn Error>> {
+                {
+                    let setup: Box<
+                        dyn FnOnce(
+                            &mut MockUploadRepository,
+                            &mut MockMimeTypeRepository,
+                            &mut MockFileStorage,
+                        ) -> Result<(), Box<dyn Error>>,
+                    > = Box::new(setup);
+                    (move |expiry_seconds: u64,
+                           max_file_size_bytes: u64,
+                           library_root_exists: bool,
+                           chunk_size: u64|
+                          -> Result<Harness, Box<dyn Error>> {
+                        let mut uploads = MockUploadRepository::new();
+                        let mut mime_types = MockMimeTypeRepository::new();
+                        let mut file_storage = MockFileStorage::new();
+                        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                        // The library root is present unless the caller says otherwise. The
+                        // expectation tolerates being unreached: a request rejected on its
+                        // declared size or name never looks at the root.
+                        file_storage
+                            .expect_directory_exist()
+                            .times(0..)
+                            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                        let unit_of_work = TestUnitOfWork {
+                            mime_types,
+                            uploads,
+                            ..TestUnitOfWork::with_any_caller()
+                        };
+                        let harness = AssetFactoryHarness::new(unit_of_work);
+                        Ok(Harness {
+                            use_case: BeginUpload::new(
+                                Arc::clone(&harness.factory),
+                                Arc::new(file_storage),
+                                chunk_size,
+                                expiry_seconds,
+                                max_file_size_bytes,
+                            ),
+                            commit_fails: harness.commit_fails,
+                            committed: harness.committed,
+                            rolled_back: harness.rolled_back,
+                        })
+                    })(TTL_SECONDS, max_file_size_bytes, true, CHUNK_SIZE)
+                }
+            })(DEFAULT_MAX_FILE_SIZE)
+        }?;
         let command = command(0);
 
         // Act
@@ -941,9 +1607,27 @@ mod tests {
         // Exactly `MAX_TOTAL_CHUNKS` chunks is the largest file the chunk-count
         // backstop accepts. `max_file_size_bytes` equals the declared size, so
         // the size rule is satisfied at its limit and the chunk rule decides.
-        let harness = use_case_with_max(
-            |uploads, mime_types, file_storage| {
-                expect_mime_type(mime_types, true);
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|uploads, mime_types, file_storage| {
+                (move |mime_types: &mut MockMimeTypeRepository, exists: bool| {
+                    mime_types.expect_search().times(1).returning(move |_| {
+                        let found: Vec<MimeType> = if exists {
+                            MimeType::try_new("video/mp4".to_owned())
+                                .ok()
+                                .into_iter()
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        Box::pin(async move { Ok(found) })
+                    });
+                })(mime_types, true);
                 uploads
                     .expect_create()
                     .times(1)
@@ -954,9 +1638,54 @@ mod tests {
                     .times(1)
                     .returning(|_, _| Box::pin(async { Ok(()) }));
                 Ok(())
-            },
-            MAX_TOTAL_CHUNKS_FILE_BYTES,
-        )?;
+            });
+            (move |max_file_size_bytes: u64| -> Result<Harness, Box<dyn Error>> {
+                {
+                    let setup: Box<
+                        dyn FnOnce(
+                            &mut MockUploadRepository,
+                            &mut MockMimeTypeRepository,
+                            &mut MockFileStorage,
+                        ) -> Result<(), Box<dyn Error>>,
+                    > = Box::new(setup);
+                    (move |expiry_seconds: u64,
+                           max_file_size_bytes: u64,
+                           library_root_exists: bool,
+                           chunk_size: u64|
+                          -> Result<Harness, Box<dyn Error>> {
+                        let mut uploads = MockUploadRepository::new();
+                        let mut mime_types = MockMimeTypeRepository::new();
+                        let mut file_storage = MockFileStorage::new();
+                        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                        // The library root is present unless the caller says otherwise. The
+                        // expectation tolerates being unreached: a request rejected on its
+                        // declared size or name never looks at the root.
+                        file_storage
+                            .expect_directory_exist()
+                            .times(0..)
+                            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                        let unit_of_work = TestUnitOfWork {
+                            mime_types,
+                            uploads,
+                            ..TestUnitOfWork::with_any_caller()
+                        };
+                        let harness = AssetFactoryHarness::new(unit_of_work);
+                        Ok(Harness {
+                            use_case: BeginUpload::new(
+                                Arc::clone(&harness.factory),
+                                Arc::new(file_storage),
+                                chunk_size,
+                                expiry_seconds,
+                                max_file_size_bytes,
+                            ),
+                            commit_fails: harness.commit_fails,
+                            committed: harness.committed,
+                            rolled_back: harness.rolled_back,
+                        })
+                    })(TTL_SECONDS, max_file_size_bytes, true, CHUNK_SIZE)
+                }
+            })(MAX_TOTAL_CHUNKS_FILE_BYTES)
+        }?;
         let command = command(MAX_TOTAL_CHUNKS_FILE_BYTES);
 
         // Act
@@ -981,7 +1710,61 @@ mod tests {
         // chunks. `max_file_size_bytes` equals the declared size, so the size
         // rule is satisfied and only the chunk-count backstop can reject.
         let file_size = MAX_TOTAL_CHUNKS_FILE_BYTES + 1;
-        let harness = use_case_with_max(|_, _, _| Ok(()), file_size)?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|_, _, _| Ok(()));
+            (move |max_file_size_bytes: u64| -> Result<Harness, Box<dyn Error>> {
+                {
+                    let setup: Box<
+                        dyn FnOnce(
+                            &mut MockUploadRepository,
+                            &mut MockMimeTypeRepository,
+                            &mut MockFileStorage,
+                        ) -> Result<(), Box<dyn Error>>,
+                    > = Box::new(setup);
+                    (move |expiry_seconds: u64,
+                           max_file_size_bytes: u64,
+                           library_root_exists: bool,
+                           chunk_size: u64|
+                          -> Result<Harness, Box<dyn Error>> {
+                        let mut uploads = MockUploadRepository::new();
+                        let mut mime_types = MockMimeTypeRepository::new();
+                        let mut file_storage = MockFileStorage::new();
+                        setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                        // The library root is present unless the caller says otherwise. The
+                        // expectation tolerates being unreached: a request rejected on its
+                        // declared size or name never looks at the root.
+                        file_storage
+                            .expect_directory_exist()
+                            .times(0..)
+                            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                        let unit_of_work = TestUnitOfWork {
+                            mime_types,
+                            uploads,
+                            ..TestUnitOfWork::with_any_caller()
+                        };
+                        let harness = AssetFactoryHarness::new(unit_of_work);
+                        Ok(Harness {
+                            use_case: BeginUpload::new(
+                                Arc::clone(&harness.factory),
+                                Arc::new(file_storage),
+                                chunk_size,
+                                expiry_seconds,
+                                max_file_size_bytes,
+                            ),
+                            commit_fails: harness.commit_fails,
+                            committed: harness.committed,
+                            rolled_back: harness.rolled_back,
+                        })
+                    })(TTL_SECONDS, max_file_size_bytes, true, CHUNK_SIZE)
+                }
+            })(file_size)
+        }?;
         let command = command(file_size);
 
         // Act
@@ -1034,13 +1817,50 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange: the library root is absent and the use case must stop before
         // creating a session or a staging file.
-        let harness = use_case_with_all(
-            |_uploads, _mime_types, _file_storage| Ok(()),
-            TTL_SECONDS,
-            DEFAULT_MAX_FILE_SIZE,
-            false,
-            CHUNK_SIZE,
-        )?;
+        let harness = {
+            let setup: Box<
+                dyn FnOnce(
+                    &mut MockUploadRepository,
+                    &mut MockMimeTypeRepository,
+                    &mut MockFileStorage,
+                ) -> Result<(), Box<dyn Error>>,
+            > = Box::new(|_uploads, _mime_types, _file_storage| Ok(()));
+            (move |expiry_seconds: u64,
+                   max_file_size_bytes: u64,
+                   library_root_exists: bool,
+                   chunk_size: u64|
+                  -> Result<Harness, Box<dyn Error>> {
+                let mut uploads = MockUploadRepository::new();
+                let mut mime_types = MockMimeTypeRepository::new();
+                let mut file_storage = MockFileStorage::new();
+                setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                // The library root is present unless the caller says otherwise. The
+                // expectation tolerates being unreached: a request rejected on its
+                // declared size or name never looks at the root.
+                file_storage
+                    .expect_directory_exist()
+                    .times(0..)
+                    .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                let unit_of_work = TestUnitOfWork {
+                    mime_types,
+                    uploads,
+                    ..TestUnitOfWork::with_any_caller()
+                };
+                let harness = AssetFactoryHarness::new(unit_of_work);
+                Ok(Harness {
+                    use_case: BeginUpload::new(
+                        Arc::clone(&harness.factory),
+                        Arc::new(file_storage),
+                        chunk_size,
+                        expiry_seconds,
+                        max_file_size_bytes,
+                    ),
+                    commit_fails: harness.commit_fails,
+                    committed: harness.committed,
+                    rolled_back: harness.rolled_back,
+                })
+            })(TTL_SECONDS, DEFAULT_MAX_FILE_SIZE, false, CHUNK_SIZE)
+        }?;
 
         // Act
         let result = harness.use_case.execute(command(4)).await;
@@ -1052,35 +1872,81 @@ mod tests {
         Ok(())
     }
 
-    /// Build a use case whose session geometry is fixed at `chunk_size` bytes.
-    fn use_case_with_chunk_size(chunk_size: u64) -> Result<Harness, Box<dyn Error>> {
-        use_case_with_all(
-            |uploads, mime_types, file_storage| {
-                expect_mime_type(mime_types, true);
-                uploads
-                    .expect_create()
-                    .times(1)
-                    .withf(move |upload| upload.chunk_size() == chunk_size)
-                    .returning(|upload| Box::pin(async move { Ok(upload) }));
-                file_storage
-                    .expect_create_upload_file()
-                    .times(1)
-                    .returning(|_, _| Box::pin(async { Ok(()) }));
-                Ok(())
-            },
-            TTL_SECONDS,
-            DEFAULT_MAX_FILE_SIZE,
-            true,
-            chunk_size,
-        )
-    }
-
     // proves: SCN-UPLOAD-003-A
     #[tokio::test]
     async fn begin_upload_keeps_the_chunk_size_it_was_built_with() -> Result<(), Box<dyn Error>> {
         // Arrange: the use case holds the chunk size it was built with and reads
         // no configuration itself, so a runtime change cannot reach a session.
-        let harness = use_case_with_chunk_size(8)?;
+        let harness = (move |chunk_size: u64| -> Result<Harness, Box<dyn Error>> {
+            {
+                let setup: Box<
+                    dyn FnOnce(
+                        &mut MockUploadRepository,
+                        &mut MockMimeTypeRepository,
+                        &mut MockFileStorage,
+                    ) -> Result<(), Box<dyn Error>>,
+                > = Box::new(|uploads, mime_types, file_storage| {
+                    (move |mime_types: &mut MockMimeTypeRepository, exists: bool| {
+                        mime_types.expect_search().times(1).returning(move |_| {
+                            let found: Vec<MimeType> = if exists {
+                                MimeType::try_new("video/mp4".to_owned())
+                                    .ok()
+                                    .into_iter()
+                                    .collect()
+                            } else {
+                                Vec::new()
+                            };
+                            Box::pin(async move { Ok(found) })
+                        });
+                    })(mime_types, true);
+                    uploads
+                        .expect_create()
+                        .times(1)
+                        .withf(move |upload| upload.chunk_size() == chunk_size)
+                        .returning(|upload| Box::pin(async move { Ok(upload) }));
+                    file_storage
+                        .expect_create_upload_file()
+                        .times(1)
+                        .returning(|_, _| Box::pin(async { Ok(()) }));
+                    Ok(())
+                });
+                (move |expiry_seconds: u64,
+                       max_file_size_bytes: u64,
+                       library_root_exists: bool,
+                       chunk_size: u64|
+                      -> Result<Harness, Box<dyn Error>> {
+                    let mut uploads = MockUploadRepository::new();
+                    let mut mime_types = MockMimeTypeRepository::new();
+                    let mut file_storage = MockFileStorage::new();
+                    setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+                    // The library root is present unless the caller says otherwise. The
+                    // expectation tolerates being unreached: a request rejected on its
+                    // declared size or name never looks at the root.
+                    file_storage
+                        .expect_directory_exist()
+                        .times(0..)
+                        .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
+                    let unit_of_work = TestUnitOfWork {
+                        mime_types,
+                        uploads,
+                        ..TestUnitOfWork::with_any_caller()
+                    };
+                    let harness = AssetFactoryHarness::new(unit_of_work);
+                    Ok(Harness {
+                        use_case: BeginUpload::new(
+                            Arc::clone(&harness.factory),
+                            Arc::new(file_storage),
+                            chunk_size,
+                            expiry_seconds,
+                            max_file_size_bytes,
+                        ),
+                        commit_fails: harness.commit_fails,
+                        committed: harness.committed,
+                        rolled_back: harness.rolled_back,
+                    })
+                })(TTL_SECONDS, DEFAULT_MAX_FILE_SIZE, true, chunk_size)
+            }
+        })(8)?;
 
         // Act
         let response = harness.use_case.execute(command(16)).await?;

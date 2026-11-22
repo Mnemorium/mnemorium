@@ -136,30 +136,28 @@ mod tests {
 
     type UseCase = GetAudio<TestFactory>;
 
-    fn harness(
-        users: MockUserRepository,
-        files: MockFileRepository,
-        images: MockImageRepository,
-        audios: MockAudioRepository,
-        videos: MockVideoRepository,
-    ) -> AssetFactoryHarness {
-        AssetFactoryHarness::new(TestUnitOfWork {
-            audios,
-            files,
-            images,
-            resources: no_resources(),
-            users,
-            videos,
-            ..TestUnitOfWork::default()
-        })
-    }
-
     // proves: SCN-AUDIO-003-A
     #[tokio::test]
     async fn an_album_track_is_readable_and_linked() -> Result<(), Box<dyn Error>> {
         // Arrange: caller 9 reads the track of album 5.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 9)?;
         let mut files = MockFileRepository::new();
         let stored_file =
             sample_file(100, 3, "audio/mpeg")?.with_owner(Some(AssetOwner::Resource(
@@ -184,7 +182,21 @@ mod tests {
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_audio]) }));
-        let harness = harness(
+        let harness = (move |users: MockUserRepository,
+                             files: MockFileRepository,
+                             images: MockImageRepository,
+                             audios: MockAudioRepository,
+                             videos: MockVideoRepository|
+              -> AssetFactoryHarness {
+            AssetFactoryHarness::new(TestUnitOfWork {
+                audios,
+                files,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            })
+        })(
             users,
             files,
             MockImageRepository::new(),
@@ -207,13 +219,43 @@ mod tests {
     async fn an_audio_repository_failure_is_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 9)?;
         let mut audios = MockAudioRepository::new();
         audios
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-        let harness = harness(
+        let harness = (move |users: MockUserRepository,
+                             files: MockFileRepository,
+                             images: MockImageRepository,
+                             audios: MockAudioRepository,
+                             videos: MockVideoRepository|
+              -> AssetFactoryHarness {
+            AssetFactoryHarness::new(TestUnitOfWork {
+                audios,
+                files,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            })
+        })(
             users,
             MockFileRepository::new(),
             MockImageRepository::new(),
@@ -235,13 +277,43 @@ mod tests {
     async fn an_unknown_audio_is_concealed() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 9)?;
         let mut audios = MockAudioRepository::new();
         audios
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness(
+        let harness = (move |users: MockUserRepository,
+                             files: MockFileRepository,
+                             images: MockImageRepository,
+                             audios: MockAudioRepository,
+                             videos: MockVideoRepository|
+              -> AssetFactoryHarness {
+            AssetFactoryHarness::new(TestUnitOfWork {
+                audios,
+                files,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            })
+        })(
             users,
             MockFileRepository::new(),
             MockImageRepository::new(),

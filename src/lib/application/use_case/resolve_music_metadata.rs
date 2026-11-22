@@ -136,6 +136,7 @@ mod tests {
         ArtistCredit, ExternalRef, MusicKind, MusicMetadata, MusicTarget, ProductionType,
         ProviderId,
     };
+    use rstest::fixture;
 
     use crate::domain::port::{
         ExternalServiceError, MockMusicMetadataProvider, MockResourceRepository,
@@ -160,28 +161,8 @@ mod tests {
         use_case: UseCase,
     }
 
-    /// Build a use case over the given permission repository.
-    fn use_case_with(
-        resources: MockResourceRepository,
-        provider: Option<MockMusicMetadataProvider>,
-    ) -> Harness {
-        let unit_of_work = TestUnitOfWork {
-            resources,
-            users: any_caller(),
-            ..TestUnitOfWork::default()
-        };
-        let committed = Arc::clone(&unit_of_work.committed);
-        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
-        let factory = Arc::new(TestFactory::new(unit_of_work));
-
-        Harness {
-            committed,
-            rolled_back,
-            use_case: ResolveMusicMetadata::new(factory, provider.map(Arc::new)),
-        }
-    }
-
     /// The target every test resolves.
+    #[fixture]
     fn target() -> MusicTarget {
         MusicTarget::Album(ExternalRef::new(
             ProviderId::MusicBrainz,
@@ -194,6 +175,7 @@ mod tests {
     /// # Errors
     ///
     /// Returns an error when the fixture's date is not a calendar date.
+    #[fixture]
     fn album() -> Result<MusicMetadata, Box<dyn Error>> {
         Ok(MusicMetadata::Album {
             artwork: None,
@@ -208,21 +190,113 @@ mod tests {
         })
     }
 
-    /// A provider mock that answers for `MusicBrainz`.
-    fn musicbrainz_provider() -> MockMusicMetadataProvider {
-        let mut provider = MockMusicMetadataProvider::new();
-        provider
-            .expect_provider()
-            .returning(|| ProviderId::MusicBrainz);
-        provider
-    }
-
     // proves: SCN-METADATA-ENRICHMENT-023-D
     #[tokio::test]
     async fn resolve_music_metadata_reports_unavailable_without_a_provider()
     -> Result<(), Box<dyn Error>> {
         // Arrange: no music provider is configured.
-        let harness = use_case_with(no_resources(), None);
+        let harness = (move |resources: MockResourceRepository,
+                             provider: Option<MockMusicMetadataProvider>|
+              -> Harness {
+            let unit_of_work = TestUnitOfWork {
+                resources,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let committed = Arc::clone(&unit_of_work.committed);
+            let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+            let factory = Arc::new(TestFactory::new(unit_of_work));
+
+            Harness {
+                committed,
+                rolled_back,
+                use_case: ResolveMusicMetadata::new(factory, provider.map(Arc::new)),
+            }
+        })(
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            None,
+        );
 
         // Act
         let result = harness
@@ -244,9 +318,116 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange: the configured provider is MusicBrainz, the target names
         // another provider.
-        let mut provider = musicbrainz_provider();
+        let mut provider = (move || -> MockMusicMetadataProvider {
+            let mut provider = MockMusicMetadataProvider::new();
+            provider
+                .expect_provider()
+                .returning(|| ProviderId::MusicBrainz);
+            provider
+        })();
         provider.expect_lookup().times(0);
-        let harness = use_case_with(no_resources(), Some(provider));
+        let harness = (move |resources: MockResourceRepository,
+                             provider: Option<MockMusicMetadataProvider>|
+              -> Harness {
+            let unit_of_work = TestUnitOfWork {
+                resources,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let committed = Arc::clone(&unit_of_work.committed);
+            let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+            let factory = Arc::new(TestFactory::new(unit_of_work));
+
+            Harness {
+                committed,
+                rolled_back,
+                use_case: ResolveMusicMetadata::new(factory, provider.map(Arc::new)),
+            }
+        })(
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            Some(provider),
+        );
         let foreign = MusicTarget::Album(ExternalRef::new(ProviderId::Tmdb, "27205".to_owned()));
 
         // Act
@@ -269,13 +450,120 @@ mod tests {
     async fn resolve_music_metadata_reports_a_missing_item_as_no_response()
     -> Result<(), Box<dyn Error>> {
         // Arrange: the provider does not know the target.
-        let mut provider = musicbrainz_provider();
+        let mut provider = (move || -> MockMusicMetadataProvider {
+            let mut provider = MockMusicMetadataProvider::new();
+            provider
+                .expect_provider()
+                .returning(|| ProviderId::MusicBrainz);
+            provider
+        })();
         provider
             .expect_lookup()
             .times(1)
             .withf(|target| target.kind() == MusicKind::Album)
             .returning(|_| Box::pin(async { Ok(None) }));
-        let harness = use_case_with(no_resources(), Some(provider));
+        let harness = (move |resources: MockResourceRepository,
+                             provider: Option<MockMusicMetadataProvider>|
+              -> Harness {
+            let unit_of_work = TestUnitOfWork {
+                resources,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let committed = Arc::clone(&unit_of_work.committed);
+            let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+            let factory = Arc::new(TestFactory::new(unit_of_work));
+
+            Harness {
+                committed,
+                rolled_back,
+                use_case: ResolveMusicMetadata::new(factory, provider.map(Arc::new)),
+            }
+        })(
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            Some(provider),
+        );
 
         // Act
         let response = harness
@@ -297,12 +585,119 @@ mod tests {
     async fn resolve_music_metadata_returns_the_providers_document() -> Result<(), Box<dyn Error>> {
         // Arrange: the provider resolves the target into album metadata.
         let expected = album()?;
-        let mut provider = musicbrainz_provider();
+        let mut provider = (move || -> MockMusicMetadataProvider {
+            let mut provider = MockMusicMetadataProvider::new();
+            provider
+                .expect_provider()
+                .returning(|| ProviderId::MusicBrainz);
+            provider
+        })();
         provider.expect_lookup().times(1).return_once(move |_| {
             let copy = expected.clone();
             Box::pin(async move { Ok(Some(copy)) })
         });
-        let harness = use_case_with(no_resources(), Some(provider));
+        let harness = (move |resources: MockResourceRepository,
+                             provider: Option<MockMusicMetadataProvider>|
+              -> Harness {
+            let unit_of_work = TestUnitOfWork {
+                resources,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let committed = Arc::clone(&unit_of_work.committed);
+            let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+            let factory = Arc::new(TestFactory::new(unit_of_work));
+
+            Harness {
+                committed,
+                rolled_back,
+                use_case: ResolveMusicMetadata::new(factory, provider.map(Arc::new)),
+            }
+        })(
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            Some(provider),
+        );
 
         // Act
         let response = harness
@@ -322,12 +717,119 @@ mod tests {
     #[tokio::test]
     async fn resolve_music_metadata_reports_a_provider_failure() -> Result<(), Box<dyn Error>> {
         // Arrange: the configured provider fails.
-        let mut provider = musicbrainz_provider();
+        let mut provider = (move || -> MockMusicMetadataProvider {
+            let mut provider = MockMusicMetadataProvider::new();
+            provider
+                .expect_provider()
+                .returning(|| ProviderId::MusicBrainz);
+            provider
+        })();
         provider
             .expect_lookup()
             .times(1)
             .returning(|_| Box::pin(async { Err(ExternalServiceError::RateLimited) }));
-        let harness = use_case_with(no_resources(), Some(provider));
+        let harness = (move |resources: MockResourceRepository,
+                             provider: Option<MockMusicMetadataProvider>|
+              -> Harness {
+            let unit_of_work = TestUnitOfWork {
+                resources,
+                ..TestUnitOfWork::with_any_caller()
+            };
+            let committed = Arc::clone(&unit_of_work.committed);
+            let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+            let factory = Arc::new(TestFactory::new(unit_of_work));
+
+            Harness {
+                committed,
+                rolled_back,
+                use_case: ResolveMusicMetadata::new(factory, provider.map(Arc::new)),
+            }
+        })(
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            Some(provider),
+        );
 
         // Act
         let result = harness

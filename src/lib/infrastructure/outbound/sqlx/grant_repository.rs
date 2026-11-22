@@ -125,30 +125,13 @@ impl GrantRepository for SqlxGrantRepository<'_> {
 
 #[cfg(test)]
 mod tests {
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
+    use sqlx::sqlite::SqlitePoolOptions;
     use std::error::Error;
 
     use super::*;
-    use crate::domain::model::{
-        ChildKind, GrantEffect, Principal, ResourceKind, ResourceRole, Role,
-    };
+    use crate::domain::model::{ChildKind, GrantEffect, Principal, ResourceRole, Role};
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
-
-    /// Insert one resource and return its surrogate identifier.
-    async fn seed_resource(
-        transaction: &mut Transaction<'static, Sqlite>,
-        entity_id: NumericID,
-    ) -> Result<NumericID, sqlx::Error> {
-        let (resource_id,) = sqlx::query_as::<_, (NumericID,)>(
-            "INSERT INTO resource (kind, entity_id, owner_id, visibility)
-             VALUES (?1, ?2, NULL, 'PRIVATE')
-             RETURNING resource_id",
-        )
-        .bind(ResourceKind::Gallery.as_wire())
-        .bind(entity_id)
-        .fetch_one(&mut **transaction)
-        .await?;
-        Ok(resource_id)
-    }
 
     fn viewer(user_id: NumericID, resource_id: NumericID) -> Result<Grant, Box<dyn Error>> {
         Ok(Grant::try_new(
@@ -286,6 +269,77 @@ mod tests {
             found.first().map(Grant::principal),
             Some(Principal::Role(Role::Standard))
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn the_authorization_migration_backfills_every_entity() -> Result<(), Box<dyn Error>> {
+        // Arrange: a database from before the resource graph, holding one account,
+        // one public gallery and one private playlist.
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await?;
+        let migrator = sqlx::migrate!("./migrations");
+        migrator.run_to(20_261_105_090_000, &pool).await?;
+        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (5, 'hash-5')")
+            .execute(&pool)
+            .await?;
+        sqlx::query(
+            "INSERT INTO user (user_id, role, username, email, credential_id)
+             VALUES (5, 'STANDARD', 'user5', NULL, 5)",
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO gallery (gallery_id, name, created_at, last_modified_at, is_public, user_id)
+             VALUES (10, 'holiday', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, 5)",
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO music_playlist (music_playlist_id, name, user_id, is_public)
+             VALUES (12, 'mix', 5, 0)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        migrator.run(&pool).await?;
+
+        // Assert
+        let gallery: (Option<i64>, String) = sqlx::query_as(
+            "SELECT owner_id, visibility FROM resource WHERE kind = 'GALLERY' AND entity_id = 10",
+        )
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(gallery, (Some(5), "PUBLIC".to_owned()));
+
+        let playlist: (Option<i64>, String) = sqlx::query_as(
+            "SELECT owner_id, visibility FROM resource
+             WHERE kind = 'MUSIC_PLAYLIST' AND entity_id = 12",
+        )
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(playlist, (Some(5), "PRIVATE".to_owned()));
+
+        let user: (Option<i64>, String, i64) = sqlx::query_as(
+            "SELECT owner_id, visibility, auth_parent_id FROM resource
+             WHERE kind = 'USER' AND entity_id = 5",
+        )
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(user, (None, "PRIVATE".to_owned(), 1));
+
+        let (grants,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM grant")
+            .fetch_one(&pool)
+            .await?;
+        assert!(
+            grants >= 9,
+            "the seeded role grants must be stored, got {grants}"
+        );
+
+        pool.close().await;
         Ok(())
     }
 }

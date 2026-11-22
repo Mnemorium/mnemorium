@@ -1,19 +1,15 @@
 ---
 id: api-013
 language: Rust
-severity: error
+severity: hint
 message: >-
-  declare `name`, the parameter name as it appears in the URL, header or cookie
+  extract the parameter tuples of a utoipa handler annotation, for API-013
 rule:
-  all:
-    - kind: token_tree
-    - inside:
-        kind: token_tree
-        follows:
-          kind: identifier
-          regex: "^params$"
-    - inside:
-        kind: attribute_item
-        regex: '#\[utoipa::path'
-        stopBy: end
-    - regex: '^\(\s*[^"\s/]'
+  kind: token_tree
+  follows:
+    kind: identifier
+    regex: '^params$'
+  inside:
+    stopBy: end
+    kind: attribute_item
+    regex: '(?s)^#\[utoipa::path\s*\('

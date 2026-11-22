@@ -103,7 +103,7 @@ impl KeyExtractor for TrustedProxyKeyExtractor {
 /// A process-lifetime login rate limiter and its periodic cleanup.
 ///
 /// It is the stateful adapter the login route is wrapped with: the composition
-/// root constructs it once (`STY-RUST-067`) and hands it to the
+/// root constructs it once (`STY-RUST-064`) and hands it to the
 /// router builder, which applies it to the `login` route. The `governor`
 /// concrete types stay private to this module.
 pub(crate) struct LoginRateLimiter {

@@ -20,7 +20,7 @@ use crate::domain::port::{
 ///
 /// The asset is authorized inside the unit of work; only a readable asset's
 /// bytes are read from storage, so a denied caller never reaches the file and
-/// cannot observe its existence through timing or size (`API-044`). Every
+/// cannot observe its existence through timing or size (`API-041`). Every
 /// request is decided on the spot from its session caller.
 pub(crate) struct GetAssetContent<F, S> {
     /// Storage adapter reading the stored bytes.
@@ -447,100 +447,6 @@ mod tests {
         .with_owner(owner))
     }
 
-    /// Expect the library root to exist.
-    fn root_present(storage: &mut MockFileStorage) {
-        storage
-            .expect_directory_exist()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(true) }));
-    }
-
-    /// Expect the opened file's size, path and reader.
-    fn expect_open(
-        storage: &mut MockFileStorage,
-        path: &Path,
-        size_bytes: u64,
-        start: u64,
-        length: Option<u64>,
-        bytes: &'static [u8],
-    ) {
-        let size_path = path.to_path_buf();
-        let open_path = path.to_path_buf();
-        storage
-            .expect_file_size()
-            .withf(move |requested| requested == size_path.as_path())
-            .times(1)
-            .returning(move |_| Box::pin(async move { Ok(Some(size_bytes)) }));
-        storage
-            .expect_open_range()
-            .times(1)
-            .withf(move |requested, requested_start, requested_length| {
-                requested == open_path.as_path()
-                    && *requested_start == start
-                    && *requested_length == length
-            })
-            .returning(move |_, _, _| {
-                let content = bytes.to_vec();
-                Box::pin(async move {
-                    Ok(Some(OpenedFile {
-                        reader: Box::pin(io::Cursor::new(content)),
-                        size_bytes,
-                    }))
-                })
-            });
-    }
-
-    /// A resource repository whose every addressed resource is public.
-    ///
-    /// A public resource grants the viewer bundle: `Discover`, `ViewMetadata`,
-    /// `View` and `Stream`. It grants no `Download`.
-    fn public_resources() -> MockResourceRepository {
-        let mut resources = MockResourceRepository::new();
-        resources.expect_search().returning(|filter, _caller| {
-            let resource = Resource::from_stored(
-                1,
-                filter.kind.unwrap_or(ResourceKind::File),
-                filter.entity_id.unwrap_or_default(),
-                Some(99),
-                None,
-                Visibility::Public,
-            );
-            Box::pin(async move {
-                Ok(vec![ResourceAccess::new(
-                    resource,
-                    Vec::new(),
-                    Vec::new(),
-                    Vec::new(),
-                )])
-            })
-        });
-        resources
-    }
-
-    /// A resource repository whose every addressed resource is private to another user.
-    fn concealed_resources() -> MockResourceRepository {
-        let mut resources = MockResourceRepository::new();
-        resources.expect_search().returning(|filter, _caller| {
-            let resource = Resource::from_stored(
-                1,
-                filter.kind.unwrap_or(ResourceKind::File),
-                filter.entity_id.unwrap_or_default(),
-                Some(99),
-                None,
-                Visibility::Private,
-            );
-            Box::pin(async move {
-                Ok(vec![ResourceAccess::new(
-                    resource,
-                    Vec::new(),
-                    Vec::new(),
-                    Vec::new(),
-                )])
-            })
-        });
-        resources
-    }
-
     fn image(id: NumericID, file_id: NumericID, name: &str) -> Result<Image, Box<dyn Error>> {
         Ok(Image::try_new(
             id,
@@ -552,52 +458,6 @@ mod tests {
             file_id,
             None,
         )?)
-    }
-
-    fn fixture_with_resources(
-        users: MockUserRepository,
-        files: MockFileRepository,
-        resources: MockResourceRepository,
-    ) -> TestUnitOfWork {
-        let mut images = MockImageRepository::new();
-        images
-            .expect_search()
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let mut audios = MockAudioRepository::new();
-        audios
-            .expect_search()
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        TestUnitOfWork {
-            audios,
-            files,
-            images,
-            resources,
-            users,
-            ..TestUnitOfWork::default()
-        }
-    }
-
-    /// A fixture holding `users` and `files` over the default resource stub.
-    ///
-    /// The image and audio doubles answer with no row, so a file content test
-    /// falls back to the stored path's final segment unless it stages one.
-    fn fixture(users: MockUserRepository, files: MockFileRepository) -> TestUnitOfWork {
-        let mut images = MockImageRepository::new();
-        images
-            .expect_search()
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let mut audios = MockAudioRepository::new();
-        audios
-            .expect_search()
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        TestUnitOfWork {
-            audios,
-            files,
-            images,
-            resources: no_resources(),
-            users,
-            ..TestUnitOfWork::default()
-        }
     }
 
     #[tokio::test]
@@ -621,17 +481,86 @@ mod tests {
     async fn content_of_a_readable_file_carries_its_media_type() -> Result<(), Box<dyn Error>> {
         // Arrange: a library image readable through `ViewMetadata` on the catalogue.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 9)?;
         let mut files = MockFileRepository::new();
         let stored_file = file(100, 3, Some(AssetOwner::Library))?;
         files
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness = AssetFactoryHarness::new(fixture(users, files));
+        let harness = AssetFactoryHarness::new((move |users: MockUserRepository,
+                                                      files: MockFileRepository|
+              -> TestUnitOfWork {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            TestUnitOfWork {
+                audios,
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(users, files));
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
-        expect_open(
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
+        (move |storage: &mut MockFileStorage,
+               path: &Path,
+               size_bytes: u64,
+               start: u64,
+               length: Option<u64>,
+               bytes: &'static [u8]| {
+            let size_path = path.to_path_buf();
+            let open_path = path.to_path_buf();
+            storage
+                .expect_file_size()
+                .withf(move |requested| requested == size_path.as_path())
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(size_bytes)) }));
+            storage
+                .expect_open_range()
+                .times(1)
+                .withf(move |requested, requested_start, requested_length| {
+                    requested == open_path.as_path()
+                        && *requested_start == start
+                        && *requested_length == length
+                })
+                .returning(move |_, _, _| {
+                    let content = bytes.to_vec();
+                    Box::pin(async move {
+                        Ok(Some(OpenedFile {
+                            reader: Box::pin(io::Cursor::new(content)),
+                            size_bytes,
+                        }))
+                    })
+                });
+        })(
             &mut storage,
             &media_path("100.png"),
             4,
@@ -658,17 +587,86 @@ mod tests {
     async fn a_closed_range_serves_only_the_requested_span() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut files = MockFileRepository::new();
         let stored_file = file(100, 3, None)?;
         files
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness = AssetFactoryHarness::new(fixture(users, files));
+        let harness = AssetFactoryHarness::new((move |users: MockUserRepository,
+                                                      files: MockFileRepository|
+              -> TestUnitOfWork {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            TestUnitOfWork {
+                audios,
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(users, files));
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
-        expect_open(
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
+        (move |storage: &mut MockFileStorage,
+               path: &Path,
+               size_bytes: u64,
+               start: u64,
+               length: Option<u64>,
+               bytes: &'static [u8]| {
+            let size_path = path.to_path_buf();
+            let open_path = path.to_path_buf();
+            storage
+                .expect_file_size()
+                .withf(move |requested| requested == size_path.as_path())
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(size_bytes)) }));
+            storage
+                .expect_open_range()
+                .times(1)
+                .withf(move |requested, requested_start, requested_length| {
+                    requested == open_path.as_path()
+                        && *requested_start == start
+                        && *requested_length == length
+                })
+                .returning(move |_, _, _| {
+                    let content = bytes.to_vec();
+                    Box::pin(async move {
+                        Ok(Some(OpenedFile {
+                            reader: Box::pin(io::Cursor::new(content)),
+                            size_bytes,
+                        }))
+                    })
+                });
+        })(
             &mut storage,
             &media_path("100.png"),
             10,
@@ -730,18 +728,87 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         // Arrange: file 100 is readable as its owner; the content is ten bytes.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut files = MockFileRepository::new();
         let stored_file = file(100, 3, None)?;
         files
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness = AssetFactoryHarness::new(fixture(users, files));
+        let harness = AssetFactoryHarness::new((move |users: MockUserRepository,
+                                                      files: MockFileRepository|
+              -> TestUnitOfWork {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            TestUnitOfWork {
+                audios,
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(users, files));
         let (open_start, open_length) = opened;
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
-        expect_open(
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
+        (move |storage: &mut MockFileStorage,
+               path: &Path,
+               size_bytes: u64,
+               start: u64,
+               length: Option<u64>,
+               bytes: &'static [u8]| {
+            let size_path = path.to_path_buf();
+            let open_path = path.to_path_buf();
+            storage
+                .expect_file_size()
+                .withf(move |requested| requested == size_path.as_path())
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(size_bytes)) }));
+            storage
+                .expect_open_range()
+                .times(1)
+                .withf(move |requested, requested_start, requested_length| {
+                    requested == open_path.as_path()
+                        && *requested_start == start
+                        && *requested_length == length
+                })
+                .returning(move |_, _, _| {
+                    let content = bytes.to_vec();
+                    Box::pin(async move {
+                        Ok(Some(OpenedFile {
+                            reader: Box::pin(io::Cursor::new(content)),
+                            size_bytes,
+                        }))
+                    })
+                });
+        })(
             &mut storage,
             &media_path("100.png"),
             10,
@@ -770,16 +837,55 @@ mod tests {
     async fn a_zero_sized_content_has_no_satisfiable_range() -> Result<(), Box<dyn Error>> {
         // Arrange: the registered file is empty.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut files = MockFileRepository::new();
         let stored_file = file(100, 3, None)?;
         files
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness = AssetFactoryHarness::new(fixture(users, files));
+        let harness = AssetFactoryHarness::new((move |users: MockUserRepository,
+                                                      files: MockFileRepository|
+              -> TestUnitOfWork {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            TestUnitOfWork {
+                audios,
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(users, files));
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
         storage
             .expect_file_size()
             .times(1)
@@ -811,16 +917,55 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut files = MockFileRepository::new();
         let stored_file = file(100, 3, None)?;
         files
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness = AssetFactoryHarness::new(fixture(users, files));
+        let harness = AssetFactoryHarness::new((move |users: MockUserRepository,
+                                                      files: MockFileRepository|
+              -> TestUnitOfWork {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            TestUnitOfWork {
+                audios,
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(users, files));
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
         storage
             .expect_file_size()
             .times(1)
@@ -844,16 +989,55 @@ mod tests {
     async fn a_head_request_answers_without_a_reader() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut files = MockFileRepository::new();
         let stored_file = file(100, 3, None)?;
         files
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness = AssetFactoryHarness::new(fixture(users, files));
+        let harness = AssetFactoryHarness::new((move |users: MockUserRepository,
+                                                      files: MockFileRepository|
+              -> TestUnitOfWork {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            TestUnitOfWork {
+                audios,
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(users, files));
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
         storage
             .expect_file_size()
             .times(1)
@@ -878,7 +1062,23 @@ mod tests {
         // Arrange: the file carries an integrity digest.
         let digest = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut files = MockFileRepository::new();
         let stored_file = File::try_new(
             100,
@@ -896,9 +1096,32 @@ mod tests {
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness = AssetFactoryHarness::new(fixture(users, files));
+        let harness = AssetFactoryHarness::new((move |users: MockUserRepository,
+                                                      files: MockFileRepository|
+              -> TestUnitOfWork {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            TestUnitOfWork {
+                audios,
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(users, files));
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
         storage
             .expect_file_size()
             .times(1)
@@ -927,17 +1150,86 @@ mod tests {
     async fn a_stale_if_range_serves_the_whole_content() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut files = MockFileRepository::new();
         let stored_file = file(100, 3, None)?;
         files
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness = AssetFactoryHarness::new(fixture(users, files));
+        let harness = AssetFactoryHarness::new((move |users: MockUserRepository,
+                                                      files: MockFileRepository|
+              -> TestUnitOfWork {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            TestUnitOfWork {
+                audios,
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(users, files));
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
-        expect_open(
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
+        (move |storage: &mut MockFileStorage,
+               path: &Path,
+               size_bytes: u64,
+               start: u64,
+               length: Option<u64>,
+               bytes: &'static [u8]| {
+            let size_path = path.to_path_buf();
+            let open_path = path.to_path_buf();
+            storage
+                .expect_file_size()
+                .withf(move |requested| requested == size_path.as_path())
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(size_bytes)) }));
+            storage
+                .expect_open_range()
+                .times(1)
+                .withf(move |requested, requested_start, requested_length| {
+                    requested == open_path.as_path()
+                        && *requested_start == start
+                        && *requested_length == length
+                })
+                .returning(move |_, _, _| {
+                    let content = bytes.to_vec();
+                    Box::pin(async move {
+                        Ok(Some(OpenedFile {
+                            reader: Box::pin(io::Cursor::new(content)),
+                            size_bytes,
+                        }))
+                    })
+                });
+        })(
             &mut storage,
             &media_path("100.png"),
             10,
@@ -990,16 +1282,55 @@ mod tests {
     async fn a_missing_file_under_a_present_root_is_a_server_error() -> Result<(), Box<dyn Error>> {
         // Arrange: the row exists, the bytes do not, and the root does.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut files = MockFileRepository::new();
         let stored_file = file(100, 3, None)?;
         files
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness = AssetFactoryHarness::new(fixture(users, files));
+        let harness = AssetFactoryHarness::new((move |users: MockUserRepository,
+                                                      files: MockFileRepository|
+              -> TestUnitOfWork {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            TestUnitOfWork {
+                audios,
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(users, files));
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
         storage
             .expect_file_size()
             .times(1)
@@ -1043,15 +1374,54 @@ mod tests {
     async fn a_repository_failure_is_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut files = MockFileRepository::new();
         files
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-        let harness = AssetFactoryHarness::new(fixture(users, files));
+        let harness = AssetFactoryHarness::new((move |users: MockUserRepository,
+                                                      files: MockFileRepository|
+              -> TestUnitOfWork {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            TestUnitOfWork {
+                audios,
+                files,
+                images,
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(users, files));
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
         let use_case: UseCase =
             GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
 
@@ -1071,17 +1441,82 @@ mod tests {
         // Arrange: a public file grants the viewer bundle, which includes
         // `View` and excludes `Download`, so the file route refuses.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut files = MockFileRepository::new();
         let stored_file = file(100, 3, None)?;
         files
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness =
-            AssetFactoryHarness::new(fixture_with_resources(users, files, public_resources()));
+        let harness = AssetFactoryHarness::new((move |users: MockUserRepository,
+                                                      files: MockFileRepository,
+                                                      resources: MockResourceRepository|
+              -> TestUnitOfWork {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            TestUnitOfWork {
+                audios,
+                files,
+                images,
+                resources,
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(
+            users,
+            files,
+            (move || -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(|filter, _caller| {
+                    let resource = Resource::from_stored(
+                        1,
+                        filter.kind.unwrap_or(ResourceKind::File),
+                        filter.entity_id.unwrap_or_default(),
+                        Some(99),
+                        None,
+                        Visibility::Public,
+                    );
+                    Box::pin(async move {
+                        Ok(vec![ResourceAccess::new(
+                            resource,
+                            Vec::new(),
+                            Vec::new(),
+                            Vec::new(),
+                        )])
+                    })
+                });
+                resources
+            })(),
+        ));
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
         storage.expect_file_size().times(0);
         let use_case: UseCase =
             GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
@@ -1104,7 +1539,23 @@ mod tests {
     async fn a_public_image_reads_its_content_through_view() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut images = MockImageRepository::new();
         let stored_image = image(19, 100, "cover.png")?;
         images
@@ -1120,13 +1571,69 @@ mod tests {
         let harness = AssetFactoryHarness::new(TestUnitOfWork {
             files,
             images,
-            resources: public_resources(),
+            resources: (move || -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(|filter, _caller| {
+                    let resource = Resource::from_stored(
+                        1,
+                        filter.kind.unwrap_or(ResourceKind::File),
+                        filter.entity_id.unwrap_or_default(),
+                        Some(99),
+                        None,
+                        Visibility::Public,
+                    );
+                    Box::pin(async move {
+                        Ok(vec![ResourceAccess::new(
+                            resource,
+                            Vec::new(),
+                            Vec::new(),
+                            Vec::new(),
+                        )])
+                    })
+                });
+                resources
+            })(),
             users,
             ..TestUnitOfWork::default()
         });
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
-        expect_open(&mut storage, &media_path("100.png"), 3, 0, None, &[1, 2, 3]);
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
+        (move |storage: &mut MockFileStorage,
+               path: &Path,
+               size_bytes: u64,
+               start: u64,
+               length: Option<u64>,
+               bytes: &'static [u8]| {
+            let size_path = path.to_path_buf();
+            let open_path = path.to_path_buf();
+            storage
+                .expect_file_size()
+                .withf(move |requested| requested == size_path.as_path())
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(size_bytes)) }));
+            storage
+                .expect_open_range()
+                .times(1)
+                .withf(move |requested, requested_start, requested_length| {
+                    requested == open_path.as_path()
+                        && *requested_start == start
+                        && *requested_length == length
+                })
+                .returning(move |_, _, _| {
+                    let content = bytes.to_vec();
+                    Box::pin(async move {
+                        Ok(Some(OpenedFile {
+                            reader: Box::pin(io::Cursor::new(content)),
+                            size_bytes,
+                        }))
+                    })
+                });
+        })(&mut storage, &media_path("100.png"), 3, 0, None, &[1, 2, 3]);
         let use_case: UseCase =
             GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
 
@@ -1144,7 +1651,23 @@ mod tests {
     async fn a_public_audio_reads_its_content_through_stream() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut audios = MockAudioRepository::new();
         let stored_audio = Audio::try_new(
             7,
@@ -1169,13 +1692,69 @@ mod tests {
         let harness = AssetFactoryHarness::new(TestUnitOfWork {
             audios,
             files,
-            resources: public_resources(),
+            resources: (move || -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(|filter, _caller| {
+                    let resource = Resource::from_stored(
+                        1,
+                        filter.kind.unwrap_or(ResourceKind::File),
+                        filter.entity_id.unwrap_or_default(),
+                        Some(99),
+                        None,
+                        Visibility::Public,
+                    );
+                    Box::pin(async move {
+                        Ok(vec![ResourceAccess::new(
+                            resource,
+                            Vec::new(),
+                            Vec::new(),
+                            Vec::new(),
+                        )])
+                    })
+                });
+                resources
+            })(),
             users,
             ..TestUnitOfWork::default()
         });
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
-        expect_open(&mut storage, &media_path("100.png"), 3, 0, None, &[1, 2, 3]);
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
+        (move |storage: &mut MockFileStorage,
+               path: &Path,
+               size_bytes: u64,
+               start: u64,
+               length: Option<u64>,
+               bytes: &'static [u8]| {
+            let size_path = path.to_path_buf();
+            let open_path = path.to_path_buf();
+            storage
+                .expect_file_size()
+                .withf(move |requested| requested == size_path.as_path())
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(size_bytes)) }));
+            storage
+                .expect_open_range()
+                .times(1)
+                .withf(move |requested, requested_start, requested_length| {
+                    requested == open_path.as_path()
+                        && *requested_start == start
+                        && *requested_length == length
+                })
+                .returning(move |_, _, _| {
+                    let content = bytes.to_vec();
+                    Box::pin(async move {
+                        Ok(Some(OpenedFile {
+                            reader: Box::pin(io::Cursor::new(content)),
+                            size_bytes,
+                        }))
+                    })
+                });
+        })(&mut storage, &media_path("100.png"), 3, 0, None, &[1, 2, 3]);
         let use_case: UseCase =
             GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
 
@@ -1194,17 +1773,82 @@ mod tests {
         // Arrange: the file is public, so the decision refuses `Download`, and
         // the storage doubles assert that neither size nor range is read.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut files = MockFileRepository::new();
         let stored_file = file(100, 3, None)?;
         files
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness =
-            AssetFactoryHarness::new(fixture_with_resources(users, files, public_resources()));
+        let harness = AssetFactoryHarness::new((move |users: MockUserRepository,
+                                                      files: MockFileRepository,
+                                                      resources: MockResourceRepository|
+              -> TestUnitOfWork {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            TestUnitOfWork {
+                audios,
+                files,
+                images,
+                resources,
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(
+            users,
+            files,
+            (move || -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(|filter, _caller| {
+                    let resource = Resource::from_stored(
+                        1,
+                        filter.kind.unwrap_or(ResourceKind::File),
+                        filter.entity_id.unwrap_or_default(),
+                        Some(99),
+                        None,
+                        Visibility::Public,
+                    );
+                    Box::pin(async move {
+                        Ok(vec![ResourceAccess::new(
+                            resource,
+                            Vec::new(),
+                            Vec::new(),
+                            Vec::new(),
+                        )])
+                    })
+                });
+                resources
+            })(),
+        ));
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
         storage.expect_file_size().times(0);
         storage.expect_open_range().times(0);
         let use_case: UseCase =
@@ -1228,17 +1872,82 @@ mod tests {
     async fn an_undiscoverable_file_is_not_found() -> Result<(), Box<dyn Error>> {
         // Arrange: a private resource owned by another user conceals the file.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut files = MockFileRepository::new();
         let stored_file = file(100, 3, None)?;
         files
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let harness =
-            AssetFactoryHarness::new(fixture_with_resources(users, files, concealed_resources()));
+        let harness = AssetFactoryHarness::new((move |users: MockUserRepository,
+                                                      files: MockFileRepository,
+                                                      resources: MockResourceRepository|
+              -> TestUnitOfWork {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            TestUnitOfWork {
+                audios,
+                files,
+                images,
+                resources,
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(
+            users,
+            files,
+            (move || -> MockResourceRepository {
+                let mut resources = MockResourceRepository::new();
+                resources.expect_search().returning(|filter, _caller| {
+                    let resource = Resource::from_stored(
+                        1,
+                        filter.kind.unwrap_or(ResourceKind::File),
+                        filter.entity_id.unwrap_or_default(),
+                        Some(99),
+                        None,
+                        Visibility::Private,
+                    );
+                    Box::pin(async move {
+                        Ok(vec![ResourceAccess::new(
+                            resource,
+                            Vec::new(),
+                            Vec::new(),
+                            Vec::new(),
+                        )])
+                    })
+                });
+                resources
+            })(),
+        ));
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
         storage.expect_file_size().times(0);
         let use_case: UseCase =
             GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
@@ -1257,7 +1966,23 @@ mod tests {
     async fn file_content_names_the_typed_media_row() -> Result<(), Box<dyn Error>> {
         // Arrange: the file backs an image whose name differs from the path.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 3)?;
+        (move |users: &mut crate::domain::port::MockUserRepository,
+               caller_id: crate::domain::NumericID|
+              -> Result<(), Box<dyn std::error::Error>> {
+            let caller = crate::domain::model::User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                crate::domain::model::Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 3)?;
         let mut files = MockFileRepository::new();
         let stored_file = file(100, 3, None)?;
         files
@@ -1273,13 +1998,47 @@ mod tests {
         let harness = AssetFactoryHarness::new(TestUnitOfWork {
             files,
             images,
-            resources: no_resources(),
             users,
             ..TestUnitOfWork::default()
         });
         let mut storage = MockFileStorage::new();
-        root_present(&mut storage);
-        expect_open(&mut storage, &media_path("100.png"), 3, 0, None, &[1, 2, 3]);
+        (move |storage: &mut MockFileStorage| {
+            storage
+                .expect_directory_exist()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut storage);
+        (move |storage: &mut MockFileStorage,
+               path: &Path,
+               size_bytes: u64,
+               start: u64,
+               length: Option<u64>,
+               bytes: &'static [u8]| {
+            let size_path = path.to_path_buf();
+            let open_path = path.to_path_buf();
+            storage
+                .expect_file_size()
+                .withf(move |requested| requested == size_path.as_path())
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(size_bytes)) }));
+            storage
+                .expect_open_range()
+                .times(1)
+                .withf(move |requested, requested_start, requested_length| {
+                    requested == open_path.as_path()
+                        && *requested_start == start
+                        && *requested_length == length
+                })
+                .returning(move |_, _, _| {
+                    let content = bytes.to_vec();
+                    Box::pin(async move {
+                        Ok(Some(OpenedFile {
+                            reader: Box::pin(io::Cursor::new(content)),
+                            size_bytes,
+                        }))
+                    })
+                });
+        })(&mut storage, &media_path("100.png"), 3, 0, None, &[1, 2, 3]);
         let use_case: UseCase =
             GetAssetContent::new(Arc::clone(&harness.factory), Arc::new(storage));
 

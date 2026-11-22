@@ -173,6 +173,7 @@ fn emit_denial(caller: &User, action: Action, address: ResourceRef) {
 
 #[cfg(test)]
 mod tests {
+    use rstest::fixture;
     use std::error::Error;
 
     use tracing_test::traced_test;
@@ -182,6 +183,7 @@ mod tests {
     use crate::domain::port::MockResourceRepository;
 
     /// The caller every case authorizes as.
+    #[fixture]
     fn caller() -> Result<User, Box<dyn Error>> {
         Ok(User::try_new(
             1,
@@ -230,38 +232,34 @@ mod tests {
         // Assert: the caller records the rejection exactly once and the domain
         // emits nothing of its own.
         assert!(matches!(decision, Err(AuthorizationError::Denied(_))));
-        logs_assert(assert_one_authz_failure);
-        Ok(())
-    }
-
-    /// Assert the captured output is the caller's single `authz_failed` event
-    /// carrying its actor, action and target fields.
-    fn assert_one_authz_failure(lines: &[&str]) -> Result<(), String> {
-        let ours: Vec<&str> = lines
-            .iter()
-            .copied()
-            .filter(|line| line.contains("event=\"authz_failed\""))
-            .collect();
-        if ours.len() != 1 {
-            return Err(format!(
-                "the caller must record exactly one authz_failed (found {})",
-                ours.len()
-            ));
-        }
-        let Some(line) = ours.first() else {
-            return Err("the caller recorded no authz_failed event".to_owned());
-        };
-        for field in [
-            "security:",
-            "WARN",
-            "actor=1",
-            "action=\"view\"",
-            "target=GALLERY:7",
-        ] {
-            if !line.contains(field) {
-                return Err(format!("the denial event must carry {field}"));
+        logs_assert(|lines: &[&str]| {
+            let ours: Vec<&str> = lines
+                .iter()
+                .copied()
+                .filter(|line| line.contains("event=\"authz_failed\""))
+                .collect();
+            if ours.len() != 1 {
+                return Err(format!(
+                    "the caller must record exactly one authz_failed (found {})",
+                    ours.len()
+                ));
             }
-        }
+            let Some(line) = ours.first() else {
+                return Err("the caller recorded no authz_failed event".to_owned());
+            };
+            for field in [
+                "security:",
+                "WARN",
+                "actor=1",
+                "action=\"view\"",
+                "target=GALLERY:7",
+            ] {
+                if !line.contains(field) {
+                    return Err(format!("the denial event must carry {field}"));
+                }
+            }
+            Ok(())
+        });
         Ok(())
     }
 }

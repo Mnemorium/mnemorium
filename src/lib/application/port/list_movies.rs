@@ -204,9 +204,6 @@ pub(crate) enum ListMoviesError {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait ListMoviesUseCase: Send + Sync {
     /// List the films visible to the authenticated caller.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn ListMoviesUseCase>`.
     fn execute<'future>(
         &'future self,
         command: ListMoviesCommand,

@@ -112,9 +112,6 @@ pub(crate) enum ListFilesError {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait ListFilesUseCase: Send + Sync {
     /// List the stored files discoverable by the authenticated caller.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn ListFilesUseCase>`.
     fn execute<'future>(
         &'future self,
         command: ListFilesCommand,

@@ -29,7 +29,9 @@ nav:
   - Development:
       - Overview: development/Overview.md
       - Technical Design: development/TechnicalDesign.md
+      - Entity-relationship diagram: development/EntityRelationshipDiagram.md
       - Testing: development/Test.md
+      - Dependency manifest: development/DependencyManifest.md
       - Glossary: development/Glossary.md
       - Use Cases: development/UseCases.md
       - Artifacts:

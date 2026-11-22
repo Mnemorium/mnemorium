@@ -36,8 +36,8 @@ pub(crate) struct PostGalleryItemRequest {
 ///
 /// The missing and the unowned medium are one client-visible outcome: a medium
 /// the caller does not own is indistinguishable from one that does not exist
-/// (`API-044`). Both fail the `media_id` body value and answer `422` with one
-/// stable, server-authored message (`API-040`, `API-041`); `404` stays for the
+/// (`API-041`). Both fail the `media_id` body value and answer `422` with one
+/// stable, server-authored message (`API-037`, `API-038`); `404` stays for the
 /// URI-addressed gallery and `403` for the gallery-permission outcome.
 impl From<AddGalleryItemError> for ApiError {
     fn from(err: AddGalleryItemError) -> Self {

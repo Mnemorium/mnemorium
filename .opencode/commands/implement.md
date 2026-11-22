@@ -37,7 +37,7 @@ Target: $ARGUMENTS
 1. **Validate the plan.** Confirm `$ARGUMENTS` names a readable file. When it is
    empty, a directory, or absent, stop and report; do not touch git.
 2. **Resolve delivery metadata.** From the plan's delivery section read the
-   Conventional-Commit type, the `GOV-001` scope, a kebab-case slug, and the
+   Conventional-Commit type, the scope, a kebab-case slug, and the
    pull-request title; the branch is `<type>(<scope>)/<slug>`. When any is
    absent, use the `question` tool once, asking only for the missing fields, and
    fold the answers into an in-memory plan. Never rewrite the source file. The
@@ -72,7 +72,7 @@ Target: $ARGUMENTS
      or before any edit, report and stop; create no branch, push, or pull
      request.
    - **Diff** — stage and commit once with a Conventional Commit whose scope is
-     the dominant `GOV-001` scope, then `git push -u origin <branch>`. Create the
+     the dominant area, then `git push -u origin <branch>`. Create the
      pull request with `create_pull_request` (`owner`, `repo`, base `main`, head
      the branch, title `<type>(<scope>): <summary>`), with the body from
      `.github/pull_request_template.md`, opened by

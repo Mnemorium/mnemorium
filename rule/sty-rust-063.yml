@@ -1,16 +1,26 @@
 ---
 id: sty-rust-063
 language: Rust
-severity: error
+severity: hint
 message: >-
-  the use-case factory only supplies the unit-of-work factory; the use case
-  opens, commits and rolls back its own unit of work — the factory must not
-  call begin/commit/rollback
+  extract the fields of a long-lived adapter struct, for STY-RUST-063
 files:
+  - src/lib/infrastructure/inbound/rest/app_state.rs
+  - src/lib/infrastructure/inbound/rest/middleware/*.rs
   - src/lib/infrastructure/use_case_factory/*.rs
 rule:
-  any:
-    - pattern: $UOW.begin()
-    - pattern: $UOW.commit()
-    - pattern: $UOW.rollback()
-    - pattern: $UOW.begin_write()
+  all:
+    - kind: field_declaration
+    - pattern: '$FIELD: $TYPE'
+    - inside:
+        kind: field_declaration_list
+        inside:
+          kind: struct_item
+          stopBy: end
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: 'cfg\(test\)'

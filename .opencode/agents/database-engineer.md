@@ -53,14 +53,14 @@ Datastore map (navigation):
   migrations at boot (`PERS-003`, `PERS-004`); `init_db` receives the database
   file and the pool size as arguments.
 - `src/lib/infrastructure/outbound/sqlx/unit_of_work.rs` owns the transaction and
-  the per-context repository accessors (`STY-RUST-032`–`047`).
+  the per-context repository accessors (`STY-RUST-030`–`047`).
 - `src/lib/infrastructure/outbound/sqlx/model/` holds the sqlx row models, and
-  `*_repository.rs` implements the repository ports (`STY-RUST-023`–`029`,
-  `STY-RUST-044`–`056`).
+  `*_repository.rs` implements the repository ports (`STY-RUST-021`–`029`,
+  `STY-RUST-042`–`056`).
 - `src/lib/infrastructure/outbound/sqlx/error_mapping.rs` maps `sqlx::Error` into
-  the port error (`STY-RUST-050`).
+  the port error (`STY-RUST-048`).
 - `src/lib/app.rs` is the composition root and the only caller of `init_db`
-  (`STY-RUST-067`). That is where the datastore settings are read: it passes the
+  (`STY-RUST-064`). That is where the datastore settings are read: it passes the
   fixed `DATABASE_PATH` (`mnemorium.db`, from the `load_state` port — not
   configurable) and the `persistence.sqlite3.max_connections` value from the
   configuration resolved just before (defaults → `config.yaml` → environment), a
@@ -95,8 +95,9 @@ Datastore map (navigation):
 
 Read the governing material at run time; never work from memory:
 
-- `docs/development/TechnicalDesign.md` § 4 (Persistence) — the `PERS-*` rules and
-  the entity-relationship diagram.
+- `docs/development/TechnicalDesign.md` § 4 (Persistence) — the `PERS-*` rules.
+- `docs/development/EntityRelationshipDiagram.md` — the entity-relationship diagram and its legend you keep in step
+  with `migrations/`.
 - `docs/development/TechnicalDesign.md` § 1 (Code Style Guidelines) — the
   `STY-SQL-*` rules you own, and the Rust rules the datastore layer must satisfy.
 - `docs/development/UseCases.md` — what the datastore must support.

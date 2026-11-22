@@ -1,13 +1,9 @@
 ---
 id: api-006
 language: Rust
-severity: error
-message: declare `path`, the route of the endpoint
-files:
-  - src/lib/infrastructure/inbound/rest/handler/**
+severity: hint
+message: >-
+  extract an endpoint's `#[utoipa::path]` attribute for API-006
 rule:
-  all:
-    - kind: attribute_item
-    - regex: '#\[utoipa::path\b'
-    - not:
-        regex: '\bpath\s*='
+  kind: attribute_item
+  regex: '#\[utoipa::path'

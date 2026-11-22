@@ -35,7 +35,7 @@ pub(crate) struct ListFilesQuery {
 ///
 /// The `self` link addresses the collection view the representation is about,
 /// `next` and `prev` navigate that same view when another page exists, and the
-/// templated `search` link exposes the collection filters (`API-036`). The
+/// templated `search` link exposes the collection filters (`API-033`). The
 /// active filter and the page size are carried into every link so a filtered or
 /// paginated listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -70,15 +70,46 @@ impl FileListLinks {
         returned: usize,
         total: usize,
     ) -> Self {
+        let page_href = |page_offset: usize| {
+            let mut href = String::from("/api/v1/asset/file?");
+            if let Some(path) = query.path.as_deref() {
+                href.push_str("path=");
+                // Percent-encode the filter value with the unreserved character
+                // set, so a path cannot break out of the query string.
+                for byte in path.bytes() {
+                    match byte {
+                        b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                            href.push(char::from(byte));
+                        }
+                        _ => {
+                            let high = char::from_digit(u32::from(byte >> 4u8), 16)
+                                .unwrap_or('0')
+                                .to_ascii_uppercase();
+                            let low = char::from_digit(u32::from(byte & 0x0fu8), 16)
+                                .unwrap_or('0')
+                                .to_ascii_uppercase();
+                            href.push('%');
+                            href.push(high);
+                            href.push(low);
+                        }
+                    }
+                }
+                href.push('&');
+            }
+            href.push_str("limit=");
+            href.push_str(&limit.to_string());
+            href.push_str("&offset=");
+            href.push_str(&page_offset.to_string());
+            href
+        };
         let next = (offset.saturating_add(returned) < total)
-            .then(|| Link::new(&page_href(query, limit, offset.saturating_add(limit))));
-        let prev =
-            (offset > 0).then(|| Link::new(&page_href(query, limit, offset.saturating_sub(limit))));
+            .then(|| Link::new(&page_href(offset.saturating_add(limit))));
+        let prev = (offset > 0).then(|| Link::new(&page_href(offset.saturating_sub(limit))));
         Self {
             next,
             prev,
             search: Link::templated("/api/v1/asset/file{?path,limit,offset}"),
-            self_link: Link::new(&page_href(query, limit, offset)),
+            self_link: Link::new(&page_href(offset)),
         }
     }
 }
@@ -102,42 +133,6 @@ impl From<ListFilesError> for ApiError {
             ListFilesError::Unknown(_) => Self::InternalServerError,
         }
     }
-}
-
-/// Build the href of the stored-file collection view at `limit`/`offset`,
-/// preserving the active filter so a filtered page keeps its navigation
-/// (`API-037`).
-fn page_href(query: &ListFilesQuery, limit: usize, offset: usize) -> String {
-    let mut href = String::from("/api/v1/asset/file?");
-    if let Some(path) = query.path.as_deref() {
-        href.push_str("path=");
-        // Percent-encode the filter value with the unreserved character set, so
-        // a path cannot break out of the query string.
-        for byte in path.bytes() {
-            match byte {
-                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                    href.push(char::from(byte));
-                }
-                _ => {
-                    let high = char::from_digit(u32::from(byte >> 4u8), 16)
-                        .unwrap_or('0')
-                        .to_ascii_uppercase();
-                    let low = char::from_digit(u32::from(byte & 0x0fu8), 16)
-                        .unwrap_or('0')
-                        .to_ascii_uppercase();
-                    href.push('%');
-                    href.push(high);
-                    href.push(low);
-                }
-            }
-        }
-        href.push('&');
-    }
-    href.push_str("limit=");
-    href.push_str(&limit.to_string());
-    href.push_str("&offset=");
-    href.push_str(&offset.to_string());
-    href
 }
 
 /// List the stored files the caller may discover.

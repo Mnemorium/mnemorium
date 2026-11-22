@@ -341,116 +341,54 @@ mod tests {
         .map_err(|_| RepositoryError::OperationFailed)
     }
 
-    fn harness_with(
-        users: MockUserRepository,
-        galleries: MockGalleryRepository,
-        images: MockImageRepository,
-        videos: MockVideoRepository,
-        files: MockFileRepository,
-    ) -> GalleryFactoryHarness {
-        let unit_of_work = TestUnitOfWork {
-            resources: no_resources(),
-            files,
-            galleries,
-            images,
-            users,
-            videos,
-            ..TestUnitOfWork::default()
-        };
-        GalleryFactoryHarness::new(unit_of_work)
-    }
-
-    fn expect_caller(
-        users: &mut MockUserRepository,
-        caller_id: i64,
-        role: Role,
-    ) -> Result<(), Box<dyn Error>> {
-        let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
-        users
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.id == Some(caller_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
-        Ok(())
-    }
-
-    fn expect_gallery(galleries: &mut MockGalleryRepository, gallery: Gallery) {
-        let gallery_id = gallery.gallery_id();
-        galleries
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.gallery_id == Some(gallery_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
-    }
-
-    fn expect_unassigned(galleries: &mut MockGalleryRepository) {
-        galleries
-            .expect_search_items()
-            .times(1)
-            .withf(|filter| filter.media.is_some())
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-    }
-
-    /// Expect the per-gallery item read to return `items`, whose largest item
-    /// index seeds the next index.
-    fn expect_item_index(galleries: &mut MockGalleryRepository, items: Vec<GalleryItemDetail>) {
-        galleries
-            .expect_search_items()
-            .times(1)
-            .withf(|filter| filter.media.is_none())
-            .returning(move |_| {
-                let details = items.clone();
-                Box::pin(async move { Ok(details) })
-            });
-    }
-
-    fn expect_saved_gallery(galleries: &mut MockGalleryRepository) {
-        galleries
-            .expect_save()
-            .times(1)
-            .withf(|saved| saved.last_modified_at() > NaiveDateTime::default())
-            .returning(|saved| Box::pin(async move { Ok(saved) }));
-    }
-
-    fn expect_image(images: &mut MockImageRepository, file_id: i64, stored: Image) {
-        images
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.file_id == Some(file_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
-    }
-
-    fn expect_video(videos: &mut MockVideoRepository, file_id: i64, stored: Video) {
-        videos
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.file_id == Some(file_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
-    }
-
-    fn expect_file(files: &mut MockFileRepository, file_id: i64, stored: File) {
-        files
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.id == Some(file_id))
-            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
-    }
-
     // proves: SCN-GALLERY-007-A
     #[tokio::test]
     async fn add_gallery_item_owner_adds_own_image() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        expect_unassigned(&mut galleries);
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository| {
+            galleries
+                .expect_search_items()
+                .times(1)
+                .withf(|filter| filter.media.is_some())
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut galleries);
         let indexed = GalleryItemDetail::new(
             persisted_item(99, 3, GalleryItemMedia::Image(7), 2)?,
             100,
             "item".to_owned(),
         );
-        expect_item_index(&mut galleries, vec![indexed]);
+        (move |galleries: &mut MockGalleryRepository, items: Vec<GalleryItemDetail>| {
+            galleries
+                .expect_search_items()
+                .times(1)
+                .withf(|filter| filter.media.is_none())
+                .returning(move |_| {
+                    let details = items.clone();
+                    Box::pin(async move { Ok(details) })
+                });
+        })(&mut galleries, vec![indexed]);
         galleries
             .expect_save_item()
             .times(1)
@@ -458,12 +396,45 @@ mod tests {
             .return_once(|_| {
                 Box::pin(async { persisted_item(42, 3, GalleryItemMedia::Image(7), 3) })
             });
-        expect_saved_gallery(&mut galleries);
+        (move |galleries: &mut MockGalleryRepository| {
+            galleries
+                .expect_save()
+                .times(1)
+                .withf(|saved| saved.last_modified_at() > NaiveDateTime::default())
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut galleries);
         let mut images = MockImageRepository::new();
-        expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
+        (move |images: &mut MockImageRepository, file_id: i64, stored: Image| {
+            images
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut images, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 4, "files/sunset.png")?);
-        let harness = harness_with(users, galleries, images, MockVideoRepository::new(), files);
+        (move |files: &mut MockFileRepository, file_id: i64, stored: File| {
+            files
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut files, 100, file(100, 4, "files/sunset.png")?);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository,
+                             images: MockImageRepository,
+                             videos: MockVideoRepository,
+                             files: MockFileRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                galleries,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries, images, MockVideoRepository::new(), files);
         let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
@@ -499,15 +470,54 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(2, Some(3), "Public", true));
-        expect_unassigned(&mut galleries);
-        expect_item_index(&mut galleries, Vec::new());
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(2, Some(3), "Public", true));
+        (move |galleries: &mut MockGalleryRepository| {
+            galleries
+                .expect_search_items()
+                .times(1)
+                .withf(|filter| filter.media.is_some())
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut galleries);
+        (move |galleries: &mut MockGalleryRepository, items: Vec<GalleryItemDetail>| {
+            galleries
+                .expect_search_items()
+                .times(1)
+                .withf(|filter| filter.media.is_none())
+                .returning(move |_| {
+                    let details = items.clone();
+                    Box::pin(async move { Ok(details) })
+                });
+        })(&mut galleries, Vec::new());
         galleries.expect_save_item().times(1).return_once(|_| {
             Box::pin(async { persisted_item(1, 2, GalleryItemMedia::Video(8), 0) })
         });
-        expect_saved_gallery(&mut galleries);
+        (move |galleries: &mut MockGalleryRepository| {
+            galleries
+                .expect_save()
+                .times(1)
+                .withf(|saved| saved.last_modified_at() > NaiveDateTime::default())
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut galleries);
         let stored_video = Video::try_new(
             8,
             1000.0,
@@ -521,10 +531,37 @@ mod tests {
             None,
         )?;
         let mut videos = MockVideoRepository::new();
-        expect_video(&mut videos, 200, stored_video);
+        (move |videos: &mut MockVideoRepository, file_id: i64, stored: Video| {
+            videos
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut videos, 200, stored_video);
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 200, file(200, 4, "files/clip.mp4")?);
-        let harness = harness_with(users, galleries, MockImageRepository::new(), videos, files);
+        (move |files: &mut MockFileRepository, file_id: i64, stored: File| {
+            files
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut files, 200, file(200, 4, "files/clip.mp4")?);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository,
+                             images: MockImageRepository,
+                             videos: MockVideoRepository,
+                             files: MockFileRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                galleries,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries, MockImageRepository::new(), videos, files);
         let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
@@ -548,9 +585,27 @@ mod tests {
     async fn add_gallery_item_unknown_video_returns_no_such_media() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries.expect_save_item().times(0);
         let mut videos = MockVideoRepository::new();
         videos
@@ -558,7 +613,22 @@ mod tests {
             .times(1)
             .withf(|filter| filter.file_id == Some(999))
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository,
+                             images: MockImageRepository,
+                             videos: MockVideoRepository,
+                             files: MockFileRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                galleries,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(
             users,
             galleries,
             MockImageRepository::new(),
@@ -588,20 +658,86 @@ mod tests {
         // Arrange: `file.use` grants an Admin `ALL`, so an Admin may reference
         // another caller's file (a Standard user may not).
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1, Role::Admin)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Public", true));
-        expect_unassigned(&mut galleries);
-        expect_item_index(&mut galleries, Vec::new());
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Public", true));
+        (move |galleries: &mut MockGalleryRepository| {
+            galleries
+                .expect_search_items()
+                .times(1)
+                .withf(|filter| filter.media.is_some())
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut galleries);
+        (move |galleries: &mut MockGalleryRepository, items: Vec<GalleryItemDetail>| {
+            galleries
+                .expect_search_items()
+                .times(1)
+                .withf(|filter| filter.media.is_none())
+                .returning(move |_| {
+                    let details = items.clone();
+                    Box::pin(async move { Ok(details) })
+                });
+        })(&mut galleries, Vec::new());
         galleries.expect_save_item().times(1).return_once(|_| {
             Box::pin(async { persisted_item(1, 3, GalleryItemMedia::Image(7), 0) })
         });
-        expect_saved_gallery(&mut galleries);
+        (move |galleries: &mut MockGalleryRepository| {
+            galleries
+                .expect_save()
+                .times(1)
+                .withf(|saved| saved.last_modified_at() > NaiveDateTime::default())
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut galleries);
         let mut images = MockImageRepository::new();
-        expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
+        (move |images: &mut MockImageRepository, file_id: i64, stored: Image| {
+            images
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut images, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 9, "files/sunset.png")?);
-        let harness = harness_with(users, galleries, images, MockVideoRepository::new(), files);
+        (move |files: &mut MockFileRepository, file_id: i64, stored: File| {
+            files
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut files, 100, file(100, 9, "files/sunset.png")?);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository,
+                             images: MockImageRepository,
+                             videos: MockVideoRepository,
+                             files: MockFileRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                galleries,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries, images, MockVideoRepository::new(), files);
         let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
@@ -624,20 +760,86 @@ mod tests {
     async fn add_gallery_item_root_admin_adds_other_users_media() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 0, Role::Admin)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 0, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        expect_unassigned(&mut galleries);
-        expect_item_index(&mut galleries, Vec::new());
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository| {
+            galleries
+                .expect_search_items()
+                .times(1)
+                .withf(|filter| filter.media.is_some())
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut galleries);
+        (move |galleries: &mut MockGalleryRepository, items: Vec<GalleryItemDetail>| {
+            galleries
+                .expect_search_items()
+                .times(1)
+                .withf(|filter| filter.media.is_none())
+                .returning(move |_| {
+                    let details = items.clone();
+                    Box::pin(async move { Ok(details) })
+                });
+        })(&mut galleries, Vec::new());
         galleries.expect_save_item().times(1).return_once(|_| {
             Box::pin(async { persisted_item(1, 3, GalleryItemMedia::Image(7), 0) })
         });
-        expect_saved_gallery(&mut galleries);
+        (move |galleries: &mut MockGalleryRepository| {
+            galleries
+                .expect_save()
+                .times(1)
+                .withf(|saved| saved.last_modified_at() > NaiveDateTime::default())
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut galleries);
         let mut images = MockImageRepository::new();
-        expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
+        (move |images: &mut MockImageRepository, file_id: i64, stored: Image| {
+            images
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut images, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 9, "files/sunset.png")?);
-        let harness = harness_with(users, galleries, images, MockVideoRepository::new(), files);
+        (move |files: &mut MockFileRepository, file_id: i64, stored: File| {
+            files
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut files, 100, file(100, 9, "files/sunset.png")?);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository,
+                             images: MockImageRepository,
+                             videos: MockVideoRepository,
+                             files: MockFileRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                galleries,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries, images, MockVideoRepository::new(), files);
         let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
@@ -660,14 +862,32 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let existing = GalleryItemDetail::new(
             persisted_item(5, 8, GalleryItemMedia::Image(7), 0)?,
             100,
             "sunset.png".to_owned(),
         );
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries
             .expect_search_items()
             .times(1)
@@ -678,10 +898,37 @@ mod tests {
             });
         galleries.expect_save_item().times(0);
         let mut images = MockImageRepository::new();
-        expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
+        (move |images: &mut MockImageRepository, file_id: i64, stored: Image| {
+            images
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut images, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 4, "files/sunset.png")?);
-        let harness = harness_with(users, galleries, images, MockVideoRepository::new(), files);
+        (move |files: &mut MockFileRepository, file_id: i64, stored: File| {
+            files
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut files, 100, file(100, 4, "files/sunset.png")?);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository,
+                             images: MockImageRepository,
+                             videos: MockVideoRepository,
+                             files: MockFileRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                galleries,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries, images, MockVideoRepository::new(), files);
         let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
@@ -705,13 +952,39 @@ mod tests {
     {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
         galleries
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository,
+                             images: MockImageRepository,
+                             videos: MockVideoRepository,
+                             files: MockFileRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                galleries,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(
             users,
             galleries,
             MockImageRepository::new(),
@@ -740,9 +1013,27 @@ mod tests {
     async fn add_gallery_item_unknown_media_returns_no_such_media() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries.expect_save_item().times(0);
         let mut images = MockImageRepository::new();
         images
@@ -750,7 +1041,22 @@ mod tests {
             .times(1)
             .withf(|filter| filter.file_id == Some(999))
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository,
+                             images: MockImageRepository,
+                             videos: MockVideoRepository,
+                             files: MockFileRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                galleries,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(
             users,
             galleries,
             images,
@@ -784,7 +1090,22 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository,
+                             images: MockImageRepository,
+                             videos: MockVideoRepository,
+                             files: MockFileRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                galleries,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(
             users,
             MockGalleryRepository::new(),
             MockImageRepository::new(),
@@ -814,25 +1135,85 @@ mod tests {
         // Arrange: the repository guard rejects the item because the medium's
         // scope does not admit a gallery.
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        expect_unassigned(&mut galleries);
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository| {
+            galleries
+                .expect_search_items()
+                .times(1)
+                .withf(|filter| filter.media.is_some())
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut galleries);
         let indexed = GalleryItemDetail::new(
             persisted_item(99, 3, GalleryItemMedia::Image(7), 2)?,
             100,
             "item".to_owned(),
         );
-        expect_item_index(&mut galleries, vec![indexed]);
+        (move |galleries: &mut MockGalleryRepository, items: Vec<GalleryItemDetail>| {
+            galleries
+                .expect_search_items()
+                .times(1)
+                .withf(|filter| filter.media.is_none())
+                .returning(move |_| {
+                    let details = items.clone();
+                    Box::pin(async move { Ok(details) })
+                });
+        })(&mut galleries, vec![indexed]);
         galleries
             .expect_save_item()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
         let mut images = MockImageRepository::new();
-        expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
+        (move |images: &mut MockImageRepository, file_id: i64, stored: Image| {
+            images
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut images, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 4, "files/sunset.png")?);
-        let harness = harness_with(users, galleries, images, MockVideoRepository::new(), files);
+        (move |files: &mut MockFileRepository, file_id: i64, stored: File| {
+            files
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut files, 100, file(100, 4, "files/sunset.png")?);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository,
+                             images: MockImageRepository,
+                             videos: MockVideoRepository,
+                             files: MockFileRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                galleries,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries, images, MockVideoRepository::new(), files);
         let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
@@ -855,16 +1236,49 @@ mod tests {
     async fn add_gallery_item_dependency_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries.expect_save_item().times(0);
         let mut images = MockImageRepository::new();
         images
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-        let harness = harness_with(
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository,
+                             images: MockImageRepository,
+                             videos: MockVideoRepository,
+                             files: MockFileRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                galleries,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(
             users,
             galleries,
             images,
@@ -893,18 +1307,57 @@ mod tests {
     async fn add_gallery_item_missing_backing_file_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries.expect_save_item().times(0);
         let mut images = MockImageRepository::new();
-        expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
+        (move |images: &mut MockImageRepository, file_id: i64, stored: Image| {
+            images
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut images, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
         files
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, galleries, images, MockVideoRepository::new(), files);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository,
+                             images: MockImageRepository,
+                             videos: MockVideoRepository,
+                             files: MockFileRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                galleries,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries, images, MockVideoRepository::new(), files);
         let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
@@ -927,20 +1380,86 @@ mod tests {
     async fn add_gallery_item_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
+        (move |users: &mut MockUserRepository,
+               caller_id: i64,
+               role: Role|
+              -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(caller_id, "caller".to_owned(), None, caller_id, role)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        expect_unassigned(&mut galleries);
-        expect_item_index(&mut galleries, Vec::new());
+        (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
+            let gallery_id = gallery.gallery_id();
+            galleries
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
+        })(&mut galleries, gallery(3, Some(4), "Mine", false));
+        (move |galleries: &mut MockGalleryRepository| {
+            galleries
+                .expect_search_items()
+                .times(1)
+                .withf(|filter| filter.media.is_some())
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        })(&mut galleries);
+        (move |galleries: &mut MockGalleryRepository, items: Vec<GalleryItemDetail>| {
+            galleries
+                .expect_search_items()
+                .times(1)
+                .withf(|filter| filter.media.is_none())
+                .returning(move |_| {
+                    let details = items.clone();
+                    Box::pin(async move { Ok(details) })
+                });
+        })(&mut galleries, Vec::new());
         galleries.expect_save_item().times(1).return_once(|_| {
             Box::pin(async { persisted_item(1, 3, GalleryItemMedia::Image(7), 0) })
         });
-        expect_saved_gallery(&mut galleries);
+        (move |galleries: &mut MockGalleryRepository| {
+            galleries
+                .expect_save()
+                .times(1)
+                .withf(|saved| saved.last_modified_at() > NaiveDateTime::default())
+                .returning(|saved| Box::pin(async move { Ok(saved) }));
+        })(&mut galleries);
         let mut images = MockImageRepository::new();
-        expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
+        (move |images: &mut MockImageRepository, file_id: i64, stored: Image| {
+            images
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.file_id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut images, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 4, "files/sunset.png")?);
-        let harness = harness_with(users, galleries, images, MockVideoRepository::new(), files);
+        (move |files: &mut MockFileRepository, file_id: i64, stored: File| {
+            files
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(file_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        })(&mut files, 100, file(100, 4, "files/sunset.png")?);
+        let harness = (move |users: MockUserRepository,
+                             galleries: MockGalleryRepository,
+                             images: MockImageRepository,
+                             videos: MockVideoRepository,
+                             files: MockFileRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                files,
+                galleries,
+                images,
+                users,
+                videos,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, galleries, images, MockVideoRepository::new(), files);
         harness.commit_fails.store(true, Ordering::SeqCst);
         let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
 

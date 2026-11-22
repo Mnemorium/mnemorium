@@ -221,6 +221,7 @@ fn validate_seed(seed: Option<&str>, variable: &'static str) -> Result<(), LoadS
 mod tests {
     use super::*;
     use crate::application::port::StateSeeds;
+    use rstest::fixture;
 
     use crate::domain::model::InstanceStateError;
 
@@ -292,34 +293,13 @@ mod tests {
         }
     }
 
-    /// Build a use case whose outbound dependencies are mocked; `setup` defines
-    /// the expectations before the mocks are handed over.
-    fn use_case_with(
-        seeds: TestSeeds,
-        setup: impl FnOnce(&mut MockInstanceStateStore, &mut MockSecretGenerator),
-    ) -> UseCase {
-        let mut store = MockInstanceStateStore::new();
-        let mut generator = MockSecretGenerator::new();
-        setup(&mut store, &mut generator);
-        let mut presence = MockDatastorePresence::new();
-        presence.expect_exists().times(0..).returning(|| Ok(false));
-        LoadState::new(
-            Arc::new(store),
-            Arc::new(generator),
-            Arc::new(TestSeedSource {
-                failure: false,
-                seeds,
-            }),
-            Arc::new(presence),
-        )
-    }
-
     /// A 64-character hexadecimal string.
     fn hex64(character: char) -> String {
         repeat_n(character, 64).collect()
     }
 
     /// A persisted state.
+    #[fixture]
     fn state() -> Result<InstanceState, Box<dyn Error>> {
         Ok(InstanceState::try_new(
             1_700_000_000,
@@ -428,15 +408,34 @@ mod tests {
     async fn load_state_existing_state_is_reused() -> Result<(), Box<dyn Error>> {
         // Arrange
         let stored = state()?;
-        let use_case = use_case_with(TestSeeds::default(), |store, generator| {
-            let persisted = stored.clone();
-            store.expect_load().times(1).returning(move || {
-                let value = persisted.clone();
-                Box::pin(async move { Ok(Some(value)) })
-            });
-            generator.expect_generate().times(0);
-            store.expect_save().times(0);
-        });
+        let use_case = {
+            let setup: Box<dyn FnOnce(&mut MockInstanceStateStore, &mut MockSecretGenerator)> =
+                Box::new(|store, generator| {
+                    let persisted = stored.clone();
+                    store.expect_load().times(1).returning(move || {
+                        let value = persisted.clone();
+                        Box::pin(async move { Ok(Some(value)) })
+                    });
+                    generator.expect_generate().times(0);
+                    store.expect_save().times(0);
+                });
+            (move |seeds: TestSeeds| -> UseCase {
+                let mut store = MockInstanceStateStore::new();
+                let mut generator = MockSecretGenerator::new();
+                setup(&mut store, &mut generator);
+                let mut presence = MockDatastorePresence::new();
+                presence.expect_exists().times(0..).returning(|| Ok(false));
+                LoadState::new(
+                    Arc::new(store),
+                    Arc::new(generator),
+                    Arc::new(TestSeedSource {
+                        failure: false,
+                        seeds,
+                    }),
+                    Arc::new(presence),
+                )
+            })(TestSeeds::default())
+        };
 
         // Act
         let response = use_case.execute().await?;
@@ -462,15 +461,34 @@ mod tests {
             jwt_secret: Some(hex64('b')),
             pepper: Some(hex64('a')),
         };
-        let use_case = use_case_with(seeds, |store, generator| {
-            let persisted = stored.clone();
-            store.expect_load().times(1).returning(move || {
-                let value = persisted.clone();
-                Box::pin(async move { Ok(Some(value)) })
-            });
-            generator.expect_generate().times(0);
-            store.expect_save().times(0);
-        });
+        let use_case = {
+            let setup: Box<dyn FnOnce(&mut MockInstanceStateStore, &mut MockSecretGenerator)> =
+                Box::new(|store, generator| {
+                    let persisted = stored.clone();
+                    store.expect_load().times(1).returning(move || {
+                        let value = persisted.clone();
+                        Box::pin(async move { Ok(Some(value)) })
+                    });
+                    generator.expect_generate().times(0);
+                    store.expect_save().times(0);
+                });
+            (move |seeds: TestSeeds| -> UseCase {
+                let mut store = MockInstanceStateStore::new();
+                let mut generator = MockSecretGenerator::new();
+                setup(&mut store, &mut generator);
+                let mut presence = MockDatastorePresence::new();
+                presence.expect_exists().times(0..).returning(|| Ok(false));
+                LoadState::new(
+                    Arc::new(store),
+                    Arc::new(generator),
+                    Arc::new(TestSeedSource {
+                        failure: false,
+                        seeds,
+                    }),
+                    Arc::new(presence),
+                )
+            })(seeds)
+        };
 
         // Act
         let response = use_case.execute().await?;
@@ -486,21 +504,37 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let stored = state()?;
-        let use_case = use_case_with(
-            TestSeeds {
+        let use_case = {
+            let setup: Box<dyn FnOnce(&mut MockInstanceStateStore, &mut MockSecretGenerator)> =
+                Box::new(|store, generator| {
+                    let persisted = stored.clone();
+                    store.expect_load().times(1).returning(move || {
+                        let value = persisted.clone();
+                        Box::pin(async move { Ok(Some(value)) })
+                    });
+                    generator.expect_generate().times(0);
+                    store.expect_save().times(0);
+                });
+            (move |seeds: TestSeeds| -> UseCase {
+                let mut store = MockInstanceStateStore::new();
+                let mut generator = MockSecretGenerator::new();
+                setup(&mut store, &mut generator);
+                let mut presence = MockDatastorePresence::new();
+                presence.expect_exists().times(0..).returning(|| Ok(false));
+                LoadState::new(
+                    Arc::new(store),
+                    Arc::new(generator),
+                    Arc::new(TestSeedSource {
+                        failure: false,
+                        seeds,
+                    }),
+                    Arc::new(presence),
+                )
+            })(TestSeeds {
                 jwt_secret: None,
                 pepper: Some(hex64('c')),
-            },
-            |store, generator| {
-                let persisted = stored.clone();
-                store.expect_load().times(1).returning(move || {
-                    let value = persisted.clone();
-                    Box::pin(async move { Ok(Some(value)) })
-                });
-                generator.expect_generate().times(0);
-                store.expect_save().times(0);
-            },
-        );
+            })
+        };
 
         // Act
         let result = use_case.execute().await;
@@ -513,17 +547,33 @@ mod tests {
     #[tokio::test]
     async fn load_state_invalid_seed_fails() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(
-            TestSeeds {
+        let use_case = {
+            let setup: Box<dyn FnOnce(&mut MockInstanceStateStore, &mut MockSecretGenerator)> =
+                Box::new(|store, generator| {
+                    store.expect_load().times(0);
+                    generator.expect_generate().times(0);
+                    store.expect_save().times(0);
+                });
+            (move |seeds: TestSeeds| -> UseCase {
+                let mut store = MockInstanceStateStore::new();
+                let mut generator = MockSecretGenerator::new();
+                setup(&mut store, &mut generator);
+                let mut presence = MockDatastorePresence::new();
+                presence.expect_exists().times(0..).returning(|| Ok(false));
+                LoadState::new(
+                    Arc::new(store),
+                    Arc::new(generator),
+                    Arc::new(TestSeedSource {
+                        failure: false,
+                        seeds,
+                    }),
+                    Arc::new(presence),
+                )
+            })(TestSeeds {
                 jwt_secret: None,
                 pepper: Some("not-a-pepper".to_owned()),
-            },
-            |store, generator| {
-                store.expect_load().times(0);
-                generator.expect_generate().times(0);
-                store.expect_save().times(0);
-            },
-        );
+            })
+        };
 
         // Act
         let result = use_case.execute().await;
@@ -536,17 +586,36 @@ mod tests {
     #[tokio::test]
     async fn load_state_store_failure_is_reported() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(TestSeeds::default(), |store, generator| {
-            store.expect_load().times(1).returning(|| {
-                Box::pin(async {
-                    Err(InstanceStateStoreError::OperationFailed(anyhow::anyhow!(
-                        "disk unavailable"
-                    )))
-                })
-            });
-            generator.expect_generate().times(0);
-            store.expect_save().times(0);
-        });
+        let use_case = {
+            let setup: Box<dyn FnOnce(&mut MockInstanceStateStore, &mut MockSecretGenerator)> =
+                Box::new(|store, generator| {
+                    store.expect_load().times(1).returning(|| {
+                        Box::pin(async {
+                            Err(InstanceStateStoreError::OperationFailed(anyhow::anyhow!(
+                                "disk unavailable"
+                            )))
+                        })
+                    });
+                    generator.expect_generate().times(0);
+                    store.expect_save().times(0);
+                });
+            (move |seeds: TestSeeds| -> UseCase {
+                let mut store = MockInstanceStateStore::new();
+                let mut generator = MockSecretGenerator::new();
+                setup(&mut store, &mut generator);
+                let mut presence = MockDatastorePresence::new();
+                presence.expect_exists().times(0..).returning(|| Ok(false));
+                LoadState::new(
+                    Arc::new(store),
+                    Arc::new(generator),
+                    Arc::new(TestSeedSource {
+                        failure: false,
+                        seeds,
+                    }),
+                    Arc::new(presence),
+                )
+            })(TestSeeds::default())
+        };
 
         // Act
         let result = use_case.execute().await;
@@ -559,13 +628,32 @@ mod tests {
     #[tokio::test]
     async fn load_state_unsupported_version_is_reported() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(TestSeeds::default(), |store, generator| {
-            store.expect_load().times(1).returning(|| {
-                Box::pin(async { Err(InstanceStateStoreError::UnsupportedVersion(9)) })
-            });
-            generator.expect_generate().times(0);
-            store.expect_save().times(0);
-        });
+        let use_case = {
+            let setup: Box<dyn FnOnce(&mut MockInstanceStateStore, &mut MockSecretGenerator)> =
+                Box::new(|store, generator| {
+                    store.expect_load().times(1).returning(|| {
+                        Box::pin(async { Err(InstanceStateStoreError::UnsupportedVersion(9)) })
+                    });
+                    generator.expect_generate().times(0);
+                    store.expect_save().times(0);
+                });
+            (move |seeds: TestSeeds| -> UseCase {
+                let mut store = MockInstanceStateStore::new();
+                let mut generator = MockSecretGenerator::new();
+                setup(&mut store, &mut generator);
+                let mut presence = MockDatastorePresence::new();
+                presence.expect_exists().times(0..).returning(|| Ok(false));
+                LoadState::new(
+                    Arc::new(store),
+                    Arc::new(generator),
+                    Arc::new(TestSeedSource {
+                        failure: false,
+                        seeds,
+                    }),
+                    Arc::new(presence),
+                )
+            })(TestSeeds::default())
+        };
 
         // Act
         let result = use_case.execute().await;
@@ -644,21 +732,37 @@ mod tests {
     async fn load_state_errors_never_carry_a_secret() -> Result<(), Box<dyn Error>> {
         // Arrange
         let stored = state()?;
-        let use_case = use_case_with(
-            TestSeeds {
+        let use_case = {
+            let setup: Box<dyn FnOnce(&mut MockInstanceStateStore, &mut MockSecretGenerator)> =
+                Box::new(|store, generator| {
+                    let persisted = stored.clone();
+                    store.expect_load().times(1).returning(move || {
+                        let value = persisted.clone();
+                        Box::pin(async move { Ok(Some(value)) })
+                    });
+                    generator.expect_generate().times(0);
+                    store.expect_save().times(0);
+                });
+            (move |seeds: TestSeeds| -> UseCase {
+                let mut store = MockInstanceStateStore::new();
+                let mut generator = MockSecretGenerator::new();
+                setup(&mut store, &mut generator);
+                let mut presence = MockDatastorePresence::new();
+                presence.expect_exists().times(0..).returning(|| Ok(false));
+                LoadState::new(
+                    Arc::new(store),
+                    Arc::new(generator),
+                    Arc::new(TestSeedSource {
+                        failure: false,
+                        seeds,
+                    }),
+                    Arc::new(presence),
+                )
+            })(TestSeeds {
                 jwt_secret: Some(hex64('b')),
                 pepper: Some(hex64('c')),
-            },
-            |store, generator| {
-                let persisted = stored.clone();
-                store.expect_load().times(1).returning(move || {
-                    let value = persisted.clone();
-                    Box::pin(async move { Ok(Some(value)) })
-                });
-                generator.expect_generate().times(0);
-                store.expect_save().times(0);
-            },
-        );
+            })
+        };
         let supplied = hex64('b');
         let differing = hex64('c');
 
@@ -690,16 +794,36 @@ mod tests {
         // Arrange
         let saved: Saved = Arc::new(Mutex::new(None));
         let recorder = Arc::clone(&saved);
-        let use_case = use_case_with(TestSeeds::default(), |store, generator| {
-            generator
-                .expect_generate()
-                .times(2)
-                .returning(|_| Box::pin(async { Ok(vec![0xAA; 32]) }));
-            store.expect_save().times(1).returning(move |state| {
-                *recorder.lock().unwrap_or_else(PoisonError::into_inner) = Some(state.clone());
-                Box::pin(async { Ok(()) })
-            });
-        });
+        let use_case = {
+            let setup: Box<dyn FnOnce(&mut MockInstanceStateStore, &mut MockSecretGenerator)> =
+                Box::new(|store, generator| {
+                    generator
+                        .expect_generate()
+                        .times(2)
+                        .returning(|_| Box::pin(async { Ok(vec![0xAA; 32]) }));
+                    store.expect_save().times(1).returning(move |state| {
+                        *recorder.lock().unwrap_or_else(PoisonError::into_inner) =
+                            Some(state.clone());
+                        Box::pin(async { Ok(()) })
+                    });
+                });
+            (move |seeds: TestSeeds| -> UseCase {
+                let mut store = MockInstanceStateStore::new();
+                let mut generator = MockSecretGenerator::new();
+                setup(&mut store, &mut generator);
+                let mut presence = MockDatastorePresence::new();
+                presence.expect_exists().times(0..).returning(|| Ok(false));
+                LoadState::new(
+                    Arc::new(store),
+                    Arc::new(generator),
+                    Arc::new(TestSeedSource {
+                        failure: false,
+                        seeds,
+                    }),
+                    Arc::new(presence),
+                )
+            })(TestSeeds::default())
+        };
 
         // Act
         let (state, pepper_generated, jwt_secret_generated) = use_case.create(None, None).await?;
@@ -734,16 +858,35 @@ mod tests {
     async fn load_state_creation_uses_a_supplied_seed() -> Result<(), Box<dyn Error>> {
         // Arrange
         let pepper_seed = hex64('c');
-        let use_case = use_case_with(TestSeeds::default(), |store, generator| {
-            generator
-                .expect_generate()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok(vec![0xBB; 32]) }));
-            store
-                .expect_save()
-                .times(1)
-                .returning(|_| Box::pin(async { Ok(()) }));
-        });
+        let use_case = {
+            let setup: Box<dyn FnOnce(&mut MockInstanceStateStore, &mut MockSecretGenerator)> =
+                Box::new(|store, generator| {
+                    generator
+                        .expect_generate()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(vec![0xBB; 32]) }));
+                    store
+                        .expect_save()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(()) }));
+                });
+            (move |seeds: TestSeeds| -> UseCase {
+                let mut store = MockInstanceStateStore::new();
+                let mut generator = MockSecretGenerator::new();
+                setup(&mut store, &mut generator);
+                let mut presence = MockDatastorePresence::new();
+                presence.expect_exists().times(0..).returning(|| Ok(false));
+                LoadState::new(
+                    Arc::new(store),
+                    Arc::new(generator),
+                    Arc::new(TestSeedSource {
+                        failure: false,
+                        seeds,
+                    }),
+                    Arc::new(presence),
+                )
+            })(TestSeeds::default())
+        };
 
         // Act
         let (state, pepper_generated, jwt_secret_generated) =
@@ -768,13 +911,31 @@ mod tests {
     #[tokio::test]
     async fn load_state_creation_generator_failure_is_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(TestSeeds::default(), |store, generator| {
-            generator
-                .expect_generate()
-                .times(1)
-                .returning(|_| Box::pin(async { Err(SecretGeneratorError::OperationFailed) }));
-            store.expect_save().times(0);
-        });
+        let use_case = {
+            let setup: Box<dyn FnOnce(&mut MockInstanceStateStore, &mut MockSecretGenerator)> =
+                Box::new(|store, generator| {
+                    generator.expect_generate().times(1).returning(|_| {
+                        Box::pin(async { Err(SecretGeneratorError::OperationFailed) })
+                    });
+                    store.expect_save().times(0);
+                });
+            (move |seeds: TestSeeds| -> UseCase {
+                let mut store = MockInstanceStateStore::new();
+                let mut generator = MockSecretGenerator::new();
+                setup(&mut store, &mut generator);
+                let mut presence = MockDatastorePresence::new();
+                presence.expect_exists().times(0..).returning(|| Ok(false));
+                LoadState::new(
+                    Arc::new(store),
+                    Arc::new(generator),
+                    Arc::new(TestSeedSource {
+                        failure: false,
+                        seeds,
+                    }),
+                    Arc::new(presence),
+                )
+            })(TestSeeds::default())
+        };
 
         // Act
         let result = use_case.create(None, None).await;

@@ -1,29 +1,42 @@
 ---
 id: sty-rust-029
 language: Rust
-severity: error
+severity: hint
 message: >-
-  a test function keeps control flow out of its body: no `if`, `match`, or loops
+  extract every value-returning function and every inline module, for
+  STY-RUST-029
 files:
   - src/**/*.rs
 rule:
-  kind: function_item
-  all:
-    # A test attribute precedes the function as a sibling, so `follows` — not
-    # `has` — reaches it. `stopBy` the previous function keeps a non-test item
-    # from inheriting its neighbour's #[test]; `stopBy: end` would cross that
-    # boundary.
-    - follows:
-        kind: attribute_item
-        regex: '#\[(rstest|([a-z0-9_]+::)*test)\b'
-        stopBy:
-          kind: function_item
-    # Control flow anywhere in the test body, including nested closures.
-    - has:
-        stopBy: end
-        any:
-          - kind: if_expression
-          - kind: match_expression
-          - kind: loop_expression
-          - kind: while_expression
-          - kind: for_expression
+  any:
+    # An inline module: its attribute block — which the syntax tree cannot see —
+    # tells a #[cfg(test)] module from production code.
+    - all:
+        - kind: mod_item
+        - has:
+            kind: declaration_list
+            stopBy: neighbor
+        - has:
+            field: name
+            pattern: $MOD
+            stopBy: neighbor
+    # A function that declares a return type: the only candidate for a builder helper.
+    - all:
+        - kind: function_item
+        - has:
+            field: name
+            pattern: $FN
+            stopBy: neighbor
+        - has:
+            field: parameters
+            pattern: $PARAMS
+            stopBy: neighbor
+        - has:
+            field: return_type
+            pattern: $RET
+            stopBy: neighbor
+        # A method is not a fixture candidate: a fixture is injected, a method is called.
+        - not:
+            inside:
+              kind: impl_item
+              stopBy: end

@@ -2,18 +2,21 @@
 id: sty-rust-003
 language: Rust
 severity: error
-message: a bounded-context file declares exactly one endpoint
+message: a handler resolves its use case through state.<context>_use_case_factory().<use_case>() before execute
+files:
+  - src/lib/infrastructure/inbound/rest/handler/**/*.rs
 rule:
   any:
-    - kind: attribute_item
-      regex: '#\[utoipa::path'
-      follows:
-        kind: attribute_item
-        regex: '#\[utoipa::path'
-        stopBy: end
-    - kind: source_file
+    - pattern: $RECV.execute($$$ARGS)
       not:
-        has:
-          kind: attribute_item
-          regex: '#\[utoipa::path'
-          stopBy: end
+        regex: '(?s)_use_case_factory\(\).*\.execute\('
+    - all:
+        - kind: function_item
+        - follows:
+            kind: attribute_item
+            regex: '#\[utoipa::path'
+            stopBy: end
+        - has:
+            kind: parameter
+            regex: 'UseCase'
+            stopBy: end

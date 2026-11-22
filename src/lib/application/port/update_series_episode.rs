@@ -152,10 +152,6 @@ pub(crate) enum UpdateSeriesEpisodeError {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait UpdateSeriesEpisodeUseCase: Send + Sync {
     /// Update the episode at the requested index.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as
-    /// `Arc<dyn UpdateSeriesEpisodeUseCase>`.
     fn execute<'future>(
         &'future self,
         command: UpdateSeriesEpisodeCommand,

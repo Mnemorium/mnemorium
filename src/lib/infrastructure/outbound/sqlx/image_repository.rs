@@ -159,55 +159,12 @@ fn domain_image(row: SqlxImage) -> Result<Image, RepositoryError> {
 mod tests {
     use super::*;
     use crate::domain::model::AssetScope;
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
 
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use chrono::NaiveDate;
     use rstest::rstest;
     use std::error::Error;
-
-    /// Open a migrated in-memory database and begin one transaction.
-    /// Seed a credential and a standard user so foreign keys resolve.
-    async fn seed_user(
-        transaction: &mut Transaction<'static, Sqlite>,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (?1, ?2)")
-            .bind(user_id)
-            .bind(format!("hash-{user_id}"))
-            .execute(&mut **transaction)
-            .await?;
-        sqlx::query(
-            "INSERT INTO user (user_id, role, username, email, credential_id)
-             VALUES (?1, 'STANDARD', ?2, NULL, ?1)",
-        )
-        .bind(user_id)
-        .bind(format!("user{user_id}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a file owned by `user_id` with a per-file unique digest.
-    async fn seed_file(
-        transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
-        user_id: i64,
-        path: &str,
-        mime_type_id: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
-             VALUES (?1, ?2, ?3, 0, ?4, 1024, '2026-10-06 00:00:00', 'UPLOADED', ?5)",
-        )
-        .bind(file_id)
-        .bind(path)
-        .bind(user_id)
-        .bind(mime_type_id)
-        .bind(format!("{file_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
 
     /// Build a domain image.
     fn image(
@@ -521,6 +478,204 @@ mod tests {
             matches!(result, Err(RepositoryError::DataIntegrityViolation)),
             "statement must violate a check or foreign key: {statement}"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn deleting_image_cascades_its_item() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_gallery(&pool, 1).await?;
+        sqlx::query(
+            "INSERT INTO gallery_item (gallery_item_id, gallery_id, image_id, item_index)
+             VALUES (1, 1, 1, 0)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        sqlx::query("DELETE FROM image WHERE image_id = 1")
+            .execute(&pool)
+            .await?;
+
+        // Assert
+        let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM gallery_item")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(remaining, 0, "deleting an image must cascade its item");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn library_cover_accepts_a_library_image_on_every_owner() -> Result<(), Box<dyn Error>> {
+        // Arrange: image 1 starts unattached.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act
+        seed_covered_owners(&pool, 1).await?;
+
+        // Assert: every owner stores the image as its cover and the first
+        // attachment marked it LIBRARY.
+        let covers: Vec<Option<i64>> = vec![
+            sqlx::query_scalar("SELECT cover_image_id FROM movie")
+                .fetch_one(&pool)
+                .await?,
+            sqlx::query_scalar("SELECT cover_image_id FROM series")
+                .fetch_one(&pool)
+                .await?,
+            sqlx::query_scalar("SELECT cover_image_id FROM season")
+                .fetch_one(&pool)
+                .await?,
+            sqlx::query_scalar("SELECT cover_image_id FROM music_album WHERE music_album_id = 1")
+                .fetch_one(&pool)
+                .await?,
+        ];
+        let scope: Option<String> =
+            sqlx::query_scalar("SELECT scope FROM image WHERE image_id = 1")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(
+            covers,
+            vec![Some(1); 4],
+            "every library owner must store the image as its cover"
+        );
+        assert_eq!(scope.as_deref(), Some("LIBRARY"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cover_rejects_a_missing_image() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act: image 99 does not exist.
+        let result = sqlx::query(
+            "INSERT INTO movie (
+                movie_id, name, plot, country_of_origin, release_date, video_id, cover_image_id
+             )
+             VALUES (1, 'Film', 'A plot', 'US', '1990-04-08', 1, 99)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert: the foreign key refuses the dangling reference.
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn library_cover_rejects_a_user_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: a gallery item owns image 1, so it is USER.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act
+        seed_gallery_image(&pool, 1).await?;
+        let result = sqlx::query(
+            "INSERT INTO movie (
+                movie_id, name, plot, country_of_origin, release_date, video_id, cover_image_id
+             )
+             VALUES (1, 'Film', 'A plot', 'US', '1990-04-08', 1, 1)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "a library cover must reject a USER image as a conflict"
+        );
+        let stored: i64 = sqlx::query_scalar("SELECT count(*) FROM movie")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(stored, 0, "a rejected cover must store nothing");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cover_update_rejects_a_user_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: a film without artwork, and image 1 used as gallery media.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_gallery_image(&pool, 1).await?;
+        sqlx::query(
+            "INSERT INTO movie (
+                movie_id, name, plot, country_of_origin, release_date, video_id
+             )
+             VALUES (1, 'Film', 'A plot', 'US', '1990-04-08', 1)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        let result = sqlx::query("UPDATE movie SET cover_image_id = 1 WHERE movie_id = 1")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "an update to a USER image cover must be rejected as a conflict"
+        );
+        let stored: Option<i64> = sqlx::query_scalar("SELECT cover_image_id FROM movie")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(stored, None, "the rejected update must store nothing");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn asset_scope_rejects_an_unknown_value() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act
+        let result = sqlx::query("UPDATE image SET scope = 'GALLERY' WHERE image_id = 1")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn asset_scope_is_immutable_once_set() -> Result<(), Box<dyn Error>> {
+        // Arrange: the first attachment marks image 1 USER.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_gallery_image(&pool, 1).await?;
+
+        // Act
+        let result = sqlx::query("UPDATE image SET scope = 'LIBRARY' WHERE image_id = 1")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "an asset scope must not change once set"
+        );
+        let scope: Option<String> =
+            sqlx::query_scalar("SELECT scope FROM image WHERE image_id = 1")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(scope.as_deref(), Some("USER"));
         Ok(())
     }
 }

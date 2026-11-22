@@ -3,34 +3,50 @@ id: api-032
 language: Rust
 severity: hint
 message: >-
-  extract HAL representation response rows and every serde-renamed `_links` /
-  `self` struct field, for API-032
+  extract an `_embedded` HAL payload use, for API-032
 rule:
-  any:
-    - all:
-        - kind: token_tree
+  all:
+    - any:
+        - kind: string_literal
+          regex: '^"_embedded"$'
+        - kind: field_identifier
+          regex: '^_embedded$'
+    - any:
         - inside:
-            kind: token_tree
-            follows:
-              kind: identifier
-              regex: "^responses$"
-        - inside:
-            kind: attribute_item
-            regex: '#\[utoipa::path'
+            kind: struct_item
             stopBy: end
-    - all:
-        - kind: field_declaration
-        - pattern: 'pub $FIELD: $TYPE'
-        - follows:
-            kind: attribute_item
-            pattern: '#[serde(rename = $RENAME)]'
-            regex: 'serde\(rename = "(_links|self)"\)'
+            has:
+              field: name
+              pattern: $STRUCT
         - inside:
-            kind: field_declaration_list
-            inside:
-              kind: struct_item
-              any:
-                - pattern: 'pub struct $REP { $$$FIELDS }'
-                - pattern: 'pub(crate) struct $REP { $$$FIELDS }'
-                - pattern: 'struct $REP { $$$FIELDS }'
+            kind: function_item
+            stopBy: end
+            has:
+              field: name
+              pattern: $FUNC
+    - not:
+        any:
+          - inside:
+              kind: mod_item
               stopBy: end
+              follows:
+                kind: attribute_item
+                regex: 'cfg\(test\)'
+          - inside:
+              kind: struct_item
+              stopBy: end
+              follows:
+                kind: attribute_item
+                regex: 'cfg\(test\)'
+                stopBy:
+                  not:
+                    kind: attribute_item
+          - inside:
+              kind: function_item
+              stopBy: end
+              follows:
+                kind: attribute_item
+                regex: 'cfg\(test\)'
+                stopBy:
+                  not:
+                    kind: attribute_item

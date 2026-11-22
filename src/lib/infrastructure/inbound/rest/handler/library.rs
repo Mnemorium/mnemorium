@@ -162,7 +162,7 @@ use crate::infrastructure::outbound::jwt::JwtTokenProvider;
 /// Date format of the release dates the album and track representations carry.
 pub(crate) const DATE_FORMAT: &str = "%Y-%m-%d";
 
-/// The video metadata providers the video routes serve (`API-047`).
+/// The video metadata providers the video routes serve (`API-044`).
 #[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
@@ -173,7 +173,7 @@ pub(crate) enum VideoProviderRequest {
     Tmdb,
 }
 
-/// Kind of music work a query or a route names (`API-047`).
+/// Kind of music work a query or a route names (`API-044`).
 #[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
@@ -196,7 +196,7 @@ impl From<MusicKindRequest> for MusicKind {
     }
 }
 
-/// The music metadata provider the music routes serve (`API-047`).
+/// The music metadata provider the music routes serve (`API-044`).
 #[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
@@ -3111,7 +3111,7 @@ pub(crate) fn parse_item_id(value: &str) -> Result<NumericID, ApiError> {
 
 /// Build the href of the playlist collection view at `limit`/`offset`,
 /// preserving the active filters so a filtered page keeps its navigation
-/// (`API-037`).
+/// (`API-034`).
 fn playlist_page_href(query: &ListPlaylistsQuery, limit: usize, offset: usize) -> String {
     let mut href = String::from("/api/v1/library/music/playlist?");
     if let Some(name) = query.name.as_deref() {
@@ -3155,7 +3155,7 @@ fn playlist_page_href(query: &ListPlaylistsQuery, limit: usize, offset: usize) -
 
 /// Build the href of the music album collection view at `limit`/`offset`,
 /// preserving the active filter so a filtered page keeps its navigation
-/// (`API-037`).
+/// (`API-034`).
 fn album_page_href(query: &ListAlbumsQuery, limit: usize, offset: usize) -> String {
     let mut href = String::from("/api/v1/library/music/album?");
     if let Some(name) = query.name.as_deref() {
@@ -3191,7 +3191,7 @@ fn album_page_href(query: &ListAlbumsQuery, limit: usize, offset: usize) -> Stri
 
 /// Build the href of the music group collection view at `limit`/`offset`,
 /// preserving the active filter so a filtered page keeps its navigation
-/// (`API-037`).
+/// (`API-034`).
 fn group_page_href(query: &ListMusicGroupsQuery, limit: usize, offset: usize) -> String {
     let mut href = String::from("/api/v1/library/music/group?");
     push_name_filter(&mut href, query.name.as_deref());
@@ -3203,7 +3203,7 @@ fn group_page_href(query: &ListMusicGroupsQuery, limit: usize, offset: usize) ->
 }
 
 /// Build the href of the film collection view at `limit`/`offset`, preserving
-/// the active filter so a filtered page keeps its navigation (`API-037`).
+/// the active filter so a filtered page keeps its navigation (`API-034`).
 fn movie_page_href(query: &ListMoviesQuery, limit: usize, offset: usize) -> String {
     let mut href = String::from("/api/v1/library/movie?");
     push_name_filter(&mut href, query.name.as_deref());
@@ -3215,7 +3215,7 @@ fn movie_page_href(query: &ListMoviesQuery, limit: usize, offset: usize) -> Stri
 }
 
 /// Build the href of the show collection view at `limit`/`offset`, preserving
-/// the active filter so a filtered page keeps its navigation (`API-037`).
+/// the active filter so a filtered page keeps its navigation (`API-034`).
 fn series_page_href(query: &ListSeriesQuery, limit: usize, offset: usize) -> String {
     let mut href = String::from("/api/v1/library/series?");
     push_name_filter(&mut href, query.name.as_deref());
@@ -3293,7 +3293,7 @@ pub(crate) fn parse_group_id(value: &str) -> Result<NumericID, ApiError> {
 /// Parse a `u32` season index from a path segment.
 ///
 /// A non-numeric segment is malformed (`400`); a numeric value outside the
-/// 32-bit range violates the declared maximum and is `422` (`API-045`).
+/// 32-bit range violates the declared maximum and is `422` (`API-042`).
 pub(crate) fn parse_season_index(value: &str) -> Result<u32, ApiError> {
     let parsed = value.parse::<u64>().map_err(|_| {
         warn!(
@@ -3320,7 +3320,7 @@ pub(crate) fn parse_season_index(value: &str) -> Result<u32, ApiError> {
 /// Parse a `u32` episode index from a path segment.
 ///
 /// A non-numeric segment is malformed (`400`); a numeric value outside the
-/// 32-bit range violates the declared maximum and is `422` (`API-045`).
+/// 32-bit range violates the declared maximum and is `422` (`API-042`).
 pub(crate) fn parse_episode_index(value: &str) -> Result<u32, ApiError> {
     let parsed = value.parse::<u64>().map_err(|_| {
         warn!(
@@ -3361,7 +3361,7 @@ pub(crate) fn parse_series_id(value: &str) -> Result<NumericID, ApiError> {
 /// Parse a `u8` music index from a path segment.
 ///
 /// A non-numeric segment is malformed (`400`); a numeric value outside the
-/// 8-bit range violates the declared maximum and is `422` (`API-045`).
+/// 8-bit range violates the declared maximum and is `422` (`API-042`).
 ///
 /// `field` is the declared security-event field and `message` the stable,
 /// handler-owned rejection message; the malformed value and the parser detail
@@ -3441,7 +3441,7 @@ pub(crate) fn parse_playlist_id(value: &str) -> Result<NumericID, ApiError> {
 /// Parse a zero-based playlist track index from a path segment.
 ///
 /// A non-numeric segment is malformed (`400`); a numeric value outside the
-/// 32-bit range violates the declared maximum and is `422` (`API-045`).
+/// 32-bit range violates the declared maximum and is `422` (`API-042`).
 pub(crate) fn parse_playlist_track_index(value: &str) -> Result<u32, ApiError> {
     let parsed = value.parse::<u64>().map_err(|_| {
         warn!(
@@ -3465,7 +3465,7 @@ pub(crate) fn parse_playlist_track_index(value: &str) -> Result<u32, ApiError> {
     })
 }
 
-/// Percent-encode `value` for one URI path segment (`API-050`).
+/// Percent-encode `value` for one URI path segment (`API-047`).
 ///
 /// A provider reference is client-supplied and may carry a character a path
 /// segment does not allow; encoding it keeps the `self` link a valid relative
@@ -3503,7 +3503,7 @@ pub(crate) fn encode_path_segment(value: &str) -> String {
     encoded
 }
 
-/// Parse a wire date, requiring the exact `YYYY-MM-DD` form (`API-046`).
+/// Parse a wire date, requiring the exact `YYYY-MM-DD` form (`API-043`).
 ///
 /// `chrono` accepts a non-padded month or day, so the shape is checked first:
 /// the published `format: date` and the ten-character bound promise the padded

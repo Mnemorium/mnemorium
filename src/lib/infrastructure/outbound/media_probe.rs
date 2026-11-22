@@ -97,7 +97,7 @@ impl LocalMediaProbe {
     /// Build the permit pool bounding concurrent probes.
     ///
     /// Called once by the composition root and shared by every probe instance, so
-    /// the process-lifetime resource is sized where it is owned (`STY-RUST-067`).
+    /// the process-lifetime resource is sized where it is owned (`STY-RUST-064`).
     #[must_use]
     pub(crate) fn new_permits() -> Arc<Semaphore> {
         Arc::new(Semaphore::new(MAX_CONCURRENT_PROBES))
@@ -417,7 +417,7 @@ impl MediaProbe for LocalMediaProbe {
 /// decode, is a client-fixable rejection (`output_validation_failed` at `warn`,
 /// [`MediaProbeError::UnsupportedMedia`] → `422`); a read failure or an exceeded
 /// decoder limit is a dependency fault (`port_fault` at `error`,
-/// [`MediaProbeError::Unknown`] → `500`) (`API-041`, `OBS-005`, `OBS-006`).
+/// [`MediaProbeError::Unknown`] → `500`) (`API-038`, `OBS-005`, `OBS-006`).
 fn classify_image_error(error: image::ImageError) -> MediaProbeError {
     match error {
         image::ImageError::Unsupported(_) => {
@@ -454,7 +454,7 @@ fn classify_image_error(error: image::ImageError) -> MediaProbeError {
 /// A read failure or an internal decoder limit is a dependency fault: it is
 /// logged as `port_fault` at `error` and surfaces as
 /// [`MediaProbeError::Unknown`] (`500`), never as a client rejection
-/// (`API-041`, `OBS-005`).
+/// (`API-038`, `OBS-005`).
 fn io_fault(error: impl Into<anyhow::Error>) -> MediaProbeError {
     log_fault("io_failure");
     MediaProbeError::Unknown(error.into())
@@ -638,7 +638,7 @@ mod tests {
     use image::error::{
         DecodingError, ImageFormatHint, LimitError, UnsupportedError, UnsupportedErrorKind,
     };
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use std::error::Error;
     use std::fs;
     use std::io::Error as IoError;
@@ -677,6 +677,7 @@ mod tests {
     /// then fails with `ETXTBSY` (`TEST-052`). The permit is acquired as the first
     /// Arrange step and held to the end of the test body, because the `exec` is not
     /// observable from the test side.
+    #[fixture]
     fn spawn_gate() -> Arc<Semaphore> {
         static GATE: OnceLock<Arc<Semaphore>> = OnceLock::new();
         Arc::clone(GATE.get_or_init(|| Arc::new(Semaphore::new(1))))

@@ -40,7 +40,7 @@ use crate::infrastructure::inbound::rest::handler::user::user_routes;
 use crate::infrastructure::inbound::rest::middleware::{LoginRateLimiter, hal_errors, tracing};
 use crate::infrastructure::inbound::rest::{ApiError, AppState, Link, SelfLinks, hal_json};
 
-/// Wire format of every timestamp representation: RFC 3339 UTC (`API-046`).
+/// Wire format of every timestamp representation: RFC 3339 UTC (`API-043`).
 ///
 /// The database columns store naive UTC, so appending `Z` states the truth
 /// without a timezone conversion.
@@ -256,12 +256,12 @@ fn normalise_numbers(value: Value) -> Value {
 
 /// Build the application router.
 ///
-/// The composition root (`src/lib/app.rs`, `STY-RUST-067`) builds the
+/// The composition root (`src/lib/app.rs`, `STY-RUST-064`) builds the
 /// process-lifetime adapters and mounts only the router this function returns.
 /// `hal_errors` is applied **last** so it is the outermost layer. It therefore
 /// rewraps every `4xx`/`5xx` the server emits, including the routing fallback
 /// (an unknown or malformed URL) and framework rejections, as the one HAL error
-/// envelope (`API-039`). It must remain outermost.
+/// envelope (`API-036`). It must remain outermost.
 ///
 /// The `limiter` is the process-lifetime login rate limiter the composition
 /// root built; it is applied to the `login` route here.

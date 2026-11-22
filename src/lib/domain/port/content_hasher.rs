@@ -33,12 +33,11 @@ pub(crate) trait ContentHasherSession: Send + Sync {
 mod tests {
     use super::*;
 
-    /// Assert `T` implements `Send + Sync`.
-    fn assert_send_sync<T: Send + Sync + ?Sized>() {}
+    fn requires_send_sync<T: Send + Sync + ?Sized>() {}
 
     #[test]
     fn content_hasher_session_is_send_and_sync() {
         // Act & Assert
-        assert_send_sync::<dyn ContentHasherSession>();
+        requires_send_sync::<dyn ContentHasherSession>();
     }
 }

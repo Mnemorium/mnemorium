@@ -3,16 +3,16 @@ id: sty-rust-046
 language: Rust
 severity: error
 message: >-
-  a repository `delete` returns `Result<bool, _>` so a no-match is `Ok(false)`,
-  not an error
+  a repository lookup reports a missing entity as a value: return
+  Result<Option<...>, _>, never a bare aggregate
 files:
   - src/lib/domain/port/*_repository.rs
 rule:
   kind: function_signature_item
   has:
     field: name
-    regex: '^delete(_|$)'
+    regex: '^(get|find)(_|$)'
   not:
     has:
       field: return_type
-      regex: 'Result<\s*bool\b'
+      regex: 'Result<\s*Option<'

@@ -147,14 +147,6 @@ in
       files = "(\\.rs$|\\.md$|^migrations/.*\\.sql$|^rule/.*|^rule_enforcer\\.yaml$|^script/rule_enforcer\\.sh$|^test/system/.*\\.py$)";
       fail_fast = true;
     };
-    # === repository governance (GOV-001)
-    scopes = {
-      enable = true;
-      name = "Commit scope taxonomy";
-      entry = "script/check_scopes.sh";
-      language = "system";
-      pass_filenames = false;
-    };
     # === python
     ruff.enable = true;
     ruff-format.enable = true;

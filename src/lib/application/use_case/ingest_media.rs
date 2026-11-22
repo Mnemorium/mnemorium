@@ -871,6 +871,7 @@ mod tests {
         AudioError, FileError, MimeType, Orientation, Origin, Resource, ResourceKind, Role, User,
         Visibility,
     };
+    use rstest::fixture;
 
     use crate::domain::port::{
         ContentTypeSnifferError, MediaProbeError, MockContentTypeSniffer, MockMediaProbe,
@@ -888,6 +889,7 @@ mod tests {
         IngestMedia<TestFactory, MockContentTypeSniffer, MockMediaProbe, MockMediaSource>;
 
     /// Fixture modification instant.
+    #[fixture]
     fn instant() -> NaiveDateTime {
         NaiveDateTime::parse_from_str("2026-10-28 10:00:00", "%Y-%m-%d %H:%M:%S")
             .unwrap_or_default()
@@ -922,113 +924,13 @@ mod tests {
         )?)
     }
 
-    /// Build a prioritizing unit of work that stores the file and its media row.
-    fn storing_uow(
-        path: &'static str,
-        mime_type_id: &'static str,
-        size_bytes: i64,
-        resource_exists: bool,
-    ) -> Result<(TestUow, Arc<AtomicBool>), Box<dyn Error>> {
-        let root = User::try_new(0, "root".to_owned(), None, 0, Role::Admin)?;
-        let mut uow = TestUow::default();
-        uow.users.expect_search().times(1).returning(move |_| {
-            let found = root.clone();
-            Box::pin(async move { Ok(vec![found]) })
-        });
-        uow.files
-            .expect_create()
-            .times(1)
-            .withf(move |file| {
-                file.origin() == Origin::Scanned
-                    && file.user_id() == 0
-                    && file.size_bytes() == size_bytes
-                    && file.modified_at() == instant()
-                    && file.mime_type_id() == mime_type_id
-                    && file.integrity_hash().is_none()
-            })
-            .returning(move |_| {
-                let stored = registered_file(path, mime_type_id, size_bytes)
-                    .map_err(|_| RepositoryError::OperationFailed);
-                Box::pin(async move { stored })
-            });
-        expect_file_resource(&mut uow, resource_exists);
-        let committed = Arc::clone(&uow.committed);
-        Ok((uow, committed))
-    }
-
-    /// Expect the scanned file's `FILE` resource, which is what makes the
-    /// stored identifier addressable by `get_file`'s authorization.
-    ///
-    /// The registered fixture is file `7` owned by the Root Admin, so the
-    /// resource must carry exactly that identifier, owner and visibility. The
-    /// double answers `AlreadyExist` when `already_exists` is set, which is the
-    /// row a concurrent driver or an earlier scan left behind.
-    fn expect_file_resource(unit_of_work: &mut TestUow, already_exists: bool) {
-        let mut resources = MockResourceRepository::new();
-        resources
-            .expect_create()
-            .times(1)
-            .withf(|resource| {
-                resource.kind == ResourceKind::File
-                    && resource.entity_id == 7
-                    && resource.owner_id == Some(0)
-                    && resource.visibility == Visibility::Private
-                    && resource.auth_parent.is_none()
-            })
-            .return_once(move |resource| {
-                let stored = if already_exists {
-                    Err(RepositoryError::AlreadyExist)
-                } else {
-                    Ok(Resource::from_stored(
-                        1,
-                        resource.kind,
-                        resource.entity_id,
-                        resource.owner_id,
-                        None,
-                        resource.visibility,
-                    ))
-                };
-                Box::pin(async move { stored })
-            });
-        unit_of_work.resources = resources;
-    }
-
-    /// Build a reading unit of work returning `files`.
-    fn reading_uow(files: Vec<File>) -> TestUow {
-        let mut uow = TestUow::default();
-        uow.files.expect_search().times(1).returning(move |_| {
-            let found = files.clone();
-            Box::pin(async move { Ok(found) })
-        });
-        uow
-    }
-
     /// The mime types the scan fixtures consider supported.
+    #[fixture]
     fn supported_mime_types() -> Vec<MimeType> {
         ["audio/mpeg", "image/png", "video/mp4"]
             .into_iter()
             .filter_map(|mime_type_id| MimeType::try_new(mime_type_id.to_owned()).ok())
             .collect()
-    }
-
-    /// Build a snapshot unit of work returning `files` and the supported set.
-    fn snapshot_uow(files: Vec<File>) -> TestUow {
-        let mut uow = reading_uow(files);
-        uow.mime_types
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
-        uow
-    }
-
-    /// Build a unit of work returning only the supported mime type set.
-    fn mime_types_uow() -> TestUow {
-        let mut uow = TestUow::default();
-        uow.mime_types
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
-        uow
     }
 
     /// Build a factory handing out `unit_of_works` in order.
@@ -1053,22 +955,6 @@ mod tests {
         )
     }
 
-    /// Expect the walk to report `entries`.
-    fn expect_walk(source: &mut MockMediaSource, entries: Vec<MediaEntry>) {
-        source.expect_walk().times(1).returning(move || {
-            let found = entries.clone();
-            Box::pin(async move { Ok(Some(found)) })
-        });
-    }
-
-    /// Expect the sniffer to report `mime_type_id`.
-    fn expect_sniff(sniffer: &mut MockContentTypeSniffer, mime_type_id: &'static str) {
-        sniffer
-            .expect_sniff()
-            .times(1)
-            .returning(move |_| Box::pin(async move { Ok(Some(mime_type_id.to_owned())) }));
-    }
-
     /// Return the content type the fixture's relative path implies.
     fn fixture_mime_type(path: &Path) -> &'static str {
         if path.to_string_lossy().ends_with("track.flac") {
@@ -1089,7 +975,66 @@ mod tests {
     #[tokio::test]
     async fn scan_registers_an_image_with_its_file_and_media_row() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (mut storing, committed) = storing_uow("photo.png", "image/png", 3, false)?;
+        let (mut storing, committed) =
+            (move |path: &'static str,
+                   mime_type_id: &'static str,
+                   size_bytes: i64,
+                   resource_exists: bool|
+                  -> Result<(TestUow, Arc<AtomicBool>), Box<dyn Error>> {
+                let root = User::try_new(0, "root".to_owned(), None, 0, Role::Admin)?;
+                let mut uow = TestUow::default();
+                uow.users.expect_search().times(1).returning(move |_| {
+                    let found = root.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                uow.files
+                    .expect_create()
+                    .times(1)
+                    .withf(move |file| {
+                        file.origin() == Origin::Scanned
+                            && file.user_id() == 0
+                            && file.size_bytes() == size_bytes
+                            && file.modified_at() == instant()
+                            && file.mime_type_id() == mime_type_id
+                            && file.integrity_hash().is_none()
+                    })
+                    .returning(move |_| {
+                        let stored = registered_file(path, mime_type_id, size_bytes)
+                            .map_err(|_| RepositoryError::OperationFailed);
+                        Box::pin(async move { stored })
+                    });
+                (move |unit_of_work: &mut TestUow, already_exists: bool| {
+                    let mut resources = MockResourceRepository::new();
+                    resources
+                        .expect_create()
+                        .times(1)
+                        .withf(|resource| {
+                            resource.kind == ResourceKind::File
+                                && resource.entity_id == 7
+                                && resource.owner_id == Some(0)
+                                && resource.visibility == Visibility::Private
+                                && resource.auth_parent.is_none()
+                        })
+                        .return_once(move |resource| {
+                            let stored = if already_exists {
+                                Err(RepositoryError::AlreadyExist)
+                            } else {
+                                Ok(Resource::from_stored(
+                                    1,
+                                    resource.kind,
+                                    resource.entity_id,
+                                    resource.owner_id,
+                                    None,
+                                    resource.visibility,
+                                ))
+                            };
+                            Box::pin(async move { stored })
+                        });
+                    unit_of_work.resources = resources;
+                })(&mut uow, resource_exists);
+                let committed = Arc::clone(&uow.committed);
+                Ok((uow, committed))
+            })("photo.png", "image/png", 3, false)?;
         storing
             .images
             .expect_create()
@@ -1099,16 +1044,43 @@ mod tests {
             })
             .returning(|image| Box::pin(async move { Ok(image) }));
         let mut source = MockMediaSource::new();
-        expect_walk(&mut source, vec![entry("photo.png", 3)]);
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(&mut source, vec![entry("photo.png", 3)]);
         let mut sniffer = MockContentTypeSniffer::new();
-        expect_sniff(&mut sniffer, "image/png");
+        (move |sniffer: &mut MockContentTypeSniffer, mime_type_id: &'static str| {
+            sniffer
+                .expect_sniff()
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(mime_type_id.to_owned())) }));
+        })(&mut sniffer, "image/png");
         let mut probe = MockMediaProbe::new();
         probe
             .expect_probe_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let use_case = use_case(
-            factory(vec![snapshot_uow(Vec::new()), storing]),
+            factory(vec![
+                (move |files: Vec<File>| -> TestUow {
+                    let mut uow = (move |files: Vec<File>| -> TestUow {
+                        let mut uow = TestUow::default();
+                        uow.files.expect_search().times(1).returning(move |_| {
+                            let found = files.clone();
+                            Box::pin(async move { Ok(found) })
+                        });
+                        uow
+                    })(files);
+                    uow.mime_types
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                    uow
+                })(Vec::new()),
+                storing,
+            ]),
             source,
             sniffer,
             probe,
@@ -1129,7 +1101,66 @@ mod tests {
     #[tokio::test]
     async fn scan_registers_a_video_with_its_media_row() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (mut storing, committed) = storing_uow("clip.mp4", "video/mp4", 4, false)?;
+        let (mut storing, committed) =
+            (move |path: &'static str,
+                   mime_type_id: &'static str,
+                   size_bytes: i64,
+                   resource_exists: bool|
+                  -> Result<(TestUow, Arc<AtomicBool>), Box<dyn Error>> {
+                let root = User::try_new(0, "root".to_owned(), None, 0, Role::Admin)?;
+                let mut uow = TestUow::default();
+                uow.users.expect_search().times(1).returning(move |_| {
+                    let found = root.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                uow.files
+                    .expect_create()
+                    .times(1)
+                    .withf(move |file| {
+                        file.origin() == Origin::Scanned
+                            && file.user_id() == 0
+                            && file.size_bytes() == size_bytes
+                            && file.modified_at() == instant()
+                            && file.mime_type_id() == mime_type_id
+                            && file.integrity_hash().is_none()
+                    })
+                    .returning(move |_| {
+                        let stored = registered_file(path, mime_type_id, size_bytes)
+                            .map_err(|_| RepositoryError::OperationFailed);
+                        Box::pin(async move { stored })
+                    });
+                (move |unit_of_work: &mut TestUow, already_exists: bool| {
+                    let mut resources = MockResourceRepository::new();
+                    resources
+                        .expect_create()
+                        .times(1)
+                        .withf(|resource| {
+                            resource.kind == ResourceKind::File
+                                && resource.entity_id == 7
+                                && resource.owner_id == Some(0)
+                                && resource.visibility == Visibility::Private
+                                && resource.auth_parent.is_none()
+                        })
+                        .return_once(move |resource| {
+                            let stored = if already_exists {
+                                Err(RepositoryError::AlreadyExist)
+                            } else {
+                                Ok(Resource::from_stored(
+                                    1,
+                                    resource.kind,
+                                    resource.entity_id,
+                                    resource.owner_id,
+                                    None,
+                                    resource.visibility,
+                                ))
+                            };
+                            Box::pin(async move { stored })
+                        });
+                    unit_of_work.resources = resources;
+                })(&mut uow, resource_exists);
+                let committed = Arc::clone(&uow.committed);
+                Ok((uow, committed))
+            })("clip.mp4", "video/mp4", 4, false)?;
         storing
             .videos
             .expect_create()
@@ -1137,16 +1168,43 @@ mod tests {
             .withf(|video| video.width() == 640 && video.frame_count() == 30)
             .returning(|video| Box::pin(async move { Ok(video) }));
         let mut source = MockMediaSource::new();
-        expect_walk(&mut source, vec![entry("clip.mp4", 4)]);
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(&mut source, vec![entry("clip.mp4", 4)]);
         let mut sniffer = MockContentTypeSniffer::new();
-        expect_sniff(&mut sniffer, "video/mp4");
+        (move |sniffer: &mut MockContentTypeSniffer, mime_type_id: &'static str| {
+            sniffer
+                .expect_sniff()
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(mime_type_id.to_owned())) }));
+        })(&mut sniffer, "video/mp4");
         let mut probe = MockMediaProbe::new();
         probe
             .expect_probe_video()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_video())) }));
         let use_case = use_case(
-            factory(vec![snapshot_uow(Vec::new()), storing]),
+            factory(vec![
+                (move |files: Vec<File>| -> TestUow {
+                    let mut uow = (move |files: Vec<File>| -> TestUow {
+                        let mut uow = TestUow::default();
+                        uow.files.expect_search().times(1).returning(move |_| {
+                            let found = files.clone();
+                            Box::pin(async move { Ok(found) })
+                        });
+                        uow
+                    })(files);
+                    uow.mime_types
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                    uow
+                })(Vec::new()),
+                storing,
+            ]),
             source,
             sniffer,
             probe,
@@ -1166,7 +1224,66 @@ mod tests {
     #[tokio::test]
     async fn scan_registers_an_audio_file_with_absent_measurements() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (mut storing, committed) = storing_uow("track.mp3", "audio/mpeg", 5, false)?;
+        let (mut storing, committed) =
+            (move |path: &'static str,
+                   mime_type_id: &'static str,
+                   size_bytes: i64,
+                   resource_exists: bool|
+                  -> Result<(TestUow, Arc<AtomicBool>), Box<dyn Error>> {
+                let root = User::try_new(0, "root".to_owned(), None, 0, Role::Admin)?;
+                let mut uow = TestUow::default();
+                uow.users.expect_search().times(1).returning(move |_| {
+                    let found = root.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                uow.files
+                    .expect_create()
+                    .times(1)
+                    .withf(move |file| {
+                        file.origin() == Origin::Scanned
+                            && file.user_id() == 0
+                            && file.size_bytes() == size_bytes
+                            && file.modified_at() == instant()
+                            && file.mime_type_id() == mime_type_id
+                            && file.integrity_hash().is_none()
+                    })
+                    .returning(move |_| {
+                        let stored = registered_file(path, mime_type_id, size_bytes)
+                            .map_err(|_| RepositoryError::OperationFailed);
+                        Box::pin(async move { stored })
+                    });
+                (move |unit_of_work: &mut TestUow, already_exists: bool| {
+                    let mut resources = MockResourceRepository::new();
+                    resources
+                        .expect_create()
+                        .times(1)
+                        .withf(|resource| {
+                            resource.kind == ResourceKind::File
+                                && resource.entity_id == 7
+                                && resource.owner_id == Some(0)
+                                && resource.visibility == Visibility::Private
+                                && resource.auth_parent.is_none()
+                        })
+                        .return_once(move |resource| {
+                            let stored = if already_exists {
+                                Err(RepositoryError::AlreadyExist)
+                            } else {
+                                Ok(Resource::from_stored(
+                                    1,
+                                    resource.kind,
+                                    resource.entity_id,
+                                    resource.owner_id,
+                                    None,
+                                    resource.visibility,
+                                ))
+                            };
+                            Box::pin(async move { stored })
+                        });
+                    unit_of_work.resources = resources;
+                })(&mut uow, resource_exists);
+                let committed = Arc::clone(&uow.committed);
+                Ok((uow, committed))
+            })("track.mp3", "audio/mpeg", 5, false)?;
         storing
             .audios
             .expect_create()
@@ -1174,16 +1291,43 @@ mod tests {
             .withf(|audio| audio.bit_depth().is_none() && audio.block_size().is_none())
             .returning(|audio| Box::pin(async move { Ok(audio) }));
         let mut source = MockMediaSource::new();
-        expect_walk(&mut source, vec![entry("track.mp3", 5)]);
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(&mut source, vec![entry("track.mp3", 5)]);
         let mut sniffer = MockContentTypeSniffer::new();
-        expect_sniff(&mut sniffer, "audio/mpeg");
+        (move |sniffer: &mut MockContentTypeSniffer, mime_type_id: &'static str| {
+            sniffer
+                .expect_sniff()
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(mime_type_id.to_owned())) }));
+        })(&mut sniffer, "audio/mpeg");
         let mut probe = MockMediaProbe::new();
         probe
             .expect_probe_audio()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_audio_without_measurements())) }));
         let use_case = use_case(
-            factory(vec![snapshot_uow(Vec::new()), storing]),
+            factory(vec![
+                (move |files: Vec<File>| -> TestUow {
+                    let mut uow = (move |files: Vec<File>| -> TestUow {
+                        let mut uow = TestUow::default();
+                        uow.files.expect_search().times(1).returning(move |_| {
+                            let found = files.clone();
+                            Box::pin(async move { Ok(found) })
+                        });
+                        uow
+                    })(files);
+                    uow.mime_types
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                    uow
+                })(Vec::new()),
+                storing,
+            ]),
             source,
             sniffer,
             probe,
@@ -1204,13 +1348,37 @@ mod tests {
     async fn scan_skips_a_file_that_is_not_media() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut source = MockMediaSource::new();
-        expect_walk(&mut source, vec![entry("notes.txt", 3)]);
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(&mut source, vec![entry("notes.txt", 3)]);
         let mut sniffer = MockContentTypeSniffer::new();
-        expect_sniff(&mut sniffer, "text/plain");
+        (move |sniffer: &mut MockContentTypeSniffer, mime_type_id: &'static str| {
+            sniffer
+                .expect_sniff()
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(mime_type_id.to_owned())) }));
+        })(&mut sniffer, "text/plain");
         let mut probe = MockMediaProbe::new();
         probe.expect_probe_image().times(0);
         let use_case = use_case(
-            factory(vec![snapshot_uow(Vec::new())]),
+            factory(vec![(move |files: Vec<File>| -> TestUow {
+                let mut uow = (move |files: Vec<File>| -> TestUow {
+                    let mut uow = TestUow::default();
+                    uow.files.expect_search().times(1).returning(move |_| {
+                        let found = files.clone();
+                        Box::pin(async move { Ok(found) })
+                    });
+                    uow
+                })(files);
+                uow.mime_types
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                uow
+            })(Vec::new())]),
             source,
             sniffer,
             probe,
@@ -1231,16 +1399,40 @@ mod tests {
     async fn scan_skips_an_image_the_probe_cannot_decode() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut source = MockMediaSource::new();
-        expect_walk(&mut source, vec![entry("broken.png", 3)]);
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(&mut source, vec![entry("broken.png", 3)]);
         let mut sniffer = MockContentTypeSniffer::new();
-        expect_sniff(&mut sniffer, "image/png");
+        (move |sniffer: &mut MockContentTypeSniffer, mime_type_id: &'static str| {
+            sniffer
+                .expect_sniff()
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(mime_type_id.to_owned())) }));
+        })(&mut sniffer, "image/png");
         let mut probe = MockMediaProbe::new();
         probe
             .expect_probe_image()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::UnsupportedMedia) }));
         let use_case = use_case(
-            factory(vec![snapshot_uow(Vec::new())]),
+            factory(vec![(move |files: Vec<File>| -> TestUow {
+                let mut uow = (move |files: Vec<File>| -> TestUow {
+                    let mut uow = TestUow::default();
+                    uow.files.expect_search().times(1).returning(move |_| {
+                        let found = files.clone();
+                        Box::pin(async move { Ok(found) })
+                    });
+                    uow
+                })(files);
+                uow.mime_types
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                uow
+            })(Vec::new())]),
             source,
             sniffer,
             probe,
@@ -1261,16 +1453,40 @@ mod tests {
     async fn scan_skips_a_file_whose_probe_times_out() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut source = MockMediaSource::new();
-        expect_walk(&mut source, vec![entry("slow.mp4", 3)]);
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(&mut source, vec![entry("slow.mp4", 3)]);
         let mut sniffer = MockContentTypeSniffer::new();
-        expect_sniff(&mut sniffer, "video/mp4");
+        (move |sniffer: &mut MockContentTypeSniffer, mime_type_id: &'static str| {
+            sniffer
+                .expect_sniff()
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(mime_type_id.to_owned())) }));
+        })(&mut sniffer, "video/mp4");
         let mut probe = MockMediaProbe::new();
         probe
             .expect_probe_video()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::Timeout) }));
         let use_case = use_case(
-            factory(vec![snapshot_uow(Vec::new())]),
+            factory(vec![(move |files: Vec<File>| -> TestUow {
+                let mut uow = (move |files: Vec<File>| -> TestUow {
+                    let mut uow = TestUow::default();
+                    uow.files.expect_search().times(1).returning(move |_| {
+                        let found = files.clone();
+                        Box::pin(async move { Ok(found) })
+                    });
+                    uow
+                })(files);
+                uow.mime_types
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                uow
+            })(Vec::new())]),
             source,
             sniffer,
             probe,
@@ -1290,14 +1506,78 @@ mod tests {
     async fn scan_skips_an_unsupported_mime_type_without_probing() -> Result<(), Box<dyn Error>> {
         // Arrange: the sniffer recognises the content, but the datastore's
         // supported set does not contain `audio/x-flac`.
-        let (mut storing, committed) = storing_uow("photo.png", "image/png", 3, false)?;
+        let (mut storing, committed) =
+            (move |path: &'static str,
+                   mime_type_id: &'static str,
+                   size_bytes: i64,
+                   resource_exists: bool|
+                  -> Result<(TestUow, Arc<AtomicBool>), Box<dyn Error>> {
+                let root = User::try_new(0, "root".to_owned(), None, 0, Role::Admin)?;
+                let mut uow = TestUow::default();
+                uow.users.expect_search().times(1).returning(move |_| {
+                    let found = root.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                uow.files
+                    .expect_create()
+                    .times(1)
+                    .withf(move |file| {
+                        file.origin() == Origin::Scanned
+                            && file.user_id() == 0
+                            && file.size_bytes() == size_bytes
+                            && file.modified_at() == instant()
+                            && file.mime_type_id() == mime_type_id
+                            && file.integrity_hash().is_none()
+                    })
+                    .returning(move |_| {
+                        let stored = registered_file(path, mime_type_id, size_bytes)
+                            .map_err(|_| RepositoryError::OperationFailed);
+                        Box::pin(async move { stored })
+                    });
+                (move |unit_of_work: &mut TestUow, already_exists: bool| {
+                    let mut resources = MockResourceRepository::new();
+                    resources
+                        .expect_create()
+                        .times(1)
+                        .withf(|resource| {
+                            resource.kind == ResourceKind::File
+                                && resource.entity_id == 7
+                                && resource.owner_id == Some(0)
+                                && resource.visibility == Visibility::Private
+                                && resource.auth_parent.is_none()
+                        })
+                        .return_once(move |resource| {
+                            let stored = if already_exists {
+                                Err(RepositoryError::AlreadyExist)
+                            } else {
+                                Ok(Resource::from_stored(
+                                    1,
+                                    resource.kind,
+                                    resource.entity_id,
+                                    resource.owner_id,
+                                    None,
+                                    resource.visibility,
+                                ))
+                            };
+                            Box::pin(async move { stored })
+                        });
+                    unit_of_work.resources = resources;
+                })(&mut uow, resource_exists);
+                let committed = Arc::clone(&uow.committed);
+                Ok((uow, committed))
+            })("photo.png", "image/png", 3, false)?;
         storing
             .images
             .expect_create()
             .times(1)
             .returning(|image| Box::pin(async move { Ok(image) }));
         let mut source = MockMediaSource::new();
-        expect_walk(
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(
             &mut source,
             vec![entry("track.flac", 5), entry("photo.png", 3)],
         );
@@ -1313,7 +1593,24 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let use_case = use_case(
-            factory(vec![snapshot_uow(Vec::new()), storing]),
+            factory(vec![
+                (move |files: Vec<File>| -> TestUow {
+                    let mut uow = (move |files: Vec<File>| -> TestUow {
+                        let mut uow = TestUow::default();
+                        uow.files.expect_search().times(1).returning(move |_| {
+                            let found = files.clone();
+                            Box::pin(async move { Ok(found) })
+                        });
+                        uow
+                    })(files);
+                    uow.mime_types
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                    uow
+                })(Vec::new()),
+                storing,
+            ]),
             source,
             sniffer,
             probe,
@@ -1335,14 +1632,78 @@ mod tests {
     #[tokio::test]
     async fn scan_skips_a_file_the_sniffer_cannot_read() -> Result<(), Box<dyn Error>> {
         // Arrange: one file cannot be read, its neighbour can.
-        let (mut storing, committed) = storing_uow("photo.png", "image/png", 3, false)?;
+        let (mut storing, committed) =
+            (move |path: &'static str,
+                   mime_type_id: &'static str,
+                   size_bytes: i64,
+                   resource_exists: bool|
+                  -> Result<(TestUow, Arc<AtomicBool>), Box<dyn Error>> {
+                let root = User::try_new(0, "root".to_owned(), None, 0, Role::Admin)?;
+                let mut uow = TestUow::default();
+                uow.users.expect_search().times(1).returning(move |_| {
+                    let found = root.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                uow.files
+                    .expect_create()
+                    .times(1)
+                    .withf(move |file| {
+                        file.origin() == Origin::Scanned
+                            && file.user_id() == 0
+                            && file.size_bytes() == size_bytes
+                            && file.modified_at() == instant()
+                            && file.mime_type_id() == mime_type_id
+                            && file.integrity_hash().is_none()
+                    })
+                    .returning(move |_| {
+                        let stored = registered_file(path, mime_type_id, size_bytes)
+                            .map_err(|_| RepositoryError::OperationFailed);
+                        Box::pin(async move { stored })
+                    });
+                (move |unit_of_work: &mut TestUow, already_exists: bool| {
+                    let mut resources = MockResourceRepository::new();
+                    resources
+                        .expect_create()
+                        .times(1)
+                        .withf(|resource| {
+                            resource.kind == ResourceKind::File
+                                && resource.entity_id == 7
+                                && resource.owner_id == Some(0)
+                                && resource.visibility == Visibility::Private
+                                && resource.auth_parent.is_none()
+                        })
+                        .return_once(move |resource| {
+                            let stored = if already_exists {
+                                Err(RepositoryError::AlreadyExist)
+                            } else {
+                                Ok(Resource::from_stored(
+                                    1,
+                                    resource.kind,
+                                    resource.entity_id,
+                                    resource.owner_id,
+                                    None,
+                                    resource.visibility,
+                                ))
+                            };
+                            Box::pin(async move { stored })
+                        });
+                    unit_of_work.resources = resources;
+                })(&mut uow, resource_exists);
+                let committed = Arc::clone(&uow.committed);
+                Ok((uow, committed))
+            })("photo.png", "image/png", 3, false)?;
         storing
             .images
             .expect_create()
             .times(1)
             .returning(|image| Box::pin(async move { Ok(image) }));
         let mut source = MockMediaSource::new();
-        expect_walk(
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(
             &mut source,
             vec![entry("secret.png", 3), entry("photo.png", 3)],
         );
@@ -1357,7 +1718,24 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let use_case = use_case(
-            factory(vec![snapshot_uow(Vec::new()), storing]),
+            factory(vec![
+                (move |files: Vec<File>| -> TestUow {
+                    let mut uow = (move |files: Vec<File>| -> TestUow {
+                        let mut uow = TestUow::default();
+                        uow.files.expect_search().times(1).returning(move |_| {
+                            let found = files.clone();
+                            Box::pin(async move { Ok(found) })
+                        });
+                        uow
+                    })(files);
+                    uow.mime_types
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                    uow
+                })(Vec::new()),
+                storing,
+            ]),
             source,
             sniffer,
             probe,
@@ -1393,14 +1771,78 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
-        let (mut storing, committed) = storing_uow("good.png", "image/png", 3, false)?;
+        let (mut storing, committed) =
+            (move |path: &'static str,
+                   mime_type_id: &'static str,
+                   size_bytes: i64,
+                   resource_exists: bool|
+                  -> Result<(TestUow, Arc<AtomicBool>), Box<dyn Error>> {
+                let root = User::try_new(0, "root".to_owned(), None, 0, Role::Admin)?;
+                let mut uow = TestUow::default();
+                uow.users.expect_search().times(1).returning(move |_| {
+                    let found = root.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                uow.files
+                    .expect_create()
+                    .times(1)
+                    .withf(move |file| {
+                        file.origin() == Origin::Scanned
+                            && file.user_id() == 0
+                            && file.size_bytes() == size_bytes
+                            && file.modified_at() == instant()
+                            && file.mime_type_id() == mime_type_id
+                            && file.integrity_hash().is_none()
+                    })
+                    .returning(move |_| {
+                        let stored = registered_file(path, mime_type_id, size_bytes)
+                            .map_err(|_| RepositoryError::OperationFailed);
+                        Box::pin(async move { stored })
+                    });
+                (move |unit_of_work: &mut TestUow, already_exists: bool| {
+                    let mut resources = MockResourceRepository::new();
+                    resources
+                        .expect_create()
+                        .times(1)
+                        .withf(|resource| {
+                            resource.kind == ResourceKind::File
+                                && resource.entity_id == 7
+                                && resource.owner_id == Some(0)
+                                && resource.visibility == Visibility::Private
+                                && resource.auth_parent.is_none()
+                        })
+                        .return_once(move |resource| {
+                            let stored = if already_exists {
+                                Err(RepositoryError::AlreadyExist)
+                            } else {
+                                Ok(Resource::from_stored(
+                                    1,
+                                    resource.kind,
+                                    resource.entity_id,
+                                    resource.owner_id,
+                                    None,
+                                    resource.visibility,
+                                ))
+                            };
+                            Box::pin(async move { stored })
+                        });
+                    unit_of_work.resources = resources;
+                })(&mut uow, resource_exists);
+                let committed = Arc::clone(&uow.committed);
+                Ok((uow, committed))
+            })("good.png", "image/png", 3, false)?;
         storing
             .images
             .expect_create()
             .times(1)
             .returning(|image| Box::pin(async move { Ok(image) }));
         let mut source = MockMediaSource::new();
-        expect_walk(&mut source, vec![entry("bad.png", 3), entry("good.png", 3)]);
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(&mut source, vec![entry("bad.png", 3), entry("good.png", 3)]);
         let mut sniffer = MockContentTypeSniffer::new();
         sniffer
             .expect_sniff()
@@ -1412,7 +1854,25 @@ mod tests {
             .times(2)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let use_case = use_case(
-            factory(vec![snapshot_uow(Vec::new()), rejecting, storing]),
+            factory(vec![
+                (move |files: Vec<File>| -> TestUow {
+                    let mut uow = (move |files: Vec<File>| -> TestUow {
+                        let mut uow = TestUow::default();
+                        uow.files.expect_search().times(1).returning(move |_| {
+                            let found = files.clone();
+                            Box::pin(async move { Ok(found) })
+                        });
+                        uow
+                    })(files);
+                    uow.mime_types
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                    uow
+                })(Vec::new()),
+                rejecting,
+                storing,
+            ]),
             source,
             sniffer,
             probe,
@@ -1461,9 +1921,31 @@ mod tests {
                 Box::pin(async move { image.map(|found| vec![found]) })
             });
         let mut source = MockMediaSource::new();
-        expect_walk(&mut source, vec![entry("photo.png", 3)]);
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(&mut source, vec![entry("photo.png", 3)]);
         let use_case = use_case(
-            factory(vec![snapshot_uow(vec![file]), media]),
+            factory(vec![
+                (move |files: Vec<File>| -> TestUow {
+                    let mut uow = (move |files: Vec<File>| -> TestUow {
+                        let mut uow = TestUow::default();
+                        uow.files.expect_search().times(1).returning(move |_| {
+                            let found = files.clone();
+                            Box::pin(async move { Ok(found) })
+                        });
+                        uow
+                    })(files);
+                    uow.mime_types
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                    uow
+                })(vec![file]),
+                media,
+            ]),
             source,
             MockContentTypeSniffer::new(),
             MockMediaProbe::new(),
@@ -1484,23 +1966,109 @@ mod tests {
     async fn scan_tolerates_an_existing_file_resource() -> Result<(), Box<dyn Error>> {
         // Arrange: the file row is new but its resource already exists, which a
         // concurrent driver can leave behind.
-        let (mut storing, committed) = storing_uow("photo.png", "image/png", 3, true)?;
+        let (mut storing, committed) =
+            (move |path: &'static str,
+                   mime_type_id: &'static str,
+                   size_bytes: i64,
+                   resource_exists: bool|
+                  -> Result<(TestUow, Arc<AtomicBool>), Box<dyn Error>> {
+                let root = User::try_new(0, "root".to_owned(), None, 0, Role::Admin)?;
+                let mut uow = TestUow::default();
+                uow.users.expect_search().times(1).returning(move |_| {
+                    let found = root.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                uow.files
+                    .expect_create()
+                    .times(1)
+                    .withf(move |file| {
+                        file.origin() == Origin::Scanned
+                            && file.user_id() == 0
+                            && file.size_bytes() == size_bytes
+                            && file.modified_at() == instant()
+                            && file.mime_type_id() == mime_type_id
+                            && file.integrity_hash().is_none()
+                    })
+                    .returning(move |_| {
+                        let stored = registered_file(path, mime_type_id, size_bytes)
+                            .map_err(|_| RepositoryError::OperationFailed);
+                        Box::pin(async move { stored })
+                    });
+                (move |unit_of_work: &mut TestUow, already_exists: bool| {
+                    let mut resources = MockResourceRepository::new();
+                    resources
+                        .expect_create()
+                        .times(1)
+                        .withf(|resource| {
+                            resource.kind == ResourceKind::File
+                                && resource.entity_id == 7
+                                && resource.owner_id == Some(0)
+                                && resource.visibility == Visibility::Private
+                                && resource.auth_parent.is_none()
+                        })
+                        .return_once(move |resource| {
+                            let stored = if already_exists {
+                                Err(RepositoryError::AlreadyExist)
+                            } else {
+                                Ok(Resource::from_stored(
+                                    1,
+                                    resource.kind,
+                                    resource.entity_id,
+                                    resource.owner_id,
+                                    None,
+                                    resource.visibility,
+                                ))
+                            };
+                            Box::pin(async move { stored })
+                        });
+                    unit_of_work.resources = resources;
+                })(&mut uow, resource_exists);
+                let committed = Arc::clone(&uow.committed);
+                Ok((uow, committed))
+            })("photo.png", "image/png", 3, true)?;
         storing
             .images
             .expect_create()
             .times(1)
             .returning(|image| Box::pin(async move { Ok(image) }));
         let mut source = MockMediaSource::new();
-        expect_walk(&mut source, vec![entry("photo.png", 3)]);
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(&mut source, vec![entry("photo.png", 3)]);
         let mut sniffer = MockContentTypeSniffer::new();
-        expect_sniff(&mut sniffer, "image/png");
+        (move |sniffer: &mut MockContentTypeSniffer, mime_type_id: &'static str| {
+            sniffer
+                .expect_sniff()
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(mime_type_id.to_owned())) }));
+        })(&mut sniffer, "image/png");
         let mut probe = MockMediaProbe::new();
         probe
             .expect_probe_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let use_case = use_case(
-            factory(vec![snapshot_uow(Vec::new()), storing]),
+            factory(vec![
+                (move |files: Vec<File>| -> TestUow {
+                    let mut uow = (move |files: Vec<File>| -> TestUow {
+                        let mut uow = TestUow::default();
+                        uow.files.expect_search().times(1).returning(move |_| {
+                            let found = files.clone();
+                            Box::pin(async move { Ok(found) })
+                        });
+                        uow
+                    })(files);
+                    uow.mime_types
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                    uow
+                })(Vec::new()),
+                storing,
+            ]),
             source,
             sniffer,
             probe,
@@ -1522,9 +2090,28 @@ mod tests {
         // Arrange: the recorded size differs from the file's.
         let file = registered_file("photo.png", "image/png", 99)?;
         let mut source = MockMediaSource::new();
-        expect_walk(&mut source, vec![entry("photo.png", 3)]);
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(&mut source, vec![entry("photo.png", 3)]);
         let use_case = use_case(
-            factory(vec![snapshot_uow(vec![file])]),
+            factory(vec![(move |files: Vec<File>| -> TestUow {
+                let mut uow = (move |files: Vec<File>| -> TestUow {
+                    let mut uow = TestUow::default();
+                    uow.files.expect_search().times(1).returning(move |_| {
+                        let found = files.clone();
+                        Box::pin(async move { Ok(found) })
+                    });
+                    uow
+                })(files);
+                uow.mime_types
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                uow
+            })(vec![file])]),
             source,
             MockContentTypeSniffer::new(),
             MockMediaProbe::new(),
@@ -1546,7 +2133,12 @@ mod tests {
         // Arrange: the root no longer holds the file the record names.
         let file = registered_file("gone.png", "image/png", 3)?;
         let mut source = MockMediaSource::new();
-        expect_walk(&mut source, Vec::new());
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(&mut source, Vec::new());
         let mut removing = TestUow::default();
         removing
             .images
@@ -1570,7 +2162,24 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(true) }));
         let committed = Arc::clone(&removing.committed);
         let use_case = use_case(
-            factory(vec![snapshot_uow(vec![file]), removing]),
+            factory(vec![
+                (move |files: Vec<File>| -> TestUow {
+                    let mut uow = (move |files: Vec<File>| -> TestUow {
+                        let mut uow = TestUow::default();
+                        uow.files.expect_search().times(1).returning(move |_| {
+                            let found = files.clone();
+                            Box::pin(async move { Ok(found) })
+                        });
+                        uow
+                    })(files);
+                    uow.mime_types
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                    uow
+                })(vec![file]),
+                removing,
+            ]),
             source,
             MockContentTypeSniffer::new(),
             MockMediaProbe::new(),
@@ -1609,14 +2218,37 @@ mod tests {
             .returning(|audio| Box::pin(async move { Ok(audio) }));
         let committed = Arc::clone(&storing.committed);
         let mut source = MockMediaSource::new();
-        expect_walk(&mut source, vec![entry("track.mp3", 5)]);
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(&mut source, vec![entry("track.mp3", 5)]);
         let mut probe = MockMediaProbe::new();
         probe
             .expect_probe_audio()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_audio_without_measurements())) }));
         let use_case = use_case(
-            factory(vec![snapshot_uow(vec![file]), media, storing]),
+            factory(vec![
+                (move |files: Vec<File>| -> TestUow {
+                    let mut uow = (move |files: Vec<File>| -> TestUow {
+                        let mut uow = TestUow::default();
+                        uow.files.expect_search().times(1).returning(move |_| {
+                            let found = files.clone();
+                            Box::pin(async move { Ok(found) })
+                        });
+                        uow
+                    })(files);
+                    uow.mime_types
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                    uow
+                })(vec![file]),
+                media,
+                storing,
+            ]),
             source,
             MockContentTypeSniffer::new(),
             probe,
@@ -1637,7 +2269,66 @@ mod tests {
     #[tokio::test]
     async fn path_request_registers_a_file_that_appeared() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (mut storing, committed) = storing_uow("new.png", "image/png", 3, false)?;
+        let (mut storing, committed) =
+            (move |path: &'static str,
+                   mime_type_id: &'static str,
+                   size_bytes: i64,
+                   resource_exists: bool|
+                  -> Result<(TestUow, Arc<AtomicBool>), Box<dyn Error>> {
+                let root = User::try_new(0, "root".to_owned(), None, 0, Role::Admin)?;
+                let mut uow = TestUow::default();
+                uow.users.expect_search().times(1).returning(move |_| {
+                    let found = root.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+                uow.files
+                    .expect_create()
+                    .times(1)
+                    .withf(move |file| {
+                        file.origin() == Origin::Scanned
+                            && file.user_id() == 0
+                            && file.size_bytes() == size_bytes
+                            && file.modified_at() == instant()
+                            && file.mime_type_id() == mime_type_id
+                            && file.integrity_hash().is_none()
+                    })
+                    .returning(move |_| {
+                        let stored = registered_file(path, mime_type_id, size_bytes)
+                            .map_err(|_| RepositoryError::OperationFailed);
+                        Box::pin(async move { stored })
+                    });
+                (move |unit_of_work: &mut TestUow, already_exists: bool| {
+                    let mut resources = MockResourceRepository::new();
+                    resources
+                        .expect_create()
+                        .times(1)
+                        .withf(|resource| {
+                            resource.kind == ResourceKind::File
+                                && resource.entity_id == 7
+                                && resource.owner_id == Some(0)
+                                && resource.visibility == Visibility::Private
+                                && resource.auth_parent.is_none()
+                        })
+                        .return_once(move |resource| {
+                            let stored = if already_exists {
+                                Err(RepositoryError::AlreadyExist)
+                            } else {
+                                Ok(Resource::from_stored(
+                                    1,
+                                    resource.kind,
+                                    resource.entity_id,
+                                    resource.owner_id,
+                                    None,
+                                    resource.visibility,
+                                ))
+                            };
+                            Box::pin(async move { stored })
+                        });
+                    unit_of_work.resources = resources;
+                })(&mut uow, resource_exists);
+                let committed = Arc::clone(&uow.committed);
+                Ok((uow, committed))
+            })("new.png", "image/png", 3, false)?;
         storing
             .images
             .expect_create()
@@ -1649,14 +2340,37 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(entry("new.png", 3))) }));
         let mut sniffer = MockContentTypeSniffer::new();
-        expect_sniff(&mut sniffer, "image/png");
+        (move |sniffer: &mut MockContentTypeSniffer, mime_type_id: &'static str| {
+            sniffer
+                .expect_sniff()
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(mime_type_id.to_owned())) }));
+        })(&mut sniffer, "image/png");
         let mut probe = MockMediaProbe::new();
         probe
             .expect_probe_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let use_case = use_case(
-            factory(vec![mime_types_uow(), reading_uow(Vec::new()), storing]),
+            factory(vec![
+                (move || -> TestUow {
+                    let mut uow = TestUow::default();
+                    uow.mime_types
+                        .expect_search()
+                        .times(1)
+                        .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                    uow
+                })(),
+                (move |files: Vec<File>| -> TestUow {
+                    let mut uow = TestUow::default();
+                    uow.files.expect_search().times(1).returning(move |_| {
+                        let found = files.clone();
+                        Box::pin(async move { Ok(found) })
+                    });
+                    uow
+                })(Vec::new()),
+                storing,
+            ]),
             source,
             sniffer,
             probe,
@@ -1688,7 +2402,17 @@ mod tests {
             .returning(|saved| Box::pin(async move { Ok(saved) }));
         let committed = Arc::clone(&writing.committed);
         let use_case = use_case(
-            factory(vec![reading_uow(vec![file]), writing]),
+            factory(vec![
+                (move |files: Vec<File>| -> TestUow {
+                    let mut uow = TestUow::default();
+                    uow.files.expect_search().times(1).returning(move |_| {
+                        let found = files.clone();
+                        Box::pin(async move { Ok(found) })
+                    });
+                    uow
+                })(vec![file]),
+                writing,
+            ]),
             MockMediaSource::new(),
             MockContentTypeSniffer::new(),
             MockMediaProbe::new(),
@@ -1721,7 +2445,17 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let use_case = use_case(
-            factory(vec![reading_uow(vec![file]), failing]),
+            factory(vec![
+                (move |files: Vec<File>| -> TestUow {
+                    let mut uow = TestUow::default();
+                    uow.files.expect_search().times(1).returning(move |_| {
+                        let found = files.clone();
+                        Box::pin(async move { Ok(found) })
+                    });
+                    uow
+                })(vec![file]),
+                failing,
+            ]),
             MockMediaSource::new(),
             MockContentTypeSniffer::new(),
             MockMediaProbe::new(),
@@ -1745,11 +2479,35 @@ mod tests {
     async fn ingest_reports_aggregate_counts_without_a_file_name() -> Result<(), Box<dyn Error>> {
         // Arrange: one skipped file named in the fixture.
         let mut source = MockMediaSource::new();
-        expect_walk(&mut source, vec![entry("private-notes.txt", 3)]);
+        (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
+            source.expect_walk().times(1).returning(move || {
+                let found = entries.clone();
+                Box::pin(async move { Ok(Some(found)) })
+            });
+        })(&mut source, vec![entry("private-notes.txt", 3)]);
         let mut sniffer = MockContentTypeSniffer::new();
-        expect_sniff(&mut sniffer, "text/plain");
+        (move |sniffer: &mut MockContentTypeSniffer, mime_type_id: &'static str| {
+            sniffer
+                .expect_sniff()
+                .times(1)
+                .returning(move |_| Box::pin(async move { Ok(Some(mime_type_id.to_owned())) }));
+        })(&mut sniffer, "text/plain");
         let use_case = use_case(
-            factory(vec![snapshot_uow(Vec::new())]),
+            factory(vec![(move |files: Vec<File>| -> TestUow {
+                let mut uow = (move |files: Vec<File>| -> TestUow {
+                    let mut uow = TestUow::default();
+                    uow.files.expect_search().times(1).returning(move |_| {
+                        let found = files.clone();
+                        Box::pin(async move { Ok(found) })
+                    });
+                    uow
+                })(files);
+                uow.mime_types
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
+                uow
+            })(Vec::new())]),
             source,
             sniffer,
             MockMediaProbe::new(),

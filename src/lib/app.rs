@@ -214,7 +214,7 @@ pub async fn run() -> anyhow::Result<()> {
         Arc::clone(&probe_permits),
     ));
 
-    // The reaper reads its interval once, at startup (`STY-RUST-076`), and the
+    // The reaper reads its interval once, at startup (`STY-RUST-073`), and the
     // factory each tick for the live batch size.
     let upload_reap_interval =
         Duration::from_secs(configuration.asset().upload().reap_interval_seconds());

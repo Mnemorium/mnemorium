@@ -553,224 +553,13 @@ fn episode_from_row(row: &SeriesRow) -> Result<Option<Episode>, RepositoryError>
 mod tests {
     use super::*;
     use crate::domain::model::ScanType;
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
 
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use crate::test_helpers::*;
     use chrono::NaiveDate;
     use std::error::Error;
     use tracing_test::traced_test;
-
-    /// Assert the captured output is exactly one `output_validation_failed`
-    /// event with `reason`, carrying neither a stored value nor an `sqlx`
-    /// detail.
-    fn assert_output_validation_failed(lines: &[&str], reason: &str) -> Result<(), String> {
-        let ours: Vec<&str> = lines
-            .iter()
-            .copied()
-            .filter(|line| line.contains("security:"))
-            .collect();
-        let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
-        if warn_count != 1 {
-            return Err(format!(
-                "rejected stored data must emit exactly one warn event (found {warn_count})"
-            ));
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains("event=\"output_validation_failed\""))
-        {
-            return Err("the event must be output_validation_failed".to_owned());
-        }
-        if !ours
-            .iter()
-            .any(|line| line.contains(&format!("reason=\"{reason}\"")))
-        {
-            return Err(format!("the event must carry the stable reason `{reason}`"));
-        }
-        if ours.iter().any(|line| line.contains("sqlx")) {
-            return Err("the event must not carry the sqlx detail".to_owned());
-        }
-        Ok(())
-    }
-
-    /// Open a migrated in-memory database and begin one transaction.
-    /// Seed a credential and a standard user so foreign keys resolve.
-    async fn seed_user(transaction: &mut Transaction<'static, Sqlite>) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (1, 'hash')")
-            .execute(&mut **transaction)
-            .await?;
-        sqlx::query(
-            "INSERT INTO user (user_id, role, username, email, credential_id)
-             VALUES (1, 'STANDARD', 'tester', NULL, 1)",
-        )
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a video file owned by the seeded user.
-    async fn seed_video_file(
-        transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
-             VALUES (?1, ?2, 1, 0, 'video/mp4', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?3)",
-        )
-        .bind(file_id)
-        .bind(format!("{file_id}.mp4"))
-        .bind(format!("{file_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a progressive video of `width` pixels on `file_id`.
-    async fn seed_video(
-        transaction: &mut Transaction<'static, Sqlite>,
-        video_id: i64,
-        file_id: i64,
-        width: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO video (
-                video_id, duration_ms, codec, frame_count, width, height, color_id, scan_type, file_id
-             )
-             VALUES (?1, 1000.0, 'H264', 30, ?2, 10, 'YCbCr', 'PROGRESSIVE', ?3)",
-        )
-        .bind(video_id)
-        .bind(width)
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed an image row of `image_id` on `file_id`, in a square orientation.
-    async fn seed_image(
-        transaction: &mut Transaction<'static, Sqlite>,
-        image_id: i64,
-        file_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO image (image_id, name, width_px, height_px, orientation, created_at, file_id)
-             VALUES (?1, ?2, 10, 10, 'SQUARE', '2026-10-06', ?3)",
-        )
-        .bind(image_id)
-        .bind(format!("{image_id}.png"))
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed an image file of `file_id`.
-    async fn seed_image_file(
-        transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
-             VALUES (?1, ?2, 1, 0, 'image/png', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?3)",
-        )
-        .bind(file_id)
-        .bind(format!("{file_id}.png"))
-        .bind(format!("{file_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a show with a lowercase country of origin.
-    async fn seed_series(
-        transaction: &mut Transaction<'static, Sqlite>,
-        series_id: i64,
-        name: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO series (
-                series_id, name, plot, country_of_origin, first_air_date
-             )
-             VALUES (?1, ?2, 'A plot', 'us', '1990-04-08')",
-        )
-        .bind(series_id)
-        .bind(name)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a genre.
-    async fn seed_genre(
-        transaction: &mut Transaction<'static, Sqlite>,
-        genre_id: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO genre (genre_id) VALUES (?1)")
-            .bind(genre_id)
-            .execute(&mut **transaction)
-            .await?;
-        Ok(())
-    }
-
-    /// Attach `genre_id` to `series_id`.
-    async fn seed_series_genre(
-        transaction: &mut Transaction<'static, Sqlite>,
-        series_id: i64,
-        genre_id: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO series_genre (series_id, genre_id) VALUES (?1, ?2)")
-            .bind(series_id)
-            .bind(genre_id)
-            .execute(&mut **transaction)
-            .await?;
-        Ok(())
-    }
-
-    /// Seed a season of `series_id` at `season_index`.
-    async fn seed_season(
-        transaction: &mut Transaction<'static, Sqlite>,
-        season_id: i64,
-        series_id: i64,
-        season_index: i64,
-        name: Option<&str>,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO season (season_id, series_id, season_index, name)
-             VALUES (?1, ?2, ?3, ?4)",
-        )
-        .bind(season_id)
-        .bind(series_id)
-        .bind(season_index)
-        .bind(name)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed an episode of `season_id` at `episode_index`, backed by `video_id`.
-    async fn seed_episode(
-        transaction: &mut Transaction<'static, Sqlite>,
-        episode_id: i64,
-        season_id: i64,
-        episode_index: i64,
-        name: &str,
-        video_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO episode (
-                episode_id, season_id, episode_index, name, plot, air_date, video_id
-             )
-             VALUES (?1, ?2, ?3, ?4, 'Episode plot', '1991-04-08', ?5)",
-        )
-        .bind(episode_id)
-        .bind(season_id)
-        .bind(episode_index)
-        .bind(name)
-        .bind(video_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
 
     /// Re-read the show identified by `id`.
     async fn load_series(
@@ -814,7 +603,7 @@ mod tests {
         // Arrange: a show storing neither a country nor a first-air date, and an
         // episode storing no air date.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         sqlx::query(
@@ -859,10 +648,10 @@ mod tests {
     async fn insert_rejects_a_video_already_backing_a_film() -> Result<(), Box<dyn Error>> {
         // Arrange: film 1 already backs video 20.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 1, None).await?;
         sqlx::query(
             "INSERT INTO movie (movie_id, name, plot, video_id)
@@ -892,14 +681,14 @@ mod tests {
     async fn update_rejects_a_video_already_backing_a_film() -> Result<(), Box<dyn Error>> {
         // Arrange: film 1 backs video 20 and episode 60 backs video 21.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video_file(&mut transaction, 11).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         seed_video(&mut transaction, 21, 11, 1920).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 1, None).await?;
-        seed_episode(&mut transaction, 60, 40, 1, "Pilot", 21).await?;
+        seed_episode_v2(&mut transaction, 60, 40, 1, "Pilot", 21).await?;
         sqlx::query(
             "INSERT INTO movie (movie_id, name, plot, video_id)
              VALUES (1, 'Some Like It Hot', 'A plot', 20)",
@@ -925,15 +714,15 @@ mod tests {
     async fn search_hydrates_seasons_episodes_and_their_videos() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video_file(&mut transaction, 11).await?;
         seed_video_file(&mut transaction, 12).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         seed_video(&mut transaction, 21, 11, 1280).await?;
         seed_video(&mut transaction, 22, 12, 720).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
-        seed_series(&mut transaction, 2, "Northern Exposure").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 2, "Northern Exposure").await?;
         seed_genre(&mut transaction, "DRAMA").await?;
         seed_genre(&mut transaction, "MYSTERY").await?;
         seed_series_genre(&mut transaction, 1, "MYSTERY").await?;
@@ -942,7 +731,7 @@ mod tests {
         seed_season(&mut transaction, 41, 1, 2, None).await?;
         // Insert the second episode first so the order can only come from the
         // episode index, not the storage order.
-        seed_episode(
+        seed_episode_v2(
             &mut transaction,
             60,
             40,
@@ -951,8 +740,8 @@ mod tests {
             21,
         )
         .await?;
-        seed_episode(&mut transaction, 61, 40, 1, "Pilot", 20).await?;
-        seed_episode(&mut transaction, 62, 41, 1, "May the Giant Be with You", 22).await?;
+        seed_episode_v2(&mut transaction, 61, 40, 1, "Pilot", 20).await?;
+        seed_episode_v2(&mut transaction, 62, 41, 1, "May the Giant Be with You", 22).await?;
         let mut repository = SqlxSeriesRepository::new(&mut transaction);
 
         // Act
@@ -1042,7 +831,7 @@ mod tests {
         // Arrange: the show carries artwork, its first season its own, and the
         // second season none.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         sqlx::query(
             "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
              VALUES (12, '12.png', 1, 0, 'image/png', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?1)",
@@ -1051,7 +840,7 @@ mod tests {
         .execute(&mut *transaction)
         .await?;
         seed_image(&mut transaction, 12, 12).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 1, None).await?;
         seed_season(&mut transaction, 41, 1, 2, None).await?;
         sqlx::query("UPDATE series SET cover_image_id = 12 WHERE series_id = 1")
@@ -1089,7 +878,7 @@ mod tests {
     async fn search_returns_a_season_that_holds_no_episode() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 1, None).await?;
         let mut repository = SqlxSeriesRepository::new(&mut transaction);
 
@@ -1114,8 +903,8 @@ mod tests {
     async fn search_filters_by_name_and_identifier() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
-        seed_series(&mut transaction, 2, "Northern Exposure").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 2, "Northern Exposure").await?;
         let mut repository = SqlxSeriesRepository::new(&mut transaction);
 
         // Act
@@ -1144,9 +933,9 @@ mod tests {
     async fn search_returns_series_ordered_by_identifier() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_series(&mut transaction, 3, "Third").await?;
-        seed_series(&mut transaction, 1, "First").await?;
-        seed_series(&mut transaction, 2, "Second").await?;
+        seed_series_v2(&mut transaction, 3, "Third").await?;
+        seed_series_v2(&mut transaction, 1, "First").await?;
+        seed_series_v2(&mut transaction, 2, "Second").await?;
         let mut repository = SqlxSeriesRepository::new(&mut transaction);
 
         // Act
@@ -1162,12 +951,12 @@ mod tests {
     async fn search_addresses_the_largest_u32_episode_index() -> Result<(), Box<dyn Error>> {
         // Arrange: the largest index the schema and the domain both admit.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 0, None).await?;
-        seed_episode(&mut transaction, 60, 40, 4_294_967_295, "The Last", 20).await?;
+        seed_episode_v2(&mut transaction, 60, 40, 4_294_967_295, "The Last", 20).await?;
         let mut repository = SqlxSeriesRepository::new(&mut transaction);
 
         // Act
@@ -1189,7 +978,7 @@ mod tests {
     async fn search_rejects_an_out_of_range_season_index() -> Result<(), Box<dyn Error>> {
         // Arrange: the range check is probed by relaxing it for this seed.
         let mut transaction = begin_transaction().await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         sqlx::query("PRAGMA ignore_check_constraints = ON")
             .execute(&mut *transaction)
             .await?;
@@ -1204,7 +993,37 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "season_index_out_of_range"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "season_index_out_of_range")
+        });
         Ok(())
     }
 
@@ -1213,15 +1032,15 @@ mod tests {
     async fn search_rejects_an_out_of_range_episode_index() -> Result<(), Box<dyn Error>> {
         // Arrange: the range check is probed by relaxing it for this seed.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 0, None).await?;
         sqlx::query("PRAGMA ignore_check_constraints = ON")
             .execute(&mut *transaction)
             .await?;
-        seed_episode(&mut transaction, 60, 40, 4_294_967_296, "Too Far", 20).await?;
+        seed_episode_v2(&mut transaction, 60, 40, 4_294_967_296, "Too Far", 20).await?;
         let mut repository = SqlxSeriesRepository::new(&mut transaction);
 
         // Act
@@ -1232,7 +1051,37 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "episode_index_out_of_range"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "episode_index_out_of_range")
+        });
         Ok(())
     }
 
@@ -1241,15 +1090,15 @@ mod tests {
     async fn search_rejects_a_stored_video_the_domain_cannot_hold() -> Result<(), Box<dyn Error>> {
         // Arrange: the width check is probed by relaxing it for this seed.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 0, None).await?;
         sqlx::query("PRAGMA ignore_check_constraints = ON")
             .execute(&mut *transaction)
             .await?;
         seed_video(&mut transaction, 20, 10, 0).await?;
-        seed_episode(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
+        seed_episode_v2(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
         let mut repository = SqlxSeriesRepository::new(&mut transaction);
 
         // Act
@@ -1260,7 +1109,37 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        logs_assert(|lines| assert_output_validation_failed(lines, "invalid_video"));
+        logs_assert(|lines| {
+            (move |lines: &[&str], reason: &str| -> Result<(), String> {
+                let ours: Vec<&str> = lines
+                    .iter()
+                    .copied()
+                    .filter(|line| line.contains("security:"))
+                    .collect();
+                let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+                if warn_count != 1 {
+                    return Err(format!(
+                        "rejected stored data must emit exactly one warn event (found {warn_count})"
+                    ));
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains("event=\"output_validation_failed\""))
+                {
+                    return Err("the event must be output_validation_failed".to_owned());
+                }
+                if !ours
+                    .iter()
+                    .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+                {
+                    return Err(format!("the event must carry the stable reason `{reason}`"));
+                }
+                if ours.iter().any(|line| line.contains("sqlx")) {
+                    return Err("the event must not carry the sqlx detail".to_owned());
+                }
+                Ok(())
+            })(lines, "invalid_video")
+        });
         Ok(())
     }
 
@@ -1314,14 +1193,14 @@ mod tests {
         // Arrange: show 1 holds season 1 and an episode; the update carries no
         // season at all.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_genre(&mut transaction, "DRAMA").await?;
         seed_series_genre(&mut transaction, 1, "DRAMA").await?;
         seed_season(&mut transaction, 40, 1, 1, Some("Season One")).await?;
-        seed_episode(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
+        seed_episode_v2(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
         let mut repository = SqlxSeriesRepository::new(&mut transaction);
         let show = load_series(&mut repository, 1).await?;
         let updated = remodel(
@@ -1396,7 +1275,7 @@ mod tests {
     async fn put_season_creates_the_season() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         let season = Season::new(
             SeasonIndex::new(2),
             Some("Two".to_owned()),
@@ -1423,12 +1302,12 @@ mod tests {
     async fn put_season_replaces_the_season_keeping_its_episodes() -> Result<(), Box<dyn Error>> {
         // Arrange: season 1 already holds an episode.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 1, Some("Old Name")).await?;
-        seed_episode(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
+        seed_episode_v2(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
         let season = Season::new(
             SeasonIndex::new(1),
             Some("New Name".to_owned()),
@@ -1472,14 +1351,14 @@ mod tests {
     {
         // Arrange: season 1 holds an episode and no cover.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_image_file(&mut transaction, 12).await?;
         seed_image(&mut transaction, 12, 12).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 1, Some("Old Name")).await?;
-        seed_episode(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
+        seed_episode_v2(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
         let season = Season::new(
             SeasonIndex::new(1),
             Some("New Name".to_owned()),
@@ -1508,7 +1387,7 @@ mod tests {
     async fn save_season_creates_an_absent_season() -> Result<(), Box<dyn Error>> {
         // Arrange: the show exists but holds no season at index 1.
         let mut transaction = begin_transaction().await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         let season = Season::new(
             SeasonIndex::new(1),
             Some("One".to_owned()),
@@ -1532,12 +1411,12 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange: two free videos of the show's season.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video_file(&mut transaction, 11).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         seed_video(&mut transaction, 21, 11, 1280).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 1, None).await?;
         let mut repository = SqlxSeriesRepository::new(&mut transaction);
 
@@ -1600,10 +1479,10 @@ mod tests {
     {
         // Arrange: show 1 exists with no season; show 404 does not exist.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         let mut repository = SqlxSeriesRepository::new(&mut transaction);
         let episode = Episode::try_new(
             EpisodeIndex::new(1),
@@ -1630,10 +1509,10 @@ mod tests {
     async fn put_episode_rejects_a_video_backing_a_film() -> Result<(), Box<dyn Error>> {
         // Arrange: film 1 already backs video 20.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 1, None).await?;
         sqlx::query(
             "INSERT INTO movie (movie_id, name, plot, video_id)
@@ -1665,12 +1544,12 @@ mod tests {
     async fn save_episode_changes_metadata_keeping_the_same_video() -> Result<(), Box<dyn Error>> {
         // Arrange: episode 1 backs video 20; the replacement names the same video.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 1, None).await?;
-        seed_episode(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
+        seed_episode_v2(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
         let updated = Episode::try_new(
             EpisodeIndex::new(1),
             "New Name".to_owned(),
@@ -1703,10 +1582,10 @@ mod tests {
     async fn save_episode_creates_an_absent_episode() -> Result<(), Box<dyn Error>> {
         // Arrange: the show and season exist but hold no episode.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 1, None).await?;
         let updated = Episode::try_new(
             EpisodeIndex::new(1),
@@ -1731,14 +1610,14 @@ mod tests {
     async fn search_episodes_filters_by_video() -> Result<(), Box<dyn Error>> {
         // Arrange: video 20 backs an episode, video 21 is unattached.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video_file(&mut transaction, 11).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         seed_video(&mut transaction, 21, 11, 1280).await?;
-        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_series_v2(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 1, None).await?;
-        seed_episode(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
+        seed_episode_v2(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
         let mut repository = SqlxSeriesRepository::new(&mut transaction);
 
         // Act
@@ -1776,7 +1655,7 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange: video 20 backs the episode, video 21 is unattached.
         let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction).await?;
+        seed_user_v2(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         sqlx::query(
@@ -1785,7 +1664,7 @@ mod tests {
         .execute(&mut *transaction)
         .await?;
         seed_season(&mut transaction, 40, 1, 1, None).await?;
-        seed_episode(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
+        seed_episode_v2(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
         // Act
         let (removed, missing) = {
             let mut repository = SqlxSeriesRepository::new(&mut transaction);
@@ -1811,6 +1690,221 @@ mod tests {
         assert!(removed);
         assert!(!missing);
         assert_eq!(seasons, 1, "the season and its show are retained");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn series_insert_normalises_country_of_origin_uppercase() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act
+        seed_series(&pool, 1).await?;
+
+        // Assert
+        let stored: String = sqlx::query_scalar("SELECT country_of_origin FROM series")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(
+            stored, "US",
+            "the insert trigger must normalise country_of_origin to uppercase"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn series_update_normalises_country_of_origin_uppercase() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_series(&pool, 1).await?;
+
+        // Act
+        sqlx::query("UPDATE series SET country_of_origin = 'ca' WHERE series_id = 1")
+            .execute(&pool)
+            .await?;
+
+        // Assert
+        let stored: String = sqlx::query_scalar("SELECT country_of_origin FROM series")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(
+            stored, "CA",
+            "the update trigger must normalise country_of_origin to uppercase"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn season_rejects_an_index_above_the_u32_range() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_series(&pool, 1).await?;
+
+        // Act
+        let result = seed_season_v2(&pool, 40, 1, 4_294_967_296)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn season_accepts_the_largest_u32_index() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_series(&pool, 1).await?;
+
+        // Act
+        seed_season_v2(&pool, 40, 1, 4_294_967_295).await?;
+
+        // Assert
+        let stored: i64 = sqlx::query_scalar("SELECT season_index FROM season")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(stored, 4_294_967_295);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn episode_rejects_an_index_above_the_u32_range() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_series(&pool, 1).await?;
+        seed_season_v2(&pool, 40, 1, 1).await?;
+
+        // Act
+        let result = seed_episode(&pool, 60, 40, 4_294_967_296, 1)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn season_rejects_a_duplicate_index_within_a_series() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_series(&pool, 1).await?;
+        seed_season_v2(&pool, 40, 1, 1).await?;
+
+        // Act
+        let result = seed_season_v2(&pool, 41, 1, 1)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn episode_rejects_a_duplicate_index_within_a_season() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_series(&pool, 1).await?;
+        seed_season_v2(&pool, 40, 1, 1).await?;
+        seed_episode(&pool, 60, 40, 1, 1).await?;
+        sqlx::query(
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
+             VALUES (3, 'c.mp4', 1, 0, 'video/mp4', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?1)",
+        )
+        .bind(format!("{:064x}", 3i32))
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO video (video_id, duration_ms, codec, frame_count, width, height, color_id, scan_type, file_id)
+             VALUES (2, 1000.0, 'H264', 30, 10, 10, 'YCbCr', 'PROGRESSIVE', 3)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        let result = seed_episode(&pool, 61, 40, 1, 2)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn episode_rejects_a_video_already_assigned() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_series(&pool, 1).await?;
+        seed_season_v2(&pool, 40, 1, 1).await?;
+        seed_season_v2(&pool, 41, 1, 2).await?;
+        seed_episode(&pool, 60, 40, 1, 1).await?;
+
+        // Act
+        let result = seed_episode(&pool, 61, 41, 1, 1)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn deleting_series_cascades_its_seasons_and_episodes() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_series(&pool, 1).await?;
+        seed_season_v2(&pool, 40, 1, 1).await?;
+        seed_episode(&pool, 60, 40, 1, 1).await?;
+
+        // Act
+        sqlx::query("DELETE FROM series WHERE series_id = 1")
+            .execute(&pool)
+            .await?;
+
+        // Assert
+        let seasons: i64 = sqlx::query_scalar("SELECT count(*) FROM season")
+            .fetch_one(&pool)
+            .await?;
+        let episodes: i64 = sqlx::query_scalar("SELECT count(*) FROM episode")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(seasons, 0, "deleting a show must cascade its seasons");
+        assert_eq!(episodes, 0, "deleting a show must cascade its episodes");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn deleting_season_cascades_its_episodes() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_series(&pool, 1).await?;
+        seed_season_v2(&pool, 40, 1, 1).await?;
+        seed_episode(&pool, 60, 40, 1, 1).await?;
+
+        // Act
+        sqlx::query("DELETE FROM season WHERE season_id = 40")
+            .execute(&pool)
+            .await?;
+
+        // Assert
+        let episodes: i64 = sqlx::query_scalar("SELECT count(*) FROM episode")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(episodes, 0, "deleting a season must cascade its episodes");
         Ok(())
     }
 }

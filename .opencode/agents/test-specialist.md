@@ -135,7 +135,7 @@ memory:
 - `docs/development/TechnicalDesign.md` § 5 (Testing) — the `TEST-*` rules per
   layer.
 - `docs/development/TechnicalDesign.md` § 1 (Code Style Guidelines), rules
-  `STY-RUST-026`–`035` — test naming, Arrange–Act–Assert, no control flow in a
+  `STY-RUST-024`–`035` — test naming, Arrange–Act–Assert, no control flow in a
   test, `rstest`, `#[fixture]`.
 - `docs/development/UseCases.md` — happy paths and Alternative flows are the
   "Critical exception paths" worth testing.
@@ -212,7 +212,7 @@ writing anything.
 
 - The review target is the diff the caller supplies; judge only the lines it adds
   or changes.
-- Read `TechnicalDesign.md` § 5 and § 1 (`STY-RUST-026`–`035`) before judging;
+- Read `TechnicalDesign.md` § 5 and § 1 (`STY-RUST-024`–`035`) before judging;
   ground every finding in a rule ID and `path:line`.
 - Never state a coverage number you did not measure. You cannot run the suite in a
   review pass: when the caller supplies the coverage report
@@ -260,7 +260,7 @@ and the use case it drives together.
 ### <behaviour> → <layer>
 
 - Rule: TEST-0xx / STY-RUST-0xx
-- Test name (STY-RUST-026): <UnitOfWork>_<Scenario>_<ExpectedResult>
+- Test name (STY-RUST-024): <UnitOfWork>_<Scenario>_<ExpectedResult>
 - Location: <file> (`#[cfg(test)] mod tests`)
 - Doubles/fixtures: test_helpers | mockall | rstest #[case] | in-memory sqlite
   (one connection) | wiremock | conftest fixture

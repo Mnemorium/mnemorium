@@ -116,54 +116,9 @@ fn domain_audio(row: SqlxAudio) -> Result<Audio, RepositoryError> {
 mod tests {
     use super::*;
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
+    use crate::infrastructure::outbound::sqlx::test_helpers::*;
     use rstest::rstest;
     use std::error::Error;
-
-    /// Open a migrated in-memory database and begin one transaction.
-    /// Seed a credential and a standard user so foreign keys resolve.
-    async fn seed_user(
-        transaction: &mut Transaction<'static, Sqlite>,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (?1, ?2)")
-            .bind(user_id)
-            .bind(format!("hash-{user_id}"))
-            .execute(&mut **transaction)
-            .await?;
-        sqlx::query(
-            "INSERT INTO user (user_id, role, username, email, credential_id)
-             VALUES (?1, 'STANDARD', ?2, NULL, ?1)",
-        )
-        .bind(user_id)
-        .bind(format!("user{user_id}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
-    /// Seed a file owned by `user_id`.
-    async fn seed_file(
-        transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
-        user_id: i64,
-        mime_type_id: &str,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (
-                file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at,
-                integrity_hash
-             )
-             VALUES (?1, ?2, ?3, 0, ?4, 1024, '2026-10-06 00:00:00', ?5)",
-        )
-        .bind(file_id)
-        .bind(format!("{file_id}.mp3"))
-        .bind(user_id)
-        .bind(mime_type_id)
-        .bind(format!("{file_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
 
     /// Build a domain audio row.
     fn audio(
@@ -188,7 +143,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "audio/mpeg").await?;
+        seed_file_v4(&mut transaction, 10, 1, "audio/mpeg").await?;
         let mut repository = SqlxAudioRepository::new(&mut transaction);
 
         // Act
@@ -217,7 +172,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "audio/mpeg").await?;
+        seed_file_v4(&mut transaction, 10, 1, "audio/mpeg").await?;
         let mut repository = SqlxAudioRepository::new(&mut transaction);
         let pending = Audio::try_new(
             0,
@@ -246,7 +201,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "audio/mpeg").await?;
+        seed_file_v4(&mut transaction, 10, 1, "audio/mpeg").await?;
         let mut repository = SqlxAudioRepository::new(&mut transaction);
 
         // Act
@@ -263,7 +218,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "audio/mpeg").await?;
+        seed_file_v4(&mut transaction, 10, 1, "audio/mpeg").await?;
         let mut repository = SqlxAudioRepository::new(&mut transaction);
         repository.create(audio(10, None, None)?).await?;
 
@@ -298,8 +253,8 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "audio/mpeg").await?;
-        seed_file(&mut transaction, 11, 1, "audio/mpeg").await?;
+        seed_file_v4(&mut transaction, 10, 1, "audio/mpeg").await?;
+        seed_file_v4(&mut transaction, 11, 1, "audio/mpeg").await?;
         let mut repository = SqlxAudioRepository::new(&mut transaction);
         let first = repository.create(audio(10, None, None)?).await?;
         let _second = repository.create(audio(11, None, None)?).await?;
@@ -322,7 +277,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "audio/mpeg").await?;
+        seed_file_v4(&mut transaction, 10, 1, "audio/mpeg").await?;
         let mut repository = SqlxAudioRepository::new(&mut transaction);
         let stored = repository.create(audio(10, None, None)?).await?;
 
@@ -362,7 +317,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "audio/mpeg").await?;
+        seed_file_v4(&mut transaction, 10, 1, "audio/mpeg").await?;
 
         // Act
         let result = sqlx::query(statement)

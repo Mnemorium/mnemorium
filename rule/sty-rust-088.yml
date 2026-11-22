@@ -3,24 +3,40 @@ id: sty-rust-088
 language: Rust
 severity: hint
 message: >-
-  extract every item that carries a visibility modifier, for STY-RUST-088
+  extract every seed helper, every SQL insert statement and every inline module,
+  for STY-RUST-088
 files:
   - src/**/*.rs
 rule:
-  all:
-    - any:
-        - kind: function_item
-        - kind: struct_item
-        - kind: enum_item
-        - kind: trait_item
-        - kind: type_item
-        - kind: const_item
-        - kind: static_item
+  any:
+    - all:
         - kind: mod_item
-        - kind: union_item
-    - has:
-        kind: visibility_modifier
-        pattern: $VIS
-    - has:
-        field: name
-        pattern: $NAME
+        - has:
+            kind: declaration_list
+            stopBy: neighbor
+        - has:
+            field: name
+            pattern: $MOD
+            stopBy: neighbor
+    - all:
+        - kind: function_item
+        - has:
+            field: name
+            regex: '^seed_'
+            stopBy: neighbor
+        - has:
+            field: name
+            pattern: $FN
+            stopBy: neighbor
+    # A SQL insert inside a function: a seed helper that is named something else.
+    - all:
+        - kind: string_literal
+        - regex: '(?si).*insert into.*'
+        - inside:
+            kind: function_item
+            pattern: $ENCLOSING
+            stopBy: end
+            has:
+              field: name
+              pattern: $FUNC
+              stopBy: neighbor

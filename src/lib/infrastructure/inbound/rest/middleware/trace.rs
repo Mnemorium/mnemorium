@@ -38,11 +38,13 @@ mod tests {
     use super::{tracing as trace_middleware, *};
     use axum::routing::get;
     use axum::{Router, middleware};
+    use rstest::fixture;
     use std::error::Error;
     use tower::ServiceExt as _;
     use tracing_test::traced_test;
 
     /// Router running the trace middleware over a trivial success route.
+    #[fixture]
     fn router() -> Router {
         Router::new()
             .route("/probe", get(|| async { "ok" }))

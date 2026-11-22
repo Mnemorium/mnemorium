@@ -79,7 +79,7 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
 
     fn apply_movie(&self) -> Arc<dyn ApplyMovieUseCase> {
         // The chain is configuration-derived, so the accessor rebuilds it from
-        // the immutable configuration on every call (STY-RUST-062).
+        // the immutable configuration on every call (STY-RUST-060).
         let links = configured_links(self.configuration.library().metadata().video());
         let provider = if links.is_empty() {
             None
@@ -93,7 +93,7 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
     }
     fn apply_music_album(&self) -> Arc<dyn ApplyMusicAlbumUseCase> {
         // The provider is configuration-derived, so the accessor rebuilds it from
-        // the immutable configuration on every call (STY-RUST-062).
+        // the immutable configuration on every call (STY-RUST-060).
         let provider = configured_music_provider(self.configuration.library().metadata().music())
             .map(Arc::new);
         Arc::new(ApplyMusicAlbum::new(
@@ -104,7 +104,7 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
 
     fn apply_series(&self) -> Arc<dyn ApplySeriesUseCase> {
         // The chain is configuration-derived, so the accessor rebuilds it from
-        // the immutable configuration on every call (STY-RUST-062).
+        // the immutable configuration on every call (STY-RUST-060).
         let links = configured_links(self.configuration.library().metadata().video());
         let provider = if links.is_empty() {
             None
@@ -119,7 +119,7 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
 
     fn apply_series_episode(&self) -> Arc<dyn ApplySeriesEpisodeUseCase> {
         // The chain is configuration-derived, so the accessor rebuilds it from
-        // the immutable configuration on every call (STY-RUST-062).
+        // the immutable configuration on every call (STY-RUST-060).
         let links = configured_links(self.configuration.library().metadata().video());
         let provider = if links.is_empty() {
             None
@@ -234,7 +234,7 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
 
     fn identify_music(&self) -> Arc<dyn IdentifyMusicUseCase> {
         // The provider is configuration-derived, so the accessor rebuilds it from
-        // the immutable configuration on every call (STY-RUST-062).
+        // the immutable configuration on every call (STY-RUST-060).
         let provider = configured_music_provider(self.configuration.library().metadata().music())
             .map(Arc::new);
         Arc::new(IdentifyMusic::new(
@@ -245,7 +245,7 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
 
     fn identify_video(&self) -> Arc<dyn IdentifyVideoUseCase> {
         // The chain is configuration-derived, so the accessor rebuilds it from
-        // the immutable configuration on every call (STY-RUST-062).
+        // the immutable configuration on every call (STY-RUST-060).
         let links = configured_links(self.configuration.library().metadata().video());
         let provider = if links.is_empty() {
             None
@@ -339,7 +339,7 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
 
     fn resolve_music_metadata(&self) -> Arc<dyn ResolveMusicMetadataUseCase> {
         // The provider is configuration-derived, so the accessor rebuilds it from
-        // the immutable configuration on every call (STY-RUST-062).
+        // the immutable configuration on every call (STY-RUST-060).
         let provider = configured_music_provider(self.configuration.library().metadata().music())
             .map(Arc::new);
         Arc::new(ResolveMusicMetadata::new(
@@ -350,7 +350,7 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
 
     fn resolve_video_metadata(&self) -> Arc<dyn ResolveVideoMetadataUseCase> {
         // The chain is configuration-derived, so the accessor rebuilds it from
-        // the immutable configuration on every call (STY-RUST-062).
+        // the immutable configuration on every call (STY-RUST-060).
         let links = configured_links(self.configuration.library().metadata().video());
         let provider = if links.is_empty() {
             None

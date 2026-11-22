@@ -111,7 +111,7 @@ The surface is fixed; its contents are not. Read the files at run time.
   `pyproject.toml`, `requirements.txt`, `.releaserc.json`,
   `.gitignore`, `script/*`.
 - Docs tooling — `mkdocs.yml` and the `docs` process.
-- Git conventions — branch and PR-title naming, Conventional Commits, scopes.
+- Git conventions — branch and PR-title naming and Conventional Commits.
 
 `clippy.toml`, `deny.toml`, `Cargo.toml`, and the rule configuration
 (`rule_enforcer.yaml`, `rule/**`, `sgconfig.yaml`) are locked: you may review
@@ -124,6 +124,8 @@ Read the governing material at run time; never work from memory. Cite one of:
 
 - `docs/development/TechnicalDesign.md` § 6 (Dependencies & Dev Environment) —
   the `DEPS-*` rules.
+- `docs/development/DependencyManifest.md` — the direct dependencies, tools,
+  container images and runtime binaries, with their versions and licences.
 - `docs/development/Overview.md` — the source layout, the git branch/PR and
   versioning conventions, and the release flow.
 - The files themselves — `devenv.nix` is the catalogue of `tasks.*` and

@@ -1,28 +1,30 @@
 ---
 id: sty-rust-087
 language: Rust
-severity: error
+severity: hint
 message: >-
-  do not gate code on the host platform: the server targets Linux only, so this
-  predicate is a constant; write the code unconditionally
+  extract every assertion-named function and every inline module, for
+  STY-RUST-087
+files:
+  - src/**/*.rs
 rule:
   any:
-    # A cfg/cfg_attr attribute (outer or inner) whose predicate, at any nesting
-    # depth, names a platform: `unix`, `windows` or any `target_*` key.
     - all:
-        - any:
-            - kind: attribute_item
-            - kind: inner_attribute_item
-        - regex: '^#!?\[\s*cfg(_attr)?\b'
+        - kind: mod_item
         - has:
-            kind: identifier
-            regex: '^(unix|windows|target_[a-z_]+)$'
-            stopBy: end
-    # The same predicate as a `cfg!` macro invocation.
+            kind: declaration_list
+            stopBy: neighbor
+        - has:
+            field: name
+            pattern: $MOD
+            stopBy: neighbor
     - all:
-        - kind: macro_invocation
-        - regex: '^cfg\s*!'
+        - kind: function_item
         - has:
-            kind: identifier
-            regex: '^(unix|windows|target_[a-z_]+)$'
-            stopBy: end
+            field: name
+            regex: '^assert_'
+            stopBy: neighbor
+        - has:
+            field: name
+            pattern: $FN
+            stopBy: neighbor

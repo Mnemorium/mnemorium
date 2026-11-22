@@ -35,7 +35,7 @@ use crate::infrastructure::inbound::rest::middleware::{LoginRateLimiter, authent
 use crate::infrastructure::inbound::rest::{ApiError, AppState, SelfLinks};
 use crate::infrastructure::outbound::jwt::JwtTokenProvider;
 
-/// Wire vocabulary of a resource visibility (`API-047`).
+/// Wire vocabulary of a resource visibility (`API-044`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
@@ -48,7 +48,7 @@ pub(crate) enum VisibilityWire {
     Restricted,
 }
 
-/// Wire vocabulary of the actions a permission decision names (`API-047`).
+/// Wire vocabulary of the actions a permission decision names (`API-044`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -81,7 +81,7 @@ pub(crate) enum ActionWire {
     ViewMetadata,
 }
 
-/// Wire vocabulary of a resource kind (`API-047`).
+/// Wire vocabulary of a resource kind (`API-044`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[non_exhaustive]
@@ -136,7 +136,7 @@ pub(crate) enum ResourceKindWire {
     Video,
 }
 
-/// Wire vocabulary of the child kind a grant permits (`API-047`).
+/// Wire vocabulary of the child kind a grant permits (`API-044`).
 ///
 /// `ADMIN` is absent because it is root-only and is never stored as a grant.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
@@ -181,7 +181,7 @@ pub(crate) enum ChildKindWire {
     Video,
 }
 
-/// Wire vocabulary of a grant effect (`API-047`).
+/// Wire vocabulary of a grant effect (`API-044`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
@@ -192,7 +192,7 @@ pub(crate) enum GrantEffectWire {
     Deny,
 }
 
-/// Wire vocabulary of a role a caller may store as a grant (`API-047`).
+/// Wire vocabulary of a role a caller may store as a grant (`API-044`).
 ///
 /// `OWNER` is absent because ownership is implicit and is never a user grant.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
@@ -211,7 +211,7 @@ pub(crate) enum GrantRoleWire {
     Viewer,
 }
 
-/// Wire vocabulary of a read role a share grants (`API-047`).
+/// Wire vocabulary of a read role a share grants (`API-044`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
@@ -222,7 +222,7 @@ pub(crate) enum ShareRoleWire {
     Viewer,
 }
 
-/// Wire vocabulary of a resource role a permission representation reports (`API-047`).
+/// Wire vocabulary of a resource role a permission representation reports (`API-044`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
@@ -241,7 +241,7 @@ pub(crate) enum ResourceRoleWire {
     Viewer,
 }
 
-/// Wire vocabulary of a principal kind a grant may name (`API-047`).
+/// Wire vocabulary of a principal kind a grant may name (`API-044`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
@@ -252,7 +252,7 @@ pub(crate) enum PrincipalKindWire {
     User,
 }
 
-/// Wire vocabulary of a principal kind a representation reports (`API-047`).
+/// Wire vocabulary of a principal kind a representation reports (`API-044`).
 ///
 /// `ROOT` is response-only: the root holds no stored grant, so a request never
 /// names it.

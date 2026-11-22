@@ -1,9 +1,9 @@
 ---
-id: sty-rust-019
+id: sty-rust-017
 language: Rust
 severity: hint
 message: >-
-  extract domain-model struct fields and `&self` methods for STY-RUST-019
+  extract domain-model struct fields and `&self` methods for STY-RUST-017
 files:
   - src/lib/domain/model/*.rs
 rule:

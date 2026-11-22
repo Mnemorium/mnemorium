@@ -127,7 +127,7 @@ mod tests {
     use axum::http::{HeaderValue, StatusCode};
     use axum::middleware;
     use axum::routing::get;
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use serde_json::{Value, json};
     use std::error::Error;
     use tower::ServiceExt as _;
@@ -139,6 +139,7 @@ mod tests {
 
     /// Application state with the fixture token provider that is never
     /// consulted (the middleware layer carries its own mock).
+    #[fixture]
     fn state() -> Result<AppState, Box<dyn Error>> {
         app_state()
     }
@@ -168,25 +169,18 @@ mod tests {
         Ok(router.oneshot(request).await?)
     }
 
-    /// Make the mocked provider accept `token` for `user_id`.
-    fn expect_valid_token(
-        provider: &mut MockTokenProvider,
-        token: &'static str,
-        user_id: NumericID,
-    ) {
-        provider
-            .expect_validate()
-            .times(1)
-            .withf(move |candidate: &str| candidate == token)
-            .returning(move |_| Box::pin(async move { Ok(user_id) }));
-    }
-
     #[tokio::test]
     async fn authenticate_valid_bearer_token_calls_next_with_authenticated_user()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut provider = MockTokenProvider::new();
-        expect_valid_token(&mut provider, "valid-token", 42);
+        (move |provider: &mut MockTokenProvider, token: &'static str, user_id: NumericID| {
+            provider
+                .expect_validate()
+                .times(1)
+                .withf(move |candidate: &str| candidate == token)
+                .returning(move |_| Box::pin(async move { Ok(user_id) }));
+        })(&mut provider, "valid-token", 42);
 
         // Act
         let (status, payload) = into_status_and_body(
@@ -289,7 +283,13 @@ mod tests {
     async fn authenticate_lowercase_bearer_scheme_is_accepted() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut provider = MockTokenProvider::new();
-        expect_valid_token(&mut provider, "valid-token", 7);
+        (move |provider: &mut MockTokenProvider, token: &'static str, user_id: NumericID| {
+            provider
+                .expect_validate()
+                .times(1)
+                .withf(move |candidate: &str| candidate == token)
+                .returning(move |_| Box::pin(async move { Ok(user_id) }));
+        })(&mut provider, "valid-token", 7);
 
         // Act
         let (status, payload) = into_status_and_body(

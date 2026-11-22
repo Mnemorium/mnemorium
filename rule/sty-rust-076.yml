@@ -1,0 +1,20 @@
+---
+id: sty-rust-076
+language: Rust
+severity: hint
+message: >-
+  extract a repository-port trait and its `create*` method signatures for STY-RUST-076
+files:
+  - src/lib/domain/port/*_repository.rs
+rule:
+  all:
+    - kind: function_signature_item
+    - pattern: 'fn $METHOD(&mut self, $$$PARAMS) -> $RET;'
+    - regex: '^fn create'
+    - inside:
+        kind: trait_item
+        any:
+          - pattern: 'pub trait $TRAIT: $$$BOUNDS { $$$BODY }'
+          - pattern: 'pub(crate) trait $TRAIT: $$$BOUNDS { $$$BODY }'
+          - pattern: 'trait $TRAIT: $$$BOUNDS { $$$BODY }'
+        stopBy: end

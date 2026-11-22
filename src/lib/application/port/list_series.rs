@@ -147,9 +147,6 @@ pub(crate) enum ListSeriesError {
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait ListSeriesUseCase: Send + Sync {
     /// List the shows visible to the authenticated caller.
-    ///
-    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
-    /// pinned so the use case can be stored as `Arc<dyn ListSeriesUseCase>`.
     fn execute<'future>(
         &'future self,
         command: ListSeriesCommand,
