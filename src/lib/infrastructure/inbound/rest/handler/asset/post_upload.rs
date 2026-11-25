@@ -1,5 +1,5 @@
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse as _, Response};
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,9 @@ use crate::application::port::{
 use crate::domain::NumericID;
 use crate::domain::model::{DIGEST_HEX_LENGTH, IntegrityHash};
 use crate::infrastructure::inbound::rest::handler::asset::UploadSessionLinks;
-use crate::infrastructure::inbound::rest::handler::{JsonObject, TIMESTAMP_FORMAT};
+use crate::infrastructure::inbound::rest::handler::{
+    JsonObject, NoParametersQuery, TIMESTAMP_FORMAT,
+};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{
     AllowMethods, ApiError, AppState, ErrorBody, HAL_CONTENT_TYPE, UriReference,
@@ -172,6 +174,7 @@ impl From<BeginUploadError> for ApiError {
     summary = "Initialize an upload session"
 )]
 pub(crate) async fn post_upload(
+    _query: Query<NoParametersQuery>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: JsonObject<PostUploadRequest>,

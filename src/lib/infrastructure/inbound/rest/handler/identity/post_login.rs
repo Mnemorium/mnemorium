@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse as _, Response};
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use utoipa::ToSchema;
 
 use crate::application::port::{LoginUserCommand, LoginUserError};
 use crate::domain::port::IssuedToken;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLinks, hal_json};
 
 /// Payload to authenticate a user.
@@ -158,6 +158,7 @@ impl From<LoginUserError> for ApiError {
     summary = "Authenticate a user"
 )]
 pub(crate) async fn post_login(
+    _query: Query<NoParametersQuery>,
     State(state): State<AppState>,
     payload: JsonObject<LoginRequest>,
 ) -> Result<Response, ApiError> {

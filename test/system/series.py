@@ -36,7 +36,7 @@ from harness import (
     Sut,
     link_of,
 )
-from labels import scenario
+from labels import TestType, alternate_flow, boundary, business_rule, negative, positive, scenario, security
 
 # The show resource kind the resource-policy route addresses.
 SERIES = "SERIES"
@@ -286,6 +286,7 @@ def deny_viewer(server: Sut, token: str, user_id: int, series_id: int) -> None:
     assert response.status_code == 200, f"deny failed: {response.status_code} {response.text}"
 
 
+@positive
 @scenario("SCN-SERIES-008-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_new_show_is_created(sut: Sut) -> None:
@@ -324,6 +325,7 @@ def test_a_new_show_is_created(sut: Sut) -> None:
     assert collection_ids(listed) == [show["id"]]
 
 
+@business_rule
 @scenario("SCN-SERIES-008-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_repeated_name_creates_a_second_show(sut: Sut) -> None:
@@ -340,6 +342,7 @@ def test_a_repeated_name_creates_a_second_show(sut: Sut) -> None:
     assert collection_ids(listed) == sorted([first["id"], second["id"]])
 
 
+@alternate_flow
 @scenario("SCN-SERIES-008-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unknown_genre_is_stored_and_linked(sut: Sut) -> None:
@@ -354,6 +357,7 @@ def test_an_unknown_genre_is_stored_and_linked(sut: Sut) -> None:
     assert read.json()["genres"] == [UNKNOWN_GENRE.upper()]
 
 
+@negative
 @scenario("SCN-SERIES-008-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_unusable_creation_input_is_refused(sut: Sut) -> None:
@@ -378,6 +382,7 @@ def test_unusable_creation_input_is_refused(sut: Sut) -> None:
     assert collection_ids(listed) == [], "a refused creation stored a show"
 
 
+@negative
 @scenario("SCN-SERIES-008-E")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
@@ -395,6 +400,7 @@ def test_a_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
     assert collection_ids(listed) == [], "a refused creation stored a show"
 
 
+@security
 @scenario("SCN-SERIES-008-F")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_standard_user_cannot_create_a_show(sut: Sut) -> None:
@@ -411,6 +417,7 @@ def test_a_standard_user_cannot_create_a_show(sut: Sut) -> None:
     assert collection_ids(listed) == [], "a refused creation stored a show"
 
 
+@business_rule
 @scenario("SCN-SERIES-001-A")
 @scenario("SCN-SERIES-001-D")
 @scenario("SCN-SERIES-002-A")
@@ -443,6 +450,7 @@ def test_the_collection_lists_partial_shows_in_identifier_order(sut: Sut) -> Non
     assert uncovered["cover_image_id"] is None
 
 
+@business_rule
 @scenario("SCN-SERIES-001-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_the_name_filter_and_page_are_applied(sut: Sut) -> None:
@@ -460,6 +468,7 @@ def test_the_name_filter_and_page_are_applied(sut: Sut) -> None:
     assert collection_ids(paged) == [ids[1]]
 
 
+@business_rule
 @scenario("SCN-SERIES-001-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_caller_that_discovers_no_show_lists_an_empty_collection(sut: Sut) -> None:
@@ -476,8 +485,8 @@ def test_a_caller_that_discovers_no_show_lists_an_empty_collection(sut: Sut) -> 
     assert response.json()["_embedded"]["items"] == []
 
 
-@scenario("SCN-SERIES-001-E")
-@scenario("SCN-SERIES-001-F")
+@scenario("SCN-SERIES-001-E", TestType.BOUNDARY)
+@scenario("SCN-SERIES-001-F", TestType.NEGATIVE)
 def test_an_out_of_range_limit_and_a_malformed_query_are_refused(server: Sut, root_token: str) -> None:
     """A limit outside 1..100 answers 422 and an undecodable query answers 400."""
     for query in ("?limit=0", "?limit=101"):
@@ -488,6 +497,7 @@ def test_an_out_of_range_limit_and_a_malformed_query_are_refused(server: Sut, ro
     assert malformed.status_code == 400, f"query accepted: {malformed.status_code} {malformed.text}"
 
 
+@positive
 @scenario("SCN-SERIES-002-A")
 @scenario("SCN-SERIES-002-B")
 def test_the_detail_read_carries_the_show_metadata_and_season_summaries(server: Sut, root_token: str) -> None:
@@ -530,6 +540,7 @@ def test_the_detail_read_carries_the_show_metadata_and_season_summaries(server: 
     assert link_of(seasons[0], "episodes") == f"{link_of(first_season, 'self')}/episode"
 
 
+@positive
 @scenario("SCN-SERIES-002-C")
 def test_a_show_without_a_date_or_country_reports_null(server: Sut, root_token: str) -> None:
     """A show that stores neither a first air date nor a country reports both as null."""
@@ -544,6 +555,7 @@ def test_a_show_without_a_date_or_country_reports_null(server: Sut, root_token: 
     assert body["seasons"] == []
 
 
+@security
 @scenario("SCN-SERIES-002-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unknown_or_unviewable_show_is_not_found(sut: Sut) -> None:
@@ -561,6 +573,7 @@ def test_an_unknown_or_unviewable_show_is_not_found(sut: Sut) -> None:
     assert unviewable.status_code == 404, f"unviewable show answered {unviewable.status_code}: {unviewable.text}"
 
 
+@negative
 @scenario("SCN-SERIES-002-E")
 def test_a_malformed_show_identifier_is_refused(server: Sut, root_token: str) -> None:
     """A series_id that is not an identifier answers 400."""
@@ -569,6 +582,7 @@ def test_a_malformed_show_identifier_is_refused(server: Sut, root_token: str) ->
     assert response.status_code == 400, f"malformed id answered {response.status_code}: {response.text}"
 
 
+@business_rule
 @scenario("SCN-SERIES-003-A")
 def test_the_index_is_the_identity_of_a_season_and_an_episode(server: Sut, root_token: str) -> None:
     """A season and an episode are addressed and reported by their parent-scoped index."""
@@ -590,6 +604,7 @@ def test_the_index_is_the_identity_of_a_season_and_an_episode(server: Sut, root_
     assert read.json()["index"] == 7
 
 
+@boundary
 @scenario("SCN-SERIES-003-B")
 def test_the_largest_32_bit_index_is_addressable(server: Sut, root_token: str) -> None:
     """A season and an episode stored at the largest 32-bit index are addressed and returned."""
@@ -609,6 +624,7 @@ def test_the_largest_32_bit_index_is_addressable(server: Sut, root_token: str) -
     assert read_episode_response.json()["name"] == "Pilot"
 
 
+@positive
 @scenario("SCN-SERIES-004-A")
 @scenario("SCN-SERIES-004-B")
 def test_a_season_is_read_with_its_fields_and_scoped_to_its_show(server: Sut, root_token: str) -> None:
@@ -640,6 +656,7 @@ def test_a_season_is_read_with_its_fields_and_scoped_to_its_show(server: Sut, ro
     assert other.json()["series_id"] == second["id"]
 
 
+@security
 @scenario("SCN-SERIES-004-C")
 def test_an_unknown_or_foreign_season_is_not_found(server: Sut, root_token: str) -> None:
     """An unknown show, an index the show does not hold and a season of another show all answer 404."""
@@ -659,6 +676,7 @@ def test_an_unknown_or_foreign_season_is_not_found(server: Sut, root_token: str)
     assert foreign.status_code == 404, f"foreign season answered {foreign.status_code}: {foreign.text}"
 
 
+@negative
 @scenario("SCN-SERIES-004-D")
 @scenario("SCN-SERIES-005-D")
 @scenario("SCN-SERIES-006-D")
@@ -689,6 +707,7 @@ def test_a_malformed_index_or_identifier_is_refused(server: Sut, root_token: str
         assert response.status_code == 400, f"malformed segment answered {response.status_code}: {response.text}"
 
 
+@positive
 @scenario("SCN-SERIES-005-A")
 @scenario("SCN-SERIES-005-B")
 @pytest.mark.own_instance(reason="exact_collection")
@@ -732,6 +751,7 @@ def test_the_episodes_of_a_season_are_listed_with_their_fields(sut: Sut) -> None
     assert_summary(second, undated_file, undated_video)
 
 
+@security
 @scenario("SCN-SERIES-005-C")
 def test_episodes_of_an_unknown_or_foreign_season_are_not_found(server: Sut, root_token: str) -> None:
     """An unknown show, an index the show does not hold and a season of another show all answer 404."""
@@ -751,6 +771,7 @@ def test_episodes_of_an_unknown_or_foreign_season_are_not_found(server: Sut, roo
     assert foreign.status_code == 404, f"foreign season answered {foreign.status_code}: {foreign.text}"
 
 
+@positive
 @scenario("SCN-SERIES-006-A")
 def test_an_episode_is_read_with_its_fields(server: Sut, root_token: str) -> None:
     """The read carries the episode's index, metadata, video summary and links."""
@@ -781,6 +802,7 @@ def test_an_episode_is_read_with_its_fields(server: Sut, root_token: str) -> Non
     assert_summary(episode, file, video)
 
 
+@positive
 @scenario("SCN-SERIES-006-B")
 def test_an_episode_without_an_air_date_reports_null(server: Sut, root_token: str) -> None:
     """An episode that stores no air date reports `air_date` as null."""
@@ -795,6 +817,7 @@ def test_an_episode_without_an_air_date_reports_null(server: Sut, root_token: st
     assert response.json()["air_date"] is None
 
 
+@negative
 @scenario("SCN-SERIES-006-C")
 def test_an_episode_outside_the_season_is_not_found(server: Sut, root_token: str) -> None:
     """An episode of another season, and an unknown show, season or episode all answer 404."""
@@ -813,6 +836,7 @@ def test_an_episode_outside_the_season_is_not_found(server: Sut, root_token: str
         assert response.status_code == 404, f"answered {response.status_code}: {response.text}"
 
 
+@business_rule
 @scenario("SCN-SERIES-007-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_seasons_and_episodes_are_listed_in_ascending_index_order(sut: Sut) -> None:
@@ -844,6 +868,7 @@ def test_seasons_and_episodes_are_listed_in_ascending_index_order(sut: Sut) -> N
         assert episode_ids(episodes) == [1, 2]
 
 
+@positive
 @scenario("SCN-SERIES-009-A")
 @scenario("SCN-SERIES-009-C")
 def test_the_show_metadata_is_updated_partially(server: Sut, root_token: str) -> None:
@@ -897,6 +922,7 @@ def test_the_show_metadata_is_updated_partially(server: Sut, root_token: str) ->
     assert episode.json()["video"]["id"] == video["id"]
 
 
+@alternate_flow
 @scenario("SCN-SERIES-009-B")
 def test_null_clears_a_show_optional_value(server: Sut, root_token: str) -> None:
     """A null clears the first air date, the country and the cover and the read reports each as null."""
@@ -929,6 +955,7 @@ def test_null_clears_a_show_optional_value(server: Sut, root_token: str) -> None
     assert stored["cover_image_id"] is None
 
 
+@security
 @scenario("SCN-SERIES-009-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_standard_user_may_read_but_not_edit_a_show(sut: Sut) -> None:
@@ -946,6 +973,7 @@ def test_a_standard_user_may_read_but_not_edit_a_show(sut: Sut) -> None:
     assert read_show(server, root_token, show["id"]).json()["name"] == "Untouched"
 
 
+@negative
 @scenario("SCN-SERIES-009-F")
 def test_a_padded_show_name_is_refused_on_update(server: Sut, root_token: str) -> None:
     """A patch name that begins or ends with whitespace answers 422 and applies nothing."""
@@ -958,6 +986,7 @@ def test_a_padded_show_name_is_refused_on_update(server: Sut, root_token: str) -
     assert read_show(server, root_token, show["id"]).json()["name"] == "Kept Show"
 
 
+@security
 @scenario("SCN-SERIES-009-E")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unknown_or_unviewable_show_cannot_be_patched(sut: Sut) -> None:
@@ -976,6 +1005,7 @@ def test_an_unknown_or_unviewable_show_cannot_be_patched(sut: Sut) -> None:
     assert read_show(server, root_token, show["id"]).json()["name"] == "Untouched"
 
 
+@positive
 @scenario("SCN-SERIES-010-A")
 @scenario("SCN-SERIES-010-B")
 @scenario("SCN-SERIES-010-C")
@@ -1019,6 +1049,7 @@ def test_a_season_is_created_then_replaced_keeping_its_episodes(sut: Sut) -> Non
     assert episode.json()["video"]["id"] == video["id"]
 
 
+@negative
 @scenario("SCN-SERIES-010-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_season_write_of_an_unknown_show_or_malformed_index_is_refused(sut: Sut) -> None:
@@ -1035,6 +1066,7 @@ def test_a_season_write_of_an_unknown_show_or_malformed_index_is_refused(sut: Su
     assert read_show(server, root_token, show["id"]).json()["seasons"] == []
 
 
+@negative
 @scenario("SCN-SERIES-010-E")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_season_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
@@ -1051,6 +1083,7 @@ def test_a_season_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None
     assert read_show(server, root_token, show["id"]).json()["seasons"] == []
 
 
+@security
 @scenario("SCN-SERIES-010-F")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_standard_user_cannot_write_a_season(sut: Sut) -> None:
@@ -1066,6 +1099,7 @@ def test_a_standard_user_cannot_write_a_season(sut: Sut) -> None:
     assert read_show(server, root_token, show["id"]).json()["seasons"] == []
 
 
+@positive
 @scenario("SCN-SERIES-011-A")
 @scenario("SCN-SERIES-011-C")
 def test_a_season_is_renamed_and_re_covered_keeping_its_episodes(server: Sut, root_token: str) -> None:
@@ -1089,6 +1123,7 @@ def test_a_season_is_renamed_and_re_covered_keeping_its_episodes(server: Sut, ro
     assert episode.json()["video"]["id"] == video["id"]
 
 
+@alternate_flow
 @scenario("SCN-SERIES-011-B")
 def test_null_clears_a_season_name_and_cover(server: Sut, root_token: str) -> None:
     """A null clears the season's name and cover and the read reports both as null."""
@@ -1109,6 +1144,7 @@ def test_null_clears_a_season_name_and_cover(server: Sut, root_token: str) -> No
     assert stored["cover_image_id"] is None
 
 
+@negative
 @scenario("SCN-SERIES-011-D")
 def test_an_unknown_or_malformed_season_cannot_be_patched(server: Sut, root_token: str) -> None:
     """An index the show does not hold answers 404 and a malformed index answers 400."""
@@ -1123,6 +1159,7 @@ def test_an_unknown_or_malformed_season_cannot_be_patched(server: Sut, root_toke
     assert read_season(server, root_token, show["id"], 1).json()["name"] == "Season One"
 
 
+@security
 @scenario("SCN-SERIES-011-E")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_standard_user_may_read_but_not_edit_a_season(sut: Sut) -> None:
@@ -1141,6 +1178,7 @@ def test_a_standard_user_may_read_but_not_edit_a_season(sut: Sut) -> None:
     assert read_season(server, root_token, show["id"], 1).json()["name"] == "Season One"
 
 
+@positive
 @scenario("SCN-SERIES-012-A")
 def test_an_episode_is_created_at_a_free_index(server: Sut, root_token: str) -> None:
     """A free index creates the episode and answers 201 with a Location and the representation."""
@@ -1168,6 +1206,7 @@ def test_an_episode_is_created_at_a_free_index(server: Sut, root_token: str) -> 
     assert_summary(episode, file, video)
 
 
+@positive
 @scenario("SCN-SERIES-012-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_episode_is_replaced_keeping_its_address(sut: Sut) -> None:
@@ -1199,6 +1238,7 @@ def test_an_episode_is_replaced_keeping_its_address(sut: Sut) -> None:
     assert episode_ids(list_episodes(server, root_token, show["id"], 1)) == [1]
 
 
+@business_rule
 @scenario("SCN-SERIES-012-C")
 def test_replacing_an_episodes_video_unattaches_the_previous_one(server: Sut, root_token: str) -> None:
     """A different video replaces the stored one and the previous video becomes unattached."""
@@ -1219,6 +1259,7 @@ def test_replacing_an_episodes_video_unattaches_the_previous_one(server: Sut, ro
     assert released.status_code == 201, f"the replaced video stayed attached: {released.status_code} {released.text}"
 
 
+@negative
 @scenario("SCN-SERIES-012-D")
 def test_a_video_attached_to_another_episode_is_refused(server: Sut, root_token: str) -> None:
     """A video another episode already takes answers 409 and creates nothing."""
@@ -1233,6 +1274,7 @@ def test_a_video_attached_to_another_episode_is_refused(server: Sut, root_token:
     assert episode_ids(list_episodes(server, root_token, show["id"], 1)) == [1]
 
 
+@negative
 @scenario("SCN-SERIES-012-E")
 def test_unusable_episode_input_is_refused(server: Sut, root_token: str) -> None:
     """An unknown video, empty name or malformed air date answers 422 and creates nothing."""
@@ -1254,6 +1296,7 @@ def test_unusable_episode_input_is_refused(server: Sut, root_token: str) -> None
     assert episode_ids(list_episodes(server, root_token, show["id"], 1)) == []
 
 
+@negative
 @scenario("SCN-SERIES-012-F")
 def test_an_episode_write_of_an_unknown_parent_or_malformed_index_is_refused(server: Sut, root_token: str) -> None:
     """An unknown show or season answers 404 and an index that is not a 32-bit unsigned integer answers 400."""
@@ -1279,6 +1322,7 @@ def test_an_episode_write_of_an_unknown_parent_or_malformed_index_is_refused(ser
     assert episode_ids(list_episodes(server, root_token, show["id"], 1)) == []
 
 
+@security
 @scenario("SCN-SERIES-012-G")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_standard_user_cannot_write_an_episode(sut: Sut) -> None:
@@ -1296,6 +1340,7 @@ def test_a_standard_user_cannot_write_an_episode(sut: Sut) -> None:
     assert episode_ids(list_episodes(server, root_token, show["id"], 1)) == []
 
 
+@positive
 @scenario("SCN-SERIES-013-A")
 @scenario("SCN-SERIES-013-C")
 @pytest.mark.own_instance(reason="exact_collection")
@@ -1336,6 +1381,7 @@ def test_the_episode_metadata_is_updated_partially(sut: Sut) -> None:
     assert stored["video"]["id"] == video["id"]
 
 
+@alternate_flow
 @scenario("SCN-SERIES-013-B")
 def test_null_clears_the_air_date(server: Sut, root_token: str) -> None:
     """A null clears the episode's air date and the read reports it as null."""
@@ -1351,6 +1397,7 @@ def test_null_clears_the_air_date(server: Sut, root_token: str) -> None:
     assert read_episode(server, root_token, show["id"], 1, 1).json()["air_date"] is None
 
 
+@negative
 @scenario("SCN-SERIES-013-F")
 def test_a_padded_episode_name_is_refused_on_update(server: Sut, root_token: str) -> None:
     """A patch name that begins or ends with whitespace answers 422 and applies nothing."""
@@ -1366,6 +1413,7 @@ def test_a_padded_episode_name_is_refused_on_update(server: Sut, root_token: str
     assert read_episode(server, root_token, show["id"], 1, 1).json()["name"] == "Pilot"
 
 
+@security
 @scenario("SCN-SERIES-013-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unknown_episode_or_denied_caller_cannot_be_patched(sut: Sut) -> None:
@@ -1386,6 +1434,7 @@ def test_an_unknown_episode_or_denied_caller_cannot_be_patched(sut: Sut) -> None
     assert read_episode(server, root_token, show["id"], 1, 1).json()["name"] == "Pilot"
 
 
+@negative
 @scenario("SCN-SERIES-013-E")
 def test_a_malformed_index_cannot_be_patched(server: Sut, root_token: str) -> None:
     """A season or episode index that is not a 32-bit unsigned integer answers 400 and applies nothing."""

@@ -874,8 +874,8 @@ mod tests {
     use rstest::fixture;
 
     use crate::domain::port::{
-        ContentTypeSnifferError, MediaProbeError, MockContentTypeSniffer, MockMediaProbe,
-        MockMediaSource, MockResourceRepository,
+        ContentTypeSnifferError, MediaProbeError, MockContentTypeSniffer, MockImageRepository,
+        MockMediaProbe, MockMediaSource, MockResourceRepository,
     };
 
     use crate::test_helpers::*;
@@ -1896,13 +1896,8 @@ mod tests {
         // Arrange: the file is already recorded, so this pass is a rescan and
         // the same state a restarted server finds.
         let file = registered_file("photo.png", "image/png", 3)?;
-        let mut media = TestUow {
-            resources: MockResourceRepository::new(),
-            ..TestUow::default()
-        };
-        media.resources.expect_create().times(0);
-        media
-            .images
+        let mut images = MockImageRepository::new();
+        images
             .expect_search()
             .times(1)
             .withf(|filter: &ImageFilter| filter.file_id == Some(7))
@@ -1920,6 +1915,12 @@ mod tests {
                 .map_err(|_| RepositoryError::DataIntegrityViolation);
                 Box::pin(async move { image.map(|found| vec![found]) })
             });
+        let mut media = TestUow {
+            images,
+            resources: MockResourceRepository::new(),
+            ..TestUow::default()
+        };
+        media.resources.expect_create().times(0);
         let mut source = MockMediaSource::new();
         (move |source: &mut MockMediaSource, entries: Vec<MediaEntry>| {
             source.expect_walk().times(1).returning(move || {
@@ -2140,11 +2141,12 @@ mod tests {
             });
         })(&mut source, Vec::new());
         let mut removing = TestUow::default();
-        removing
-            .images
+        let mut images = MockImageRepository::new();
+        images
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        removing.images = images;
         removing
             .videos
             .expect_search()
@@ -2439,11 +2441,12 @@ mod tests {
         // fails while looking up its media row.
         let file = registered_file("gone.png", "image/png", 3)?;
         let mut failing = TestUow::default();
-        failing
-            .images
+        let mut images = MockImageRepository::new();
+        images
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+        failing.images = images;
         let use_case = use_case(
             factory(vec![
                 (move |files: Vec<File>| -> TestUow {

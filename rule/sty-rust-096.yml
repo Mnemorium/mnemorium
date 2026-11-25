@@ -1,0 +1,9 @@
+---
+id: sty-rust-096
+language: Rust
+severity: hint
+message: >-
+  extract an endpoint's `#[utoipa::path]` attribute for STY-RUST-096
+rule:
+  kind: attribute_item
+  regex: '#\[utoipa::path'

@@ -1,7 +1,7 @@
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::rejection::BytesRejection;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse as _, Response};
 use base64::Engine as _;
@@ -12,6 +12,7 @@ use utoipa::ToSchema;
 use crate::application::port::{WriteUploadChunkCommand, WriteUploadChunkError};
 use crate::domain::NumericID;
 use crate::domain::model::{DIGEST_HEX_LENGTH, IntegrityHash};
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::asset::UploadSessionResponse;
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{
@@ -159,6 +160,7 @@ impl From<WriteUploadChunkError> for ApiError {
     summary = "Upload one chunk"
 )]
 pub(crate) async fn put_upload_chunk(
+    _query: Query<NoParametersQuery>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     Path((upload_id_value, chunk_number_value)): Path<(String, String)>,
@@ -167,7 +169,7 @@ pub(crate) async fn put_upload_chunk(
 ) -> Result<Response, ApiError> {
     // Resolve the extractor result first: an oversized body must produce the
     // `413` and its catalogued `limit_exceeded` event regardless of the path
-    // parameters or headers, which fail independently (`OBS-006`, `API-038`).
+    // parameters or headers, which fail independently (`OBS-006`, `REQ-API-011`).
     let body = raw_body.map_err(ApiError::from)?;
 
     let Ok(upload_id) = upload_id_value.parse::<NumericID>() else {

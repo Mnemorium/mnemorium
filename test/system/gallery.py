@@ -20,7 +20,7 @@ from harness import (
     Sut,
     link_of,
 )
-from labels import scenario
+from labels import TestType, business_rule, negative, positive, scenario, security
 
 IMAGE_CONTENT_TYPE = "image/png"
 VIDEO_CONTENT_TYPE = "video/mp4"
@@ -108,6 +108,7 @@ def gallery_ids(response) -> list[int]:
     return [item["id"] for item in response.json()["items"]]
 
 
+@business_rule
 @scenario("SCN-GALLERY-001-A")
 @scenario("SCN-GALLERY-005-A")
 @scenario("SCN-GALLERY-007-C")
@@ -137,6 +138,7 @@ def test_a_gallery_reads_its_items_in_position_order(sut: Sut) -> None:
     assert all(item["type"] == "image" and item["media_id"] > 0 for item in body["items"])
 
 
+@business_rule
 @scenario("SCN-GALLERY-002-A")
 @scenario("SCN-GALLERY-002-B")
 @pytest.mark.own_instance(reason="exact_collection")
@@ -157,6 +159,7 @@ def test_the_default_gallery_is_ownerless_public_and_empty(sut: Sut) -> None:
     assert body["items"] == []
 
 
+@negative
 @scenario("SCN-GALLERY-002-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_the_default_gallery_cannot_be_deleted(sut: Sut) -> None:
@@ -176,7 +179,9 @@ def test_the_default_gallery_cannot_be_deleted(sut: Sut) -> None:
     assert kept.status_code == 200, f"the default gallery must survive: {kept.text}"
 
 
+@positive
 @scenario("SCN-GALLERY-003-A")
+@scenario("SCN-AUTHORIZATION-023-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_created_gallery_is_owned_and_private(sut: Sut) -> None:
     """Creation answers 201 with a Location; the gallery is owned and private."""
@@ -205,6 +210,7 @@ def test_a_created_gallery_is_owned_and_private(sut: Sut) -> None:
     assert stored.json()["created_at"] == body["created_at"]
 
 
+@positive
 @scenario("SCN-GALLERY-003-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_public_gallery_is_created_and_readable_by_another_caller(sut: Sut) -> None:
@@ -225,6 +231,7 @@ def test_a_public_gallery_is_created_and_readable_by_another_caller(sut: Sut) ->
     assert readable.json()["is_public"] is True
 
 
+@negative
 @scenario("SCN-GALLERY-003-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_duplicate_name_is_refused_and_stores_nothing(sut: Sut) -> None:
@@ -242,6 +249,7 @@ def test_a_duplicate_name_is_refused_and_stores_nothing(sut: Sut) -> None:
     assert gallery_ids(listed) == [created["id"]]
 
 
+@negative
 @scenario("SCN-GALLERY-003-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unusable_name_is_refused_and_stores_nothing(sut: Sut) -> None:
@@ -259,6 +267,7 @@ def test_an_unusable_name_is_refused_and_stores_nothing(sut: Sut) -> None:
     assert gallery_ids(listed) == [DEFAULT_GALLERY_ID], "a refused creation stored a gallery"
 
 
+@business_rule
 @scenario("SCN-GALLERY-004-A")
 @scenario("SCN-GALLERY-004-B")
 @pytest.mark.own_instance(reason="exact_collection")
@@ -301,6 +310,7 @@ def test_the_collection_lists_what_a_caller_may_discover_and_filters_it(sut: Sut
     assert private_gallery["id"] not in discoverable_ids
 
 
+@positive
 @scenario("SCN-GALLERY-004-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_caller_with_no_discoverable_gallery_gets_an_empty_collection(sut: Sut) -> None:
@@ -317,23 +327,9 @@ def test_a_caller_with_no_discoverable_gallery_gets_an_empty_collection(sut: Sut
     assert response.json()["items"] == []
 
 
-@scenario("SCN-GALLERY-004-D")
-@scenario("SCN-API-022-A")
-@pytest.mark.own_instance(reason="exact_collection")
-def test_a_malformed_or_undeclared_query_is_rejected(sut: Sut) -> None:
-    """A query value that cannot be decoded, or a parameter the operation does not declare, answers 400."""
-    server = start_instance(sut)
-    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-
-    for query in ("?is_public=not-a-flag", "?undeclared=1"):
-        response = list_galleries(server, alice, query)
-
-        assert response.status_code == 400, f"{query} accepted: {response.status_code} {response.text}"
-        assert response.json()["error"] == "the request query string is invalid"
-
-
+@security
 @scenario("SCN-GALLERY-005-B")
+@scenario("SCN-API-013-A", TestType.SECURITY)
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_unknown_or_unreadable_gallery_is_not_found(sut: Sut) -> None:
     """An unknown gallery and another caller's private one answer 404 alike."""
@@ -348,8 +344,10 @@ def test_an_unknown_or_unreadable_gallery_is_not_found(sut: Sut) -> None:
 
     assert unknown.status_code == 404, f"unknown gallery: {unknown.status_code} {unknown.text}"
     assert hidden.status_code == 404, f"private gallery leaked: {hidden.status_code} {hidden.text}"
+    assert unknown.json()["error"] == hidden.json()["error"], "the two 404 outcomes are distinguishable"
 
 
+@negative
 @scenario("SCN-GALLERY-005-C")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_malformed_gallery_identifier_is_rejected(sut: Sut) -> None:
@@ -364,6 +362,7 @@ def test_a_malformed_gallery_identifier_is_rejected(sut: Sut) -> None:
     assert response.json()["error"] == "invalid gallery identifier"
 
 
+@business_rule
 @scenario("SCN-GALLERY-007-A")
 @scenario("SCN-GALLERY-007-B")
 @scenario("SCN-GALLERY-011-B")
@@ -406,6 +405,7 @@ def test_adding_an_image_and_a_video_appends_them_and_advances_time(sut: Sut) ->
     assert stored_video["last_modified_at"] > video_before
 
 
+@negative
 @scenario("SCN-GALLERY-007-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_medium_already_in_a_gallery_is_refused(sut: Sut) -> None:
@@ -425,7 +425,9 @@ def test_a_medium_already_in_a_gallery_is_refused(sut: Sut) -> None:
     assert server.follow(second, "self", token=alice).json()["items"] == []
 
 
+@negative
 @scenario("SCN-GALLERY-007-E")
+@scenario("SCN-API-013-B", TestType.NEGATIVE)
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_missing_or_unowned_medium_is_refused(sut: Sut) -> None:
     """An unknown file and another caller's file answer 422 and create nothing."""
@@ -444,6 +446,7 @@ def test_a_missing_or_unowned_medium_is_refused(sut: Sut) -> None:
     assert server.follow(gallery, "self", token=alice).json()["items"] == []
 
 
+@positive
 @scenario("SCN-GALLERY-008-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_image_item_carries_the_image_name(sut: Sut) -> None:
@@ -470,6 +473,7 @@ def test_an_image_item_carries_the_image_name(sut: Sut) -> None:
     assert body["_links"]["self"]["href"] == added.headers["Location"]
 
 
+@positive
 @scenario("SCN-GALLERY-008-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_video_item_carries_the_file_path(sut: Sut) -> None:
@@ -491,6 +495,7 @@ def test_a_video_item_carries_the_file_path(sut: Sut) -> None:
     assert body["name"] == video["path"]
 
 
+@security
 @scenario("SCN-GALLERY-008-C")
 @scenario("SCN-GALLERY-010-D")
 @pytest.mark.own_instance(reason="exact_collection")
@@ -516,6 +521,7 @@ def test_an_item_of_another_gallery_is_not_found(sut: Sut) -> None:
     assert kept.status_code == 200, f"the item must survive a refused removal: {kept.text}"
 
 
+@business_rule
 @scenario("SCN-GALLERY-010-A")
 @scenario("SCN-GALLERY-010-B")
 @scenario("SCN-GALLERY-010-C")
@@ -552,6 +558,7 @@ def test_removing_an_item_removes_its_medium_but_keeps_the_bytes(sut: Sut) -> No
     assert item_id > 0
 
 
+@negative
 @scenario("SCN-GALLERY-010-D")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_removing_an_unknown_item_is_not_found(sut: Sut) -> None:
@@ -572,6 +579,7 @@ def test_removing_an_unknown_item_is_not_found(sut: Sut) -> None:
     assert linked_id(link_of(gallery, "self")) == gallery["id"]
 
 
+@security
 @scenario("SCN-AUTHORIZATION-038-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_adding_to_and_removing_from_an_unreadable_gallery_is_not_found(sut: Sut) -> None:

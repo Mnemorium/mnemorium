@@ -2,9 +2,9 @@
 # Regenerate the requirement and scenario matrix at docs/development/artifacts/RequirementsTraceabilityCoverage.md.
 #
 # The generator reads the specification tree and the suites' own annotations, never pytest and never a container:
-# `test/util/investigation.py` parses `openspec/specs/**/spec.md`, the `@scenario` decorators of `test/system/*.py` and
-# the `// proves:` comments of `src/**/*.rs`. Authored `Cause` and `N/A` cells are preserved, so a regeneration with
-# nothing changed produces no diff.
+# `test/util/investigation.py` parses `openspec/specs/**/spec.md`, the `@scenario` decorators of `test/system/*.py`, the
+# scenario manifest `test/api/scenarios.toml` and the `// proves:` comments of `src/**/*.rs`. Authored `Cause` and `N/A`
+# cells are preserved, so a regeneration with nothing changed produces no diff.
 #
 # Prettier formats the file when it is on PATH (it always is in the dev shell); the generator itself is standard
 # library only and emits Prettier's table padding.

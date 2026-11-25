@@ -1,9 +1,10 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse as _, Response};
 
 use crate::application::port::GetVideoCommand;
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::asset::{asset_file_href, parse_asset_id};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference};
@@ -52,6 +53,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriRef
     summary = "Redirect a video to its stored file"
 )]
 pub(crate) async fn get_video_file(
+    _query: Query<NoParametersQuery>,
     Path(video_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

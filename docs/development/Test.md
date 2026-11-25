@@ -8,23 +8,64 @@ and what a failing measurement means.
 
 `docs/development/artifacts/RequirementsTraceabilityCoverage.md` is the generated map of the specification tree's
 requirements and scenarios to the tests that prove them. It is committed, and `script/investigation.sh` (or
-`devenv tasks run system:investigation`) regenerates it from `openspec/specs/**/spec.md`, the `@scenario` decorators in
-`test/system/*.py` and the `// proves:` comments in `src/` — no pytest run and no container.
+`devenv tasks run system:investigation`) regenerates it from `openspec/specs/**/spec.md`, the `@scenario` decorators and
+case-level type decorators in `test/system/*.py`, the scenario manifest in `test/api/scenarios.toml`, and the
+`// proves:` comments in `src/` — no pytest run and no container.
 
-Status is presence-based: `Tested` means a committed test claims the scenario and CI is green, not that a run passed. In
-a requirement row the eight type columns count the scenarios claimed for each type, so `0` means a type has no proof
-yet; `N/A` is a hand judgement that the type does not apply, and the generator warns in `## Contradictions` when a proof
-appears behind it. A scenario is not a type: every claim carries one of the eight, and one that declares none is counted
-in `Unspecified`. `Tested` counts the scenarios a system case claims and `Untested` the rest, so the two sum to the
-requirement's declared scenario count; a Rust proof alone leaves a scenario untested. In a scenario row, `Evidence` says
-what proves the scenario — `System suite`, `Proven in Rust`, or both — and names neither the case nor the function, so a
-renamed test is not a matrix change. The requirement is not repeated either: the scenario identifier names it. `Cause`
-is the one hand-authored place for "another layer owns this" or "nobody wrote it yet"; a `Not tested` scenario with an
-empty `Cause` and no Rust proof is the worklist.
+A requirement's `Status` is presence-based: `Tested` means every scenario it declares carries a committed system case or
+an API-suite entry, and CI is green, not that a run passed. In a requirement row the eight type columns count the
+scenarios carrying a proof of each type, from any suite, so `0` means a type has no proof yet; `N/A` is a hand judgement
+that the type does not apply, and the generator warns in `## Contradictions` when a proof appears behind it. A scenario
+is not a type: every system claim carries one of the eight, named on its own decorator or declared once for the case,
+and a system claim that names neither is counted in `Unspecified`. A Rust proof may name its kind after the em dash of
+its `// proves:` comment, and a scenario typed that way contributes to its requirement's columns exactly as a system
+proof does, while staying untested until a system case claims it. The fixture fuzz run has no pytest case to decorate,
+so the scenarios it proves are declared in `test/api/scenarios.toml` with their kinds; the matrix records them as
+`API suite`, adds their kind to the requirement's columns and counts them as `Tested`. `Tested` counts the scenarios a
+system case or an API-suite entry claims and `Untested` the rest, so the two sum to the requirement's declared scenario
+count. In a scenario row, `Evidence` says what proves the scenario — `System suite`, `API suite`, `Proven in Rust`, or a
+combination — and names neither the case nor the function, so a renamed test is not a matrix change; a row with an empty
+`Evidence` cell is a scenario no committed suite claims, and the row carries no `Status` column to say it twice. The
+requirement is not repeated either: the scenario identifier names it. `Cause` is the one hand-authored place for
+"another layer owns this" or "nobody wrote it yet"; an empty `Evidence` and an empty `Cause` together are the worklist.
+
+An entry in `test/api/scenarios.toml` is added by hand, because the fuzz run is a Schemathesis invocation rather than a
+pytest module. Add one only when a named checker or declared expectation in `test/api/checks.py`, `test/api/hooks.py` or
+`schemathesis.toml` fails if the rule breaks; the file's header lists the checkers and the mapping each supports.
+
+One `api` scenario stays unproven by design and is recorded here as the residual: `SCN-API-014-C` — the documentation
+feature is off by default — can only be observed on a server built without `api-docs`, and every image a suite drives is
+built with that feature, so no suite claims it. The matrix's empty `Evidence` cell, its hand-authored `Cause` naming the
+Docker image publish — the release build compiles the image without `api-docs` — and this note are the record; the
+alternative, a CI assertion that `api-docs` is not a default Cargo feature, is deferred rather than smuggled in as a
+shell rule.
 
 The generator never overwrites authored text: a type cell survives unless it is empty or a bare integer, a `Cause`
 survives while it is non-empty, and a row whose identifier leaves the specification moves to `## Detached notes` rather
 than disappearing. A regeneration with nothing changed produces no diff.
+
+### Scenario types
+
+The eight types are a closed set. A type names the kind of rule a proof exercises — not the layer that runs it, the HTTP
+method it uses or the scenario's wording — so two cases on one route can carry different kinds. Each type is also a
+pytest marker and a case-level decorator of the same name, so `pytest -m recovery` and `@recovery` agree.
+
+| Type           | Meaning                                                                                                                                                                                                                                                                                                         |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Positive       | The declared behaviour holds on a valid request: the call succeeds and its published effect — the status, the representation, the stored state — is observable. The ordinary path through the rule, with no edge and no refusal.                                                                                |
+| Negative       | A well-formed request carries something the declaration forbids — a missing required member, an unknown identifier, a value outside the allowed shape — and is refused with the declared status and error envelope. Nothing is persisted or published in place of the refused request.                          |
+| Boundary       | A limit is exercised at its edge: a range, a length, a count, a quota, a page size, or the empty end of a collection. The input is well formed; the proof fixes where the rule changes — the bound is accepted, or one step past it refused.                                                                    |
+| Security       | A caller is confined to what it may do, see and infer: authentication, authorization, the secrecy of a credential or personal value, and the absence of an oracle that reveals another caller's resource. The refusal exists because the caller must not have the thing, not because the request was malformed. |
+| Error handling | A failure the caller did not cause is reported as the declaration says: unreadable or malformed stored data, an unavailable dependency, an unwritable location, a bad operator value. The caller gets the declared status and the cause stays out of the representation and the log.                            |
+| Recovery       | After an interruption or a restart the system returns to a correct state: no partial write, no orphaned row, the same secret or instant across a reboot, a retried operation that completes exactly once.                                                                                                       |
+| Alternate flow | A declared path other than the default that still succeeds: an omitted optional member, a second accepted representation, an alias resolving to its canonical resource, a documented fallback taken when the ordinary source is absent.                                                                         |
+| Business rule  | A domain invariant that holds whatever the request shape: a computed value, an ordering, a cascade, an ownership or precedence rule, a value the domain derives rather than the caller supplies.                                                                                                                |
+
+A case that proves several scenarios of one kind declares the kind once for the case; a case that mixes kinds types each
+scenario on its own decorator, because the type belongs to the proof and not to the case. When a proof could be read as
+two kinds, choose the fault's origin: `SCN-CONFIGURATION-004-B` (a malformed document refuses startup) is error
+handling, because the failure is the environment's and no request carries it, while `SCN-AUTHENTICATION-015-A` (a
+password outside the policy is `422`) is negative, because the request carries the value the rule refuses.
 
 ## Performance suite
 

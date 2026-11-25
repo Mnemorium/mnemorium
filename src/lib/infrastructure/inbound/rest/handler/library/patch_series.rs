@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::Deserialize;
 use tracing::warn;
@@ -7,10 +7,10 @@ use utoipa::ToSchema;
 use crate::application::FieldUpdate;
 use crate::application::port::UpdateSeriesCommand;
 use crate::domain::NumericID;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     SeriesResponse, deserialize_field_update, parse_series_id, parse_wire_date,
 };
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
@@ -102,7 +102,7 @@ pub(crate) struct PatchSeriesRequest {
             status = CONFLICT,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The cover is not a library image"
+            description = "The cover is not a viewable library image"
         ),
         (
             status = PAYLOAD_TOO_LARGE,
@@ -135,6 +135,7 @@ pub(crate) struct PatchSeriesRequest {
     summary = "Update a show"
 )]
 pub(crate) async fn patch_series(
+    _query: Query<NoParametersQuery>,
     Path(series_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

@@ -1,10 +1,11 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
 use crate::application::port::PutResourcePermissionCommand;
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::identity::{
     GrantPayload, ResourceKindWire, ResourcePermissionBody, VisibilityWire, parse_address,
     parse_visibility,
@@ -88,6 +89,7 @@ pub(crate) struct PutPermissionRequest {
     summary = "Replace a resource's permission"
 )]
 pub(crate) async fn put_resource_permission(
+    _query: Query<NoParametersQuery>,
     Path((kind, id)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

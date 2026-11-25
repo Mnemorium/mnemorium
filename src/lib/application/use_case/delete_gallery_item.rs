@@ -1,6 +1,5 @@
-use crate::application::{allows, authorize};
+use crate::application::{allows, authorize, detach_backing_file};
 use std::future::Future;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -123,18 +122,6 @@ where
                     return Err(DeleteGalleryItemError::NoSuchItem);
                 }
 
-                // The item's resource outlives its row unless this unit of work
-                // removes it: a later item reuses the freed identifier and
-                // collides with the stale resource (`PERS-020`).
-                unit_of_work
-                    .resources()
-                    .delete(ResourceRef::new(
-                        ResourceKind::GalleryItem,
-                        command.gallery_item_id(),
-                    ))
-                    .await
-                    .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?;
-
                 let deleted_media = match media {
                     GalleryItemMedia::Image(image_id) => {
                         unit_of_work
@@ -183,7 +170,7 @@ where
                 // uploading user, an Admin and the Root Admin, the destruction
                 // side of the file-use rule the add path enforces. Any other
                 // caller's removal still commits, keeping the file.
-                let removable = match stored {
+                let removable = match stored.as_ref() {
                     Some(file)
                         if allows(
                             &mut unit_of_work.resources(),
@@ -198,7 +185,7 @@ where
                     }
                     _ => None,
                 };
-                let file_path = match removable.as_ref() {
+                let keeps_file = match removable.as_ref() {
                     Some(file) => {
                         // A `file` is shared per `(user_id, integrity_hash)`, so
                         // another media row may still reference it; the delete is
@@ -223,7 +210,7 @@ where
                                 .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?
                                 .is_empty();
                         if still_referenced {
-                            None
+                            true
                         } else {
                             match unit_of_work
                                 .files()
@@ -233,22 +220,41 @@ where
                                 })
                                 .await
                             {
-                                Ok(true) => Some(PathBuf::from(file.path())),
-                                // The row was already gone — the removal that
-                                // deleted it owns the bytes — or the datastore
-                                // rejected the delete because a reference this
-                                // guard cannot see survived (the Asset-owned
-                                // `audio.file_id`): the file is kept, bytes
-                                // included (`STY-RUST-015`).
-                                Ok(false) | Err(RepositoryError::DataIntegrityViolation) => None,
+                                // Byte deletion is intentionally disabled; only the
+                                // recorded reference is removed, so the operator's
+                                // content is never touched (`REQ-MEDIA-INGEST-012`).
+                                Ok(_) => false,
+                                // A reference this guard cannot see survived (the
+                                // Asset-owned `audio.file_id`): the file is kept
+                                // (`STY-RUST-015`).
+                                Err(RepositoryError::DataIntegrityViolation) => true,
                                 Err(error) => {
                                     return Err(DeleteGalleryItemError::Unknown(error.into()));
                                 }
                             }
                         }
                     }
-                    None => None,
+                    // The caller may not use the file, so its row and content stay.
+                    None => stored.is_some(),
                 };
+                // The item's resource outlives its row unless this unit of work
+                // removes it: a later item reuses the freed identifier and
+                // collides with the stale resource (`PERS-020`). A kept file's
+                // resource is detached first, so the cascade that removes the
+                // medium does not leave the surviving row unaddressable.
+                if let Some(file) = stored.as_ref().filter(|_| keeps_file) {
+                    detach_backing_file(&mut unit_of_work, file)
+                        .await
+                        .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?;
+                }
+                unit_of_work
+                    .resources()
+                    .delete(ResourceRef::new(
+                        ResourceKind::GalleryItem,
+                        command.gallery_item_id(),
+                    ))
+                    .await
+                    .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?;
 
                 gallery.touch(Utc::now().naive_utc());
                 unit_of_work
@@ -257,22 +263,16 @@ where
                     .await
                     .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?;
 
-                Ok(file_path)
+                Ok(())
             }
             .await;
 
             match result {
-                Ok(file_path) => {
+                Ok(()) => {
                     unit_of_work
                         .commit()
                         .await
                         .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?;
-                    // TODO(ingest): the path now addresses the operator's media
-                    // mount, and a scanned file was never the server's to
-                    // remove. Byte deletion is intentionally disabled; only the
-                    // recorded reference is removed. Re-enable a guarded removal
-                    // once a deletion policy consults `file.origin`.
-                    drop(file_path);
                     Ok(())
                 }
                 Err(error) => {
@@ -562,6 +562,7 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
                     resources
                 })(),
             )
@@ -933,6 +934,7 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
                     resources
                 })(),
             )
@@ -1130,6 +1132,7 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
                     resources
                 })(),
             )
@@ -1324,6 +1327,7 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
                     resources
                 })(),
             )
@@ -1501,6 +1505,7 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
                     resources
                 })(),
             )
@@ -1687,6 +1692,11 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
+                    resources
+                        .expect_reassign_owner()
+                        .times(1)
+                        .returning(|_, _, _| Box::pin(async { Ok(true) }));
                     resources
                 })(),
             )
@@ -1878,6 +1888,11 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
+                    resources
+                        .expect_reassign_owner()
+                        .times(1)
+                        .returning(|_, _, _| Box::pin(async { Ok(true) }));
                     resources
                 })(),
             )
@@ -2058,6 +2073,7 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
                     resources
                 })(),
             )
@@ -2240,6 +2256,11 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
+                    resources
+                        .expect_reassign_owner()
+                        .times(1)
+                        .returning(|_, _, _| Box::pin(async { Ok(true) }));
                     resources
                 })(),
             )
@@ -2412,6 +2433,7 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
                     resources
                 })(),
             )
@@ -2552,6 +2574,7 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
                     resources
                 })(),
             )
@@ -2691,6 +2714,7 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
                     resources
                 })(),
             )
@@ -2817,6 +2841,7 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
                     resources
                 })(),
             )
@@ -2964,6 +2989,7 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
                     resources
                 })(),
             )
@@ -3158,6 +3184,7 @@ mod tests {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+
                     resources
                 })(),
             )

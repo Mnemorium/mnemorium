@@ -1,9 +1,10 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, header};
 use axum::response::Response;
 
 use crate::application::port::{GetFileCommand, GetFileError};
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::asset::{FileResponse, parse_asset_id};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{
@@ -74,6 +75,7 @@ impl From<GetFileError> for ApiError {
     summary = "Fetch a stored file"
 )]
 pub(crate) async fn get_file(
+    _query: Query<NoParametersQuery>,
     Path(file_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

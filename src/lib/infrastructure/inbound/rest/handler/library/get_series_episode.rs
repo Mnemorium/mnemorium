@@ -1,9 +1,10 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use tracing::warn;
 
 use crate::application::port::GetSeriesEpisodeCommand;
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::library::{
     EpisodeResponse, parse_season_index, parse_series_id,
 };
@@ -69,6 +70,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
     summary = "Fetch a show season episode"
 )]
 pub(crate) async fn get_series_episode(
+    _query: Query<NoParametersQuery>,
     Path((series_id_value, season_index_value, episode_index_value)): Path<(
         String,
         String,

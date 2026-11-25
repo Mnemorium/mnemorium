@@ -442,6 +442,21 @@ impl ResourceRepository for SqlxResourceRepository<'_> {
         }
         Ok(found)
     }
+
+    async fn set_visibility(
+        &mut self,
+        address: ResourceRef,
+        visibility: Visibility,
+    ) -> Result<bool, RepositoryError> {
+        let result =
+            sqlx::query("UPDATE resource SET visibility = ?1 WHERE kind = ?2 AND entity_id = ?3")
+                .bind(visibility.as_wire())
+                .bind(address.kind().as_wire())
+                .bind(address.id())
+                .execute(&mut **self.transaction)
+                .await?;
+        Ok(result.rows_affected() > 0)
+    }
 }
 
 /// Insert one grant and return its stored row.
@@ -689,6 +704,148 @@ mod tests {
         assert_eq!(access.resource().kind(), ResourceKind::Gallery);
         assert_eq!(access.ancestors().len(), 2);
         assert_eq!(access.grants().len(), 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn set_visibility_replaces_the_stored_tier() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 5).await?;
+        {
+            let mut repository = SqlxResourceRepository::new(&mut transaction);
+            repository
+                .create(NewResource {
+                    auth_parent: Some(ResourceRef::new(ResourceKind::Library, 0)),
+                    entity_id: 10,
+                    kind: ResourceKind::Gallery,
+                    owner_id: Some(5),
+                    visibility: Visibility::Private,
+                })
+                .await?;
+        }
+
+        // Act
+        let updated = {
+            let mut repository = SqlxResourceRepository::new(&mut transaction);
+            repository
+                .set_visibility(
+                    ResourceRef::new(ResourceKind::Gallery, 10),
+                    Visibility::Public,
+                )
+                .await?
+        };
+        let missing = {
+            let mut repository = SqlxResourceRepository::new(&mut transaction);
+            repository
+                .set_visibility(
+                    ResourceRef::new(ResourceKind::Gallery, 99),
+                    Visibility::Public,
+                )
+                .await?
+        };
+
+        // Assert
+        assert!(updated);
+        assert!(!missing);
+        let caller = User::try_new(5, "user5".to_owned(), None, 5, Role::Standard)?;
+        let mut repository = SqlxResourceRepository::new(&mut transaction);
+        let found = repository
+            .search(
+                &ResourceFilter {
+                    entity_id: Some(10),
+                    kind: Some(ResourceKind::Gallery),
+                    ..ResourceFilter::default()
+                },
+                &caller,
+            )
+            .await?;
+        let access = found
+            .into_iter()
+            .next()
+            .ok_or_else(|| io::Error::other("the gallery resource must resolve"))?;
+        assert_eq!(access.resource().visibility(), Visibility::Public);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn set_visibility_syncs_the_entity_flags() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 5).await?;
+        seed_gallery_v2(&mut transaction, 10, 5).await?;
+        seed_playlist(&mut transaction, 20, "Mine", 5, false).await?;
+        {
+            let mut repository = SqlxResourceRepository::new(&mut transaction);
+            repository
+                .create(NewResource {
+                    auth_parent: Some(ResourceRef::new(ResourceKind::Library, 0)),
+                    entity_id: 10,
+                    kind: ResourceKind::Gallery,
+                    owner_id: Some(5),
+                    visibility: Visibility::Private,
+                })
+                .await?;
+            repository
+                .create(NewResource {
+                    auth_parent: None,
+                    entity_id: 20,
+                    kind: ResourceKind::MusicPlaylist,
+                    owner_id: Some(5),
+                    visibility: Visibility::Private,
+                })
+                .await?;
+        }
+
+        // Act
+        {
+            let mut repository = SqlxResourceRepository::new(&mut transaction);
+            repository
+                .set_visibility(
+                    ResourceRef::new(ResourceKind::Gallery, 10),
+                    Visibility::Public,
+                )
+                .await?;
+            repository
+                .set_visibility(
+                    ResourceRef::new(ResourceKind::MusicPlaylist, 20),
+                    Visibility::Public,
+                )
+                .await?;
+            // The seeded default gallery keeps its immutable flag.
+            repository
+                .set_visibility(
+                    ResourceRef::new(ResourceKind::Gallery, 0),
+                    Visibility::Private,
+                )
+                .await?;
+        }
+
+        // Assert
+        let gallery: (bool,) =
+            sqlx::query_as("SELECT is_public FROM gallery WHERE gallery_id = 10")
+                .fetch_one(&mut *transaction)
+                .await?;
+        let playlist: (bool,) =
+            sqlx::query_as("SELECT is_public FROM music_playlist WHERE music_playlist_id = 20")
+                .fetch_one(&mut *transaction)
+                .await?;
+        let default_gallery: (bool,) =
+            sqlx::query_as("SELECT is_public FROM gallery WHERE gallery_id = 0")
+                .fetch_one(&mut *transaction)
+                .await?;
+        assert!(
+            gallery.0,
+            "the gallery flag mirrors the resource visibility"
+        );
+        assert!(
+            playlist.0,
+            "the playlist flag mirrors the resource visibility"
+        );
+        assert!(
+            default_gallery.0,
+            "the seeded default gallery keeps its immutable flag"
+        );
         Ok(())
     }
 

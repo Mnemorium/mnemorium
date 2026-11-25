@@ -1,7 +1,9 @@
+use axum::extract::Query;
 use axum::response::Response;
 use serde::Serialize;
 use utoipa::ToSchema;
 
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::{SelfLinks, hal_json};
 
 /// Service health status.
@@ -38,7 +40,7 @@ pub(crate) struct HealthResponse {
     security(()),
     summary = "Check service health"
 )]
-pub(crate) async fn get_health() -> Response {
+pub(crate) async fn get_health(_query: Query<NoParametersQuery>) -> Response {
     hal_json(HealthResponse {
         links: SelfLinks::new("/health"),
         status: "ok".to_owned(),

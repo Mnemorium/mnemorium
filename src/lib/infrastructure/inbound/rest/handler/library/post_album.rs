@@ -1,4 +1,4 @@
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
@@ -8,10 +8,10 @@ use utoipa::ToSchema;
 use crate::application::port::CreateMusicAlbumCommand;
 use crate::domain::NumericID;
 use crate::domain::model::ProductionType;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     AlbumResponse, ProductionTypeRequest, parse_wire_date,
 };
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
@@ -97,7 +97,7 @@ pub(crate) struct PostAlbumRequest {
             status = CONFLICT,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The cover is not a library image"
+            description = "The cover is not a viewable library image"
         ),
         (
             status = PAYLOAD_TOO_LARGE,
@@ -130,6 +130,7 @@ pub(crate) struct PostAlbumRequest {
     summary = "Create a music album"
 )]
 pub(crate) async fn post_album(
+    _query: Query<NoParametersQuery>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: JsonObject<PostAlbumRequest>,

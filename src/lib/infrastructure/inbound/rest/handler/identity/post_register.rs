@@ -1,4 +1,4 @@
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
@@ -7,8 +7,8 @@ use utoipa::ToSchema;
 use crate::application::port::{RegisterUserCommand, RegisterUserError, RegisterUserResponse};
 use crate::domain::NumericID;
 use crate::domain::model::Role;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::user::user_self_href;
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{
     ApiError, AppState, ErrorBody, SelfLinks, UriReference, hal_json,
@@ -178,6 +178,7 @@ impl From<RegisterUserError> for ApiError {
     summary = "Register a new user"
 )]
 pub(crate) async fn post_register(
+    _query: Query<NoParametersQuery>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: JsonObject<RegisterRequest>,

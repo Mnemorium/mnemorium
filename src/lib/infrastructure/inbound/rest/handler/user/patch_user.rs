@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -8,8 +8,8 @@ use crate::application::port::{
 };
 use crate::domain::NumericID;
 use crate::domain::model::Role;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::user::{parse_user_id, user_self_href};
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLinks, hal_json};
 
@@ -165,6 +165,7 @@ impl From<UpdateUserError> for ApiError {
     summary = "Update a user profile"
 )]
 pub(crate) async fn patch_user(
+    _query: Query<NoParametersQuery>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     Path(id): Path<String>,

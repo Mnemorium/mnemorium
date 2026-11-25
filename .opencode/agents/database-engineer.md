@@ -47,7 +47,7 @@ is the caller's, the scope is yours.
 Datastore map (navigation):
 
 - `migrations/` holds the schema, seeds and triggers. Their conventions are
-  governed by `docs/development/TechnicalDesign.md` § 4 (Persistence); see
+  governed by `docs/development/TechnicalDesign.md` § 3 (Persistence); see
   `PERS-*` and `STY-SQL-*`.
 - `src/lib/infrastructure/outbound/sqlx/sqlite3.rs` opens the pool and applies the
   migrations at boot (`PERS-003`, `PERS-004`); `init_db` receives the database
@@ -95,7 +95,7 @@ Datastore map (navigation):
 
 Read the governing material at run time; never work from memory:
 
-- `docs/development/TechnicalDesign.md` § 4 (Persistence) — the `PERS-*` rules.
+- `docs/development/TechnicalDesign.md` § 3 (Persistence) — the `PERS-*` rules.
 - `docs/development/EntityRelationshipDiagram.md` — the entity-relationship diagram and its legend you keep in step
   with `migrations/`.
 - `docs/development/TechnicalDesign.md` § 1 (Code Style Guidelines) — the
@@ -104,7 +104,7 @@ Read the governing material at run time; never work from memory:
 - `docs/development/Overview.md` — the source layout and layer map.
 - `Cargo.toml` — the `[lints.clippy]` block, read-only.
 
-Cite a rule as `docs/development/TechnicalDesign.md` § 4 (Persistence), `PERS-014`.
+Cite a rule as `docs/development/TechnicalDesign.md` § 3 (Persistence), `PERS-014`.
 Sections and rule IDs are append-only: resolve every citation against the current
 rulebook, and never renumber, reuse, or invent one.
 
@@ -161,7 +161,7 @@ the governor's `<run directory>/checks/` log or report it as unverifiable.
 
   ## Evidence
 
-  - `<path:line>` — <fact> — `docs/development/TechnicalDesign.md` § 4 (Persistence), `PERS-0xx`
+  - `<path:line>` — <fact> — `docs/development/TechnicalDesign.md` § 3 (Persistence), `PERS-0xx`
 
   ## Open decisions
 

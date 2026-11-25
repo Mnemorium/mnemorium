@@ -487,9 +487,9 @@ name and ISRC, and a playlist link. A playlist track SHALL carry no artwork of i
 
 ### Requirement: REQ-MUSIC-024 — Update playlist metadata
 
-A playlist metadata update SHALL require `EditMetadata` on the playlist. An absent `name` or `is_public` SHALL keep its
-value. A successful change SHALL advance the playlist's **Last-modified time**, including a change that stores a new
-value equal to the old one.
+A playlist metadata update SHALL require `EditMetadata` on the playlist for its name and cover image, and
+`ManagePermissions` for its visibility. An absent `name` or `is_public` SHALL keep its value. A successful change SHALL
+advance the playlist's **Last-modified time**, including a change that stores a new value equal to the old one.
 
 #### Scenario: SCN-MUSIC-024-A — Metadata is replaced
 

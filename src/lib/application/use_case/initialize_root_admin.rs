@@ -395,7 +395,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHENTICATION-001-C
+    // proves: SCN-AUTHENTICATION-001-C — Recovery
     #[tokio::test]
     async fn initialize_root_admin_save_credential_failure_returns_unknown()
     -> Result<(), Box<dyn Error>> {
@@ -438,7 +438,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHENTICATION-001-D
+    // proves: SCN-AUTHENTICATION-001-D — Recovery
     #[tokio::test]
     async fn initialize_root_admin_save_user_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {

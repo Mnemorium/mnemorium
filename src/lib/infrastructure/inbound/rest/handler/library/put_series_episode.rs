@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
@@ -7,10 +7,10 @@ use utoipa::ToSchema;
 
 use crate::application::port::PutSeriesEpisodeCommand;
 use crate::domain::NumericID;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     EpisodeResponse, parse_episode_index, parse_season_index, parse_series_id, parse_wire_date,
 };
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
@@ -135,6 +135,7 @@ pub(crate) struct PutSeriesEpisodeRequest {
     summary = "Create or replace a season episode"
 )]
 pub(crate) async fn put_series_episode(
+    _query: Query<NoParametersQuery>,
     Path((series_id_value, season_index_value, episode_index_value)): Path<(
         String,
         String,

@@ -1,4 +1,5 @@
 use crate::application::authorization::authorize;
+use crate::application::cover_is_viewable;
 use crate::domain::model::ChildKind;
 use std::future::Future;
 use std::pin::Pin;
@@ -173,6 +174,10 @@ where
                     .await
                     .map_err(|error| CreateMovieError::Unknown(error.into()))?;
                 if !attached.is_empty() {
+                    return Err(CreateMovieError::Conflict);
+                }
+
+                if !cover_is_viewable(&mut unit_of_work, &caller, command.cover_image_id()).await {
                     return Err(CreateMovieError::Conflict);
                 }
 

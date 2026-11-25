@@ -46,8 +46,8 @@ be rejected and nothing SHALL be stored.
 ### Requirement: REQ-COVER-ART-003 — A cover's scope follows the resource it decorates
 
 A **Catalogue** cover SHALL be stored with the `LIBRARY` scope and a playlist cover with the `USER` scope. A scope SHALL
-be fixed by the first attachment and SHALL NOT change. An image SHALL have at most one referrer, and a cover SHALL NOT
-be gallery media.
+be fixed by the first attachment and SHALL NOT change. A `USER` image SHALL have at most one referrer, a `LIBRARY` image
+MAY back more than one catalogue cover, and a cover SHALL NOT be gallery media.
 
 #### Scenario: SCN-COVER-ART-003-A — A catalogue cover
 
@@ -69,6 +69,11 @@ be gallery media.
 - **WHEN** a cover names an image already used as gallery media
 - **THEN** the write is rejected as a conflict and nothing is stored
 
+#### Scenario: SCN-COVER-ART-003-E — A user image backs one cover
+
+- **WHEN** a playlist cover names an image that already backs another playlist
+- **THEN** the write is rejected as a conflict and nothing is stored
+
 ### Requirement: REQ-COVER-ART-004 — A cover exposes a link to its image
 
 A representation whose `cover_image_id` is set SHALL expose `_links.cover` naming the Asset image route for that image,
@@ -84,12 +89,6 @@ so a client never builds the route itself. A representation whose `cover_image_i
 
 - **WHEN** the system returns a representation whose `cover_image_id` is `null`
 - **THEN** the representation carries no `_links.cover`
-
-#### Scenario: SCN-COVER-ART-004-C — The link precedes the route
-
-- **WHEN** the Asset image route a cover link names is not served
-- **THEN** the representation still exposes `_links.cover`
-- **AND** following the link answers the standard error envelope rather than a representation
 
 ### Requirement: REQ-COVER-ART-005 — Attach, replace and clear a cover
 

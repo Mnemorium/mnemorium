@@ -104,31 +104,26 @@ rules:
     module_scoped_helper_roots:
       - src/lib/infrastructure/outbound/sqlx.rs
 
-  API-028:
-    # The response bodies § HAL payload guidelines names as non-representations.
-    # The token issue, the token regeneration and the liveness probe are HAL
-    # representations now, so the asset content bytes are the only body outside
-    # the rule: their stored media type is served whole, not as a representation.
-    non_hal_bodies:
-      - AssetContent
-  API-030:
-    # The root keys a HAL representation's business data must not be nested
-    # under. `_embedded` is HAL's own nesting key and is governed by API-032;
-    # the rest are the conventional payload-envelope keys of a REST API.
+  STY-RUST-118:
+    # The root keys a HAL payload struct's business data must not be nested
+    # under. `_embedded` is HAL's own nesting key and is governed by
+    # STY-RUST-120; the rest are the conventional payload-envelope keys of a
+    # REST API.
     wrapper_keys:
       - data
       - payload
       - body
       - result
       - resource
-  API-032:
-    # A HAL payload must not use `_embedded` except where a proven performance
-    # need is recorded here. HAL nests a representation's related resources
-    # under it, and this API exposes them through `_links` (API-031) — except
-    # the catalog collections, whose partial page items spare one request per
-    # item. A location is the enclosing `<file>::<struct>` (a representation) or
-    # `<file>::<function>` (a handler that builds a payload). Empty by default,
-    # so every other use is reported until its need is reviewed and recorded.
+  STY-RUST-120:
+    # A HAL payload struct must not use `_embedded` except where a proven
+    # performance need is recorded here. HAL nests a representation's related
+    # resources under it, and this API exposes them through `_links`
+    # (STY-RUST-119) — except the catalog collections, whose partial page items
+    # spare one request per item. A location is the enclosing
+    # `<file>::<struct>` (a representation) or `<file>::<function>` (a handler
+    # that builds a payload). Empty by default, so every other use is reported
+    # until its need is reviewed and recorded.
     allowed_locations:
       - src/lib/infrastructure/inbound/rest/handler/library.rs::AlbumListResponse
       - src/lib/infrastructure/inbound/rest/handler/library.rs::MovieListResponse

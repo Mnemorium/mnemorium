@@ -1,8 +1,9 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 
 use crate::application::port::GetGalleryCommand;
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::library::{GalleryResponse, parse_gallery_id};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
@@ -59,6 +60,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
     summary = "List the items of a gallery"
 )]
 pub(crate) async fn get_gallery_item_list(
+    _query: Query<NoParametersQuery>,
     Path(id): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

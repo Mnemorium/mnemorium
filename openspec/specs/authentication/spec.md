@@ -170,15 +170,6 @@ declared header is then read.
 - **WHEN** attempts against an email address no account holds exceed its quota
 - **THEN** they answer `429 Too Many Requests`, indistinguishable from an email address that exists
 
-### Requirement: REQ-AUTHENTICATION-009 — Protected endpoints require a bearer token
-
-Every protected endpoint SHALL require `Authorization: Bearer <token>`.
-
-#### Scenario: SCN-AUTHENTICATION-009-A — A missing or invalid token cannot access a protected endpoint
-
-- **WHEN** a protected endpoint is called without a valid Bearer token
-- **THEN** the system answers `401 Unauthorized` and applies nothing
-
 ### Requirement: REQ-AUTHENTICATION-010 — A token is accepted only while valid
 
 A token SHALL be accepted only when its signature verifies against the instance signing secret, it carries a required
@@ -236,8 +227,7 @@ previous token SHALL remain valid until its own expiry.
 
 The Root Admin SHALL replace the password behind a credential it names by identifier, for its own or another user's
 credential, answering `204 No Content` and never returning the password. An unknown credential SHALL answer
-`404 Not Found`. A non-root caller SHALL answer `403 Forbidden`, and a permission override naming `credential.patch`
-SHALL answer `422 Unprocessable Content` because the action is not configurable.
+`404 Not Found`. A non-root caller SHALL answer `403 Forbidden`.
 
 #### Scenario: SCN-AUTHENTICATION-014-A — Own credential
 
@@ -258,11 +248,6 @@ SHALL answer `422 Unprocessable Content` because the action is not configurable.
 
 - **WHEN** an Admin or Standard User requests a credential rotation
 - **THEN** the system answers `403 Forbidden` and stores nothing
-
-#### Scenario: SCN-AUTHENTICATION-014-E — The action cannot be granted
-
-- **WHEN** the Root Admin submits a permission override naming `credential.patch`
-- **THEN** the system answers `422 Unprocessable Content` and stores nothing
 
 ### Requirement: REQ-AUTHENTICATION-015 — Rotation is policy-checked and atomic
 

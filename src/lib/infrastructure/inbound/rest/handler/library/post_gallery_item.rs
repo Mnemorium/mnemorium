@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
@@ -6,10 +6,10 @@ use utoipa::ToSchema;
 
 use crate::application::port::{AddGalleryItemCommand, AddGalleryItemError};
 use crate::domain::NumericID;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     GalleryItemDetailResponse, GalleryItemType, parse_gallery_id,
 };
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
@@ -36,8 +36,8 @@ pub(crate) struct PostGalleryItemRequest {
 ///
 /// The missing and the unowned medium are one client-visible outcome: a medium
 /// the caller does not own is indistinguishable from one that does not exist
-/// (`API-041`). Both fail the `media_id` body value and answer `422` with one
-/// stable, server-authored message (`API-037`, `API-038`); `404` stays for the
+/// (`REQ-API-013`). Both fail the `media_id` body value and answer `422` with one
+/// stable, server-authored message (`STY-RUST-121`, `REQ-API-011`); `404` stays for the
 /// URI-addressed gallery and `403` for the gallery-permission outcome.
 impl From<AddGalleryItemError> for ApiError {
     fn from(err: AddGalleryItemError) -> Self {
@@ -146,6 +146,7 @@ impl From<AddGalleryItemError> for ApiError {
     summary = "Add an item to a gallery"
 )]
 pub(crate) async fn post_gallery_item(
+    _query: Query<NoParametersQuery>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     Path(id): Path<String>,

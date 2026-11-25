@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -6,10 +6,10 @@ use utoipa::ToSchema;
 use crate::application::FieldUpdate;
 use crate::application::port::UpdatePlaylistCommand;
 use crate::domain::NumericID;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     PlaylistResponse, deserialize_field_update, parse_playlist_id,
 };
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
@@ -23,10 +23,12 @@ pub(crate) struct AddPlaylistTrackRequest {
 
 /// Payload to update a playlist's metadata and/or append a recording.
 ///
-/// Every field is optional. `name`, `is_public` and `cover_image_id` require
-/// `EditMetadata` on the playlist; `add_track` requires `CreateChild` for a
-/// music recording on the playlist and `ViewMetadata` on the recording. A
-/// request that fails one check is rejected as a whole.
+/// Every field is optional. `name` and `cover_image_id` require `EditMetadata`
+/// on the playlist, and a named cover must be a viewable image; `is_public`
+/// requires `ManagePermissions`; `add_track`
+/// requires `CreateChild` for a music recording on the playlist and
+/// `ViewMetadata` on the recording. A request that fails one check is rejected
+/// as a whole.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct PatchPlaylistRequest {
@@ -52,7 +54,8 @@ pub(crate) struct PatchPlaylistRequest {
 /// Update a playlist's metadata and/or append a recording.
 ///
 /// Omitted fields stay unchanged. `name`, `is_public` and `cover_image_id`
-/// require `EditMetadata` on the playlist; adding a track requires
+/// require `EditMetadata` on the playlist, and a named cover must be a viewable
+/// image; adding a track requires
 /// `CreateChild` for a music recording on the playlist and `ViewMetadata` on
 /// the recording. The request is atomic: a rejected field applies nothing.
 #[utoipa::path(
@@ -132,6 +135,7 @@ pub(crate) struct PatchPlaylistRequest {
     summary = "Update a music playlist"
 )]
 pub(crate) async fn patch_playlist(
+    _query: Query<NoParametersQuery>,
     Path(playlist_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

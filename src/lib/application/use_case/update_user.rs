@@ -536,6 +536,7 @@ mod tests {
         Ok(())
     }
 
+    // proves: SCN-AUTHORIZATION-010-A
     #[tokio::test]
     async fn update_user_non_root_admin_changes_role_returns_role_change_forbidden()
     -> Result<(), Box<dyn Error>> {

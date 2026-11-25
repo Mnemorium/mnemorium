@@ -8,7 +8,7 @@ from itertools import count
 
 from conftest import SEED_MEDIA_DIRECTORY, upload
 from harness import Sut
-from labels import scenario
+from labels import business_rule, positive, scenario
 
 IMAGE_CONTENT_TYPE = "image/png"
 AUDIO_CONTENT_TYPE = "audio/flac"
@@ -38,6 +38,7 @@ def png(width: int, height: int) -> bytes:
     return b"\x89PNG\r\n\x1a\n" + _png_chunk(b"IHDR", header) + _png_chunk(b"IDAT", pixels) + _png_chunk(b"IEND", b"")
 
 
+@positive
 @scenario("SCN-IMAGE-001-A")
 def test_an_image_file_creates_one_image(server: Sut, root_token: str) -> None:
     """An image upload leaves one image backed by the uploaded file."""
@@ -51,6 +52,7 @@ def test_an_image_file_creates_one_image(server: Sut, root_token: str) -> None:
     assert file["_links"]["image"]["href"].endswith(f"/{image['id']}")
 
 
+@business_rule
 @scenario("SCN-IMAGE-001-B")
 def test_a_file_backs_one_image(server: Sut, root_token: str) -> None:
     """Uploading the same content twice reuses the stored file and its one image."""
@@ -73,6 +75,7 @@ def test_a_file_backs_one_image(server: Sut, root_token: str) -> None:
     assert second_image["id"] == first_image["id"], "the second registration created a second image"
 
 
+@business_rule
 @scenario("SCN-IMAGE-001-C")
 def test_audio_and_video_content_create_no_image(server: Sut, root_token: str) -> None:
     """Audio and video uploads leave the file without an image."""
@@ -95,6 +98,7 @@ def test_audio_and_video_content_create_no_image(server: Sut, root_token: str) -
     assert "image" not in video["_links"]
 
 
+@business_rule
 @scenario("SCN-IMAGE-002-A")
 def test_a_wider_image_is_landscape(server: Sut, root_token: str) -> None:
     """Width exceeding height reports `LANDSCAPE`."""
@@ -108,6 +112,7 @@ def test_a_wider_image_is_landscape(server: Sut, root_token: str) -> None:
     assert image["orientation"] == "LANDSCAPE"
 
 
+@business_rule
 @scenario("SCN-IMAGE-002-B")
 def test_a_taller_image_is_portrait(server: Sut, root_token: str) -> None:
     """Height exceeding width reports `PORTRAIT`."""
@@ -121,6 +126,7 @@ def test_a_taller_image_is_portrait(server: Sut, root_token: str) -> None:
     assert image["orientation"] == "PORTRAIT"
 
 
+@business_rule
 @scenario("SCN-IMAGE-002-C")
 def test_a_square_image_is_square(server: Sut, root_token: str) -> None:
     """Equal width and height report `SQUARE`."""
@@ -134,6 +140,7 @@ def test_a_square_image_is_square(server: Sut, root_token: str) -> None:
     assert image["orientation"] == "SQUARE"
 
 
+@positive
 @scenario("SCN-IMAGE-002-D")
 def test_the_name_and_creation_date_are_reported(server: Sut, root_token: str) -> None:
     """The name is the one the intake assigned and the creation date is the registration date."""

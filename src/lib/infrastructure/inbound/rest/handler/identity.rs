@@ -35,7 +35,7 @@ use crate::infrastructure::inbound::rest::middleware::{LoginRateLimiter, authent
 use crate::infrastructure::inbound::rest::{ApiError, AppState, SelfLinks};
 use crate::infrastructure::outbound::jwt::JwtTokenProvider;
 
-/// Wire vocabulary of a resource visibility (`API-044`).
+/// Wire vocabulary of a resource visibility (`REQ-API-018`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
@@ -48,7 +48,7 @@ pub(crate) enum VisibilityWire {
     Restricted,
 }
 
-/// Wire vocabulary of the actions a permission decision names (`API-044`).
+/// Wire vocabulary of the actions a permission decision names (`REQ-API-018`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -81,7 +81,7 @@ pub(crate) enum ActionWire {
     ViewMetadata,
 }
 
-/// Wire vocabulary of a resource kind (`API-044`).
+/// Wire vocabulary of a resource kind (`REQ-API-018`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[non_exhaustive]
@@ -136,7 +136,7 @@ pub(crate) enum ResourceKindWire {
     Video,
 }
 
-/// Wire vocabulary of the child kind a grant permits (`API-044`).
+/// Wire vocabulary of the child kind a grant permits (`REQ-API-018`).
 ///
 /// `ADMIN` is absent because it is root-only and is never stored as a grant.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
@@ -181,7 +181,7 @@ pub(crate) enum ChildKindWire {
     Video,
 }
 
-/// Wire vocabulary of a grant effect (`API-044`).
+/// Wire vocabulary of a grant effect (`REQ-API-018`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
@@ -192,7 +192,7 @@ pub(crate) enum GrantEffectWire {
     Deny,
 }
 
-/// Wire vocabulary of a role a caller may store as a grant (`API-044`).
+/// Wire vocabulary of a role a caller may store as a grant (`REQ-API-018`).
 ///
 /// `OWNER` is absent because ownership is implicit and is never a user grant.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
@@ -211,7 +211,7 @@ pub(crate) enum GrantRoleWire {
     Viewer,
 }
 
-/// Wire vocabulary of a read role a share grants (`API-044`).
+/// Wire vocabulary of a read role a share grants (`REQ-API-018`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
@@ -222,7 +222,7 @@ pub(crate) enum ShareRoleWire {
     Viewer,
 }
 
-/// Wire vocabulary of a resource role a permission representation reports (`API-044`).
+/// Wire vocabulary of a resource role a permission representation reports (`REQ-API-018`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
@@ -241,7 +241,7 @@ pub(crate) enum ResourceRoleWire {
     Viewer,
 }
 
-/// Wire vocabulary of a principal kind a grant may name (`API-044`).
+/// Wire vocabulary of a principal kind a grant may name (`REQ-API-018`).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
@@ -252,7 +252,7 @@ pub(crate) enum PrincipalKindWire {
     User,
 }
 
-/// Wire vocabulary of a principal kind a representation reports (`API-044`).
+/// Wire vocabulary of a principal kind a representation reports (`REQ-API-018`).
 ///
 /// `ROOT` is response-only: the root holds no stored grant, so a request never
 /// names it.
@@ -447,19 +447,28 @@ pub(crate) struct PrincipalPayload {
 impl PrincipalPayload {
     /// Turn the payload into the domain principal it names.
     pub(crate) fn into_principal(self) -> Result<Principal, ApiError> {
-        match self.kind.as_str() {
+        let Self { id, kind, role } = self;
+        // The schema publishes `role` as an enum, so a value outside it is
+        // refused whatever `kind` is: a property the document declares is
+        // enforced even when the branch does not use it (`REQ-API-018`).
+        let validated_role = match role.as_deref() {
+            None => None,
+            Some(stored) => {
+                Some(Role::from_wire(stored).ok_or_else(|| ApiError::reject_enum("role"))?)
+            }
+        };
+        match kind.as_str() {
             "USER" => {
-                let id = self.id.ok_or_else(|| {
+                let user_id = id.ok_or_else(|| {
                     ApiError::UnprocessableEntity("the principal identifier is required".to_owned())
                 })?;
-                Ok(Principal::User(id))
+                Ok(Principal::User(user_id))
             }
             "ROLE" => {
-                let stored = self.role.ok_or_else(|| {
+                let principal_role = validated_role.ok_or_else(|| {
                     ApiError::UnprocessableEntity("the principal role is required".to_owned())
                 })?;
-                let role = Role::from_wire(&stored).ok_or_else(|| ApiError::reject_enum("role"))?;
-                Ok(Principal::Role(role))
+                Ok(Principal::Role(principal_role))
             }
             _ => Err(ApiError::reject_enum("kind")),
         }

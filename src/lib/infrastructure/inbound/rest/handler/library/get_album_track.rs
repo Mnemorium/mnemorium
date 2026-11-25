@@ -1,8 +1,9 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 
 use crate::application::port::GetAlbumTrackCommand;
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::library::{
     TrackResponse, parse_album_id, parse_index,
 };
@@ -68,6 +69,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
     summary = "Fetch a music track"
 )]
 pub(crate) async fn get_album_track(
+    _query: Query<NoParametersQuery>,
     Path((album_id_value, medium_index_value, track_index_value)): Path<(String, String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

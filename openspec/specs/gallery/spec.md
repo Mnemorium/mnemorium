@@ -91,11 +91,6 @@ and `owner_id` filters. Each item SHALL carry the gallery's fields and item coun
 - **WHEN** the caller may discover no gallery
 - **THEN** the system returns `200 OK` with an empty collection
 
-#### Scenario: SCN-GALLERY-004-D — Malformed query string
-
-- **WHEN** the caller requests the collection with a query string that cannot be decoded
-- **THEN** the system returns `400 Bad Request` with a stable message
-
 ### Requirement: REQ-GALLERY-005 — Read a gallery
 
 A caller who may `View` a gallery SHALL read it. The representation SHALL carry the gallery's fields and its items

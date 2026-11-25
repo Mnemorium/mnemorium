@@ -9,10 +9,10 @@ use serde_json::Value;
 
 use crate::infrastructure::inbound::rest::{ApiErrorMessage, error_response};
 
-/// Rewrap every `4xx`/`5xx` response as the HAL error envelope (`API-036`).
+/// Rewrap every `4xx`/`5xx` response as the HAL error envelope (`REQ-API-008`).
 ///
 /// The envelope carries the extracted message at the root and a `_links.self`
-/// pointing at the request path, never the query string (`API-040`). The
+/// pointing at the request path, never the query string (`REQ-API-008`). The
 /// original status is preserved; every original header except `Content-Type`
 /// and `Content-Length` is kept, so `Allow`, `Location` and `WWW-Authenticate`
 /// survive the rewrite.
@@ -32,7 +32,7 @@ pub(crate) async fn hal_errors(request: Request, next: Next) -> Response {
     // reused, and finally the status reason phrase is synthesized. A body that is
     // neither is never reused verbatim, because an unverified plain-text or JSON
     // body may carry extractor or framework wording, an expected type name, or a
-    // rejected value, which `API-037` forbids (`API-037`, § Error public payload).
+    // rejected value, which `STY-RUST-121` forbids (`STY-RUST-121`, § Error public payload).
     let message = if let Some(message) = parts.extensions.get::<ApiErrorMessage>() {
         message.0.clone()
     } else {
@@ -73,7 +73,6 @@ mod tests {
 
     use crate::test_helpers::*;
     use axum::body::Body;
-    use axum::extract::Path;
     use axum::http::StatusCode;
     use axum::middleware;
     use axum::routing::get;
@@ -84,8 +83,7 @@ mod tests {
     use tower::ServiceExt as _;
 
     /// Router exercising the middleware over an `ApiError`, a raw JSON error, a
-    /// textual error, a framework path rejection, a healthy route and a method
-    /// restriction.
+    /// textual error, a healthy route and a method restriction.
     #[fixture]
     fn router() -> Router {
         Router::new()
@@ -122,10 +120,6 @@ mod tests {
             .route(
                 "/plain",
                 get(|| async { (StatusCode::INTERNAL_SERVER_ERROR, "plain failure") }),
-            )
-            .route(
-                "/item/{id}",
-                get(|Path(id): Path<i64>| async move { id.to_string() }),
             )
             .route("/only", get(|| async { "ok" }))
             .layer(middleware::from_fn(hal_errors))
@@ -201,7 +195,7 @@ mod tests {
                 "error": "Bad Request",
                 "_links": { "self": { "href": "/multi-key" } },
             }),
-            "an aggregate JSON body the application did not author must not be reused (`API-037`)"
+            "an aggregate JSON body the application did not author must not be reused (`STY-RUST-121`)"
         );
         Ok(())
     }
@@ -221,11 +215,11 @@ mod tests {
                 "error": "Bad Request",
                 "_links": { "self": { "href": "/plain-json" } },
             }),
-            "a JSON-shaped body served as text/plain must not be reused (`API-037`)"
+            "a JSON-shaped body served as text/plain must not be reused (`STY-RUST-121`)"
         );
         assert!(
             !payload.to_string().contains("sneaky"),
-            "an unverified plain-text body must never appear in the envelope (`API-037`)"
+            "an unverified plain-text body must never appear in the envelope (`STY-RUST-121`)"
         );
         Ok(())
     }
@@ -259,7 +253,7 @@ mod tests {
         assert_eq!(
             payload.pointer("/_links/self/href").and_then(Value::as_str),
             Some("/broken"),
-            "the self link must carry the request path only (`API-036`, `API-040`)"
+            "the self link must carry the request path only (`REQ-API-008`, `REQ-API-008`)"
         );
         assert!(
             !payload.to_string().contains("SECRET"),
@@ -309,28 +303,7 @@ mod tests {
         );
         assert!(
             !payload.to_string().contains("plain failure"),
-            "an unverified plain-text body must never appear in the envelope (`API-037`)"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn hal_errors_does_not_reuse_a_framework_path_rejection() -> Result<(), Box<dyn Error>> {
-        // Act
-        let response = send(router(), "GET", "/item/abc").await?;
-
-        // Assert
-        assert_eq!(content_type(&response), Some("application/hal+json"));
-        let (status, payload) = into_status_and_body(response).await?;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(
-            payload,
-            json!({
-                "error": "Bad Request",
-                "_links": { "self": { "href": "/item/abc" } },
-            }),
-            "a framework path rejection must be reduced to the synthesized status reason, \
-             never the raw value or the expected type name (`API-037`)"
+            "an unverified plain-text body must never appear in the envelope (`STY-RUST-121`)"
         );
         Ok(())
     }

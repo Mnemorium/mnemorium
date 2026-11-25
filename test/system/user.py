@@ -19,7 +19,7 @@ from harness import (
     begin_upload,
     register,
 )
-from labels import scenario
+from labels import alternate_flow, boundary, business_rule, negative, positive, recovery, scenario
 from mnemorium_client.api.identity import post_login
 from mnemorium_client.models import LoginRequest
 
@@ -31,6 +31,7 @@ VIDEO_CONTENT_TYPE = "video/mp4"
 _ACCOUNTS = count()
 
 
+@positive
 @scenario("SCN-USER-001-A")
 @scenario("SCN-USER-005-A")
 @scenario("SCN-USER-009-A")
@@ -56,6 +57,7 @@ def test_a_created_account_reads_back_its_profile(server: Sut, root_token: str) 
         assert item["role"] == "STANDARD"
 
 
+@positive
 @scenario("SCN-USER-011-A")
 def test_the_caller_reads_its_own_account(server: Sut, root_token: str) -> None:
     """A request for the caller's own account answers 200 with that account's profile."""
@@ -68,6 +70,7 @@ def test_the_caller_reads_its_own_account(server: Sut, root_token: str) -> None:
     assert body["role"] == "ADMIN"
 
 
+@positive
 @scenario("SCN-USER-002-A")
 def test_a_declared_role_is_stored(server: Sut, root_token: str) -> None:
     """A creation carrying ADMIN or STANDARD stores and returns that role."""
@@ -82,6 +85,7 @@ def test_a_declared_role_is_stored(server: Sut, root_token: str) -> None:
         assert json.loads(created.content)["role"] == role
 
 
+@negative
 @scenario("SCN-USER-002-B")
 def test_an_undeclared_role_is_rejected(server: Sut, root_token: str) -> None:
     """A role outside the declared values answers 422 and stores nothing."""
@@ -98,6 +102,7 @@ def test_an_undeclared_role_is_rejected(server: Sut, root_token: str) -> None:
     assert json.loads(listed.content)["items"] == []
 
 
+@negative
 @scenario("SCN-USER-020-A")
 def test_a_username_with_whitespace_is_rejected(server: Sut, root_token: str) -> None:
     """A username containing whitespace at any position answers 422 and stores nothing."""
@@ -115,6 +120,7 @@ def test_a_username_with_whitespace_is_rejected(server: Sut, root_token: str) ->
     assert json.loads(listed.content)["items"] == [], "a refused username was stored"
 
 
+@positive
 @scenario("SCN-USER-020-B")
 def test_an_uppercase_username_is_accepted_and_read_back(server: Sut, root_token: str) -> None:
     """`Alice` and `aliceSmith` are created with 201 and read back unchanged."""
@@ -128,6 +134,7 @@ def test_an_uppercase_username_is_accepted_and_read_back(server: Sut, root_token
         assert [item["username"] for item in items] == [username]
 
 
+@boundary
 @scenario("SCN-USER-020-C")
 def test_username_boundary_lengths_are_accepted(server: Sut, root_token: str) -> None:
     """A username of exactly 4 or exactly 100 characters is created with that username."""
@@ -140,6 +147,7 @@ def test_username_boundary_lengths_are_accepted(server: Sut, root_token: str) ->
         assert json.loads(response.content)["username"] == username
 
 
+@boundary
 @scenario("SCN-USER-020-D")
 @scenario("SCN-USER-020-E")
 def test_username_boundary_lengths_are_rejected(server: Sut, root_token: str) -> None:
@@ -164,6 +172,7 @@ def test_username_boundary_lengths_are_rejected(server: Sut, root_token: str) ->
     assert too_short not in stored and too_long not in stored, "a refused username was stored"
 
 
+@negative
 @scenario("SCN-USER-020-F")
 @scenario("SCN-USER-004-F")
 def test_a_taken_username_or_email_is_refused(server: Sut, root_token: str) -> None:
@@ -203,6 +212,7 @@ def test_a_taken_username_or_email_is_refused(server: Sut, root_token: str) -> N
     assert json.loads(listed.content)["items"] == [], "a refused creation stored an account"
 
 
+@alternate_flow
 @scenario("SCN-USER-004-A")
 @scenario("SCN-USER-004-B")
 def test_an_omitted_or_null_email_is_stored_as_none(server: Sut, root_token: str) -> None:
@@ -225,6 +235,7 @@ def test_an_omitted_or_null_email_is_stored_as_none(server: Sut, root_token: str
         assert [item["email"] for item in items] == [None]
 
 
+@negative
 @scenario("SCN-USER-004-C")
 @scenario("SCN-USER-004-D")
 @scenario("SCN-USER-004-E")
@@ -244,6 +255,7 @@ def test_an_invalid_mailbox_is_rejected(server: Sut, root_token: str) -> None:
     assert json.loads(listed.content)["items"] == [], "a refused creation stored an account"
 
 
+@negative
 @scenario("SCN-USER-004-G")
 def test_an_email_case_variant_is_a_conflict(server: Sut, root_token: str) -> None:
     """A case variant of a stored address answers 409 and creates no second account."""
@@ -261,6 +273,7 @@ def test_an_email_case_variant_is_a_conflict(server: Sut, root_token: str) -> No
     assert json.loads(listed.content)["items"] == []
 
 
+@positive
 @scenario("SCN-USER-007-A")
 def test_a_created_account_has_one_credential(server: Sut, root_token: str) -> None:
     """A valid creation stores the account and one credential that authenticates it."""
@@ -275,6 +288,7 @@ def test_a_created_account_has_one_credential(server: Sut, root_token: str) -> N
     assert items[0]["email"] == f"{name}@example.com"
 
 
+@recovery
 @scenario("SCN-USER-007-B")
 def test_a_rejected_creation_leaves_nothing(server: Sut, root_token: str) -> None:
     """A rejection for a duplicate or an invalid value leaves no account and no credential."""
@@ -309,6 +323,7 @@ def test_a_rejected_creation_leaves_nothing(server: Sut, root_token: str) -> Non
     assert json.loads(listed.content)["items"] == []
 
 
+@positive
 @scenario("SCN-USER-008-A")
 @scenario("SCN-USER-008-B")
 def test_a_creation_returns_the_profile_and_location(server: Sut, root_token: str) -> None:
@@ -325,6 +340,7 @@ def test_a_creation_returns_the_profile_and_location(server: Sut, root_token: st
     assert response.headers.get("Location") == body["_links"]["self"]["href"]
 
 
+@positive
 @scenario("SCN-USER-010-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_no_filter_returns_every_account(sut: Sut) -> None:
@@ -345,6 +361,7 @@ def test_no_filter_returns_every_account(sut: Sut) -> None:
     }
 
 
+@business_rule
 @scenario("SCN-USER-010-B")
 def test_filters_narrow_the_result(server: Sut, root_token: str) -> None:
     """Only the accounts matching every supplied filter appear."""
@@ -374,6 +391,7 @@ def test_filters_narrow_the_result(server: Sut, root_token: str) -> None:
         assert {item["username"] for item in json.loads(response.content)["items"]} == expected
 
 
+@positive
 @scenario("SCN-USER-010-C")
 def test_an_empty_result_carries_no_items(server: Sut, root_token: str) -> None:
     """A filter matching no account answers 200 with no items."""
@@ -387,6 +405,7 @@ def test_an_empty_result_carries_no_items(server: Sut, root_token: str) -> None:
     assert json.loads(response.content)["items"] == []
 
 
+@business_rule
 @scenario("SCN-USER-010-E")
 def test_the_email_filter_ignores_case(server: Sut, root_token: str) -> None:
     """An email filter that differs from the stored address only by case finds the account."""
@@ -401,6 +420,7 @@ def test_the_email_filter_ignores_case(server: Sut, root_token: str) -> None:
     assert [item["username"] for item in json.loads(response.content)["items"]] == [name]
 
 
+@positive
 @scenario("SCN-USER-012-A")
 @scenario("SCN-USER-012-B")
 @scenario("SCN-USER-012-C")
@@ -444,6 +464,7 @@ def test_an_update_changes_each_submitted_field(server: Sut, root_token: str) ->
     assert body["role"] == "ADMIN"
 
 
+@alternate_flow
 @scenario("SCN-USER-012-D")
 @scenario("SCN-USER-012-E")
 def test_an_update_leaves_omitted_fields_and_an_empty_body_unchanged(server: Sut, root_token: str) -> None:
@@ -473,6 +494,7 @@ def test_an_update_leaves_omitted_fields_and_an_empty_body_unchanged(server: Sut
     assert stored["role"] == profile["role"]
 
 
+@negative
 @scenario("SCN-USER-013-A")
 @scenario("SCN-USER-013-B")
 def test_an_update_onto_a_taken_username_or_email_conflicts(server: Sut, root_token: str) -> None:
@@ -505,6 +527,7 @@ def test_an_update_onto_a_taken_username_or_email_conflicts(server: Sut, root_to
     assert stored["email"] == f"{alice}@example.com"
 
 
+@positive
 @scenario("SCN-USER-013-C")
 def test_an_update_keeping_the_own_value_is_not_a_collision(server: Sut, root_token: str) -> None:
     """An update carrying the account's current username and email answers 200 and stores them."""
@@ -526,6 +549,7 @@ def test_an_update_keeping_the_own_value_is_not_a_collision(server: Sut, root_to
     assert body["email"] == profile["email"]
 
 
+@negative
 @scenario("SCN-USER-013-D")
 def test_a_case_only_email_change_conflicts(server: Sut, root_token: str) -> None:
     """An update carrying another account's address in a different case answers 409 and changes nothing."""
@@ -549,6 +573,7 @@ def test_a_case_only_email_change_conflicts(server: Sut, root_token: str) -> Non
     assert stored["email"] == f"{erin}@example.com"
 
 
+@negative
 @scenario("SCN-USER-014-A")
 @scenario("SCN-USER-014-B")
 @scenario("SCN-USER-014-C")
@@ -581,6 +606,7 @@ def test_an_update_with_an_invalid_value_is_rejected(server: Sut, root_token: st
     assert stored["role"] == profile["role"]
 
 
+@positive
 @scenario("SCN-USER-015-A")
 def test_a_deletion_removes_the_identity(server: Sut, root_token: str) -> None:
     """A deletion answers 204 and removes the account, its credential and its permission summary."""
@@ -607,6 +633,7 @@ def test_a_deletion_removes_the_identity(server: Sut, root_token: str) -> None:
     assert server.request("GET", server.href("current_user"), token=target_token).status_code == 401
 
 
+@business_rule
 @scenario("SCN-USER-016-A")
 @scenario("SCN-USER-016-B")
 @scenario("SCN-USER-016-C")
@@ -636,6 +663,7 @@ def test_a_deletion_removes_owned_data(server: Sut, root_token: str) -> None:
     assert server.request("GET", upload_session.self_href, token=root_token).status_code == 404
 
 
+@business_rule
 @scenario("SCN-USER-017-A")
 def test_private_gallery_media_is_removed_with_its_bytes(server: Sut, root_token: str) -> None:
     """An image referenced only by the account's own gallery is deleted with its record and bytes."""
@@ -655,6 +683,7 @@ def test_private_gallery_media_is_removed_with_its_bytes(server: Sut, root_token
     assert not server.exists(f"media/{file['path']}")
 
 
+@business_rule
 @scenario("SCN-USER-017-C")
 def test_the_accounts_own_public_gallery_is_not_a_shared_reference(server: Sut, root_token: str) -> None:
     """An image referenced only by the account's own public gallery is deleted with the account."""
@@ -673,6 +702,7 @@ def test_the_accounts_own_public_gallery_is_not_a_shared_reference(server: Sut, 
     assert not server.exists(f"media/{file['path']}")
 
 
+@business_rule
 @scenario("SCN-USER-018-A")
 def test_an_image_in_another_gallery_survives_under_account_zero(server: Sut, root_token: str) -> None:
     """An image referenced by another account's gallery survives, owned by account 0."""
@@ -695,6 +725,7 @@ def test_an_image_in_another_gallery_survives_under_account_zero(server: Sut, ro
     assert content.content.startswith(b"\x89PNG")
 
 
+@business_rule
 @scenario("SCN-USER-018-B")
 def test_a_video_backing_a_film_survives(server: Sut, root_token: str) -> None:
     """A video backing a film survives the deletion and the film stays readable."""
@@ -722,6 +753,7 @@ def test_a_video_backing_a_film_survives(server: Sut, root_token: str) -> None:
     assert content.content
 
 
+@business_rule
 @scenario("SCN-USER-018-C")
 def test_catalogue_artwork_survives(server: Sut, root_token: str) -> None:
     """An image referenced as catalogue artwork stays readable through the catalogue resource."""
@@ -752,6 +784,7 @@ def test_catalogue_artwork_survives(server: Sut, root_token: str) -> None:
     assert profile["_links"]["owner"]["href"] == "/api/v1/user/0"
 
 
+@business_rule
 @scenario("SCN-USER-019-A")
 def test_a_transferred_file_with_a_colliding_digest_stays_readable(server: Sut, root_token: str) -> None:
     """Two accounts' identical-content files both survive, so the second transfer cleared its digest."""

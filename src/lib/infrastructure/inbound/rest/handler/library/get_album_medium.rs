@@ -1,8 +1,9 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 
 use crate::application::port::GetAlbumMediumCommand;
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::library::{
     MediumResponse, parse_album_id, parse_index,
 };
@@ -67,6 +68,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
     summary = "Fetch a music medium"
 )]
 pub(crate) async fn get_album_medium(
+    _query: Query<NoParametersQuery>,
     Path((album_id_value, medium_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

@@ -6,8 +6,9 @@ import time
 from itertools import count
 
 from conftest import provision
-from harness import Sut
-from labels import scenario
+from harness import API_PREFIX, Sut
+from labels import TestType, alternate_flow, business_rule, negative, positive, scenario
+from mnemorium_client.api.identity import put_resource_permission
 from mnemorium_client.api.library import (
     delete_playlist,
     delete_playlist_track,
@@ -35,6 +36,7 @@ from mnemorium_client.api.library import (
 )
 from mnemorium_client.models import (
     AddPlaylistTrackRequest,
+    MediumTypeRequest,
     PatchAlbumRequest,
     PatchAlbumTrackRequest,
     PatchMusicGroupRequest,
@@ -44,7 +46,9 @@ from mnemorium_client.models import (
     PostPlaylistRequest,
     PutAlbumMediumRequest,
     PutAlbumTrackRequest,
+    PutPermissionRequest,
     ReorderPlaylistTracksRequest,
+    VisibilityWire,
 )
 
 # The seeded slots this module reads, documented in `seed/sql/0002_music.sql`.
@@ -137,6 +141,7 @@ DIGITAL = "DIGITAL"
 _ACCOUNTS = count()
 
 
+@business_rule
 @scenario("SCN-MUSIC-001-A")
 def test_the_album_collection_carries_partial_albums(server: Sut, root_token: str) -> None:
     """The collection carries partial albums, the name filter narrows it, and covers follow their links."""
@@ -154,6 +159,7 @@ def test_the_album_collection_carries_partial_albums(server: Sut, root_token: st
     assert items[1]["_links"].get("cover") is None
 
 
+@business_rule
 @scenario("SCN-MUSIC-001-B")
 def test_the_album_collection_filters_on_name(server: Sut, root_token: str) -> None:
     """The name filter returns only the album whose name matches."""
@@ -162,6 +168,7 @@ def test_the_album_collection_filters_on_name(server: Sut, root_token: str) -> N
     assert [item["id"] for item in json.loads(response.content)["_embedded"]["items"]] == [FILTERED_ALBUM]
 
 
+@positive
 @scenario("SCN-MUSIC-002-A")
 def test_an_album_detail_read_carries_its_metadata(server: Sut, root_token: str) -> None:
     """An album read carries its identifier, group, metadata, cover and mediums."""
@@ -180,6 +187,7 @@ def test_an_album_detail_read_carries_its_metadata(server: Sut, root_token: str)
     assert album["_links"]["group"]["href"].endswith(f"/{DETAIL_GROUP}")
 
 
+@positive
 @scenario("SCN-MUSIC-002-B")
 def test_an_album_detail_read_omits_unreported_values(server: Sut, root_token: str) -> None:
     """An album that stores no optional value reports null and no cover link."""
@@ -193,6 +201,7 @@ def test_an_album_detail_read_omits_unreported_values(server: Sut, root_token: s
     assert album["_links"].get("cover") is None
 
 
+@negative
 @scenario("SCN-MUSIC-002-C")
 @scenario("SCN-MUSIC-002-D")
 def test_an_unknown_or_malformed_album_is_refused(server: Sut, root_token: str) -> None:
@@ -204,6 +213,7 @@ def test_an_unknown_or_malformed_album_is_refused(server: Sut, root_token: str) 
     assert malformed.status_code == 400, f"malformed album answered {malformed.status_code}"
 
 
+@positive
 @scenario("SCN-MUSIC-008-A")
 def test_a_new_album_is_created(server: Sut, root_token: str) -> None:
     """An album is created from a name and group and holds no medium yet."""
@@ -222,6 +232,7 @@ def test_a_new_album_is_created(server: Sut, root_token: str) -> None:
     assert album["_links"]["group"]["href"].endswith(f"/{NEW_ALBUM_GROUP}")
 
 
+@alternate_flow
 @scenario("SCN-MUSIC-008-C")
 def test_an_unnamed_genre_is_stored_as_unknown(server: Sut, root_token: str) -> None:
     """A creation that names no genre stores the UNKNOWN genre."""
@@ -233,7 +244,9 @@ def test_an_unnamed_genre_is_stored_as_unknown(server: Sut, root_token: str) -> 
     assert json.loads(response.content)["genres"] == ["UNKNOWN"]
 
 
+@business_rule
 @scenario("SCN-MUSIC-008-B")
+@scenario("SCN-API-012-B", TestType.BUSINESS_RULE)
 def test_an_existing_album_is_returned_unchanged(server: Sut, root_token: str) -> None:
     """The same name and group answers 200 with the stored album and stores no second one."""
     response = post_album.sync_detailed(
@@ -247,6 +260,7 @@ def test_an_existing_album_is_returned_unchanged(server: Sut, root_token: str) -
     assert [item["id"] for item in json.loads(listed.content)["_embedded"]["items"]] == [EXISTING_ALBUM]
 
 
+@negative
 @scenario("SCN-MUSIC-008-D")
 def test_an_album_with_an_unusable_name_is_refused(server: Sut, root_token: str) -> None:
     """An empty or over-long name is refused on creation and update and stores nothing."""
@@ -282,6 +296,7 @@ def test_an_album_with_an_unusable_name_is_refused(server: Sut, root_token: str)
     assert json.loads(stored.content)["name"] == "Kept Album"
 
 
+@negative
 @scenario("SCN-MUSIC-008-D")
 def test_an_album_with_an_unknown_group_is_refused(server: Sut, root_token: str) -> None:
     """A creation or update naming an unknown group answers 422 and stores nothing."""
@@ -302,6 +317,7 @@ def test_an_album_with_an_unknown_group_is_refused(server: Sut, root_token: str)
     assert json.loads(listed.content)["_embedded"]["items"] == []
 
 
+@negative
 @scenario("SCN-MUSIC-008-D")
 def test_an_album_with_an_empty_genre_is_refused(server: Sut, root_token: str) -> None:
     """A creation or update naming an empty genre answers 422 and stores nothing."""
@@ -322,6 +338,7 @@ def test_an_album_with_an_empty_genre_is_refused(server: Sut, root_token: str) -
     assert json.loads(listed.content)["_embedded"]["items"] == []
 
 
+@positive
 @scenario("SCN-MUSIC-029-A")
 def test_an_albums_release_date_and_genres_are_updated(server: Sut, root_token: str) -> None:
     """A new release date and genre list are stored and reported."""
@@ -340,6 +357,7 @@ def test_an_albums_release_date_and_genres_are_updated(server: Sut, root_token: 
     assert set(stored["genres"]) == {"JAZZ", "MODAL"}
 
 
+@alternate_flow
 @scenario("SCN-MUSIC-029-B")
 def test_an_albums_optional_value_is_cleared(server: Sut, root_token: str) -> None:
     """A null release date clears the stored value."""
@@ -354,6 +372,7 @@ def test_an_albums_optional_value_is_cleared(server: Sut, root_token: str) -> No
     assert json.loads(stored.content).get("release_date") is None
 
 
+@negative
 @scenario("SCN-MUSIC-029-C")
 def test_an_album_group_change_that_collides_is_refused(server: Sut, root_token: str) -> None:
     """Moving an album onto another album's name and group answers 409 and applies nothing."""
@@ -367,6 +386,7 @@ def test_an_album_group_change_that_collides_is_refused(server: Sut, root_token:
     assert stored["_links"]["group"]["href"].endswith(f"/{COLLIDE_SECOND_GROUP}")
 
 
+@alternate_flow
 @scenario("SCN-MUSIC-029-D")
 def test_an_absent_album_field_keeps_its_value(server: Sut, root_token: str) -> None:
     """A request that names no production type leaves the stored production type unchanged."""
@@ -379,6 +399,7 @@ def test_an_absent_album_field_keeps_its_value(server: Sut, root_token: str) -> 
     assert json.loads(response.content)["production_type"] == "LIVE"
 
 
+@positive
 @scenario("SCN-MUSIC-003-B")
 @scenario("SCN-MUSIC-009-A")
 def test_a_medium_is_created(server: Sut, root_token: str) -> None:
@@ -387,7 +408,7 @@ def test_a_medium_is_created(server: Sut, root_token: str) -> None:
         MEDIUM_ALBUM,
         1,
         client=server.client(root_token),
-        body=PutAlbumMediumRequest(type_="CD"),
+        body=PutAlbumMediumRequest(type_=MediumTypeRequest.CD),
     )
     assert created.status_code == 201, f"creation failed: {created.status_code} {created.content!r}"
     assert json.loads(created.content)["type"] == "CD"
@@ -398,6 +419,7 @@ def test_a_medium_is_created(server: Sut, root_token: str) -> None:
     assert json.loads(read.content)["type"] == "CD"
 
 
+@positive
 @scenario("SCN-MUSIC-009-B")
 def test_a_medium_is_retyped(server: Sut, root_token: str) -> None:
     """A medium is retyped at the same index and keeps its tracks."""
@@ -405,7 +427,7 @@ def test_a_medium_is_retyped(server: Sut, root_token: str) -> None:
         RETYPE_ALBUM,
         1,
         client=server.client(root_token),
-        body=PutAlbumMediumRequest(type_="DIGITAL"),
+        body=PutAlbumMediumRequest(type_=MediumTypeRequest.DIGITAL),
     )
     assert response.status_code == 200, f"retype failed: {response.status_code} {response.content!r}"
     assert json.loads(response.content)["type"] == "DIGITAL"
@@ -415,20 +437,22 @@ def test_a_medium_is_retyped(server: Sut, root_token: str) -> None:
     assert json.loads(track.content)["recording_id"] == RETYPE_RECORDING
 
 
+@business_rule
 @scenario("SCN-MUSIC-009-C")
+@scenario("SCN-API-012-B", TestType.BUSINESS_RULE)
 def test_a_medium_write_is_idempotent(server: Sut, root_token: str) -> None:
     """Repeating the stored type changes nothing and answers 200."""
     first = put_album_medium.sync_detailed(
         IDEMPOTENT_ALBUM,
         1,
         client=server.client(root_token),
-        body=PutAlbumMediumRequest(type_=DIGITAL),
+        body=PutAlbumMediumRequest(type_=MediumTypeRequest.DIGITAL),
     )
     second = put_album_medium.sync_detailed(
         IDEMPOTENT_ALBUM,
         1,
         client=server.client(root_token),
-        body=PutAlbumMediumRequest(type_=DIGITAL),
+        body=PutAlbumMediumRequest(type_=MediumTypeRequest.DIGITAL),
     )
 
     assert first.status_code == 200, f"first write failed: {first.status_code}"
@@ -436,6 +460,7 @@ def test_a_medium_write_is_idempotent(server: Sut, root_token: str) -> None:
     assert json.loads(second.content)["type"] == DIGITAL
 
 
+@positive
 @scenario("SCN-MUSIC-004-A")
 def test_a_medium_read_carries_its_type_and_index(server: Sut, root_token: str) -> None:
     """A medium read carries its album-scoped index, type and track count."""
@@ -448,6 +473,7 @@ def test_a_medium_read_carries_its_type_and_index(server: Sut, root_token: str) 
     assert medium["track_count"] == 0
 
 
+@negative
 @scenario("SCN-MUSIC-004-B")
 @scenario("SCN-MUSIC-004-C")
 def test_an_unknown_or_malformed_medium_is_refused(server: Sut, root_token: str) -> None:
@@ -463,20 +489,23 @@ def test_an_unknown_or_malformed_medium_is_refused(server: Sut, root_token: str)
     assert out_of_range.status_code == 422, f"out-of-range index answered {out_of_range.status_code}"
 
 
+@negative
 @scenario("SCN-MUSIC-009-D")
 def test_an_invalid_medium_type_is_refused(server: Sut, root_token: str) -> None:
     """An unsupported type and the default album are refused and store no medium."""
-    invalid = put_album_medium.sync_detailed(
-        INVALID_MEDIUM_ALBUM,
-        1,
-        client=server.client(root_token),
-        body=PutAlbumMediumRequest(type_="VINYL"),
+    # A value outside the published vocabulary cannot be expressed by the
+    # generated client, because the document declares only the closed set.
+    invalid = server.request(
+        "PUT",
+        f"{API_PREFIX}/library/music/album/{INVALID_MEDIUM_ALBUM}/medium/1",
+        token=root_token,
+        json={"type": "VINYL"},
     )
     protected = put_album_medium.sync_detailed(
         DEFAULT_ALBUM,
         1,
         client=server.client(root_token),
-        body=PutAlbumMediumRequest(type_="CD"),
+        body=PutAlbumMediumRequest(type_=MediumTypeRequest.CD),
     )
 
     assert invalid.status_code == 422, f"invalid type accepted: {invalid.status_code}"
@@ -484,6 +513,7 @@ def test_an_invalid_medium_type_is_refused(server: Sut, root_token: str) -> None
     assert get_album_medium.sync_detailed(INVALID_MEDIUM_ALBUM, 1, client=server.client(root_token)).status_code == 404
 
 
+@positive
 @scenario("SCN-MUSIC-010-A")
 def test_a_recording_is_placed(server: Sut, root_token: str) -> None:
     """A recording is placed at an unoccupied destination."""
@@ -500,6 +530,7 @@ def test_a_recording_is_placed(server: Sut, root_token: str) -> None:
     assert json.loads(track.content)["recording_id"] == PLACED_RECORDING
 
 
+@positive
 @scenario("SCN-MUSIC-010-B")
 def test_a_recording_is_moved(server: Sut, root_token: str) -> None:
     """A recording moves to a new destination and leaves its previous placement empty."""
@@ -517,6 +548,7 @@ def test_a_recording_is_moved(server: Sut, root_token: str) -> None:
     assert json.loads(moved.content)["recording_id"] == MOVED_RECORDING
 
 
+@negative
 @scenario("SCN-MUSIC-010-C")
 def test_a_placement_of_an_unknown_recording_is_refused(server: Sut, root_token: str) -> None:
     """A placement naming no recording answers 422 and stores nothing."""
@@ -534,6 +566,7 @@ def test_a_placement_of_an_unknown_recording_is_refused(server: Sut, root_token:
     )
 
 
+@negative
 @scenario("SCN-MUSIC-010-D")
 def test_a_placement_into_an_unknown_destination_is_refused(server: Sut, root_token: str) -> None:
     """A placement into an unknown medium or album answers 404 and stores nothing."""
@@ -556,6 +589,7 @@ def test_a_placement_into_an_unknown_destination_is_refused(server: Sut, root_to
     assert unknown_album.status_code == 404, f"unknown album answered {unknown_album.status_code}"
 
 
+@negative
 @scenario("SCN-MUSIC-010-E")
 def test_a_placement_into_an_occupied_destination_is_refused(server: Sut, root_token: str) -> None:
     """An occupied destination answers 409 and the default album refuses the write."""
@@ -580,6 +614,7 @@ def test_a_placement_into_an_occupied_destination_is_refused(server: Sut, root_t
     assert json.loads(stored.content)["recording_id"] == OCCUPIED_RECORDING
 
 
+@business_rule
 @scenario("SCN-MUSIC-011-A")
 def test_a_recording_rename_reaches_the_playlist(server: Sut, root_token: str) -> None:
     """Renaming a recording through a track reaches every playlist entry that references it."""
@@ -616,6 +651,7 @@ def test_a_recording_rename_reaches_the_playlist(server: Sut, root_token: str) -
     assert json.loads(entry.content)["name"] == "Renamed Song"
 
 
+@alternate_flow
 @scenario("SCN-MUSIC-011-B")
 def test_a_recording_field_is_cleared(server: Sut, root_token: str) -> None:
     """A null name and ISRC clear the stored values."""
@@ -635,6 +671,7 @@ def test_a_recording_field_is_cleared(server: Sut, root_token: str) -> None:
     assert json.loads(stored.content)["name"] is None
 
 
+@negative
 @scenario("SCN-MUSIC-011-C")
 def test_a_duplicate_isrc_is_refused(server: Sut, root_token: str) -> None:
     """An ISRC already held by another recording answers 409."""
@@ -659,6 +696,7 @@ def test_a_duplicate_isrc_is_refused(server: Sut, root_token: str) -> None:
     assert json.loads(stored.content).get("isrc_code") is None
 
 
+@negative
 @scenario("SCN-MUSIC-011-C")
 def test_a_malformed_isrc_is_refused(server: Sut, root_token: str) -> None:
     """An ISRC that is not twelve valid characters answers 422."""
@@ -674,6 +712,7 @@ def test_a_malformed_isrc_is_refused(server: Sut, root_token: str) -> None:
     assert json.loads(stored.content).get("isrc_code") is None
 
 
+@negative
 @scenario("SCN-MUSIC-011-D")
 def test_an_unknown_track_is_refused(server: Sut, root_token: str) -> None:
     """An unknown album, medium or position answers 404."""
@@ -704,6 +743,7 @@ def test_an_unknown_track_is_refused(server: Sut, root_token: str) -> None:
     assert unknown_medium.status_code == 404, f"unknown medium answered {unknown_medium.status_code}"
 
 
+@negative
 @scenario("SCN-MUSIC-011-E")
 def test_editing_a_default_album_track_is_refused(server: Sut, root_token: str) -> None:
     """A track edit on the default album answers 422 and stores no track."""
@@ -720,6 +760,7 @@ def test_editing_a_default_album_track_is_refused(server: Sut, root_token: str) 
     assert stored.status_code == 404, f"protected album gained a track: {stored.status_code}"
 
 
+@positive
 @scenario("SCN-MUSIC-007-A")
 @scenario("SCN-MUSIC-006-A")
 def test_a_track_read_carries_its_recording(server: Sut, root_token: str) -> None:
@@ -746,6 +787,7 @@ def test_a_track_read_carries_its_recording(server: Sut, root_token: str) -> Non
     assert cover.json()["id"] == TRACK_ALBUM_IMAGE
 
 
+@business_rule
 @scenario("SCN-MUSIC-005-A")
 def test_a_mediums_tracks_are_listed(server: Sut, root_token: str) -> None:
     """The tracks of a medium are listed in ascending index order."""
@@ -758,6 +800,7 @@ def test_a_mediums_tracks_are_listed(server: Sut, root_token: str) -> None:
     assert all("cover_image_id" not in item for item in items)
 
 
+@negative
 @scenario("SCN-MUSIC-005-B")
 @scenario("SCN-MUSIC-006-B")
 @scenario("SCN-MUSIC-006-C")
@@ -774,6 +817,7 @@ def test_an_unknown_or_unsequenced_track_position_is_refused(server: Sut, root_t
     assert malformed_track.status_code == 400, f"malformed track answered {malformed_track.status_code}"
 
 
+@positive
 @scenario("SCN-MUSIC-014-A")
 def test_a_group_is_created(server: Sut, root_token: str) -> None:
     """A group is created with a valid name and no cover."""
@@ -789,6 +833,7 @@ def test_a_group_is_created(server: Sut, root_token: str) -> None:
     assert group["_links"].get("cover") is None
 
 
+@positive
 @scenario("SCN-MUSIC-014-B")
 def test_a_group_stores_its_library_artwork(server: Sut, root_token: str) -> None:
     """A creation naming an existing LIBRARY image stores it as the cover."""
@@ -805,6 +850,7 @@ def test_a_group_stores_its_library_artwork(server: Sut, root_token: str) -> Non
     assert cover.json()["id"] == FREE_GROUP_IMAGE
 
 
+@negative
 @scenario("SCN-MUSIC-014-C")
 def test_a_duplicate_group_name_is_refused(server: Sut, root_token: str) -> None:
     """A name another group holds answers 409 and creates nothing."""
@@ -815,6 +861,7 @@ def test_a_duplicate_group_name_is_refused(server: Sut, root_token: str) -> None
     assert response.status_code == 409, f"duplicate group accepted: {response.status_code}"
 
 
+@negative
 @scenario("SCN-MUSIC-014-D")
 def test_a_group_with_an_invalid_name_is_refused(server: Sut, root_token: str) -> None:
     """An empty or over-long name answers 422."""
@@ -836,6 +883,7 @@ def test_a_group_with_an_invalid_name_is_refused(server: Sut, root_token: str) -
     assert padded.status_code == 422, f"padded name accepted: {padded.status_code}"
 
 
+@negative
 @scenario("SCN-MUSIC-014-D")
 def test_a_group_with_unusable_artwork_is_refused(server: Sut, root_token: str) -> None:
     """A cover naming no image answers 409."""
@@ -846,6 +894,7 @@ def test_a_group_with_unusable_artwork_is_refused(server: Sut, root_token: str) 
     assert response.status_code == 409, f"unusable artwork accepted: {response.status_code}"
 
 
+@business_rule
 @scenario("SCN-MUSIC-012-A")
 @scenario("SCN-MUSIC-012-B")
 def test_the_group_collection_lists_and_filters(server: Sut, root_token: str) -> None:
@@ -861,6 +910,7 @@ def test_the_group_collection_lists_and_filters(server: Sut, root_token: str) ->
     assert [item["id"] for item in json.loads(filtered.content)["_embedded"]["items"]] == [LISTED_TWO]
 
 
+@positive
 @scenario("SCN-MUSIC-013-A")
 def test_a_group_detail_read_carries_its_representation(server: Sut, root_token: str) -> None:
     """A group read carries its identifier, name, cover and cover link."""
@@ -876,6 +926,7 @@ def test_a_group_detail_read_carries_its_representation(server: Sut, root_token:
     assert cover.json()["id"] == DETAIL_GROUP_IMAGE
 
 
+@negative
 @scenario("SCN-MUSIC-013-B")
 def test_an_unknown_group_is_refused(server: Sut, root_token: str) -> None:
     """An unknown group answers 404."""
@@ -883,6 +934,7 @@ def test_an_unknown_group_is_refused(server: Sut, root_token: str) -> None:
     assert response.status_code == 404, f"unknown group answered {response.status_code}"
 
 
+@positive
 @scenario("SCN-MUSIC-015-A")
 def test_a_group_is_renamed_keeping_its_artwork(server: Sut, root_token: str) -> None:
     """A rename replaces the name and keeps the stored cover."""
@@ -898,6 +950,7 @@ def test_a_group_is_renamed_keeping_its_artwork(server: Sut, root_token: str) ->
     assert group["cover_image_id"] == COVERED_ALBUM_IMAGE
 
 
+@positive
 @scenario("SCN-MUSIC-015-B")
 def test_group_artwork_is_replaced(server: Sut, root_token: str) -> None:
     """A supplied LIBRARY image replaces the stored cover."""
@@ -910,6 +963,7 @@ def test_group_artwork_is_replaced(server: Sut, root_token: str) -> None:
     assert json.loads(response.content)["cover_image_id"] == TRACK_ALBUM_IMAGE
 
 
+@alternate_flow
 @scenario("SCN-MUSIC-015-C")
 def test_group_artwork_is_cleared(server: Sut, root_token: str) -> None:
     """A null cover clears the stored cover and drops its link."""
@@ -925,6 +979,7 @@ def test_group_artwork_is_cleared(server: Sut, root_token: str) -> None:
     assert group["_links"].get("cover") is None
 
 
+@negative
 @scenario("SCN-MUSIC-015-D")
 def test_a_group_rename_that_collides_is_refused(server: Sut, root_token: str) -> None:
     """A name another group holds answers 409 and applies nothing."""
@@ -938,6 +993,7 @@ def test_a_group_rename_that_collides_is_refused(server: Sut, root_token: str) -
     assert stored["name"] == "Renamed Group"
 
 
+@negative
 @scenario("SCN-MUSIC-015-E")
 def test_a_group_rename_with_an_invalid_name_is_refused(server: Sut, root_token: str) -> None:
     """An empty or over-long name answers 422 and applies nothing."""
@@ -964,6 +1020,7 @@ def test_a_group_rename_with_an_invalid_name_is_refused(server: Sut, root_token:
     assert stored["name"] == "Invalid Name Group"
 
 
+@business_rule
 @scenario("SCN-MUSIC-017-A")
 def test_the_album_representation_names_its_group(server: Sut, root_token: str) -> None:
     """An album representation carries a group link naming its group."""
@@ -972,6 +1029,7 @@ def test_the_album_representation_names_its_group(server: Sut, root_token: str) 
     assert json.loads(response.content)["_links"]["group"]["href"].endswith(f"/{ALBUM_GROUP}")
 
 
+@positive
 @scenario("SCN-MUSIC-017-B")
 def test_an_album_moves_group(server: Sut, root_token: str) -> None:
     """An update naming another group stores the album under it."""
@@ -985,6 +1043,7 @@ def test_an_album_moves_group(server: Sut, root_token: str) -> None:
     assert stored["_links"]["group"]["href"].endswith(f"/{MOVE_TARGET_GROUP}")
 
 
+@positive
 @scenario("SCN-MUSIC-016-A")
 def test_the_default_album_and_group_are_readable(server: Sut, root_token: str) -> None:
     """The default album and group answer 200 with their representations."""
@@ -997,6 +1056,7 @@ def test_the_default_album_and_group_are_readable(server: Sut, root_token: str) 
     assert json.loads(group.content)["name"] == "Unknown"
 
 
+@negative
 @scenario("SCN-MUSIC-016-B")
 def test_a_default_group_write_is_refused(server: Sut, root_token: str) -> None:
     """A rename or cover replacement on the default group answers 409 and applies nothing."""
@@ -1017,6 +1077,7 @@ def test_a_default_group_write_is_refused(server: Sut, root_token: str) -> None:
     assert stored["name"] == "Unknown"
 
 
+@negative
 @scenario("SCN-MUSIC-016-C")
 def test_a_default_album_write_is_refused(server: Sut, root_token: str) -> None:
     """An update, medium write or track write on the default album is refused and applies nothing."""
@@ -1029,7 +1090,7 @@ def test_a_default_album_write_is_refused(server: Sut, root_token: str) -> None:
         DEFAULT_ALBUM,
         1,
         client=server.client(root_token),
-        body=PutAlbumMediumRequest(type_="CD"),
+        body=PutAlbumMediumRequest(type_=MediumTypeRequest.CD),
     )
     track = put_album_track.sync_detailed(
         DEFAULT_ALBUM,
@@ -1046,6 +1107,7 @@ def test_a_default_album_write_is_refused(server: Sut, root_token: str) -> None:
     assert stored["name"] == "Unknown"
 
 
+@positive
 @scenario("SCN-MUSIC-019-A")
 def test_a_private_playlist_is_created(server: Sut, root_token: str) -> None:
     """A creation with no visibility is private and owned by the caller."""
@@ -1065,6 +1127,7 @@ def test_a_private_playlist_is_created(server: Sut, root_token: str) -> None:
     assert playlist.get("cover_image_id") is None
 
 
+@positive
 @scenario("SCN-MUSIC-019-B")
 def test_a_public_playlist_is_created(server: Sut, root_token: str) -> None:
     """A creation naming is_public stores a public playlist."""
@@ -1077,6 +1140,7 @@ def test_a_public_playlist_is_created(server: Sut, root_token: str) -> None:
     assert json.loads(response.content)["is_public"] is True
 
 
+@negative
 @scenario("SCN-MUSIC-019-C")
 def test_a_playlist_with_a_malformed_name_is_refused(server: Sut, root_token: str) -> None:
     """An empty or over-long name answers 422 and creates nothing."""
@@ -1101,6 +1165,7 @@ def test_a_playlist_with_a_malformed_name_is_refused(server: Sut, root_token: st
     assert json.loads(listed.content)["items"] == []
 
 
+@negative
 @scenario("SCN-MUSIC-030-A")
 def test_a_playlist_name_with_surrounding_whitespace_is_refused(server: Sut, root_token: str) -> None:
     """A name that begins or ends with whitespace answers 422 on creation and rename."""
@@ -1130,6 +1195,7 @@ def test_a_playlist_name_with_surrounding_whitespace_is_refused(server: Sut, roo
     assert stored["name"] == "Kept Playlist"
 
 
+@negative
 @scenario("SCN-MUSIC-030-B")
 def test_a_duplicate_playlist_name_is_refused(server: Sut, root_token: str) -> None:
     """A name the caller already owns answers 409."""
@@ -1147,6 +1213,7 @@ def test_a_duplicate_playlist_name_is_refused(server: Sut, root_token: str) -> N
     assert duplicate.status_code == 409, f"duplicate name accepted: {duplicate.status_code}"
 
 
+@business_rule
 @scenario("SCN-MUSIC-030-C")
 def test_two_owners_may_share_a_playlist_name(server: Sut, root_token: str) -> None:
     """Two callers may each hold a playlist with the same name."""
@@ -1166,6 +1233,7 @@ def test_two_owners_may_share_a_playlist_name(server: Sut, root_token: str) -> N
     assert json.loads(first.content)["id"] != json.loads(second.content)["id"]
 
 
+@business_rule
 @scenario("SCN-MUSIC-018-A")
 def test_the_playlist_collection_lists_owned_and_public(server: Sut, root_token: str) -> None:
     """The collection filter returns the caller's own playlists and the public ones."""
@@ -1196,6 +1264,7 @@ def test_the_playlist_collection_lists_owned_and_public(server: Sut, root_token:
     assert [item["id"] for item in json.loads(visible.content)["items"]] == [public["id"]]
 
 
+@business_rule
 @scenario("SCN-MUSIC-018-C")
 def test_another_owners_private_playlist_is_filtered_out(server: Sut, root_token: str) -> None:
     """Another owner's private playlist is absent from the caller's collection."""
@@ -1211,6 +1280,7 @@ def test_another_owners_private_playlist_is_filtered_out(server: Sut, root_token
     assert json.loads(listed.content)["items"] == []
 
 
+@business_rule
 @scenario("SCN-MUSIC-018-B")
 def test_the_playlist_collection_filters(server: Sut, root_token: str) -> None:
     """The collection applies every filter together."""
@@ -1240,9 +1310,11 @@ def test_the_playlist_collection_filters(server: Sut, root_token: str) -> None:
     assert [item["id"] for item in json.loads(by_owner.content)["items"]] == [private["id"]]
 
 
+@positive
 @scenario("SCN-MUSIC-021-A")
 @scenario("SCN-MUSIC-021-B")
 @scenario("SCN-MUSIC-023-A")
+@scenario("SCN-API-005-B", TestType.BUSINESS_RULE)
 def test_a_playlist_detail_read_carries_its_tracks(server: Sut, root_token: str) -> None:
     """A playlist read carries its metadata and its tracks in ascending index order."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
@@ -1262,7 +1334,9 @@ def test_a_playlist_detail_read_carries_its_tracks(server: Sut, root_token: str)
 
     detail = get_playlist.sync_detailed(playlist["id"], client=server.client(alice))
     assert detail.status_code == 200, f"read failed: {detail.status_code} {detail.content!r}"
-    tracks = json.loads(detail.content)["tracks"]
+    body = json.loads(detail.content)
+    tracks = body["tracks"]
+    assert body["_links"]["tracks"]["href"] == f"{body['_links']['self']['href']}/track"
     assert [track["id"] for track in tracks] == [0, 1]
     assert [track["recording_id"] for track in tracks] == list(PLAYLIST_RECORDINGS)
 
@@ -1271,6 +1345,7 @@ def test_a_playlist_detail_read_carries_its_tracks(server: Sut, root_token: str)
     assert json.loads(alias.content)["tracks"] == tracks
 
 
+@negative
 @scenario("SCN-MUSIC-021-C")
 def test_an_unknown_or_malformed_playlist_is_refused(server: Sut, root_token: str) -> None:
     """An unknown, malformed or another owner's private playlist answers 404 or 400."""
@@ -1292,10 +1367,12 @@ def test_an_unknown_or_malformed_playlist_is_refused(server: Sut, root_token: st
     assert invisible.status_code == 404, f"private playlist answered {invisible.status_code}"
 
 
+@positive
 @scenario("SCN-MUSIC-024-A")
 def test_playlist_metadata_is_replaced(server: Sut, root_token: str) -> None:
     """A metadata update replaces the name and visibility and advances the last-modified time."""
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
+    _, bob = provision(server, root_token, f"bob{next(_ACCOUNTS)}")
     playlist = json.loads(
         post_playlist.sync_detailed(
             client=server.client(alice),
@@ -1311,15 +1388,31 @@ def test_playlist_metadata_is_replaced(server: Sut, root_token: str) -> None:
     )
     assert response.status_code == 200, f"update failed: {response.status_code} {response.content!r}"
     updated = json.loads(response.content)
+    readable = get_playlist.sync_detailed(playlist["id"], client=server.client(bob))
 
     assert updated["name"] == "After Rename"
     assert updated["is_public"] is True
+    assert readable.status_code == 200, "the stored visibility must publish the playlist"
     assert updated["last_modified_at"] > playlist["last_modified_at"]
     assert updated["last_modified_at"].endswith("Z"), (
         f"last_modified_at is not RFC 3339 UTC: {updated['last_modified_at']!r}"
     )
 
+    restored = put_resource_permission.sync_detailed(
+        "MUSIC_PLAYLIST",
+        playlist["id"],
+        client=server.client(alice),
+        body=PutPermissionRequest(visibility=VisibilityWire.PRIVATE, grants=[]),
+    )
+    concealed = get_playlist.sync_detailed(playlist["id"], client=server.client(bob))
+    stored = json.loads(get_playlist.sync_detailed(playlist["id"], client=server.client(alice)).content)
 
+    assert restored.status_code == 200
+    assert concealed.status_code == 404, "the permission endpoint must conceal it again"
+    assert stored["is_public"] is False, "the flag must mirror the resource visibility"
+
+
+@alternate_flow
 @scenario("SCN-MUSIC-024-B")
 def test_an_empty_playlist_update_changes_nothing(server: Sut, root_token: str) -> None:
     """An update carrying no metadata field leaves the playlist unchanged."""
@@ -1342,6 +1435,7 @@ def test_an_empty_playlist_update_changes_nothing(server: Sut, root_token: str) 
     assert updated["is_public"] is False
 
 
+@negative
 @scenario("SCN-MUSIC-024-C")
 def test_a_playlist_rename_that_collides_is_refused(server: Sut, root_token: str) -> None:
     """A rename onto another playlist's name of the same owner answers 409."""
@@ -1369,6 +1463,7 @@ def test_a_playlist_rename_that_collides_is_refused(server: Sut, root_token: str
     assert stored["name"] == "First Playlist"
 
 
+@negative
 @scenario("SCN-MUSIC-024-C")
 def test_a_playlist_rename_with_an_invalid_name_is_refused(server: Sut, root_token: str) -> None:
     """An empty or over-long rename answers 422 and applies nothing."""
@@ -1403,6 +1498,7 @@ def test_a_playlist_rename_with_an_invalid_name_is_refused(server: Sut, root_tok
     assert stored["name"] == "Valid Playlist"
 
 
+@positive
 @scenario("SCN-MUSIC-025-A")
 def test_a_recording_is_appended(server: Sut, root_token: str) -> None:
     """Two recordings append at contiguous indices."""
@@ -1426,6 +1522,7 @@ def test_a_recording_is_appended(server: Sut, root_token: str) -> None:
     assert stored["track_count"] == 2
 
 
+@negative
 @scenario("SCN-MUSIC-025-C")
 def test_an_unusable_target_recording_is_refused(server: Sut, root_token: str) -> None:
     """An unknown recording answers 422 and a duplicate answers 409."""
@@ -1459,6 +1556,7 @@ def test_an_unusable_target_recording_is_refused(server: Sut, root_token: str) -
     assert [track["recording_id"] for track in stored["tracks"]] == [KNOWN_TARGET_RECORDING]
 
 
+@positive
 @scenario("SCN-MUSIC-022-A")
 @scenario("SCN-MUSIC-023-B")
 def test_a_playlist_track_read_carries_its_recording(server: Sut, root_token: str) -> None:
@@ -1490,6 +1588,7 @@ def test_a_playlist_track_read_carries_its_recording(server: Sut, root_token: st
     assert track["_links"].get("cover") is None
 
 
+@negative
 @scenario("SCN-MUSIC-022-B")
 def test_an_unsequenced_playlist_position_is_refused(server: Sut, root_token: str) -> None:
     """An index the playlist does not sequence answers 404."""
@@ -1504,6 +1603,7 @@ def test_an_unsequenced_playlist_position_is_refused(server: Sut, root_token: st
     assert response.status_code == 404, f"unsequenced index answered {response.status_code}"
 
 
+@positive
 @scenario("SCN-MUSIC-026-A")
 def test_a_track_is_removed(server: Sut, root_token: str) -> None:
     """Removing an occurrence answers 204 and leaves the playlist empty."""
@@ -1527,6 +1627,7 @@ def test_a_track_is_removed(server: Sut, root_token: str) -> None:
     assert get_playlist_track.sync_detailed(playlist["id"], 0, client=server.client(alice)).status_code == 404
 
 
+@business_rule
 @scenario("SCN-MUSIC-026-B")
 def test_a_removed_tracks_recording_survives(server: Sut, root_token: str) -> None:
     """A removed occurrence leaves the recording readable through its album."""
@@ -1550,6 +1651,7 @@ def test_a_removed_tracks_recording_survives(server: Sut, root_token: str) -> No
     assert json.loads(track.content)["recording_id"] == SURVIVING_RECORDING
 
 
+@negative
 @scenario("SCN-MUSIC-026-C")
 def test_removing_an_unsequenced_position_is_refused(server: Sut, root_token: str) -> None:
     """Removing an index the playlist does not sequence answers 404."""
@@ -1564,6 +1666,7 @@ def test_removing_an_unsequenced_position_is_refused(server: Sut, root_token: st
     assert response.status_code == 404, f"unsequenced removal answered {response.status_code}"
 
 
+@business_rule
 @scenario("SCN-MUSIC-027-A")
 def test_the_tracks_of_a_playlist_are_reordered(server: Sut, root_token: str) -> None:
     """A complete permutation reindexes the tracks in the requested order."""
@@ -1593,6 +1696,7 @@ def test_the_tracks_of_a_playlist_are_reordered(server: Sut, root_token: str) ->
     assert [track["recording_id"] for track in tracks] == [ORDERED_RECORDINGS[2], *ORDERED_RECORDINGS[:2]]
 
 
+@negative
 @scenario("SCN-MUSIC-027-B")
 def test_an_incomplete_permutation_is_refused(server: Sut, root_token: str) -> None:
     """An incomplete, duplicated or unknown permutation answers 422 and leaves the order unchanged."""
@@ -1622,6 +1726,7 @@ def test_an_incomplete_permutation_is_refused(server: Sut, root_token: str) -> N
     assert [track["recording_id"] for track in stored["tracks"]] == list(PERMUTATION_RECORDINGS)
 
 
+@positive
 @scenario("SCN-MUSIC-028-A")
 def test_a_playlist_is_deleted(server: Sut, root_token: str) -> None:
     """Deleting a playlist answers 204 and removes it."""
@@ -1643,6 +1748,7 @@ def test_a_playlist_is_deleted(server: Sut, root_token: str) -> None:
     assert get_playlist.sync_detailed(playlist["id"], client=server.client(alice)).status_code == 404
 
 
+@business_rule
 @scenario("SCN-MUSIC-028-B")
 def test_a_deleted_playlists_recordings_survive(server: Sut, root_token: str) -> None:
     """A deleted playlist leaves its recordings readable through their album."""
@@ -1666,6 +1772,7 @@ def test_a_deleted_playlists_recordings_survive(server: Sut, root_token: str) ->
     assert json.loads(track.content)["recording_id"] == DELETED_SURVIVOR_RECORDING
 
 
+@negative
 @scenario("SCN-MUSIC-028-C")
 def test_deleting_an_unknown_playlist_is_refused(server: Sut, root_token: str) -> None:
     """Deleting an unknown playlist answers 404."""

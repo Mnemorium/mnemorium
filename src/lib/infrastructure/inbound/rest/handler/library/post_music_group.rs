@@ -1,4 +1,4 @@
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
@@ -6,8 +6,8 @@ use utoipa::ToSchema;
 
 use crate::application::port::CreateMusicGroupCommand;
 use crate::domain::NumericID;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::MusicGroupResponse;
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
@@ -33,7 +33,7 @@ pub(crate) struct PostMusicGroupRequest {
 /// Creating a group requires `CreateChild` for a music group on the
 /// **Catalogue**. The name must not begin or end with whitespace and must be unique; the
 /// optional cover
-/// must be a `LIBRARY` image.
+/// must be a viewable `LIBRARY` image.
 #[utoipa::path(
     post,
     operation_id = "post_music_group",
@@ -72,7 +72,7 @@ pub(crate) struct PostMusicGroupRequest {
             status = CONFLICT,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The name is taken, or the cover is not a library image"
+            description = "The name is taken, or the cover is not a viewable library image"
         ),
         (
             status = PAYLOAD_TOO_LARGE,
@@ -105,6 +105,7 @@ pub(crate) struct PostMusicGroupRequest {
     summary = "Create a music group"
 )]
 pub(crate) async fn post_music_group(
+    _query: Query<NoParametersQuery>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: JsonObject<PostMusicGroupRequest>,

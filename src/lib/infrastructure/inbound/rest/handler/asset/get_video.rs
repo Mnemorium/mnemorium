@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, header};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
@@ -9,6 +9,7 @@ use crate::application::port::{
 };
 use crate::domain::NumericID;
 use crate::domain::model::ScanType;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::asset::{
     asset_file_href, asset_video_href, content_href, parse_asset_id,
 };
@@ -137,6 +138,7 @@ impl From<GetVideoError> for ApiError {
     summary = "Fetch a typed video"
 )]
 pub(crate) async fn get_video(
+    _query: Query<NoParametersQuery>,
     Path(video_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

@@ -24,8 +24,8 @@ from harness import (
     ROOT_ADMIN_USERNAME,
     Sut,
 )
-from labels import scenario
-from mnemorium_client.api.asset import get_audio, get_image, get_video
+from labels import alternate_flow, business_rule, error_handling, positive, scenario
+from mnemorium_client.api.asset import get_audio, get_file, get_image, get_video
 from mnemorium_client.api.library import delete_gallery, delete_gallery_item
 from mnemorium_client.api.system import get_api_index
 from mnemorium_client.api.user import get_me
@@ -48,6 +48,7 @@ def mp3_frame_bytes() -> bytes:
     return (bytes([0xFF, 0xFB, 0x90, 0x00]) + bytes(413)) * 20
 
 
+@positive
 @scenario("SCN-MEDIA-INGEST-001-A")
 def test_a_promoted_upload_is_addressed_under_the_root(server: Sut, root_token: str) -> None:
     """A file the server stored through upload records a path relative to the root that resolves under it."""
@@ -61,6 +62,7 @@ def test_a_promoted_upload_is_addressed_under_the_root(server: Sut, root_token: 
     assert (server.dir / MEDIA_DIRECTORY / file["path"]).read_bytes() == data
 
 
+@positive
 @scenario("SCN-MEDIA-INGEST-001-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_found_file_is_addressed_under_the_same_root(sut: Sut) -> None:
@@ -81,6 +83,7 @@ def test_a_found_file_is_addressed_under_the_same_root(sut: Sut) -> None:
     assert (server.dir / MEDIA_DIRECTORY / record["path"]).read_bytes() == data
 
 
+@positive
 @scenario("SCN-MEDIA-INGEST-002-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_present_root_is_examined_at_startup(sut: Sut) -> None:
@@ -95,6 +98,7 @@ def test_a_present_root_is_examined_at_startup(sut: Sut) -> None:
     assert file_at(server, token, "ready.png") is not None
 
 
+@alternate_flow
 @scenario("SCN-MEDIA-INGEST-002-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_root_that_appears_within_the_window_is_examined(sut: Sut) -> None:
@@ -122,6 +126,7 @@ def test_a_root_that_appears_within_the_window_is_examined(sut: Sut) -> None:
     assert file_at(server, token, "late.png") is not None
 
 
+@error_handling
 @scenario("SCN-MEDIA-INGEST-002-C")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_absent_required_root_refuses_startup(sut: Sut) -> None:
@@ -159,6 +164,7 @@ def test_an_absent_required_root_refuses_startup(sut: Sut) -> None:
     assert file_at(server, token, "kept.png") is not None, "a refused startup reconciled the record as removed"
 
 
+@alternate_flow
 @scenario("SCN-MEDIA-INGEST-002-D")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_absent_optional_root_starts_and_reconciles_empty(sut: Sut) -> None:
@@ -183,6 +189,7 @@ def test_an_absent_optional_root_starts_and_reconciles_empty(sut: Sut) -> None:
     assert file_at(server, token, "gone.png") is None
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-003-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_request_during_the_scan_is_answered(sut: Sut) -> None:
@@ -203,6 +210,7 @@ def test_a_request_during_the_scan_is_answered(sut: Sut) -> None:
     assert json.loads(index.content)["_links"]["self"]["href"] == API_PREFIX
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-003-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_absent_optional_root_does_not_delay_readiness(sut: Sut) -> None:
@@ -218,6 +226,7 @@ def test_an_absent_optional_root_does_not_delay_readiness(sut: Sut) -> None:
     assert wait_for_ingest(server)["removed"] == 0
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-004-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_the_content_decides_the_media_type(sut: Sut) -> None:
@@ -237,6 +246,7 @@ def test_the_content_decides_the_media_type(sut: Sut) -> None:
     assert "image" in record["_links"]
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-004-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_content_without_a_media_type_is_skipped(sut: Sut) -> None:
@@ -251,6 +261,7 @@ def test_content_without_a_media_type_is_skipped(sut: Sut) -> None:
     assert file_at(server, token, "opaque.bin") is None
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-005-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_file_that_is_not_media_is_skipped(sut: Sut) -> None:
@@ -267,6 +278,7 @@ def test_a_file_that_is_not_media_is_skipped(sut: Sut) -> None:
     assert report["skipped"] == 1, f"the unsuitable file was not skipped: {report}"
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-005-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_unsupported_media_type_is_skipped(sut: Sut) -> None:
@@ -283,6 +295,7 @@ def test_an_unsupported_media_type_is_skipped(sut: Sut) -> None:
     assert report["skipped"] == 1, f"the unsupported type was not skipped: {report}"
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-005-C")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_unsuitable_files_do_not_abort_the_scan(sut: Sut) -> None:
@@ -302,6 +315,7 @@ def test_unsuitable_files_do_not_abort_the_scan(sut: Sut) -> None:
     assert file_at(server, token, "clip.mp4") is not None
 
 
+@positive
 @scenario("SCN-MEDIA-INGEST-006-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_image_is_registered_with_its_media_row(sut: Sut) -> None:
@@ -325,6 +339,7 @@ def test_an_image_is_registered_with_its_media_row(sut: Sut) -> None:
     assert image["name"] == "photo.png"
 
 
+@positive
 @scenario("SCN-MEDIA-INGEST-006-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_video_is_registered_with_its_media_row(sut: Sut) -> None:
@@ -349,6 +364,7 @@ def test_a_video_is_registered_with_its_media_row(sut: Sut) -> None:
     assert video["scan_type"] in {"PROGRESSIVE", "INTERLACED", "MBAFF", "PAFF"}
 
 
+@positive
 @scenario("SCN-MEDIA-INGEST-006-C")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_audio_file_is_registered_with_absent_measurements(sut: Sut) -> None:
@@ -373,6 +389,7 @@ def test_an_audio_file_is_registered_with_absent_measurements(sut: Sut) -> None:
     assert "block_size" not in audio, "a block size the content does not report was fabricated"
 
 
+@positive
 @scenario("SCN-MEDIA-INGEST-007-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_registered_file_carries_its_size_and_instant(sut: Sut) -> None:
@@ -394,6 +411,7 @@ def test_a_registered_file_carries_its_size_and_instant(sut: Sut) -> None:
     assert record["modified_at"] == datetime.fromtimestamp(INSTANT, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-008-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_found_file_belongs_to_the_root_admin(sut: Sut) -> None:
@@ -415,6 +433,7 @@ def test_a_found_file_belongs_to_the_root_admin(sut: Sut) -> None:
     assert record["_links"]["owner"]["href"] == profile["_links"]["self"]["href"]
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-009-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_unchanged_file_is_reported_untouched(sut: Sut) -> None:
@@ -440,6 +459,7 @@ def test_an_unchanged_file_is_reported_untouched(sut: Sut) -> None:
     assert file_at(server, token, "stable.png") == before
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-009-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_changed_file_is_reported_and_left_alone(sut: Sut) -> None:
@@ -467,6 +487,7 @@ def test_a_changed_file_is_reported_and_left_alone(sut: Sut) -> None:
     assert file_at(server, token, "drifted.png") == before
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-009-C")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_vanished_file_is_reconciled_as_removed(sut: Sut) -> None:
@@ -492,6 +513,7 @@ def test_a_vanished_file_is_reconciled_as_removed(sut: Sut) -> None:
     assert file_at(server, token, "vanished.png") is None
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-011-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_the_ingest_leaves_the_content_byte_identical(sut: Sut) -> None:
@@ -513,6 +535,7 @@ def test_the_ingest_leaves_the_content_byte_identical(sut: Sut) -> None:
     assert sorted(os.listdir(server.dir / MEDIA_DIRECTORY)) == sorted(files)
 
 
+@error_handling
 @scenario("SCN-MEDIA-INGEST-011-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_unreadable_file_does_not_damage_the_ingest(sut: Sut) -> None:
@@ -536,6 +559,7 @@ def test_an_unreadable_file_does_not_damage_the_ingest(sut: Sut) -> None:
         unreadable.chmod(0o600)
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-012-A")
 @scenario("SCN-MEDIA-INGEST-012-B")
 def test_removing_a_gallery_leaves_the_content_alone(server: Sut, root_token: str) -> None:
@@ -564,6 +588,28 @@ def test_removing_a_gallery_leaves_the_content_alone(server: Sut, root_token: st
     )
 
 
+@business_rule
+@scenario("SCN-MEDIA-INGEST-012-A")
+def test_content_removed_with_its_gallery_reference_can_be_uploaded_again(server: Sut, root_token: str) -> None:
+    """A removed reference leaves no orphaned file record that a later upload would dedup to."""
+    data = (SEED_MEDIA_DIRECTORY / IMAGE_PATH).read_bytes()
+    first = upload(server, root_token, f"again{next(_ACCOUNTS)}.png", data)
+    gallery = create_gallery(server, root_token, f"again{next(_ACCOUNTS)}")
+    item = add_to_gallery(server, root_token, gallery, first["id"])
+    item_id = int(item["_links"]["self"]["href"].rsplit("/", 1)[1])
+
+    removed = delete_gallery_item.sync_detailed(gallery["id"], item_id, client=server.client(root_token))
+    assert removed.status_code == 204, f"item removal failed: {removed.status_code}"
+
+    # The upload helper reads the completed file, so a dedup that returned the
+    # removed row without its resource would fail here instead of completing.
+    second = upload(server, root_token, f"again{next(_ACCOUNTS)}.png", data)
+
+    response = get_file.sync_detailed(second["id"], client=server.client(root_token))
+    assert response.status_code == 200, f"the re-uploaded file is not readable: {response.status_code}"
+
+
+@business_rule
 @scenario("SCN-MEDIA-INGEST-014-A")
 def test_a_renamed_file_keeps_its_record(server: Sut, root_token: str) -> None:
     """A file renamed while the server runs follows its content, keeping the record and the media row it carried."""
@@ -598,6 +644,7 @@ def test_a_renamed_file_keeps_its_record(server: Sut, root_token: str) -> None:
     assert json.loads(preserved.content)["id"] == image["id"], "the rename replaced the media row"
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-013-A")
 def test_a_file_added_while_the_server_runs_is_registered(server: Sut, root_token: str) -> None:
     """A file added under the root while the server runs is registered without a restart."""
@@ -616,6 +663,7 @@ def test_a_file_added_while_the_server_runs_is_registered(server: Sut, root_toke
     assert record["origin"] == "SCANNED"
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-013-B")
 def test_a_file_still_being_written_is_registered_once_complete(server: Sut, root_token: str) -> None:
     """A file whose content is still changing is not registered until it stops, then with the size it finally has."""
@@ -639,6 +687,7 @@ def test_a_file_still_being_written_is_registered_once_complete(server: Sut, roo
     assert record["size_bytes"] == len(data), "the record does not carry the size the file finally has"
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-015-A")
 def test_a_file_removed_while_the_server_runs_is_reconciled(server: Sut, root_token: str) -> None:
     """A registered file removed while the server runs has its record and its media row removed."""
@@ -662,6 +711,7 @@ def test_a_file_removed_while_the_server_runs_is_reconciled(server: Sut, root_to
     assert gone.status_code == 404, "the media row survived its file"
 
 
+@business_rule
 @scenario("SCN-MEDIA-INGEST-015-C")
 def test_a_reappearing_file_is_a_new_record(server: Sut, root_token: str) -> None:
     """A file removed and then added again is a new record, not the restored one."""

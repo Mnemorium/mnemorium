@@ -1,9 +1,10 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse as _, Response};
 
 use crate::application::port::{CancelUploadCommand, CancelUploadError};
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
 
@@ -78,6 +79,7 @@ impl From<CancelUploadError> for ApiError {
     summary = "Cancel an upload session"
 )]
 pub(crate) async fn delete_upload(
+    _query: Query<NoParametersQuery>,
     Path(upload_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

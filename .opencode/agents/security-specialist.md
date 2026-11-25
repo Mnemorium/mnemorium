@@ -137,9 +137,9 @@ Cover all of these; none is optional:
 - SQL and command injection.
 - Upload and transcode paths, and any `unsafe` or FFI decode code.
 - Secrets, keys, or tokens in code or committed files, and secrets in logs
-  (`docs/development/TechnicalDesign.md` § 8 (Logging & Observability),
+  (`docs/development/TechnicalDesign.md` § 7 (Logging & Observability),
   `OBS-004`).
-- Sensitive data in error payloads (`API-040`) or logs (`OBS-003`, `OBS-004`).
+- Sensitive data in error payloads (`REQ-API-008`) or logs (`OBS-003`, `OBS-004`).
 - Dependency advisories the change introduces or relies on.
 
 For a design input, additionally name the asset, the trust boundary, the attack

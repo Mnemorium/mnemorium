@@ -1,12 +1,12 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use tracing::warn;
 
 use crate::application::port::ApplyMovieCommand;
 use crate::domain::NumericID;
 use crate::domain::model::{ExternalRef, ProviderId};
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{MovieResponse, VideoApplyRequest};
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
@@ -93,6 +93,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
     summary = "Apply external metadata to a film"
 )]
 pub(crate) async fn post_movie_apply(
+    _query: Query<NoParametersQuery>,
     Path(movie_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

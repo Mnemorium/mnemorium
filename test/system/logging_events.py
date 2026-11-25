@@ -32,7 +32,7 @@ from harness import (
     WRONG_PASSWORD,
     Sut,
 )
-from labels import scenario
+from labels import TestType, boundary, business_rule, error_handling, scenario, security
 from mnemorium_client.api.asset import delete_upload, post_upload_complete
 from mnemorium_client.api.identity import patch_credential, post_login, post_register, post_token
 from mnemorium_client.api.library import get_gallery, identify_video_movie_metadata, list_galleries
@@ -46,6 +46,7 @@ _SEEDED_LOGS = {f"logs/mnemorium.log.2020-01-0{day}": "old\n" for day in range(1
 _ACCOUNTS = count()
 
 
+@business_rule
 @scenario("SCN-LOGGING-001-B")
 @scenario("SCN-LOGGING-012-A")
 def test_the_standard_output_sink_holds_the_event(server: Sut, root_token: str) -> None:
@@ -62,6 +63,7 @@ def test_the_standard_output_sink_holds_the_event(server: Sut, root_token: str) 
     assert len(emitted) == 1
 
 
+@business_rule
 @scenario("SCN-LOGGING-001-D")
 def test_standard_output_is_uncoloured_by_default(server: Sut, root_token: str) -> None:
     """The installed configuration colours neither sink."""
@@ -70,6 +72,7 @@ def test_standard_output_is_uncoloured_by_default(server: Sut, root_token: str) 
     assert "\x1b[" not in server.logs()
 
 
+@business_rule
 @scenario("SCN-LOGGING-006-C")
 @scenario("SCN-LOGGING-009-A")
 @scenario("SCN-LOGGING-012-B")
@@ -97,6 +100,7 @@ def test_a_rejected_login_is_recorded_as_a_warning(server: Sut) -> None:
     assert all(" WARN " in line for line in lines)
 
 
+@security
 @scenario("SCN-LOGGING-012-B")
 def test_a_rejected_login_carries_no_client_value(server: Sut) -> None:
     """A control character in the submitted identifier cannot forge a record, because it is never logged."""
@@ -116,6 +120,7 @@ def test_a_rejected_login_carries_no_client_value(server: Sut) -> None:
     assert not any(f"forged{nonce}" in line for line in server.logs().splitlines())
 
 
+@business_rule
 @scenario("SCN-LOGGING-006-A")
 @scenario("SCN-LOGGING-013-A")
 def test_a_denial_is_recorded_once(server: Sut, root_token: str) -> None:
@@ -141,6 +146,7 @@ def test_a_denial_is_recorded_once(server: Sut, root_token: str) -> None:
     assert mine[0]["action"] == "view"
 
 
+@business_rule
 @scenario("SCN-LOGGING-013-B")
 def test_filtering_a_listing_records_no_denial(server: Sut, root_token: str) -> None:
     """A listing that drops an undiscoverable item is not a denial."""
@@ -157,6 +163,7 @@ def test_filtering_a_listing_records_no_denial(server: Sut, root_token: str) -> 
     assert [record for record in emitted if record["actor"] == str(owner_id)] == []
 
 
+@business_rule
 @scenario("SCN-LOGGING-013-C")
 def test_an_out_of_order_action_is_suspicious(server: Sut, root_token: str) -> None:
     """Completing an upload before its chunks arrive records one `suspicious_business_logic`."""
@@ -177,6 +184,7 @@ def test_an_out_of_order_action_is_suspicious(server: Sut, root_token: str) -> N
     assert mine[0]["actor"] == "0"
 
 
+@security
 @scenario("SCN-LOGGING-007-A")
 def test_a_query_string_is_withheld(server: Sut, root_token: str) -> None:
     """A traced request carries the path and not the query string."""
@@ -191,6 +199,7 @@ def test_a_query_string_is_withheld(server: Sut, root_token: str) -> None:
     assert sentinel not in logs
 
 
+@security
 @scenario("SCN-LOGGING-008-D")
 @scenario("SCN-LOGGING-018-A")
 @scenario("SCN-LOGGING-018-B")
@@ -215,6 +224,7 @@ def test_a_personal_data_read_is_recorded(server: Sut, root_token: str) -> None:
     assert not any("@" in value for value in mine[0].values())
 
 
+@business_rule
 @scenario("SCN-LOGGING-012-E")
 def test_a_token_regeneration_names_the_actor(server: Sut, root_token: str) -> None:
     """A token regeneration records one event naming the actor."""
@@ -234,6 +244,7 @@ def test_a_token_regeneration_names_the_actor(server: Sut, root_token: str) -> N
     assert len(mine) == 1
 
 
+@business_rule
 @scenario("SCN-LOGGING-015-D")
 def test_user_administration_names_actor_and_target(server: Sut, root_token: str) -> None:
     """Creating a user records one `user_admin` naming the actor, the action and the target."""
@@ -258,6 +269,7 @@ def test_user_administration_names_actor_and_target(server: Sut, root_token: str
     assert mine[-1]["actor"] == "0"
 
 
+@business_rule
 @scenario("SCN-LOGGING-017-A")
 def test_an_upload_lifecycle_is_recorded(server: Sut, root_token: str) -> None:
     """An accepted, written, completed and cancelled upload each record one event with its outcome."""
@@ -282,6 +294,7 @@ def test_an_upload_lifecycle_is_recorded(server: Sut, root_token: str) -> None:
     assert all(record["actor"] == "0" for record in emitted if record["upload"] in {str(session.id), str(cancelled.id)})
 
 
+@business_rule
 @scenario("SCN-LOGGING-001-A")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_file_sink_holds_the_event(sut: Sut) -> None:
@@ -293,6 +306,7 @@ def test_the_file_sink_holds_the_event(sut: Sut) -> None:
     assert len(server.written_events("authn_succeeded")) == 1
 
 
+@business_rule
 @scenario("SCN-LOGGING-001-C")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_file_sink_is_never_coloured(sut: Sut) -> None:
@@ -306,6 +320,7 @@ def test_the_file_sink_is_never_coloured(sut: Sut) -> None:
     assert "\x1b[" not in server.log_text()
 
 
+@business_rule
 @scenario("SCN-LOGGING-003-D")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_error_rung_hides_the_warning_and_info(sut: Sut) -> None:
@@ -318,6 +333,7 @@ def test_the_error_rung_hides_the_warning_and_info(sut: Sut) -> None:
     assert _APPLIED not in server.logs()
 
 
+@business_rule
 @scenario("SCN-LOGGING-003-D")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_warn_rung_keeps_the_warning_and_hides_the_info(sut: Sut) -> None:
@@ -330,6 +346,7 @@ def test_the_warn_rung_keeps_the_warning_and_hides_the_info(sut: Sut) -> None:
     assert _APPLIED not in server.logs()
 
 
+@business_rule
 @scenario("SCN-LOGGING-003-D")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_info_rung_keeps_the_warning_and_info(sut: Sut) -> None:
@@ -342,6 +359,7 @@ def test_the_info_rung_keeps_the_warning_and_info(sut: Sut) -> None:
     assert _APPLIED in server.logs()
 
 
+@business_rule
 @scenario("SCN-LOGGING-004-A")
 @pytest.mark.own_instance(reason="log_sink")
 def test_a_fault_only_verbosity_cannot_silence_a_success(sut: Sut) -> None:
@@ -353,6 +371,7 @@ def test_a_fault_only_verbosity_cannot_silence_a_success(sut: Sut) -> None:
     assert len(server.events("authn_succeeded")) == 1
 
 
+@business_rule
 @scenario("SCN-LOGGING-004-B")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_lowest_declared_severity_survives(sut: Sut) -> None:
@@ -366,6 +385,7 @@ def test_the_lowest_declared_severity_survives(sut: Sut) -> None:
     assert len(server.events("sensitive_data_access")) == 1
 
 
+@business_rule
 @scenario("SCN-LOGGING-002-A")
 @pytest.mark.own_instance(reason="restart")
 def test_rotation_replaces_the_active_file(sut: Sut) -> None:
@@ -384,6 +404,7 @@ def test_rotation_replaces_the_active_file(sut: Sut) -> None:
     assert 'event="lifecycle"' in server.read(f"{LOG_DIRECTORY}/{dated[0]}")
 
 
+@boundary
 @scenario("SCN-LOGGING-002-B")
 @pytest.mark.own_instance(reason="log_sink")
 def test_pruning_bounds_the_retained_files(sut: Sut) -> None:
@@ -394,6 +415,7 @@ def test_pruning_bounds_the_retained_files(sut: Sut) -> None:
     assert len(sut.listing(LOG_DIRECTORY)) == 2
 
 
+@boundary
 @scenario("SCN-LOGGING-002-C")
 @pytest.mark.own_instance(reason="log_sink")
 def test_a_zero_maximum_keeps_every_file(sut: Sut) -> None:
@@ -404,6 +426,7 @@ def test_a_zero_maximum_keeps_every_file(sut: Sut) -> None:
     assert len(sut.listing(LOG_DIRECTORY)) == 6
 
 
+@business_rule
 @scenario("SCN-LOGGING-015-A")
 @pytest.mark.own_instance(reason="log_sink")
 def test_startup_records_a_lifecycle_event(sut: Sut) -> None:
@@ -419,6 +442,7 @@ def test_startup_records_a_lifecycle_event(sut: Sut) -> None:
     assert len(installed) == 1
 
 
+@security
 @scenario("SCN-LOGGING-007-B")
 @scenario("SCN-LOGGING-009-B")
 @pytest.mark.own_instance(reason="global_filesystem")
@@ -444,6 +468,7 @@ def test_a_file_name_is_withheld_from_a_storage_fault(sut: Sut) -> None:
     assert sentinel not in server.logs()
 
 
+@security
 @scenario("SCN-LOGGING-008-A")
 @pytest.mark.own_instance(reason="log_sink")
 def test_login_secrets_stay_out_of_every_sink(sut: Sut) -> None:
@@ -470,6 +495,7 @@ def test_login_secrets_stay_out_of_every_sink(sut: Sut) -> None:
     assert password not in written
 
 
+@security
 @scenario("SCN-LOGGING-008-B")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_configured_instance_secrets_stay_out_of_every_sink(sut: Sut) -> None:
@@ -485,6 +511,7 @@ def test_the_configured_instance_secrets_stay_out_of_every_sink(sut: Sut) -> Non
         assert secret not in written
 
 
+@security
 @scenario("SCN-LOGGING-008-B")
 @pytest.mark.own_instance(reason="first_boot")
 def test_the_generated_instance_secrets_stay_out_of_every_sink(sut: Sut) -> None:
@@ -501,6 +528,7 @@ def test_the_generated_instance_secrets_stay_out_of_every_sink(sut: Sut) -> None
         assert secret not in written
 
 
+@business_rule
 @scenario("SCN-LOGGING-012-C")
 @pytest.mark.own_instance(reason="log_sink")
 def test_token_rejections_name_their_reason(sut: Sut) -> None:
@@ -521,6 +549,7 @@ def test_token_rejections_name_their_reason(sut: Sut) -> None:
     assert sum(record["reason"] == "invalid_or_expired_token" for record in emitted) == 2
 
 
+@business_rule
 @scenario("SCN-LOGGING-012-D")
 @pytest.mark.own_instance(reason="log_sink")
 def test_a_throttled_request_names_its_route(sut: Sut) -> None:
@@ -537,6 +566,7 @@ def test_a_throttled_request_names_its_route(sut: Sut) -> None:
     assert emitted[0]["reason"] == "quota_exceeded"
 
 
+@business_rule
 @scenario("SCN-LOGGING-012-E")
 @pytest.mark.own_instance(reason="log_sink")
 def test_a_credential_rotation_names_the_actor(sut: Sut) -> None:
@@ -556,6 +586,7 @@ def test_a_credential_rotation_names_the_actor(sut: Sut) -> None:
     assert emitted[0]["actor"] == "0"
 
 
+@business_rule
 @scenario("SCN-LOGGING-015-B")
 @scenario("SCN-LOGGING-015-C")
 @pytest.mark.own_instance(reason="first_boot")
@@ -584,6 +615,7 @@ def test_identity_creation_is_reported(sut: Sut) -> None:
     assert 'event="secret_initialized"' not in reused
 
 
+@security
 @scenario("SCN-LOGGING-016-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_ingest_reports_counts_only(sut: Sut) -> None:
@@ -601,6 +633,7 @@ def test_an_ingest_reports_counts_only(sut: Sut) -> None:
     assert sentinel not in server.logs()
 
 
+@error_handling
 @scenario("SCN-LOGGING-016-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_degraded_observer_is_reported(sut: Sut) -> None:
@@ -618,8 +651,8 @@ def test_a_degraded_observer_is_reported(sut: Sut) -> None:
         media.chmod(0o700)
 
 
-@scenario("SCN-LOGGING-016-C")
-@scenario("SCN-LOGGING-016-D")
+@scenario("SCN-LOGGING-016-C", TestType.BUSINESS_RULE)
+@scenario("SCN-LOGGING-016-D", TestType.SECURITY)
 @pytest.mark.own_instance(reason="log_sink")
 def test_a_skipped_provider_reports_its_classification(sut: Sut) -> None:
     """A lookup naming an unconfigured provider records only the provider and the classification."""

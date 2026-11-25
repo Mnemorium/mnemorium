@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
@@ -6,10 +6,10 @@ use utoipa::ToSchema;
 
 use crate::application::port::PutAlbumTrackCommand;
 use crate::domain::NumericID;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     TrackResponse, parse_album_id, parse_write_index,
 };
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
@@ -116,6 +116,7 @@ pub(crate) struct PutAlbumTrackRequest {
     summary = "Place or move a recording at a medium track address"
 )]
 pub(crate) async fn put_album_track(
+    _query: Query<NoParametersQuery>,
     Path((album_id_value, medium_index_value, track_index_value)): Path<(String, String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

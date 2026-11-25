@@ -1,12 +1,13 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::response::Response;
 use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::application::port::{RegenerateTokenCommand, RegenerateTokenError};
 use crate::domain::port::IssuedToken;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLinks, hal_json};
 
@@ -97,6 +98,7 @@ impl From<RegenerateTokenError> for ApiError {
     summary = "Regenerate the caller's access token"
 )]
 pub(crate) async fn post_token(
+    _query: Query<NoParametersQuery>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
 ) -> Result<Response, ApiError> {

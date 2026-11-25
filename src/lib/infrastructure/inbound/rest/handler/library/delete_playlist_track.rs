@@ -1,9 +1,10 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse as _, Response};
 
 use crate::application::port::RemovePlaylistTrackCommand;
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::library::{
     parse_playlist_id, parse_playlist_track_index,
 };
@@ -66,6 +67,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
     summary = "Remove one track of a music playlist"
 )]
 pub(crate) async fn delete_playlist_track(
+    _query: Query<NoParametersQuery>,
     Path((playlist_id_value, track_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

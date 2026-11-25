@@ -16,6 +16,7 @@ from conftest import (
     start_instance,
 )
 from harness import (
+    API_PREFIX,
     MSG_PASSWORD_HIDDEN,
     MSG_PASSWORD_LOGGED,
     ROOT_ADMIN_USERNAME,
@@ -24,16 +25,20 @@ from harness import (
     Sut,
     register,
 )
-from labels import scenario
+from labels import TestType, alternate_flow, boundary, business_rule, negative, positive, scenario, security
 from mnemorium_client.api.identity import patch_credential, post_login, post_register, post_token
 from mnemorium_client.api.user import get_me
 from mnemorium_client.models import LoginRequest, PatchCredentialRequest, RegisterRequest, Role
 
 PASSWORD_SYMBOLS = frozenset("!@#$%^&*()-_=+")
 
+# A credential identifier no suite run can mint.
+UNKNOWN_CREDENTIAL = 999_999_999
+
 _ACCOUNTS = count()
 
 
+@positive
 @scenario("SCN-AUTHENTICATION-001-A")
 def test_first_start_creates_the_root_admin(server: Sut, root_token: str) -> None:
     """The instance's Root Admin is user 0, `root`, Admin and no email."""
@@ -47,6 +52,7 @@ def test_first_start_creates_the_root_admin(server: Sut, root_token: str) -> Non
     assert body["email"] is None
 
 
+@business_rule
 @scenario("SCN-AUTHENTICATION-001-B")
 @pytest.mark.own_instance(reason="restart")
 def test_restart_does_not_recreate_or_reveal_the_root_admin(sut: Sut) -> None:
@@ -61,6 +67,7 @@ def test_restart_does_not_recreate_or_reveal_the_root_admin(sut: Sut) -> None:
     assert MSG_PASSWORD_LOGGED.search(server.logs()) is None
 
 
+@business_rule
 @scenario("SCN-AUTHENTICATION-002-A")
 def test_generated_password_follows_the_declared_shape(server: Sut) -> None:
     """The revealed default password is 20 characters: 19 alphanumeric and one declared symbol."""
@@ -71,6 +78,7 @@ def test_generated_password_follows_the_declared_shape(server: Sut) -> None:
     assert sum(character in PASSWORD_SYMBOLS for character in password) == 1
 
 
+@security
 @scenario("SCN-AUTHENTICATION-003-A")
 @pytest.mark.own_instance(reason="log_sink")
 def test_the_password_is_printed_once_and_never_logged(sut: Sut) -> None:
@@ -86,6 +94,7 @@ def test_the_password_is_printed_once_and_never_logged(sut: Sut) -> None:
     assert password not in server.log_text()
 
 
+@negative
 @scenario("SCN-AUTHENTICATION-003-B")
 @pytest.mark.own_instance(reason="first_boot")
 def test_a_first_start_without_the_reveal_is_refused(sut: Sut) -> None:
@@ -104,6 +113,7 @@ def test_a_first_start_without_the_reveal_is_refused(sut: Sut) -> None:
     assert login(server, ROOT_ADMIN_USERNAME, server.root_password())
 
 
+@positive
 @scenario("SCN-AUTHENTICATION-003-C")
 @pytest.mark.own_instance(reason="restart")
 def test_disabling_the_reveal_after_initialization_still_starts(sut: Sut) -> None:
@@ -123,9 +133,10 @@ def test_disabling_the_reveal_after_initialization_still_starts(sut: Sut) -> Non
     assert MSG_PASSWORD_LOGGED.search(stdout) is None
 
 
-@scenario("SCN-AUTHENTICATION-004-A")
-@scenario("SCN-AUTHENTICATION-004-B")
-@scenario("SCN-AUTHENTICATION-004-C")
+@scenario("SCN-AUTHENTICATION-004-A", TestType.POSITIVE)
+@scenario("SCN-AUTHENTICATION-004-B", TestType.POSITIVE)
+@scenario("SCN-AUTHENTICATION-004-C", TestType.SECURITY)
+@scenario("SCN-API-004-D", TestType.POSITIVE)
 def test_a_login_issues_a_usable_bearer_token(server: Sut) -> None:
     """A valid login carries the token fields, resolves its user, and never carrying the password."""
     password = server.root_password()
@@ -138,6 +149,7 @@ def test_a_login_issues_a_usable_bearer_token(server: Sut) -> None:
     body = json.loads(response.content)
     assert {"access_token", "expires_in", "token_type"} <= set(body)
     assert body["token_type"] == "bearer"
+    assert body["_links"]["self"]["href"] == f"{API_PREFIX}/identity/login"
     assert password not in response.content.decode()
     assert not any("password" in field or "hash" in field for field in body)
 
@@ -150,6 +162,7 @@ def test_a_login_issues_a_usable_bearer_token(server: Sut) -> None:
     assert profile["role"] == "ADMIN"
 
 
+@security
 @scenario("SCN-AUTHENTICATION-005-A")
 def test_bad_credentials_are_rejected_uniformly(server: Sut) -> None:
     """A wrong password and an unknown username answer the same 401, body and challenge."""
@@ -171,6 +184,7 @@ def test_bad_credentials_are_rejected_uniformly(server: Sut) -> None:
     )
 
 
+@alternate_flow
 @scenario("SCN-AUTHENTICATION-004-D")
 def test_a_login_by_email_address_succeeds(server: Sut, root_token: str) -> None:
     """The email address stored on an account authenticates it exactly as its username does."""
@@ -190,6 +204,7 @@ def test_a_login_by_email_address_succeeds(server: Sut, root_token: str) -> None
     assert set(json.loads(by_email.content)) == set(json.loads(by_username.content))
 
 
+@positive
 @scenario("SCN-AUTHENTICATION-004-A")
 def test_a_username_wins_over_another_accounts_email(server: Sut, root_token: str) -> None:
     """A value that is one account's username resolves as that username, never as another's email."""
@@ -215,6 +230,22 @@ def test_a_username_wins_over_another_accounts_email(server: Sut, root_token: st
     assert json.loads(profile.content)["id"] == json.loads(holder.content)["id"]
 
 
+@security
+@scenario("SCN-AUTHENTICATION-006-B")
+@pytest.mark.own_instance(reason="log_sink")
+def test_login_secrets_are_not_logged(sut: Sut) -> None:
+    """A valid login's password and the token it issues never reach a log file."""
+    server = start_instance(sut)
+    password = server.root_password()
+    token = login(server, ROOT_ADMIN_USERNAME, password)
+    server.stop()
+
+    logs = server.log_text()
+    assert password not in logs, "the submitted password reached a log file"
+    assert token not in logs, "the issued token reached a log file"
+
+
+@negative
 @scenario("SCN-AUTHENTICATION-008-A")
 @pytest.mark.own_instance(reason="process_state")
 def test_a_login_burst_is_throttled(sut: Sut) -> None:
@@ -228,6 +259,7 @@ def test_a_login_burst_is_throttled(sut: Sut) -> None:
     assert "Retry-After" in throttled.headers
 
 
+@boundary
 @scenario("SCN-AUTHENTICATION-008-B")
 @pytest.mark.own_instance(reason="process_state")
 def test_the_login_quota_refills(sut: Sut) -> None:
@@ -243,6 +275,7 @@ def test_the_login_quota_refills(sut: Sut) -> None:
     assert attempt(server, f"ghost-c{next(_ACCOUNTS)}").status_code == 401
 
 
+@security
 @scenario("SCN-AUTHENTICATION-008-C")
 @pytest.mark.own_instance(reason="process_state")
 @pytest.mark.slow
@@ -263,6 +296,7 @@ def test_a_client_address_header_cannot_mint_a_new_quota(sut: Sut) -> None:
     assert attempt(server, f"ghost-e{next(_ACCOUNTS)}", "203.0.113.4").status_code == 429
 
 
+@business_rule
 @scenario("SCN-AUTHENTICATION-008-D")
 @pytest.mark.own_instance(reason="process_state")
 @pytest.mark.slow
@@ -277,6 +311,7 @@ def test_one_account_is_throttled_across_addresses(sut: Sut) -> None:
     assert attempt(server, f"ghost-d{next(_ACCOUNTS)}", "203.0.113.3").status_code == 401
 
 
+@security
 @scenario("SCN-AUTHENTICATION-008-E")
 @pytest.mark.own_instance(reason="process_state")
 @pytest.mark.slow
@@ -298,6 +333,7 @@ def test_an_unknown_username_is_throttled_identically(sut: Sut) -> None:
     assert "Retry-After" in root_throttled.headers
 
 
+@security
 @scenario("SCN-AUTHENTICATION-008-F")
 @pytest.mark.own_instance(reason="process_state")
 @pytest.mark.slow
@@ -318,9 +354,9 @@ def test_an_unknown_email_is_throttled_identically(sut: Sut) -> None:
     assert "Retry-After" in ghost_throttled.headers
 
 
-@scenario("SCN-AUTHENTICATION-010-B")
-@scenario("SCN-AUTHENTICATION-010-C")
-@scenario("SCN-AUTHENTICATION-010-D")
+@scenario("SCN-AUTHENTICATION-010-B", TestType.SECURITY)
+@scenario("SCN-AUTHENTICATION-010-C", TestType.NEGATIVE)
+@scenario("SCN-AUTHENTICATION-010-D", TestType.NEGATIVE)
 def test_invalid_tokens_are_rejected(server: Sut) -> None:
     """A tampered signature, an expired token and a non-numeric subject each answer 401."""
     rejected = {
@@ -334,6 +370,7 @@ def test_invalid_tokens_are_rejected(server: Sut) -> None:
         assert response.status_code == 401, f"{reason} was accepted: {response.status_code} {response.content!r}"
 
 
+@business_rule
 @scenario("SCN-AUTHENTICATION-012-A")
 @scenario("SCN-AUTHENTICATION-013-C")
 @pytest.mark.own_instance(reason="process_state")
@@ -358,8 +395,10 @@ def test_rotation_and_regeneration_leave_issued_tokens_valid(sut: Sut) -> None:
     assert json.loads(response.content)["id"] == 0
 
 
+@positive
 @scenario("SCN-AUTHENTICATION-013-A")
 @scenario("SCN-AUTHENTICATION-013-B")
+@scenario("SCN-API-004-D", TestType.POSITIVE)
 def test_regenerating_a_token_keeps_the_caller(server: Sut, root_token: str) -> None:
     """Regeneration returns the login response shape and a token for the same user."""
     owner_id, owner = provision(server, root_token, f"tokenregen{next(_ACCOUNTS)}")
@@ -370,6 +409,7 @@ def test_regenerating_a_token_keeps_the_caller(server: Sut, root_token: str) -> 
     body = json.loads(response.content)
     assert {"access_token", "expires_in", "token_type"} <= set(body)
     assert body["token_type"] == "bearer"
+    assert body["_links"]["self"]["href"] == f"{API_PREFIX}/identity/token"
 
     regenerated = get_me.sync_detailed(client=server.client(body["access_token"]))
 
@@ -380,6 +420,7 @@ def test_regenerating_a_token_keeps_the_caller(server: Sut, root_token: str) -> 
 # A credential is identified by its own sequence: the Root Admin's is `1`, and on a fresh instance a created account's
 # is `user_id + 1`. Only that first inference holds on the shared instance, which is why the rotation cases keep their
 # own containers.
+@positive
 @scenario("SCN-AUTHENTICATION-014-A")
 @pytest.mark.own_instance(reason="process_state")
 def test_the_root_admin_rotates_its_own_credential(sut: Sut) -> None:
@@ -405,6 +446,7 @@ def test_the_root_admin_rotates_its_own_credential(sut: Sut) -> None:
     assert login(server, ROOT_ADMIN_USERNAME, new_password)
 
 
+@positive
 @scenario("SCN-AUTHENTICATION-014-B")
 @pytest.mark.own_instance(reason="process_state")
 def test_the_root_admin_rotates_another_users_credential(sut: Sut) -> None:
@@ -429,6 +471,20 @@ def test_the_root_admin_rotates_another_users_credential(sut: Sut) -> None:
     assert login(server, username, new_password)
 
 
+@negative
+@scenario("SCN-AUTHENTICATION-014-C")
+def test_an_unknown_credential_is_not_rotated(server: Sut, root_token: str) -> None:
+    """A rotation naming a credential that does not exist answers 404 and stores nothing."""
+    rotated = patch_credential.sync_detailed(
+        UNKNOWN_CREDENTIAL,
+        client=server.client(root_token),
+        body=PatchCredentialRequest(password="N3w!Secret"),
+    )
+
+    assert rotated.status_code == 404, f"rotation answered {rotated.status_code}: {rotated.content!r}"
+
+
+@security
 @scenario("SCN-AUTHENTICATION-014-D")
 @pytest.mark.own_instance(reason="process_state")
 def test_a_non_root_caller_cannot_rotate_a_credential(sut: Sut) -> None:
@@ -463,6 +519,7 @@ def test_a_non_root_caller_cannot_rotate_a_credential(sut: Sut) -> None:
         assert login(server, username, password)
 
 
+@negative
 @scenario("SCN-AUTHENTICATION-015-A")
 def test_a_rotation_that_fails_the_policy_changes_nothing(server: Sut, root_token: str) -> None:
     """A short or symbol-free password answers 422 and the old password still authenticates."""
@@ -479,6 +536,7 @@ def test_a_rotation_that_fails_the_policy_changes_nothing(server: Sut, root_toke
     assert login(server, ROOT_ADMIN_USERNAME, password)
 
 
+@positive
 @scenario("SCN-AUTHENTICATION-018-A")
 @pytest.mark.own_instance(reason="process_state")
 def test_a_compliant_password_is_accepted_at_rotation(sut: Sut) -> None:
@@ -504,6 +562,7 @@ def test_a_compliant_password_is_accepted_at_rotation(sut: Sut) -> None:
     assert login(server, ROOT_ADMIN_USERNAME, compliant)
 
 
+@positive
 @scenario("SCN-AUTHENTICATION-018-A")
 def test_a_compliant_password_is_accepted_at_creation(server: Sut, root_token: str) -> None:
     """A compliant password creates an account that authenticates with it."""
@@ -518,6 +577,7 @@ def test_a_compliant_password_is_accepted_at_creation(server: Sut, root_token: s
     assert login(server, username, SECRET_PASSWORD)
 
 
+@negative
 @scenario("SCN-AUTHENTICATION-018-B")
 @scenario("SCN-AUTHENTICATION-018-C")
 def test_a_short_or_symbol_free_password_is_rejected_at_creation(server: Sut, root_token: str) -> None:

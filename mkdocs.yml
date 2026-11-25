@@ -29,6 +29,7 @@ nav:
   - Development:
       - Overview: development/Overview.md
       - Technical Design: development/TechnicalDesign.md
+      - HTTP API implementation notes: development/HttpApi.md
       - Entity-relationship diagram: development/EntityRelationshipDiagram.md
       - Testing: development/Test.md
       - Dependency manifest: development/DependencyManifest.md

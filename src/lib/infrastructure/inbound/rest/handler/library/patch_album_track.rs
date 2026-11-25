@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -6,10 +6,10 @@ use utoipa::ToSchema;
 use crate::application::FieldUpdate;
 use crate::application::port::PatchAlbumTrackCommand;
 use crate::domain::NumericID;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     TrackResponse, deserialize_field_update, parse_album_id, parse_write_index,
 };
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
@@ -113,6 +113,7 @@ pub(crate) struct PatchAlbumTrackRequest {
     summary = "Edit the shared recording behind a track"
 )]
 pub(crate) async fn patch_album_track(
+    _query: Query<NoParametersQuery>,
     Path((album_id_value, medium_index_value, track_index_value)): Path<(String, String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

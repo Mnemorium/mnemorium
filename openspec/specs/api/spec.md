@@ -341,11 +341,6 @@ probe. The index SHALL be caller-independent and SHALL NOT list individual item 
 - **WHEN** a client follows the index's links
 - **THEN** it reaches the login and registration operations, each context's entry point and the liveness probe
 
-#### Scenario: SCN-API-015-C — A protected entry still authenticates
-
-- **WHEN** an unauthenticated client follows the index's link to a protected collection
-- **THEN** the system answers the `401 Unauthorized` envelope
-
 #### Scenario: SCN-API-015-D — The index is caller-independent
 
 - **WHEN** two callers with different permissions read the index
@@ -488,3 +483,28 @@ and apply nothing, so an ignored parameter never changes a response silently.
 
 - **WHEN** a request carries a query parameter the operation does not declare
 - **THEN** the system answers `400 Bad Request` and applies nothing
+
+### Requirement: REQ-API-023 — A protected endpoint requires a bearer token
+
+Every protected endpoint SHALL require `Authorization: Bearer <token>`.
+
+#### Scenario: SCN-API-023-A — A missing or invalid token cannot access a protected endpoint
+
+- **WHEN** a protected endpoint is called without a valid Bearer token
+- **THEN** the system answers `401 Unauthorized` and applies nothing
+
+### Requirement: REQ-API-024 — A declared constraint is enforced
+
+A constraint attribute a parameter or a `#[schema(...)]` model property declares SHALL be enforced by the handler or use
+case: a value that violates it SHALL answer `422 Unprocessable Content`, or the attribute SHALL NOT be declared.
+
+#### Scenario: SCN-API-024-A — A parameter outside its bound is refused
+
+- **WHEN** a request carries a path or query value outside the bound its declaration states
+- **THEN** the system answers `422 Unprocessable Content` and applies nothing
+
+#### Scenario: SCN-API-024-B — A property outside its bound is refused
+
+- **WHEN** a body property violates the `minimum`, `maximum`, `min_length`, `max_length` or `pattern` its schema
+  declares
+- **THEN** the system answers `422 Unprocessable Content` and applies nothing

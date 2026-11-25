@@ -1,9 +1,10 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, Method};
 use axum::response::Response;
 
 use crate::application::port::AssetTarget;
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::asset::{
     AssetContent, asset_content_response, content_command, parse_asset_id,
 };
@@ -111,6 +112,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
     summary = "Read the content of a typed image"
 )]
 pub(crate) async fn get_image_content(
+    _query: Query<NoParametersQuery>,
     Path(image_id_value): Path<String>,
     State(state): State<AppState>,
     method: Method,

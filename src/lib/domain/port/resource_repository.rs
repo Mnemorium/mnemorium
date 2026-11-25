@@ -89,6 +89,15 @@ pub(crate) trait ResourceRepository: Send + Sync {
         addresses: &[ResourceRef],
         caller: &User,
     ) -> impl Future<Output = Result<Vec<ResourceAccess>, RepositoryError>> + Send;
+
+    /// Replace the visibility of the resource addressed by `address`.
+    ///
+    /// Returns whether a stored row matched; a missing row is a valid outcome.
+    fn set_visibility(
+        &mut self,
+        address: ResourceRef,
+        visibility: Visibility,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 }
 
 /// A resource to create together with its authorization parent.
@@ -153,5 +162,13 @@ impl<T: ResourceRepository + ?Sized> ResourceRepository for &mut T {
         caller: &User,
     ) -> impl Future<Output = Result<Vec<ResourceAccess>, RepositoryError>> + Send {
         (**self).search_many(addresses, caller)
+    }
+
+    fn set_visibility(
+        &mut self,
+        address: ResourceRef,
+        visibility: Visibility,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).set_visibility(address, visibility)
     }
 }

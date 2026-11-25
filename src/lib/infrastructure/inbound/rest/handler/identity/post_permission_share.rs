@@ -1,10 +1,11 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
 use crate::application::port::ShareResourceCommand;
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::identity::{
     GrantBody, PrincipalPayload, ResourceKindWire, ShareRoleWire, parse_address, parse_share_role,
 };
@@ -88,6 +89,7 @@ pub(crate) struct ShareRequest {
     summary = "Share a resource with a user"
 )]
 pub(crate) async fn post_permission_share(
+    _query: Query<NoParametersQuery>,
     Path((kind, id)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

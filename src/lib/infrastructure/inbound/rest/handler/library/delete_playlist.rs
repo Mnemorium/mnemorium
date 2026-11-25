@@ -1,9 +1,10 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse as _, Response};
 
 use crate::application::port::DeletePlaylistCommand;
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::library::parse_playlist_id;
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
@@ -64,6 +65,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
     summary = "Delete a music playlist"
 )]
 pub(crate) async fn delete_playlist(
+    _query: Query<NoParametersQuery>,
     Path(playlist_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

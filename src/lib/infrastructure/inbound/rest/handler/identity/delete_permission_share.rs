@@ -1,9 +1,10 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse as _, Response};
 
 use crate::application::port::RevokeShareCommand;
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::identity::{ResourceKindWire, parse_address};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
@@ -67,6 +68,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
     summary = "Revoke a shared grant"
 )]
 pub(crate) async fn delete_permission_share(
+    _query: Query<NoParametersQuery>,
     Path((kind, id, grant_id)): Path<(String, String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
