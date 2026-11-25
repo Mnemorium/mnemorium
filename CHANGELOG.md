@@ -1,3 +1,9 @@
+## [0.39.3](https://github.com/Mnemorium/mnemorium/compare/v0.39.2...v0.39.3) (2026-11-25)
+
+### Bug Fixes
+
+* **application:** prove cover art and keep removed gallery files addressable ([#425](https://github.com/Mnemorium/mnemorium/issues/425)) ([4222ce1](https://github.com/Mnemorium/mnemorium/commit/4222ce167a9e949463ad9758e5c641e027503a1e))
+
 ## [0.39.2](https://github.com/Mnemorium/mnemorium/compare/v0.39.1...v0.39.2) (2026-11-20)
 
 ### Bug Fixes
