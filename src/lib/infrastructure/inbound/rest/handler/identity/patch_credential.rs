@@ -1,5 +1,5 @@
 use axum::extract::rejection::PathRejection;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use serde::Deserialize;
@@ -7,7 +7,7 @@ use utoipa::ToSchema;
 
 use crate::application::port::{PatchCredentialCommand, PatchCredentialError};
 use crate::domain::NumericID;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
 
@@ -112,6 +112,7 @@ impl From<PatchCredentialError> for ApiError {
     summary = "Change the password behind a credential"
 )]
 pub(crate) async fn patch_credential(
+    _query: Query<NoParametersQuery>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     credential_path: Result<Path<NumericID>, PathRejection>,

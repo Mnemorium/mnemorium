@@ -1,13 +1,13 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 
 use crate::application::port::ApplySeriesEpisodeCommand;
 use crate::domain::NumericID;
 use crate::domain::model::{ExternalRef, ProviderId};
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     EpisodeResponse, VideoApplyRequest, parse_episode_index, parse_season_index, parse_series_id,
 };
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
@@ -97,6 +97,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
     summary = "Apply external metadata to an episode"
 )]
 pub(crate) async fn post_series_episode_apply(
+    _query: Query<NoParametersQuery>,
     Path((series_id_value, season_index_value, episode_index_value)): Path<(
         String,
         String,

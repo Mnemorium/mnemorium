@@ -1,8 +1,0 @@
----
-id: api-040
-language: Rust
-severity: hint
-message: >-
-  extract the path argument of the single error-envelope builder for API-040
-rule:
-  pattern: error_response($STATUS, $MESSAGE, $PATH)

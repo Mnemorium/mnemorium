@@ -1,7 +1,7 @@
 # Dependency manifest
 
 The direct dependencies of this project, grouped by source. The CI rules that keep them resolvable and trustworthy —
-`DEPS-001`–`DEPS-004` — are in [TechnicalDesign.md](TechnicalDesign.md) § 6 (Dependencies & Dev Environment). Update the
+`DEPS-001`–`DEPS-004` — are in [TechnicalDesign.md](TechnicalDesign.md) § 5 (Dependencies & Dev Environment). Update the
 tables when a dependency is added, removed or upgraded; transitive dependencies are out of scope (the lockfiles and
 `cargo audit` cover those).
 

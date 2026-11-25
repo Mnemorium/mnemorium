@@ -175,41 +175,34 @@ RULES=(
 	"OBS-006:check_obs_006"
 	"OBS-007:check_obs_007"
 	"OBS-008:check_obs_008"
-	"API-001:check_api_001"
-	"API-002:check_api_002"
-	"API-003:check_api_003"
-	"API-004:check_api_004"
-	"API-005:check_api_005"
-	"API-006:check_api_006"
-	"API-007:check_api_007"
-	"API-008:check_api_008"
-	"API-009:check_api_009"
-	"API-010:check_api_010"
-	"API-011:check_api_011"
-	"API-012:check_api_012"
-	"API-013:check_api_013"
-	"API-014:check_api_014"
-	"API-015:check_api_015"
-	"API-019:check_api_019"
-	"API-020:check_api_020"
-	"API-021:check_api_021"
-	"API-022:check_api_022"
-	"API-023:check_api_023"
-	"API-024:check_api_024"
-	"API-025:check_api_025"
-	"API-027:check_api_027"
-	"API-028:check_api_028"
-	"API-029:check_api_029"
-	"API-030:check_api_030"
-	"API-031:check_api_031"
-	"API-032:check_api_032"
-	"API-033:check_api_033"
-	"API-034:check_api_034"
-	"API-035:check_api_035"
-	"API-036:check_api_036"
-	"API-037:check_api_037"
-	"API-038:check_api_038"
-	"API-040:check_api_040"
+	"STY-RUST-091:check_sty_rust_091"
+	"STY-RUST-092:check_sty_rust_092"
+	"STY-RUST-093:check_sty_rust_093"
+	"STY-RUST-094:check_sty_rust_094"
+	"STY-RUST-095:check_sty_rust_095"
+	"STY-RUST-096:check_sty_rust_096"
+	"STY-RUST-097:check_sty_rust_097"
+	"STY-RUST-098:check_sty_rust_098"
+	"STY-RUST-099:check_sty_rust_099"
+	"STY-RUST-100:check_sty_rust_100"
+	"STY-RUST-101:check_sty_rust_101"
+	"STY-RUST-102:check_sty_rust_102"
+	"STY-RUST-103:check_sty_rust_103"
+	"STY-RUST-104:check_sty_rust_104"
+	"STY-RUST-105:check_sty_rust_105"
+	"STY-RUST-109:check_sty_rust_109"
+	"STY-RUST-110:check_sty_rust_110"
+	"STY-RUST-111:check_sty_rust_111"
+	"STY-RUST-112:check_sty_rust_112"
+	"STY-RUST-113:check_sty_rust_113"
+	"STY-RUST-114:check_sty_rust_114"
+	"STY-RUST-115:check_sty_rust_115"
+	"STY-RUST-117:check_sty_rust_117"
+	"STY-RUST-118:check_sty_rust_118"
+	"STY-RUST-119:check_sty_rust_119"
+	"STY-RUST-120:check_sty_rust_120"
+	"STY-RUST-121:check_sty_rust_121"
+	"STY-RUST-122:check_sty_rust_122"
 )
 
 # --- Rulebook ---------------------------------------------------------------
@@ -3791,6 +3784,7 @@ import sys
 rule = sys.argv[1]
 identifier = re.compile(r"^SCN-[A-Z0-9-]+-\d{3}-[A-Z]$")
 types = {"POSITIVE", "NEGATIVE", "BOUNDARY", "SECURITY", "ERROR_HANDLING", "RECOVERY", "ALTERNATE_FLOW", "BUSINESS_RULE"}
+case_types = {"positive", "negative", "boundary", "security", "error_handling", "recovery", "alternate_flow", "business_rule"}
 problems = []
 
 
@@ -3803,12 +3797,23 @@ def is_scenario(node):
     )
 
 
+def case_type(node):
+    if isinstance(node, ast.Name) and node.id in case_types:
+        return node.id
+    if isinstance(node, ast.Attribute) and node.attr in case_types:
+        return node.attr
+    return None
+
+
 for path in sorted(pathlib.Path("test/system").glob("*.py")):
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for node in tree.body:
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.name.startswith("test_"):
             continue
         declared = 0
+        kinds = [kind for decorator in node.decorator_list if (kind := case_type(decorator)) is not None]
+        if len(set(kinds)) > 1:
+            problems.append(f"{path}:{node.lineno}: {node.name} declares more than one case-level type")
         for decorator in node.decorator_list:
             if not is_scenario(decorator):
                 continue
@@ -3819,6 +3824,8 @@ for path in sorted(pathlib.Path("test/system").glob("*.py")):
                 continue
             if not identifier.fullmatch(arguments[0].value):
                 problems.append(f"{path}:{decorator.lineno}: {node.name} cites {arguments[0].value!r}, not SCN-<capability>-<number>-<letter>")
+            if decorator.keywords:
+                problems.append(f"{path}:{decorator.lineno}: {node.name} passes a keyword argument to @scenario")
             if len(arguments) > 2:
                 problems.append(f"{path}:{decorator.lineno}: {node.name} passes more than an identifier and a type")
             elif len(arguments) == 2:
@@ -3826,7 +3833,8 @@ for path in sorted(pathlib.Path("test/system").glob("*.py")):
                 if not isinstance(kind, ast.Attribute) or kind.attr not in types:
                     problems.append(f"{path}:{decorator.lineno}: {node.name} declares a type outside the closed set")
         if declared == 0:
-            problems.append(f"{path}:{node.lineno}: {node.name} declares no scenario")
+            detail = " declares a case-level type but no scenario" if kinds else " declares no scenario"
+            problems.append(f"{path}:{node.lineno}: {node.name}{detail}")
 
 for problem in problems:
     print(f"error: {rule}: {problem}", file=sys.stderr)
@@ -4640,12 +4648,12 @@ check_test_046() {
 	scan_short TEST-046 "src/lib/infrastructure/use_case_factory" "src/lib/infrastructure/outbound/sqlx/unit_of_work.rs"
 }
 
-# check_api_001 — every REST handler is annotated with `#[utoipa::path(...)]` (API-001).
-check_api_001() { need_dir "API-001" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-001 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_091 — every REST handler is annotated with `#[utoipa::path(...)]` (STY-RUST-091).
+check_sty_rust_091() { need_dir "STY-RUST-091" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-091 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_002 — the document-scoped members are aggregated in one struct deriving `utoipa::OpenApi`, while `utoipa-axum` collects each registered route's path item and schemas (TechnicalDesign.md § API, API-002). api-002 extracts that struct and its `#[openapi(...)]` attribute; the clause and uniqueness decisions happen here because an ast-grep rule cannot assert sub-blocks inside one attribute, nor count declarations.
-check_api_002() {
-	local id="API-002"
+# check_sty_rust_092 — the document-scoped members are aggregated in one struct deriving `utoipa::OpenApi`, while `utoipa-axum` collects each registered route's path item and schemas (TechnicalDesign.md § API, STY-RUST-092). sty-rust-092 extracts that struct and its `#[openapi(...)]` attribute; the clause and uniqueness decisions happen here because an ast-grep rule cannot assert sub-blocks inside one attribute, nor count declarations.
+check_sty_rust_092() {
+	local id="STY-RUST-092"
 	local surface="src"
 	local matches aggregators aggregator_count file text result=0
 	local -A aggregator_file=()
@@ -4708,15 +4716,15 @@ check_api_002() {
 	return "$result"
 }
 
-check_api_003() {
-	local id="API-003"
+check_sty_rust_093() {
+	local id="STY-RUST-093"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file line value result=0
 	local -A seen=()
 
 	need_dir "$id" "$handler_dir" || return 1
 
-	# api-003 extracts each `#[utoipa::path(...)]` attribute of the handler tree; presence and uniqueness of its operation_id are compared here because an ast-grep rule cannot relate two matches.
+	# sty-rust-093 extracts each `#[utoipa::path(...)]` attribute of the handler tree; presence and uniqueness of its operation_id are compared here because an ast-grep rule cannot relate two matches.
 	matches="$(scan_json "$id" "$handler_dir")" || return 1
 	require_matches "$id" "#[utoipa::path] attribute from $handler_dir" "$matches" || return 1
 
@@ -4743,21 +4751,21 @@ check_api_003() {
 	return "$result"
 }
 
-# check_api_004 — every endpoint handler's `#[utoipa::path(...)]` declares the HTTP method (`get`/`post`/`put`/`patch`/`delete`) as the bare method token (TechnicalDesign.md API-004).
-check_api_004() { need_dir "API-004" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-004 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_094 — every endpoint handler's `#[utoipa::path(...)]` declares the HTTP method (`get`/`post`/`put`/`patch`/`delete`) as the bare method token (TechnicalDesign.md STY-RUST-094).
+check_sty_rust_094() { need_dir "STY-RUST-094" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-094 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_005 — every endpoint handler annotation declares `path`, the route of the endpoint (API-005).
-check_api_005() { need_dir "API-005" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-005 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_095 — every endpoint handler annotation declares `path`, the route of the endpoint (STY-RUST-095).
+check_sty_rust_095() { need_dir "STY-RUST-095" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-095 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_006 — every endpoint's `#[utoipa::path]` attribute declares `tag`, the bounded context the endpoint belongs to (API-006).
-check_api_006() {
-	local id="API-006"
+# check_sty_rust_096 — every endpoint's `#[utoipa::path]` attribute declares `tag`, the bounded context the endpoint belongs to (STY-RUST-096).
+check_sty_rust_096() {
+	local id="STY-RUST-096"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file text tag rel expected result=0
 
 	need_dir "$id" "$handler_dir" || return 1
 
-	# api-006 extracts each endpoint's `#[utoipa::path]` attribute; the attribute text carries the declared keys.
+	# sty-rust-096 extracts each endpoint's `#[utoipa::path]` attribute; the attribute text carries the declared keys.
 	matches="$(scan_json "$id" "$handler_dir")" || return 1
 	require_matches "$id" "endpoint from $handler_dir" "$matches" || return 1
 
@@ -4791,15 +4799,15 @@ check_api_006() {
 	return "$result"
 }
 
-# check_api_007 — an endpoint whose handler extracts a request body declares `request_body` in its `#[utoipa::path(...)]` annotation (TechnicalDesign.md § API, API-007).
-check_api_007() { need_dir "API-007" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-007 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_097 — an endpoint whose handler extracts a request body declares `request_body` in its `#[utoipa::path(...)]` annotation (TechnicalDesign.md § API, STY-RUST-097).
+check_sty_rust_097() { need_dir "STY-RUST-097" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-097 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_008 — an endpoint that carries a path, query, header or cookie parameter declares it in `params(...)` inside its `#[utoipa::path(...)]` (TechnicalDesign.md § API, API-008). api-008 matches a `#[utoipa::path]` annotation that omits `params(...)` while the route template names a path parameter (`{name}`) or the handler signature extracts one through `Path`/`Query`/`HeaderMap`/`TypedHeader`/`Cookie`.
-check_api_008() { need_dir "API-008" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-008 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_098 — an endpoint that carries a path, query, header or cookie parameter declares it in `params(...)` inside its `#[utoipa::path(...)]` (TechnicalDesign.md § API, STY-RUST-098). sty-rust-098 matches a `#[utoipa::path]` annotation that omits `params(...)` while the route template names a path parameter (`{name}`) or the handler signature extracts one through `Path`/`Query`/`HeaderMap`/`TypedHeader`/`Cookie`.
+check_sty_rust_098() { need_dir "STY-RUST-098" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-098 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_009 — every endpoint handler annotation declares `responses(...)` with at least one status row and at most one row per status code (TechnicalDesign.md § API, API-009). api-009 extracts each `#[utoipa::path(...)]` attribute of the handler tree; the presence of `responses(...)` and the one-row-per-status-code comparison happen here because an ast-grep rule cannot relate two matches inside one attribute token tree.
-check_api_009() {
-	local id="API-009"
+# check_sty_rust_099 — every endpoint handler annotation declares `responses(...)` with at least one status row and at most one row per status code (TechnicalDesign.md § API, STY-RUST-099). sty-rust-099 extracts each `#[utoipa::path(...)]` attribute of the handler tree; the presence of `responses(...)` and the one-row-per-status-code comparison happen here because an ast-grep rule cannot relate two matches inside one attribute token tree.
+check_sty_rust_099() {
+	local id="STY-RUST-099"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file line block body statuses dups result=0
 
@@ -4873,18 +4881,18 @@ check_api_009() {
 	return "$result"
 }
 
-# check_api_010 — every operation declares its security requirement (API-010). api-010 reports an `#[utoipa::path(...)]` attribute whose `security` is absent or is not one of the two sanctioned requirements.
-check_api_010() { need_dir "API-010" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-010 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_100 — every operation declares its security requirement (STY-RUST-100). sty-rust-100 reports an `#[utoipa::path(...)]` attribute whose `security` is absent or is not one of the two sanctioned requirements.
+check_sty_rust_100() { need_dir "STY-RUST-100" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-100 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_011 — every endpoint handler declares `summary`, a one-line human-readable summary, in its `#[utoipa::path(...)]` annotation (TechnicalDesign.md § API, API-011). api-011 matches a `#[utoipa::path]` attribute that carries no top-level `summary` key.
-check_api_011() { need_dir "API-011" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-011 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_101 — every endpoint handler declares `summary`, a one-line human-readable summary, in its `#[utoipa::path(...)]` annotation (TechnicalDesign.md § API, STY-RUST-101). sty-rust-101 matches a `#[utoipa::path]` attribute that carries no top-level `summary` key.
+check_sty_rust_101() { need_dir "STY-RUST-101" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-101 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_012 — every parameter declared as an inline tuple inside `params(...)` in a `#[utoipa::path(...)]` attribute carries `name`, the parameter name as it appears in the URL, header or cookie (TechnicalDesign.md § API, API-012). api-012 matches a parameter tuple whose first element is not a string literal; `params(<IntoParams>)` names its parameters through the struct's fields and is not an inline tuple.
-check_api_012() { need_dir "API-012" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-012 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_102 — every parameter declared as an inline tuple inside `params(...)` in a `#[utoipa::path(...)]` attribute carries `name`, the parameter name as it appears in the URL, header or cookie (TechnicalDesign.md § API, STY-RUST-102). sty-rust-102 matches a parameter tuple whose first element is not a string literal; `params(<IntoParams>)` names its parameters through the struct's fields and is not an inline tuple.
+check_sty_rust_102() { need_dir "STY-RUST-102" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-102 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_013 — every inline parameter declared by a `#[utoipa::path(...)]` annotation names its location (API-013).
-check_api_013() {
-	local id="API-013"
+# check_sty_rust_103 — every inline parameter declared by a `#[utoipa::path(...)]` annotation names its location (STY-RUST-103).
+check_sty_rust_103() {
+	local id="STY-RUST-103"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file line b64 text name location tuples=0 result=0
 
@@ -4959,32 +4967,32 @@ check_api_013() {
 	return "$result"
 }
 
-# check_api_014 — an inline parameter in `params(...)` writes its Rust type as `= Type` immediately after the name: the binding is introduced by `=`, never by `:` or a bare element (TechnicalDesign.md § API, API-014). api-014 matches a parameter tuple whose quoted name is followed by anything other than `=` or the element separator, so a type written some other way is reported.
-check_api_014() { need_dir "API-014" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-014 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_104 — an inline parameter in `params(...)` writes its Rust type as `= Type` immediately after the name: the binding is introduced by `=`, never by `:` or a bare element (TechnicalDesign.md § API, STY-RUST-104). sty-rust-104 matches a parameter tuple whose quoted name is followed by anything other than `=` or the element separator, so a type written some other way is reported.
+check_sty_rust_104() { need_dir "STY-RUST-104" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-104 "src/lib/infrastructure/inbound/rest/handler"; }
 
-check_api_015() { scan_short API-015 src; }
+check_sty_rust_105() { scan_short STY-RUST-105 src; }
 
-# check_api_019 — a `request_body(...)` block in a `#[utoipa::path(...)]` annotation declares `content_type`, the media type of the body (TechnicalDesign.md § API, API-019). api-019 matches a request_body token tree that carries no `content_type`; the media type must be read from the request body, never from a `responses(...)` row.
-check_api_019() { need_dir "API-019" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-019 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_109 — a `request_body(...)` block in a `#[utoipa::path(...)]` annotation declares `content_type`, the media type of the body (TechnicalDesign.md § API, STY-RUST-109). sty-rust-109 matches a request_body token tree that carries no `content_type`; the media type must be read from the request body, never from a `responses(...)` row.
+check_sty_rust_109() { need_dir "STY-RUST-109" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-109 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_020 — a `request_body(...)` declaration names the schema of the body (TechnicalDesign.md § API, API-020).
-check_api_020() { need_dir "API-020" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-020 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_110 — a `request_body(...)` declaration names the schema of the body (TechnicalDesign.md § API, STY-RUST-110).
+check_sty_rust_110() { need_dir "STY-RUST-110" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-110 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_021 — every response declared inside a handler's `responses(...)` must name its HTTP `status` (API-021).
-check_api_021() { scan_short API-021 src; }
+# check_sty_rust_111 — every response declared inside a handler's `responses(...)` must name its HTTP `status` (STY-RUST-111).
+check_sty_rust_111() { scan_short STY-RUST-111 src; }
 
-# check_api_022 — every response declared by a `responses(...)` entry in a `#[utoipa::path(...)]` annotation carries `description`, a human-readable description (TechnicalDesign.md § API, API-022). api-022 matches a response entry token tree that declares no top-level `description`; a `description` nested in `headers(...)`/`content(...)` or a `"description"` string inside an `example` does not satisfy it.
-check_api_022() { need_dir "API-022" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-022 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_112 — every response declared by a `responses(...)` entry in a `#[utoipa::path(...)]` annotation carries `description`, a human-readable description (TechnicalDesign.md § API, STY-RUST-112). sty-rust-112 matches a response entry token tree that declares no top-level `description`; a `description` nested in `headers(...)`/`content(...)` or a `"description"` string inside an `example` does not satisfy it.
+check_sty_rust_112() { need_dir "STY-RUST-112" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-112 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_023 — a response row that declares a payload media type declares the schema of that payload (TechnicalDesign.md § API, API-023). api-023 matches a row inside a `responses(...)` group that carries a `content_type` but no `body`; a row without a media type (a `NO_CONTENT` response) carries no payload and is out of scope.
-check_api_023() { need_dir "API-023" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-023 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_113 — a response row that declares a payload media type declares the schema of that payload (TechnicalDesign.md § API, STY-RUST-113). sty-rust-113 matches a row inside a `responses(...)` group that carries a `content_type` but no `body`; a row without a media type (a `NO_CONTENT` response) carries no payload and is out of scope.
+check_sty_rust_113() { need_dir "STY-RUST-113" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-113 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_024 — a response in a `#[utoipa::path(...)]` annotation that declares a payload declares the payload media type (TechnicalDesign.md § API, API-024). api-024 matches a response row of `responses(...)` that carries a `body` identifier and no `content_type` identifier; a bodyless row, and a `content(...)` entry that names its media type as the entry key, are not matched.
-check_api_024() { need_dir "API-024" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-024 "src/lib/infrastructure/inbound/rest/handler"; }
+# check_sty_rust_114 — a response in a `#[utoipa::path(...)]` annotation that declares a payload declares the payload media type (TechnicalDesign.md § API, STY-RUST-114). sty-rust-114 matches a response row of `responses(...)` that carries a `body` identifier and no `content_type` identifier; a bodyless row, and a `content(...)` entry that names its media type as the entry key, are not matched.
+check_sty_rust_114() { need_dir "STY-RUST-114" "src/lib/infrastructure/inbound/rest/handler" && scan_short STY-RUST-114 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_025 — every response header a handler sets at runtime is declared in the endpoint's `#[utoipa::path]` `headers(...)` (TechnicalDesign.md § API, API-025). api-025 extracts each `#[utoipa::path]` attribute and each response-header insert (`...headers_mut().insert(header::CONST, ...)` / `headers.insert(header::CONST, ...)`); pairing the constant with the name a `headers(...)` block declares happens here because an ast-grep rule cannot relate two matches, and because the names are compared case-insensitively (HTTP header names are).
-check_api_025() {
-	local id="API-025"
+# check_sty_rust_115 — every response header a handler sets at runtime is declared in the endpoint's `#[utoipa::path]` `headers(...)` (TechnicalDesign.md § API, STY-RUST-115). sty-rust-115 extracts each `#[utoipa::path]` attribute and each response-header insert (`...headers_mut().insert(header::CONST, ...)` / `headers.insert(header::CONST, ...)`); pairing the constant with the name a `headers(...)` block declares happens here because an ast-grep rule cannot relate two matches, and because the names are compared case-insensitively (HTTP header names are).
+check_sty_rust_115() {
+	local id="STY-RUST-115"
 	local handler_dir="${1:-src/lib/infrastructure/inbound/rest/handler}"
 	local matches file text const name names result=0
 	local -A declared_by=()
@@ -5058,9 +5066,9 @@ check_api_025() {
 	return "$result"
 }
 
-# check_api_027 — every handler's `responses(...)` declares the success case and every error status the handler can return (TechnicalDesign.md § API, API-027). api-027 extracts each `#[utoipa::path]` attribute, each `impl ... for ApiError` mapping and each `ApiError::Variant` value a handler constructs; the variant-to-status table is read from `api_error.rs`'s exhaustive `status_and_message` match, and the per-file comparison happens here because an ast-grep rule cannot relate two matches or read a second file.
-check_api_027() {
-	local id="API-027"
+# check_sty_rust_117 — every handler's `responses(...)` declares the success case and every error status the handler can return (TechnicalDesign.md § API, STY-RUST-117). sty-rust-117 extracts each `#[utoipa::path]` attribute, each `impl ... for ApiError` mapping and each `ApiError::Variant` value a handler constructs; the variant-to-status table is read from `api_error.rs`'s exhaustive `status_and_message` match, and the per-file comparison happens here because an ast-grep rule cannot relate two matches or read a second file.
+check_sty_rust_117() {
+	local id="STY-RUST-117"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local api_error="src/lib/infrastructure/inbound/rest/api_error.rs"
 	local matches file payload kind variant status declared result=0
@@ -5142,7 +5150,7 @@ check_api_027() {
 			esac
 		done
 		# A redirect endpoint's success is `303 See Other`, so it is the success
-		# row API-027 requires; every other endpoint answers a 2xx.
+		# row STY-RUST-117 requires; every other endpoint answers a 2xx.
 		if ! printf '%s\n' "$declared" |
 			grep -qE ' (OK|CREATED|ACCEPTED|NO_CONTENT|PARTIAL_CONTENT|SEE_OTHER|20[0-9]) '; then
 			printf 'error: %s: %s: responses(...) declares no success (2xx) row\n' \
@@ -5154,102 +5162,9 @@ check_api_027() {
 	return "$result"
 }
 
-check_api_028() {
-	local id="API-028"
-	local matches body file line result=0
-	local -a bodies=()
-	local -A non_hal=()
-
-	# The bodies that are not HAL responses — token issues and liveness probes — keep their plain `application/json` representation (§ HAL payload guidelines).
-	config_list "$id" non_hal_bodies bodies || return 2
-	for body in "${bodies[@]}"; do
-		non_hal["$body"]=1
-	done
-
-	# api-028 extracts every response entry that carries a body but does not declare the HAL media type; excluding the allowlisted non-HAL bodies happens here because an ast-grep rule cannot read rule_enforcer.yaml.
-	matches="$(scan_json "$id" src)" || return 1
-	[ -n "$matches" ] || return 0
-
-	while IFS=$'\t' read -r file line body; do
-		[ -n "$file" ] || continue
-		if [ -z "${non_hal[$body]+set}" ]; then
-			printf 'error: %s: %s:%s: response body %s is not served as application/hal+json; declare content_type = "application/hal+json" or list %s in non_hal_bodies\n' \
-				"$id" "$file" "$line" "$body" "$body" >&2
-			result=1
-		fi
-	done < <(printf '%s\n' "$matches" |
-		jq -r '[.file, ((.range.start.line + 1) | tostring),
-			(.text | capture("\\bbody\\s*=\\s*(?<b>[A-Za-z_][A-Za-z0-9_]*)")?.b // "?")] | @tsv')
-
-	return "$result"
-}
-
-# check_api_029 — every resource representation carries `_links.self` (TechnicalDesign.md § HAL payload guidelines, API-029). api-029 extracts each response row of a `#[utoipa::path]` annotation and each serde-renamed `_links` or `self` struct field.
-check_api_029() {
-	local id="API-029"
-	local target="${1:-src/lib/infrastructure/inbound/rest}"
-	local matches file text rep rename ty body result=0
-	local -A links_type=()
-	local -A has_self=()
-	local -A is_rep=()
-
-	need_dir "$id" "$target" || return 1
-
-	matches="$(scan_json "$id" "$target")" || return 1
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no HAL response row or serde-renamed field from %s\n' \
-			"$id" "$target" >&2
-		return 1
-	fi
-
-	while IFS=$'\t' read -r rep rename ty; do
-		[ -n "$rep" ] || continue
-		if [ "$rename" = '"self"' ]; then
-			has_self["$rep"]=1
-		else
-			links_type["$rep"]="$ty"
-		fi
-	done < <(printf '%s\n' "$matches" |
-		jq -r 'select(.metaVariables.single.REP) |
-			[.metaVariables.single.REP.text,
-			 .metaVariables.single.RENAME.text,
-			 .metaVariables.single.TYPE.text] | @tsv')
-
-	while IFS=$'\t' read -r file text; do
-		[ -n "$file" ] || continue
-		printf '%s' "$text" | grep -q 'application/hal+json' || continue
-		body="$(printf '%s' "$text" |
-			sed -nE 's/.*[^_a-z]body = ([A-Za-z0-9_]+).*/\1/p')"
-		[ -n "$body" ] || continue
-		[ "$body" = "ErrorBody" ] && continue
-		is_rep["$body"]=1
-	done < <(printf '%s\n' "$matches" |
-		jq -r 'select(.metaVariables.single.REP | not) |
-			[.file, (.text | gsub("\\s+"; " "))] | @tsv')
-
-	for rep in "${!is_rep[@]}"; do
-		if [ -z "${links_type[$rep]+set}" ]; then
-			printf 'error: %s: representation %s declares no _links field\n' \
-				"$id" "$rep" >&2
-			result=1
-		fi
-	done
-
-	for rep in "${!links_type[@]}"; do
-		ty="${links_type[$rep]}"
-		if [ -z "${has_self[$ty]+set}" ]; then
-			printf 'error: %s: %s._links (%s) declares no self member\n' \
-				"$id" "$rep" "$ty" >&2
-			result=1
-		fi
-	done
-
-	return "$result"
-}
-
-# check_api_030 — a HAL representation keeps its business data at the root of the payload, beside `_links` (TechnicalDesign.md § API, API-030; detail § HAL payload guidelines).
-check_api_030() {
-	local id="API-030"
+# check_sty_rust_118 — a HAL representation keeps its business data at the root of the payload, beside `_links` (TechnicalDesign.md § API, STY-RUST-118; detail § HAL payload guidelines).
+check_sty_rust_118() {
+	local id="STY-RUST-118"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local file line b64 text key name result=0
 	local -a wrapper_keys=()
@@ -5258,7 +5173,7 @@ check_api_030() {
 
 	config_list "$id" wrapper_keys wrapper_keys || return 2
 
-	# api-030 extracts each HAL representation struct; the wrapper-key comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
+	# sty-rust-118 extracts each HAL representation struct; the wrapper-key comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
 	matches="$(scan_json "$id" "$surface")" || return 1
 	if [ -z "$matches" ]; then
 		printf 'error: %s: extracted no HAL representation struct from %s\n' "$id" "$surface" >&2
@@ -5306,9 +5221,9 @@ check_api_030() {
 	return "$result"
 }
 
-# check_api_031 — `_links` is reserved for navigation and related resources (TechnicalDesign.md § API, API-031; detail § HAL payload guidelines).
-check_api_031() {
-	local id="API-031"
+# check_sty_rust_119 — `_links` is reserved for navigation and related resources (TechnicalDesign.md § API, STY-RUST-119; detail § HAL payload guidelines).
+check_sty_rust_119() {
+	local id="STY-RUST-119"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local matches rep ty member result=0
 	local -A links_type=()
@@ -5316,7 +5231,7 @@ check_api_031() {
 
 	need_dir "$id" "$surface" || return 1
 
-	# api-031 extracts each `_links` field and every struct field; the type-to-members resolution happens here because an ast-grep rule cannot relate two matches.
+	# sty-rust-119 extracts each `_links` field and every struct field; the type-to-members resolution happens here because an ast-grep rule cannot relate two matches.
 	matches="$(scan_json "$id" "$surface")" || return 1
 	if [ -z "$matches" ]; then
 		printf 'error: %s: extracted no HAL links field from %s\n' "$id" "$surface" >&2
@@ -5366,9 +5281,9 @@ check_api_031() {
 	return "$result"
 }
 
-# check_api_032 — a HAL payload does not use `_embedded` (TechnicalDesign.md § API, API-032; detail § HAL payload guidelines).
-check_api_032() {
-	local id="API-032"
+# check_sty_rust_120 — a HAL payload does not use `_embedded` (TechnicalDesign.md § API, STY-RUST-120; detail § HAL payload guidelines).
+check_sty_rust_120() {
+	local id="STY-RUST-120"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local config matches file line item location result=0
 	local -A allowed=()
@@ -5381,7 +5296,7 @@ check_api_032() {
 		allowed["$location"]=1
 	done < <(jq -r '.allowed_locations[]?' <<<"$config")
 
-	# api-032 extracts every `_embedded` use together with its enclosing struct or function; the waiver comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
+	# sty-rust-120 extracts every `_embedded` use together with its enclosing struct or function; the waiver comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
 	matches="$(scan_json "$id" "$surface")" || return 1
 	[ -n "$matches" ] || return 0
 
@@ -5404,348 +5319,18 @@ check_api_032() {
 	return "$result"
 }
 
-# check_api_033 — a link that exposes search and filtering is a URI template and carries `templated: true` (TechnicalDesign.md § API, API-033; detail § HAL payload guidelines, "Search and filtering"). api-033 matches two violation shapes: a URI-template href built with `Link::new` (which serializes no `templated`), and the `search` link built with `Link::new` (the field that exposes the collection filters).
-check_api_033() { need_dir "API-033" "${1:-src/lib/infrastructure/inbound/rest}" && scan_short API-033 "${1:-src/lib/infrastructure/inbound/rest}"; }
+# check_sty_rust_121 — the HAL `error` message is a stable, server-authored, client-safe string: it carries no extractor or framework wording and no internal detail — field paths, expected types, parse positions, type names (STY-RUST-121, § Error public payload).
+check_sty_rust_121() { need_file "STY-RUST-121" "src/lib/infrastructure/inbound/rest/api_error.rs" && scan_short STY-RUST-121 "src/lib/infrastructure/inbound/rest/api_error.rs"; }
 
-# check_api_034 — every HAL link href is a root-relative URI reference, never a hardcoded absolute URL (TechnicalDesign.md § API, API-034; detail § HAL payload guidelines, which shows `self` = `/orders/123` and the search link as `/orders{?status,page,size}`). api-034 extracts each HAL link constructor (`Link::new`, `Link::templated`, `SelfLinks::new`) and each href helper (`fn *_href`), and this function reads the href literal each carries, flagging a URL that hardcodes an origin (`scheme://`) or that is not root-relative (so the client would have to construct the URL itself).
-check_api_034() {
-	local id="API-034"
-	local surface="${1:-src/lib/infrastructure/inbound/rest}"
-	local matches file line b64 text href result=0 count=0
-
-	need_dir "$id" "$surface" || return 1
-
-	# api-034 extracts each HAL link constructor and each href helper.
-	matches="$(scan_json "$id" "$surface")" || return 1
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no HAL link or href helper from %s\n' "$id" "$surface" >&2
-		return 1
-	fi
-
-	while IFS=$'\t' read -r file line b64; do
-		[ -n "$b64" ] || continue
-		text="$(printf '%s' "$b64" | base64 -d)"
-		# The href of a link constructor or helper is the URL-looking string literal it carries; format-template fragments without a slash (query keys, `true`/`false`) are not hrefs.
-		while IFS= read -r href; do
-			[ -n "$href" ] || continue
-			count=$((count + 1))
-			if printf '%s' "$href" | grep -q '://'; then
-				printf 'error: %s: %s:%s: HAL link hardcodes the absolute URL %s; expose a root-relative reference so the client resolves it against its own base\n' \
-					"$id" "$file" "$line" "$href" >&2
-				result=1
-			elif [ "${href#/}" = "$href" ]; then
-				printf 'error: %s: %s:%s: HAL link %s is not a root-relative reference; it must begin with "/" so the client does not construct the URL\n' \
-					"$id" "$file" "$line" "$href" >&2
-				result=1
-			fi
-		done < <(printf '%s\n' "$text" |
-			grep -oE '"[^"]*"' | sed -E 's/^"//; s/"$//' | grep -E '/' || true)
-	done < <(printf '%s\n' "$matches" |
-		jq -r '[.file, ((.range.start.line + 1) | tostring), (.text | @base64)] | @tsv')
-
-	if [ "$count" -eq 0 ]; then
-		printf 'error: %s: extracted no HAL link href from %s\n' "$id" "$surface" >&2
-		return 1
-	fi
-
-	return "$result"
+# check_sty_rust_122 — every endpoint handler extracts the query, its own `<Context>Query` when it takes
+# parameters or `Query<NoParametersQuery>` when it takes none (STY-RUST-122). The extractor makes the query
+# string a closed set: `deny_unknown_fields` answers `400` for an undeclared parameter (REQ-API-022).
+check_sty_rust_122() {
+	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
+	need_dir "STY-RUST-122" "$handler_dir" || return 1
+	need_file "STY-RUST-122" "${handler_dir}.rs" || return 1
+	scan_short STY-RUST-122 "$handler_dir" "${handler_dir}.rs"
 }
-
-check_api_035() {
-	local id="API-035"
-	local surface="${1:-src/lib/infrastructure/inbound/rest}"
-	local matches file line name result=0
-	local -A hal=()
-	local -A body=()
-	local -a findings=()
-
-	need_dir "$id" "$surface" || return 1
-
-	# api-035 extracts every struct that carries a HAL navigation field (`_links`/`_embedded`) — the marker of a HAL representation (`API-030`).
-	matches="$(scan_json "$id" "$surface")" || return 1
-
-	while IFS=$'\t' read -r file line name; do
-		[ -n "$name" ] || continue
-		hal["$name"]="$file:$line"
-	done < <(printf '%s\n' "$matches" | jq -r \
-		'select(.metaVariables.single.NAME != null) |
-		 [.file, ((.range.start.line + 1) | tostring),
-		  .metaVariables.single.NAME.text] | @tsv')
-
-	# The request-body types the handlers declare.
-	while IFS= read -r name; do
-		[ -n "$name" ] || continue
-		body["$name"]=1
-	done < <({
-		grep -rhoE 'struct[[:space:]]+[A-Za-z0-9_]*Request\b' "$surface" --include='*.rs' |
-			sed -E 's/.*struct[[:space:]]+//'
-		grep -rhoE 'request_body[[:space:]]*=[[:space:]]*[A-Z][A-Za-z0-9_]*' "$surface" --include='*.rs' |
-			sed -E 's/.*=[[:space:]]*//'
-		grep -rhoE 'content[[:space:]]*=[[:space:]]*[A-Z][A-Za-z0-9_]*' "$surface" --include='*.rs' |
-			sed -E 's/.*=[[:space:]]*//'
-		grep -rhoE 'Result<[[:space:]]*Json<[A-Z][A-Za-z0-9_]*>[[:space:]]*,[[:space:]]*JsonRejection>' \
-			"$surface" --include='*.rs' | sed -E 's/.*Json<([A-Za-z0-9_]+)>.*/\1/'
-		grep -rhoE 'Result<[[:space:]]*Form<[A-Z][A-Za-z0-9_]*>[[:space:]]*,[[:space:]]*FormRejection>' \
-			"$surface" --include='*.rs' | sed -E 's/.*Form<([A-Za-z0-9_]+)>.*/\1/'
-	} | sort -u)
-	if [ "${#body[@]}" -eq 0 ]; then
-		printf 'error: %s: found no request body type under %s\n' "$id" "$surface" >&2
-		return 1
-	fi
-
-	# A request body type that is a HAL representation reuses the response representation format; requests carry only business data.
-	for name in "${!body[@]}"; do
-		if [ -n "${hal[$name]+set}" ]; then
-			findings+=("$id: ${hal[$name]}: request body type $name carries a HAL navigation field; requests carry only business data")
-		fi
-	done
-
-	if [ "${#findings[@]}" -eq 0 ]; then
-		return "$result"
-	fi
-	printf '%s\n' "${findings[@]}" | LC_ALL=C sort >&2
-	return 1
-}
-
-# check_api_036 — the HAL error envelope is the one response returned for every error the server emits (TechnicalDesign.md § Error public payload, API-036). api-036 extracts the `ErrorBody` envelope struct and the root router's `setup_routes` middleware layers; the envelope's serialized root keys and the outermost layer are decided here because an ast-grep rule can neither enumerate a struct's keys nor order a method chain.
-check_api_036() {
-	local id="API-036"
-	local surface="${1:-src/lib/infrastructure/inbound/rest}"
-	local matches result=0 envelopes=0 layers=0 file line mw b64 text sorted key
-	local -a keys=()
-	local -A layer_last_line=()
-	local -A layer_last_mw=()
-
-	need_dir "$id" "$surface" || return 1
-
-	matches="$(scan_json "$id" "$surface")" || return 1
-
-	# The outermost `setup_routes` layer is the one whose middleware call sits on the greatest source line: a later `.layer(...)` wraps the earlier ones, so it sees every response, including the routing fallback and framework rejections.
-	while IFS=$'\t' read -r file line mw; do
-		[ -n "$file" ] || continue
-		layers=$((layers + 1))
-		if [ -z "${layer_last_line[$file]+set}" ] ||
-			[ "$line" -gt "${layer_last_line[$file]}" ]; then
-			layer_last_line["$file"]="$line"
-			layer_last_mw["$file"]="$mw"
-		fi
-	done < <(printf '%s\n' "$matches" | jq -r '
-		select(.metaVariables.single.MIDDLEWARE != null) |
-		[.file,
-		 (.metaVariables.single.MIDDLEWARE.range.start.line | tostring),
-		 .metaVariables.single.MIDDLEWARE.text] | @tsv')
-
-	# The envelope's serialized root keys must be exactly `error` and `_links`; a field's serialized name honours `#[serde(rename = "...")]`.
-	while IFS=$'\t' read -r file b64; do
-		[ -n "$b64" ] || continue
-		envelopes=$((envelopes + 1))
-		text="$(printf '%s' "$b64" | base64 -d)"
-		keys=()
-		while IFS= read -r key; do
-			[ -n "$key" ] || continue
-			keys+=("$key")
-		done < <(printf '%s\n' "$text" | awk '
-			{
-				line = $0
-				sub(/^[[:space:]]+/, "", line)
-				if (line ~ /^#/) {
-					if (match(line, /rename[[:space:]]*=[[:space:]]*"[^"]*"/)) {
-						r = substr(line, RSTART, RLENGTH)
-						sub(/^rename[[:space:]]*=[[:space:]]*"/, "", r)
-						sub(/"$/, "", r)
-						rename = r
-					}
-					next
-				}
-				n = line
-				sub(/^pub([[:space:]]*\([^)]*\))?[[:space:]]+/, "", n)
-				if (n ~ /^[a-z_][A-Za-z0-9_]*[[:space:]]*:/) {
-					name = n
-					sub(/[[:space:]]*:.*/, "", name)
-					print (rename != "" ? rename : name)
-					rename = ""
-				}
-			}
-		')
-		sorted="$(printf '%s\n' "${keys[@]}" | LC_ALL=C sort | paste -sd' ' -)"
-		if [ "$sorted" != "_links error" ]; then
-			printf 'error: %s: %s: the error envelope root keys are [%s]; they must be exactly error and _links (API-036)\n' \
-				"$id" "$file" "$sorted" >&2
-			result=1
-		fi
-	done < <(printf '%s\n' "$matches" | jq -r '
-		select(.metaVariables.multi.FIELDS != null) |
-		[.file, (.text | @base64)] | @tsv')
-
-	if [ "$envelopes" -eq 0 ]; then
-		printf 'error: %s: extracted no ErrorBody envelope from %s\n' "$id" "$surface" >&2
-		return 1
-	fi
-	if [ "$layers" -eq 0 ]; then
-		printf 'error: %s: extracted no setup_routes middleware layer from %s\n' "$id" "$surface" >&2
-		return 1
-	fi
-
-	while IFS= read -r file; do
-		[ -n "$file" ] || continue
-		mw="${layer_last_mw[$file]}"
-		if ! printf '%s' "$mw" | grep -qE '(^|[^A-Za-z0-9_])hal_errors([^A-Za-z0-9_]|$)'; then
-			printf 'error: %s: %s: the outermost setup_routes layer is %s, not hal_errors; the error envelope must be applied last so it wraps routing fallbacks and extractor rejections (API-036)\n' \
-				"$id" "$file" "$mw" >&2
-			result=1
-		fi
-	done < <(printf '%s\n' "${!layer_last_mw[@]}" | LC_ALL=C sort)
-
-	return "$result"
-}
-
-# check_api_037 — the HAL `error` message is a stable, server-authored, client-safe string: it carries no extractor or framework wording and no internal detail — field paths, expected types, parse positions, type names (API-037, § Error public payload).
-check_api_037() { need_file "API-037" "src/lib/infrastructure/inbound/rest/api_error.rs" && scan_short API-037 "src/lib/infrastructure/inbound/rest/api_error.rs"; }
-
-# check_api_038 — the status code a failed request returns is the one its classification names (TechnicalDesign.md § API, API-038). api-038 extracts the `ApiError` variant -> `StatusCode` arms of `status_and_message` and the `JsonRejection` arms of `impl From<JsonRejection> for ApiError`; the name-to-status correspondence and the class-to-status comparison happen here because an ast-grep rule can neither transform an identifier nor relate two matches.
-check_api_038() {
-	local id="API-038"
-	local api_error="src/lib/infrastructure/inbound/rest/api_error.rs"
-	local matches file line text variant status classifier expected entry result=0
-	local -A status_of=()
-	local -a terminal_arms=()
-	local table=0 rejections=0
-
-	need_file "$id" "$api_error" || return 1
-
-	matches="$(scan_json "$id" "$api_error")" || return 1
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no ApiError status mapping from %s\n' "$id" "$api_error" >&2
-		return 1
-	fi
-
-	while IFS=$'\t' read -r file line text; do
-		[ -n "$text" ] || continue
-
-		# A framework rejection site: the failure class the rule names must be classified as the ApiError variant whose status is the rule's code.
-		if [[ $text == *"JsonRejection::"* ]]; then
-			rejections=$((rejections + 1))
-			classifier="$(printf '%s' "$text" |
-				sed -nE 's/.*JsonRejection::([A-Za-z0-9_]+).*/\1/p')"
-			variant="$(printf '%s' "$text" |
-				sed -nE 's/.*Self::([A-Za-z0-9_]+).*/\1/p')"
-			case "$classifier" in
-			JsonSyntaxError) expected="BadRequest" ;;
-			JsonDataError) expected="UnprocessableEntity" ;;
-			MissingJsonContentType) expected="UnsupportedMediaType" ;;
-			*) continue ;;
-			esac
-			if [ "$variant" != "$expected" ]; then
-				status="$(printf '%s' "$expected" |
-					sed -E 's/([a-z0-9])([A-Z])/\1_\2/g' | tr '[:lower:]' '[:upper:]')"
-				printf 'error: %s: %s:%s: %s is classified as ApiError::%s; API-038 assigns %s to that failure class\n' \
-					"$id" "$file" "$line" "$classifier" "$variant" "$status" >&2
-				result=1
-			fi
-			continue
-		fi
-
-		# The unclassified rejection arm: an arm of the `JsonRejection` impl that names no `JsonRejection::` classifier carries no status literal.
-		if [[ $text != *"StatusCode::"* ]]; then
-			variant="$(printf '%s' "$text" |
-				sed -nE 's/.*Self::([A-Za-z0-9_]+).*/\1/p')"
-			terminal_arms+=("$file"$'\t'"$line"$'\t'"$variant")
-			continue
-		fi
-
-		# The status table: the status must name the failure class the variant encodes (`UnprocessableEntity` -> `UNPROCESSABLE_ENTITY`).
-		variant="$(printf '%s' "$text" |
-			sed -nE 's/.*Self::([A-Za-z0-9_]+).*/\1/p')"
-		status="$(printf '%s' "$text" |
-			sed -nE 's/.*StatusCode::([A-Z_]+).*/\1/p')"
-		if [ -z "$variant" ] || [ -z "$status" ]; then
-			continue
-		fi
-		status_of[$variant]="$status"
-		table=$((table + 1))
-		expected="$(printf '%s' "$variant" |
-			sed -E 's/([a-z0-9])([A-Z])/\1_\2/g' | tr '[:lower:]' '[:upper:]')"
-		if [ "$status" != "$expected" ]; then
-			printf 'error: %s: %s:%s: ApiError::%s maps to %s; API-038 requires the status that names the failure class (%s)\n' \
-				"$id" "$file" "$line" "$variant" "$status" "$expected" >&2
-			result=1
-		fi
-	done < <(printf '%s\n' "$matches" |
-		jq -r '[.file, ((.range.start.line + 1) | tostring),
-			(.text | gsub("\\s+"; " "))] | @tsv')
-
-	# The unclassified arm must route to a server fault.
-	if [ "${#terminal_arms[@]}" -gt 0 ]; then
-		for entry in "${terminal_arms[@]}"; do
-			IFS=$'\t' read -r file line variant <<<"$entry"
-			[ -n "${status_of[$variant]:-}" ] || continue
-			if [ "${status_of[$variant]}" != "INTERNAL_SERVER_ERROR" ]; then
-				printf 'error: %s: %s:%s: the unclassified JsonRejection arm classifies the failure as ApiError::%s (%s); API-038 requires a server fault\n' \
-					"$id" "$file" "$line" "$variant" "${status_of[$variant]}" >&2
-				result=1
-			fi
-		done
-	fi
-
-	if [ "$table" -eq 0 ]; then
-		printf 'error: %s: extracted no ApiError variant/status mapping from %s\n' \
-			"$id" "$api_error" >&2
-		return 1
-	fi
-	if [ "$rejections" -eq 0 ]; then
-		printf 'error: %s: extracted no JsonRejection classification from %s\n' \
-			"$id" "$api_error" >&2
-		return 1
-	fi
-
-	return "$result"
-}
-
-# check_api_040 — an error envelope's `_links.self` carries the request path component of the request URI, never the query string (API-040, § Error public payload).
-check_api_040() {
-	local id="API-040"
-	local rest="src/lib/infrastructure/inbound/rest"
-	local matches file line arg name expr result=0
-
-	need_dir "$id" "$rest" || return 1
-
-	# api-040 extracts every call to the one error-envelope builder, with its path argument; the binding that argument names is resolved below because an ast-grep rule cannot follow a value to its source.
-	matches="$(scan_json "$id" "$rest")" || return 1
-	if [ -z "$matches" ]; then
-		printf 'error: %s: no call to the error-envelope builder error_response found under %s\n' \
-			"$id" "$rest" >&2
-		return 1
-	fi
-
-	while IFS=$'\t' read -r file line arg; do
-		[ -n "$file" ] || continue
-		name="${arg#&}"
-		if [[ $name =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-			expr="$(awk -v name="$name" -v target="$line" '
-				$0 ~ ("(^|[^A-Za-z0-9_])let[[:space:]]+" name "[[:space:]]*=") {
-					last = $0
-					sub(/^.*=[[:space:]]*/, "", last)
-					sub(/;[[:space:]]*$/, "", last)
-				}
-				NR == target { print last; exit }
-			' "$file")"
-		else
-			expr="$arg"
-		fi
-		if [[ $expr != *".path()"* ]] ||
-			[[ $expr == *".query("* || $expr == *".path_and_query("* ||
-				$expr == *"uri().to_string()"* || $expr == *"uri().to_owned()"* ]]; then
-			printf 'error: %s: %s:%s: the error envelope builds _links.self from %s; it must carry the request path component (request.uri().path()), never the whole request URI or its query\n' \
-				"$id" "$file" "$line" "$arg" >&2
-			result=1
-		fi
-	done < <(printf '%s\n' "$matches" |
-		jq -r '[.file, ((.range.start.line + 1) | tostring),
-			.metaVariables.single.PATH.text] | @tsv')
-
-	return "$result"
-}
-
 # check_arch_001 — the hexagonal dependency direction: dependencies point inward only, `domain` ← `application` ← `infrastructure` (ARCH-001).
 check_arch_001() {
 	local id="ARCH-001"

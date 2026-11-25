@@ -1,9 +1,10 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use tracing::warn;
 
 use crate::application::port::{ResolveVideoMetadataCommand, ResolveVideoMetadataError};
 use crate::domain::model::{ExternalRef, ProviderId, Target};
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::library::{
     VideoMetadataDocumentResponse, VideoProviderRequest, encode_path_segment,
 };
@@ -63,6 +64,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
     summary = "Resolve a video provider reference into a film's metadata"
 )]
 pub(crate) async fn get_movie_identify_metadata(
+    _query: Query<NoParametersQuery>,
     Path((provider_value, reference_value)): Path<(String, String)>,
     caller: AuthenticatedUser,
     State(state): State<AppState>,

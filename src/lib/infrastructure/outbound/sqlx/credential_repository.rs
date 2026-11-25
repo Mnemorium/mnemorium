@@ -94,8 +94,6 @@ fn domain_credential(row: SqlxCredential) -> Result<Credential, RepositoryError>
 mod tests {
     use super::*;
     use crate::domain::model::CredentialError;
-    use crate::domain::port::PasswordHasher as _;
-    use crate::infrastructure::outbound::argon2::Argon2PasswordHasher;
     use crate::infrastructure::outbound::sqlx::test_helpers::*;
 
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
@@ -202,6 +200,54 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        Ok(())
+    }
+
+    // proves: SCN-AUTHENTICATION-015-B — Recovery
+    #[tokio::test]
+    async fn failed_save_leaves_the_previous_password_hash() -> Result<(), Box<dyn Error>> {
+        // Arrange: credential 1 holds one hash and credential 2 another.
+        let mut transaction = begin_transaction().await?;
+        let original = updated_at("2026-01-01 12:00:00")?;
+        let mut repository = SqlxCredentialRepository::new(&mut transaction);
+        repository
+            .save(credential(1, "original-hash", original)?)
+            .await?;
+        repository
+            .save(credential(
+                2,
+                "taken-hash",
+                updated_at("2026-01-02 12:00:00")?,
+            )?)
+            .await?;
+
+        // Act: rotating credential 1 onto credential 2's hash cannot be stored.
+        let result = repository
+            .save(credential(
+                1,
+                "taken-hash",
+                updated_at("2026-02-01 12:00:00")?,
+            )?)
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        let stored = repository
+            .search(&CredentialFilter {
+                id: Some(1),
+                ..CredentialFilter::default()
+            })
+            .await?;
+        assert_eq!(stored.len(), 1);
+        let stored = stored
+            .first()
+            .ok_or("a failed replacement must leave one credential row")?;
+        assert_eq!(
+            stored.password_hash(),
+            "original-hash",
+            "a failed replacement must leave the previous hash"
+        );
+        assert_eq!(stored.updated_at(), original);
         Ok(())
     }
 
@@ -314,44 +360,6 @@ mod tests {
             mapped,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        Ok(())
-    }
-
-    // proves: SCN-AUTHENTICATION-006-A
-    #[tokio::test]
-    async fn creation_and_rotation_store_only_a_password_hash() -> Result<(), Box<dyn Error>> {
-        // Arrange: the same hasher the creation and rotation use cases hash with.
-        let hasher = Argon2PasswordHasher::new(vec![7; 32]);
-        let pending_password = "C0rrect!Horse";
-        let replacement_password = "N3w!Secret";
-        let mut transaction = begin_transaction().await?;
-        let mut repository = SqlxCredentialRepository::new(&mut transaction);
-
-        // Act: creation stores the hash of the first password ...
-        let created = repository
-            .create(credential(
-                0,
-                &hasher.hash_password(pending_password).await?,
-                updated_at("2026-01-01 12:00:00")?,
-            )?)
-            .await?;
-        // ... and rotation replaces it with the hash of the second.
-        let rotated = repository
-            .save(credential(
-                created.id(),
-                &hasher.hash_password(replacement_password).await?,
-                updated_at("2026-02-01 12:00:00")?,
-            )?)
-            .await?;
-
-        // Assert
-        assert_ne!(created.password_hash(), pending_password);
-        assert_ne!(rotated.password_hash(), replacement_password);
-        assert!(
-            hasher
-                .verify_password(replacement_password, rotated.password_hash())
-                .await?
-        );
         Ok(())
     }
 

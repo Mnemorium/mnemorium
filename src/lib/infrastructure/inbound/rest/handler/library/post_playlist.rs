@@ -1,4 +1,4 @@
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
@@ -6,8 +6,8 @@ use utoipa::ToSchema;
 
 use crate::application::port::CreatePlaylistCommand;
 use crate::domain::NumericID;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistResponse;
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
@@ -36,7 +36,7 @@ pub(crate) struct PostPlaylistRequest {
 /// Creating a playlist requires `CreateChild` for a music playlist on the
 /// **Playlist collection**. The name is required, at most 100 characters long and must not begin or
 /// end with whitespace; `is_public` defaults to `false` and the optional cover must
-/// be a `USER` image.
+/// be a viewable `USER` image.
 #[utoipa::path(
     post,
     operation_id = "post_playlist",
@@ -102,6 +102,7 @@ pub(crate) struct PostPlaylistRequest {
     summary = "Create a music playlist"
 )]
 pub(crate) async fn post_playlist(
+    _query: Query<NoParametersQuery>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: JsonObject<PostPlaylistRequest>,

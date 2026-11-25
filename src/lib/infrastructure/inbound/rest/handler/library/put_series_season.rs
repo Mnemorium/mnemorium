@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
@@ -6,10 +6,10 @@ use utoipa::ToSchema;
 
 use crate::application::port::PutSeriesSeasonCommand;
 use crate::domain::NumericID;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     SeasonResponse, parse_season_index, parse_series_id,
 };
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
 
@@ -83,7 +83,7 @@ pub(crate) struct PutSeriesSeasonRequest {
             status = CONFLICT,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The cover is not a library image"
+            description = "The cover is not a viewable library image"
         ),
         (
             status = PAYLOAD_TOO_LARGE,
@@ -101,7 +101,7 @@ pub(crate) struct PutSeriesSeasonRequest {
             status = UNPROCESSABLE_ENTITY,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The cover is not a library image"
+            description = "The cover is not a viewable library image"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
@@ -116,6 +116,7 @@ pub(crate) struct PutSeriesSeasonRequest {
     summary = "Create or replace a show season"
 )]
 pub(crate) async fn put_series_season(
+    _query: Query<NoParametersQuery>,
     Path((series_id_value, season_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

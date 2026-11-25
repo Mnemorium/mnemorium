@@ -1,8 +1,9 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 
 use crate::application::port::ListSeriesEpisodesCommand;
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::library::{
     EpisodeListResponse, EpisodeResponse, parse_season_index, parse_series_id,
 };
@@ -67,6 +68,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLi
     summary = "List the episodes of a show season"
 )]
 pub(crate) async fn get_series_episode_list(
+    _query: Query<NoParametersQuery>,
     Path((series_id_value, season_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

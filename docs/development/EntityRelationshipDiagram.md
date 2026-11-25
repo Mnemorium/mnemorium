@@ -525,6 +525,11 @@ upload, typed asset and file; the album, playlist and group relations; the `Stan
 override is translated, because an `ALL`/`LISTED`/`OWNED`/`NONE` scope has no faithful grant equivalent and the project
 is pre-release (`REQ-AUTHORIZATION-037`).
 
+Two triggers keep the entity flag and the decision on one fact: `tg_resource_visibility_gallery` and
+`tg_resource_visibility_music_playlist` mirror `resource.visibility` into `gallery.is_public` and
+`music_playlist.is_public` when a visibility update lands, so the representation and the listing filter follow a change
+made through the permission API. The seeded default gallery (`gallery_id = 0`) keeps its immutable `PUBLIC` flag.
+
 A decision reads the resource, its authorization-parent chain and the matching grants in one read transaction; a storage
 error, a malformed row or a missing resource denies. A listing reads the caller's grants once and filters the page
 without emitting an `authz_failed` event.

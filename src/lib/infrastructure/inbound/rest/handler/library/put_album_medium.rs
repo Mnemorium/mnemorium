@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
@@ -6,19 +6,34 @@ use utoipa::ToSchema;
 
 use crate::application::port::PutAlbumMediumCommand;
 use crate::domain::NumericID;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     MediumResponse, parse_album_id, parse_write_index,
 };
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, UriReference, hal_json};
+
+/// The medium types the API accepts.
+///
+/// A medium type is a closed vocabulary: a value outside it answers `422` and
+/// applies nothing. The handler still parses the raw wire value, so the
+/// rejection is the catalogue's `enum_validation_failed` event rather than a
+/// framework decode failure (`REQ-API-018`).
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "UPPERCASE")]
+pub(crate) enum MediumTypeRequest {
+    /// An audio CD medium.
+    Cd,
+    /// A digital medium.
+    Digital,
+}
 
 /// Payload to create or retype a music medium.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct PutAlbumMediumRequest {
     /// Medium type (`CD` or `DIGITAL`).
-    #[schema(example = "CD", pattern = "^(CD|DIGITAL)$")]
+    #[schema(value_type = MediumTypeRequest, example = "CD")]
     #[serde(rename = "type")]
     pub medium_type: String,
 }
@@ -115,6 +130,7 @@ pub(crate) struct PutAlbumMediumRequest {
     summary = "Create or retype a music medium"
 )]
 pub(crate) async fn put_album_medium(
+    _query: Query<NoParametersQuery>,
     Path((album_id_value, medium_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

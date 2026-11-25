@@ -1,8 +1,9 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 
 use crate::application::port::{DeleteGalleryItemCommand, DeleteGalleryItemError};
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::library::{parse_gallery_id, parse_item_id};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
@@ -78,6 +79,7 @@ impl From<DeleteGalleryItemError> for ApiError {
     summary = "Delete a gallery item"
 )]
 pub(crate) async fn delete_gallery_item(
+    _query: Query<NoParametersQuery>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     Path((gallery_id_value, item_id_value)): Path<(String, String)>,

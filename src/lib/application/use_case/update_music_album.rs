@@ -1,4 +1,5 @@
 use crate::application::authorization::authorize;
+use crate::application::{FieldUpdate, cover_is_viewable};
 use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
@@ -199,6 +200,11 @@ where
                 };
                 let release_date = command.release_date().resolve(album.release_date());
                 let production_type = command.production_type().resolve(album.production_type());
+                if let FieldUpdate::Set(cover_image_id) = command.cover_image_id()
+                    && !cover_is_viewable(&mut unit_of_work, &caller, Some(cover_image_id)).await
+                {
+                    return Err(UpdateMusicAlbumError::Conflict);
+                }
                 let cover_image_id = command.cover_image_id().resolve(album.cover_image_id());
 
                 let updated = MusicAlbum::try_new(
@@ -347,9 +353,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_music_album_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
-        // Arrange: the replacement cover does not resolve, so the update
-        // violates the cover foreign key.
+    async fn update_music_album_unknown_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange: the replacement cover resolves to no image, so the cover rule
+        // refuses before the update is reached.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
                caller_id: NumericID|
@@ -376,10 +382,7 @@ mod tests {
                     Box::pin(async move { Ok(vec![found]) })
                 });
         })(&mut albums, stored);
-        albums
-            .expect_save()
-            .times(1)
-            .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
+        albums.expect_save().times(0);
         let harness = (move |users: MockUserRepository,
                              albums: MockMusicAlbumRepository,
                              groups: MockMusicGroupRepository|
@@ -390,7 +393,7 @@ mod tests {
                 users,
                 ..TestUnitOfWork::default()
             };
-            GalleryFactoryHarness::new(unit_of_work)
+            GalleryFactoryHarness::new(unit_of_work).with_unknown_images()
         })(users, albums, MockMusicGroupRepository::new());
         let use_case: UseCase = UpdateMusicAlbum::new(Arc::clone(&harness.factory));
 

@@ -1,0 +1,73 @@
+# Scenarios the fixture fuzz run proves.
+#
+# `script/api_fuzz.sh` runs Schemathesis over the served document with the checks in `test/api/checks.py`, the probe
+# wrappers in `test/api/hooks.py` and the expectations in `schemathesis.toml`. None of that run is a pytest case, so
+# its claims cannot be written as `@scenario` decorators; `test/util/investigation.py` reads this file instead and
+# records `Evidence: API suite`.
+#
+# Add an entry only when a named checker fails if the rule breaks:
+#
+# - `valid_hal_links` (`checks.py`) — a HAL body carries `_links.self`, every link is a non-empty relative target or a
+#   marked URI template, and a `4xx` envelope's `self` is the request path with the query dropped.
+# - `valid_collection_links` (`checks.py`) — `search` is templated on the collection, the filters are not payload
+#   fields, `self`/`next`/`prev` keep the request filters and page, and a page without `limit` holds at most 20 items.
+# - `valid_embedded_payloads` (`checks.py`) — only a catalog collection embeds its items, under `_embedded.items`, each
+#   item the partial representation.
+# - `valid_success_responses` (`checks.py`) — a `201` carries `Location` and a `204` carries no body.
+# - `valid_declared_headers` (`checks.py`) — every emitted application header is declared on its status, a `401`
+#   carries the bearer challenge, a `405` keeps `Allow` and a `429` keeps `Retry-After`.
+# - `valid_canonical_self` (`checks.py`) — a successful read whose path ends in the addressed numeric identifier
+#   names that resource in `self`, query-free.
+# - `request_body_contract_check` (`hooks.py`) — every operation with a JSON body is probed once for its `415`, `400`
+#   and `422` refusals, because Schemathesis' own generation only emits well-formed JSON.
+# - `undeclared_query_check` (`hooks.py`) — every operation is probed once with an undeclared query parameter, which
+#   answers `400`.
+# - `protected_operation_check` (`hooks.py`) — every operation declaring `bearer_auth` is probed once with no
+#   credentials, which answers the `401` envelope with its bearer challenge.
+# - `hypermedia_body_check` (`hooks.py`) — a request carrying `_links`/`_embedded` is decided on its business data.
+# - Schemathesis `content_type_conformance` — the served media type is the one the document declares for the operation.
+# - Schemathesis `negative_data_rejection` / `positive_data_acceptance` — the declared status answers a generated invalid
+#   or valid value, per `expected-statuses` in `schemathesis.toml`.
+#
+# The value is the kind of proof, from the same closed set the `@scenario` decorator uses.
+
+[scenarios]
+
+# `request_body_contract_check` (`hooks.py`): every operation with a JSON body is probed once for its three refusals.
+"SCN-API-002-A" = "Negative"
+"SCN-API-002-B" = "Negative"
+"SCN-API-002-C" = "Negative"
+"SCN-API-002-D" = "Business rule" # hypermedia_body_check: a hypermedia member in a request changes nothing
+"SCN-API-003-A" = "Positive"      # content_type_conformance: single-resource reads declare hal+json
+"SCN-API-003-B" = "Positive"      # content_type_conformance: collections declare hal+json
+"SCN-API-003-C" = "Positive"      # content_type_conformance: login declares hal+json
+"SCN-API-003-D" = "Positive"      # content_type_conformance: the probe declares hal+json
+"SCN-API-003-E" = "Positive"      # content_type_conformance: content responses declare their binary type
+"SCN-API-004-A" = "Positive"      # valid_canonical_self: a resource read names the addressed resource in self
+"SCN-API-004-E" = "Business rule" # valid_hal_links: a 4xx envelope's self is the request path
+"SCN-API-005-C" = "Business rule" # valid_embedded_payloads: only a catalog collection embeds related resources
+"SCN-API-006-A" = "Business rule" # valid_collection_links: search is a template on the collection
+"SCN-API-006-B" = "Business rule" # valid_collection_links: the filters are not payload fields
+"SCN-API-007-A" = "Positive"      # valid_collection_links: a page without limit holds at most 20 items
+"SCN-API-007-C" = "Boundary"      # valid_collection_links: prev is absent at offset 0
+"SCN-API-007-D" = "Negative"      # negative_data_rejection: a generated out-of-range limit is refused as declared
+"SCN-API-008-B" = "Business rule" # valid_hal_links: a generated extractor rejection uses the envelope
+"SCN-API-008-C" = "Business rule" # valid_hal_links: the envelope's self never carries the query
+"SCN-API-009-A" = "Business rule" # valid_declared_headers: a 405 keeps the declared Allow header
+"SCN-API-009-B" = "Security"      # valid_declared_headers: a 401 carries the bearer challenge
+"SCN-API-011-A" = "Business rule" # request_body_contract_check: 400, 415 and 422 are distinct outcomes
+"SCN-API-012-A" = "Positive"      # valid_success_responses: a 201 names the created resource in Location
+"SCN-API-012-C" = "Positive"      # valid_success_responses: a 204 carries no body
+"SCN-API-016-A" = "Business rule" # valid_embedded_payloads: a catalog page embeds its items, with no root items
+"SCN-API-016-B" = "Business rule" # valid_embedded_payloads: an embedded item is the partial representation
+"SCN-API-016-C" = "Business rule" # valid_embedded_payloads: the embedded item carries the browse fields
+"SCN-API-016-E" = "Business rule" # valid_embedded_payloads: a non-catalog collection keeps root items
+"SCN-API-017-C" = "Negative"      # negative_data_rejection: a malformed date or time value is refused as declared
+"SCN-API-018-C" = "Negative"      # negative_data_rejection: a value outside a declared vocabulary is refused as declared
+"SCN-API-019-A" = "Business rule" # valid_declared_headers: every emitted header is declared on its status
+"SCN-API-021-A" = "Business rule" # valid_hal_links: a plain link is a non-empty relative reference
+"SCN-API-021-B" = "Business rule" # valid_hal_links: a templated link keeps its expressions and marks itself
+"SCN-API-022-A" = "Negative"      # undeclared_query_check: an undeclared query parameter answers 400
+"SCN-API-023-A" = "Security"      # protected_operation_check: a protected operation requires the bearer token
+"SCN-API-024-A" = "Negative"      # negative_data_rejection: a parameter outside its declared bound is refused
+"SCN-API-024-B" = "Negative"      # negative_data_rejection: a property outside its declared bound is refused

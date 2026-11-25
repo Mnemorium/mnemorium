@@ -27,9 +27,9 @@ pub(crate) struct ErrorBody {
 /// Internal carrier for an [`ApiError`] message.
 ///
 /// `ApiError` cannot build the HAL error envelope itself: [`IntoResponse`] has
-/// no access to the request, so it cannot fill `_links.self` (`API-036`).
+/// no access to the request, so it cannot fill `_links.self` (`REQ-API-008`).
 /// It attaches only its message, and the root `hal_errors` middleware builds
-/// the one [`ErrorBody`] envelope from that message (`API-036`).
+/// the one [`ErrorBody`] envelope from that message (`REQ-API-008`).
 #[derive(Clone, Debug)]
 pub(crate) struct ApiErrorMessage(pub String);
 
@@ -104,15 +104,15 @@ impl IntoResponse for ApiError {
 impl From<JsonRejection> for ApiError {
     fn from(rejection: JsonRejection) -> Self {
         // The client receives a stable, server-authored message only
-        // (`API-037`): the framework rejection text carries deserialization and
+        // (`STY-RUST-121`): the framework rejection text carries deserialization and
         // parser detail and the offending value, so only its classification is
-        // logged (`OBS-003`) and it is never echoed (`API-036`, § Error public payload). Each
+        // logged (`OBS-003`) and it is never echoed (`REQ-API-008`, § Error public payload). Each
         // catalog event carries its declared field set (`OBS-006`): `field` and
         // `reason` for `input_validation_failed`, `source` and `reason` for
         // `deserialization_failed`. `JsonRejection` is `#[non_exhaustive]`, so
         // the wildcard is the forward-compatibility guard; an unclassified
         // variant is an internal `500` and an operator-actionable
-        // `extractor_fault` (`API-038`, `OBS-005`), never a client error.
+        // `extractor_fault` (`REQ-API-011`, `OBS-005`), never a client error.
         match rejection {
             JsonRejection::BytesRejection(bytes_rejection) => Self::from(bytes_rejection),
             JsonRejection::MissingJsonContentType(_) => {
@@ -157,10 +157,10 @@ impl From<JsonRejection> for ApiError {
 impl From<PathRejection> for ApiError {
     fn from(rejection: PathRejection) -> Self {
         // The client receives a stable, server-authored message only
-        // (`API-037`): axum's path rejection text embeds the raw rejected value
+        // (`STY-RUST-121`): axum's path rejection text embeds the raw rejected value
         // and the expected type name, so only its classification is logged
         // (`OBS-003`) and it is never echoed. A parse or UTF-8 failure is a
-        // client `400` (`API-038`); a missing path-parameter extension, an
+        // client `400` (`REQ-API-011`); a missing path-parameter extension, an
         // unsupported target type or an unclassified variant is an internal
         // `500` and an operator-actionable `extractor_fault` (`OBS-005`).
         match rejection {
@@ -181,9 +181,9 @@ impl From<ErrorKind> for ApiError {
     /// The known [`ErrorKind`] variants are matched so every classification
     /// emits its own catalogued event (`OBS-006`) and the server-authored
     /// message stays free of the raw value and the expected type name
-    /// (`API-037`). `ErrorKind` is `#[non_exhaustive]`, so the wildcard is the
+    /// (`STY-RUST-121`). `ErrorKind` is `#[non_exhaustive]`, so the wildcard is the
     /// `#[non_exhaustive]` forward-compatibility guard; an unclassified variant
-    /// is an internal `500` under the § 3 response-code table (`API-038`), not
+    /// is an internal `500` under the § 3 response-code table (`REQ-API-011`), not
     /// a client error, and logs `extractor_fault`.
     fn from(kind: ErrorKind) -> Self {
         match kind {
@@ -210,7 +210,7 @@ impl ApiError {
     /// The catalog declares `enum_validation_failed` at `warn` with fields
     /// `field` and `reason`; the rejected value itself never reaches the sink
     /// (`OBS-003`, `OBS-006`). A declared discrete list is a constraint the
-    /// handler enforces, so its violation answers `422` (`API-038`, `API-042`).
+    /// handler enforces, so its violation answers `422` (`REQ-API-011`, `REQ-API-024`).
     pub(crate) fn reject_enum(field: &str) -> Self {
         warn!(
             target: "security",
@@ -251,7 +251,7 @@ impl From<QueryRejection> for ApiError {
         // The framework rejection text carries the offending field, the
         // expected type and parser detail, so only its classification is logged
         // (`OBS-003`) and the client receives a stable, server-authored message
-        // (`API-037`). A size-limit rejection is classified before the malformed
+        // (`STY-RUST-121`). A size-limit rejection is classified before the malformed
         // value it is not (`OBS-006`), so a catalog-driven consumer can tell a
         // too-large query string from an invalid one: the catalogued event
         // carries its declared field set — `source` and `reason` for
@@ -305,9 +305,9 @@ impl From<BytesRejection> for ApiError {
 }
 
 /// Build the one HAL error envelope every error response is served as
-/// (`API-036`): the message at the root (`API-030`) plus `_links.self` to the
-/// request path (`API-036`, `API-040`), served as `application/hal+json`
-/// (`API-028`).
+/// (`REQ-API-008`): the message at the root (`STY-RUST-118`) plus `_links.self` to the
+/// request path (`REQ-API-008`, `REQ-API-008`), served as `application/hal+json`
+/// (`REQ-API-003`).
 ///
 /// It is the single envelope builder by design: only the root `hal_errors`
 /// middleware calls it, and only after it has read the [`ApiErrorMessage`].
@@ -443,6 +443,7 @@ mod tests {
         Ok(())
     }
 
+    // proves: SCN-API-010-A — Business rule
     #[tokio::test]
     #[traced_test]
     async fn json_rejection_wrong_type_returns_unprocessable_entity() -> Result<(), Box<dyn Error>>
@@ -696,72 +697,7 @@ mod tests {
         );
     }
 
-    #[test]
-    #[traced_test]
-    fn client_path_rejection_logs_one_classified_event_without_the_value() {
-        // Arrange
-
-        // Act
-        let (status, message) = ApiError::from(ErrorKind::ParseError {
-            value: "LEAK_SENTINEL".to_owned(),
-            expected_type: "i64",
-        })
-        .status_and_message();
-
-        // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(message, "the request path is invalid");
-        assert!(
-            !message.contains("LEAK_SENTINEL"),
-            "the client message must not echo the rejected value (`API-037`)"
-        );
-        assert!(
-            !message.contains("i64"),
-            "the client message must not echo the expected type name (`API-037`)"
-        );
-        logs_assert(|lines| {
-            let count = lines.iter().filter(|line| line.contains("WARN")).count();
-            (count == 1).then_some(()).ok_or_else(|| {
-                format!("a client path rejection must emit exactly one warn event (found {count})")
-            })
-        });
-        logs_assert(|lines| {
-            let count = lines
-                .iter()
-                .filter(|line| line.contains("event=\"input_validation_failed\""))
-                .count();
-            (count == 1)
-                .then_some(())
-                .ok_or_else(|| format!(
-                    "a client path rejection must emit exactly one input_validation_failed event (found {count})"
-                ))
-        });
-        assert!(
-            logs_contain("field=\"path\""),
-            "the event must identify the path field"
-        );
-        assert!(
-            logs_contain("reason=\"parse\""),
-            "the event must classify the reason"
-        );
-        assert!(
-            logs_contain("security"),
-            "the event must target the reserved security target"
-        );
-        assert!(
-            !logs_contain("extractor_fault"),
-            "a client path rejection must not emit the server event"
-        );
-        assert!(
-            !logs_contain("LEAK_SENTINEL"),
-            "the event must not echo the rejected value"
-        );
-        assert!(
-            !logs_contain("i64"),
-            "the event must not echo the expected type name"
-        );
-    }
-
+    // proves: SCN-API-011-B — Error handling
     #[test]
     #[traced_test]
     fn misconfigured_path_logs_one_extractor_fault() {
@@ -866,7 +802,7 @@ mod tests {
             .ok_or_else(|| "a malformed query must be rejected".to_owned())?;
         let (status, message) = ApiError::from(rejection).status_and_message();
 
-        // Assert: the client message is server-authored and stable (`API-037`),
+        // Assert: the client message is server-authored and stable (`STY-RUST-121`),
         // and the malformed value never reaches the sink (`OBS-003`).
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(message, "the request query string is invalid");

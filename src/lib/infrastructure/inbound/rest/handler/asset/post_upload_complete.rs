@@ -1,5 +1,5 @@
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse as _, Response};
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,7 @@ use crate::application::port::{
     CompleteUploadResponse as CompleteUploadResponseData,
 };
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::asset::{asset_file_href, upload_self_href};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{
@@ -170,6 +171,7 @@ impl From<CompleteUploadError> for ApiError {
     summary = "Complete an upload session"
 )]
 pub(crate) async fn post_upload_complete(
+    _query: Query<NoParametersQuery>,
     Path(upload_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

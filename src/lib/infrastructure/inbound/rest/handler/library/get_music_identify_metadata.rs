@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::Serialize;
 use tracing::warn;
@@ -8,6 +8,7 @@ use crate::application::port::{ResolveMusicMetadataCommand, ResolveMusicMetadata
 use crate::domain::model::{
     Edition, ExternalRef, MusicKind, MusicMetadata, MusicTarget, ProductionType, ProviderId,
 };
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::library::{
     ArtistCreditResponse, MusicKindRequest, MusicMediumResponse, MusicProviderRequest,
     MusicReferenceResponse, encode_path_segment, format_date,
@@ -256,6 +257,7 @@ impl MusicMetadataDocumentResponse {
     summary = "Resolve a music provider reference into its metadata"
 )]
 pub(crate) async fn get_music_identify_metadata(
+    _query: Query<NoParametersQuery>,
     Path((provider_value, kind_value, reference_value)): Path<(String, String, String)>,
     caller: AuthenticatedUser,
     State(state): State<AppState>,

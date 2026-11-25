@@ -1,4 +1,4 @@
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::response::Response;
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -8,6 +8,7 @@ use crate::application::port::{
 };
 use crate::domain::NumericID;
 use crate::domain::model::Role;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLinks, hal_json};
@@ -82,6 +83,7 @@ impl From<GetCurrentUserError> for ApiError {
     summary = "Fetch the current user"
 )]
 pub(crate) async fn get_me(
+    _query: Query<NoParametersQuery>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
 ) -> Result<Response, ApiError> {

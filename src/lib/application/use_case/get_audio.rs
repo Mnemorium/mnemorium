@@ -136,7 +136,6 @@ mod tests {
 
     type UseCase = GetAudio<TestFactory>;
 
-    // proves: SCN-AUDIO-003-A
     #[tokio::test]
     async fn an_album_track_is_readable_and_linked() -> Result<(), Box<dyn Error>> {
         // Arrange: caller 9 reads the track of album 5.
@@ -214,7 +213,6 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUDIO-003-B
     #[tokio::test]
     async fn an_audio_repository_failure_is_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -272,7 +270,6 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUDIO-003-B
     #[tokio::test]
     async fn an_unknown_audio_is_concealed() -> Result<(), Box<dyn Error>> {
         // Arrange

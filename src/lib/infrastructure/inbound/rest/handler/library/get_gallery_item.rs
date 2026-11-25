@@ -1,8 +1,9 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 
 use crate::application::port::{GetGalleryItemCommand, GetGalleryItemError};
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::library::{
     GalleryItemDetailResponse, parse_gallery_id, parse_item_id,
 };
@@ -74,6 +75,7 @@ impl From<GetGalleryItemError> for ApiError {
     summary = "Fetch a gallery item"
 )]
 pub(crate) async fn get_gallery_item(
+    _query: Query<NoParametersQuery>,
     Path((gallery_id_value, item_id_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, header};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
@@ -9,6 +9,7 @@ use crate::application::port::{
 };
 use crate::domain::NumericID;
 use crate::domain::model::Orientation;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::asset::{
     asset_file_href, asset_image_href, content_href, format_date, parse_asset_id,
 };
@@ -142,6 +143,7 @@ impl From<GetImageError> for ApiError {
     summary = "Fetch a typed image"
 )]
 pub(crate) async fn get_image(
+    _query: Query<NoParametersQuery>,
     Path(image_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

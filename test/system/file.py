@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import pytest
 from conftest import SEED_MEDIA_DIRECTORY, login, start_instance, upload
 from harness import MEDIA_DIRECTORY, ROOT_ADMIN_USERNAME, Sut
-from labels import scenario
+from labels import TestType, business_rule, positive, scenario
 from mnemorium_client.api.asset import list_files
 
 LINKED_PATH = "system/file-linked.png"
@@ -35,6 +35,7 @@ FOUND_INSTANT = 1_700_000_000
 WAIT_SECONDS = 20.0
 
 
+@positive
 @scenario("SCN-FILE-001-A")
 def test_a_promoted_upload_is_an_uploaded_file(server: Sut, root_token: str) -> None:
     """Content the server received records the `UPLOADED` origin at a root-relative path."""
@@ -47,6 +48,7 @@ def test_a_promoted_upload_is_an_uploaded_file(server: Sut, root_token: str) -> 
     assert (server.dir / MEDIA_DIRECTORY / file["path"]).read_bytes() == data
 
 
+@positive
 @scenario("SCN-FILE-001-B")
 @scenario("SCN-FILE-001-C")
 @pytest.mark.own_instance(reason="global_filesystem")
@@ -80,6 +82,7 @@ def test_a_found_file_records_its_content(sut: Sut) -> None:
     assert file["uploaded_date"] == datetime.now(UTC).date().isoformat()
 
 
+@positive
 @scenario("SCN-FILE-002-A")
 def test_a_file_of_an_existing_identifier_is_read(server: Sut, root_token: str) -> None:
     """The representation carries exactly the record's fields and the stored values."""
@@ -103,9 +106,10 @@ def test_a_file_of_an_existing_identifier_is_read(server: Sut, root_token: str) 
     assert datetime.fromisoformat(file["modified_at"]).tzinfo is UTC
 
 
-@scenario("SCN-FILE-003-A")
-@scenario("SCN-FILE-004-A")
-@scenario("SCN-FILE-004-B")
+@scenario("SCN-FILE-003-A", TestType.BUSINESS_RULE)
+@scenario("SCN-FILE-004-A", TestType.POSITIVE)
+@scenario("SCN-FILE-004-B", TestType.BUSINESS_RULE)
+@scenario("SCN-API-005-A", TestType.BUSINESS_RULE)
 def test_the_collection_lists_files_and_links_them(server: Sut, root_token: str) -> None:
     """The collection lists a discoverable file, the exact path narrows it, and the item is the read representation."""
     everything = list_files.sync_detailed(client=server.client(root_token), limit=100)
@@ -132,7 +136,8 @@ def test_the_collection_lists_files_and_links_them(server: Sut, root_token: str)
     assert json.loads(read.content) == item, "a collection item must be the single-file representation"
 
 
-@scenario("SCN-FILE-003-B")
+@scenario("SCN-FILE-003-B", TestType.BUSINESS_RULE)
+@scenario("SCN-API-005-A", TestType.BUSINESS_RULE)
 def test_an_image_backed_file_links_its_image(server: Sut, root_token: str) -> None:
     """A file with an image row carries `_links.image` naming that image."""
     listed = list_files.sync_detailed(client=server.client(root_token), path=LINKED_PATH)
@@ -147,6 +152,7 @@ def test_an_image_backed_file_links_its_image(server: Sut, root_token: str) -> N
     assert image["_links"]["file"]["href"] == item["_links"]["self"]["href"]
 
 
+@business_rule
 @scenario("SCN-FILE-003-C")
 def test_an_audio_backed_file_links_its_audio(server: Sut, root_token: str) -> None:
     """A file with an audio row carries `_links.audio` naming that audio."""
@@ -162,6 +168,7 @@ def test_an_audio_backed_file_links_its_audio(server: Sut, root_token: str) -> N
     assert audio["_links"]["file"]["href"] == item["_links"]["self"]["href"]
 
 
+@business_rule
 @scenario("SCN-FILE-003-C")
 def test_a_video_backed_file_links_its_video(server: Sut, root_token: str) -> None:
     """A file with a video row carries `_links.video` naming that video."""
@@ -177,6 +184,7 @@ def test_a_video_backed_file_links_its_video(server: Sut, root_token: str) -> No
     assert video["_links"]["file"]["href"] == item["_links"]["self"]["href"]
 
 
+@business_rule
 @scenario("SCN-FILE-003-D")
 def test_a_file_with_no_media_row_carries_no_typed_link(server: Sut, root_token: str) -> None:
     """A file that backs no typed asset carries none of `image`, `audio` and `video`."""
@@ -190,6 +198,7 @@ def test_a_file_with_no_media_row_carries_no_typed_link(server: Sut, root_token:
     assert set(links) == {"content", "owner", "self"}
 
 
+@positive
 @scenario("SCN-FILE-004-C")
 def test_a_path_no_file_carries_lists_nothing(server: Sut, root_token: str) -> None:
     """A path that only starts like a stored path lists no file."""

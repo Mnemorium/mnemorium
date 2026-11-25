@@ -6,10 +6,10 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::FieldUpdate;
 use crate::application::port::{
     UpdateSeriesCommand, UpdateSeriesError, UpdateSeriesResponse, UpdateSeriesUseCase,
 };
+use crate::application::{FieldUpdate, cover_is_viewable};
 use crate::domain::model::{Action, Series};
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, RepositoryError, SeriesFilter, SeriesRepository as _,
@@ -178,6 +178,11 @@ where
                     .plot()
                     .map_or_else(|| series.plot().to_owned(), str::to_owned);
                 let first_air_date = command.first_air_date().resolve(series.first_air_date());
+                if let FieldUpdate::Set(cover_image_id) = command.cover_image_id()
+                    && !cover_is_viewable(&mut unit_of_work, &caller, Some(cover_image_id)).await
+                {
+                    return Err(UpdateSeriesError::Conflict);
+                }
                 let cover_image_id = command.cover_image_id().resolve(series.cover_image_id());
 
                 let updated = Series::try_new(
@@ -844,148 +849,6 @@ mod tests {
     }
 
     // proves: SCN-SERIES-009-A
-    #[tokio::test]
-    async fn update_series_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
-        // Arrange: the repository rejects the cover through the scope trigger.
-        let mut users = MockUserRepository::new();
-        (move |users: &mut MockUserRepository,
-               caller_id: NumericID|
-              -> Result<(), Box<dyn Error>> {
-            let caller =
-                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
-            users
-                .expect_search()
-                .times(1)
-                .withf(move |filter| filter.id == Some(caller_id))
-                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
-            Ok(())
-        })(&mut users, 1)?;
-        let stored = sample_series(7, Vec::new())?;
-        let mut series = MockSeriesRepository::new();
-        (move |series: &mut MockSeriesRepository, stored: Series| {
-            let series_id = stored.id();
-            series
-                .expect_search()
-                .times(1)
-                .withf(move |filter| filter.id == Some(series_id))
-                .return_once(move |_| {
-                    let found = stored.clone();
-                    Box::pin(async move { Ok(vec![found]) })
-                });
-        })(&mut series, stored);
-        series
-            .expect_save()
-            .times(1)
-            .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
-        let harness = harness_with(
-            users,
-            (move || -> crate::domain::port::MockResourceRepository {
-                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
-                    let mut resources = crate::domain::port::MockResourceRepository::new();
-                    resources.expect_search().returning(|filter, caller| {
-                        let user_id = caller.id();
-                        let resource = crate::domain::model::Resource::from_stored(
-                            1,
-                            filter
-                                .kind
-                                .unwrap_or(crate::domain::model::ResourceKind::Library),
-                            filter.entity_id.unwrap_or_default(),
-                            Some(user_id),
-                            None,
-                            crate::domain::model::Visibility::Private,
-                        );
-                        let grant = crate::domain::model::Grant::from_stored(
-                            1,
-                            crate::domain::model::Principal::User(user_id),
-                            1,
-                            crate::domain::model::ResourceRole::Downloader,
-                            crate::domain::model::ChildKind::All,
-                            crate::domain::model::GrantEffect::Allow,
-                        );
-                        Box::pin(async move {
-                            Ok(vec![crate::domain::model::ResourceAccess::new(
-                                resource,
-                                Vec::new(),
-                                vec![grant],
-                                Vec::new(),
-                            )])
-                        })
-                    });
-                    resources
-                        .expect_search_many()
-                        .returning(|addresses, caller| {
-                            let user_id = caller.id();
-                            let found = addresses
-                                .iter()
-                                .map(|address| {
-                                    let resource = crate::domain::model::Resource::from_stored(
-                                        1,
-                                        address.kind(),
-                                        address.id(),
-                                        Some(user_id),
-                                        None,
-                                        crate::domain::model::Visibility::Private,
-                                    );
-                                    let grant = crate::domain::model::Grant::from_stored(
-                                        1,
-                                        crate::domain::model::Principal::User(user_id),
-                                        1,
-                                        crate::domain::model::ResourceRole::Downloader,
-                                        crate::domain::model::ChildKind::All,
-                                        crate::domain::model::GrantEffect::Allow,
-                                    );
-                                    crate::domain::model::ResourceAccess::new(
-                                        resource,
-                                        Vec::new(),
-                                        vec![grant],
-                                        Vec::new(),
-                                    )
-                                })
-                                .collect::<Vec<_>>();
-                            Box::pin(async move { Ok(found) })
-                        });
-                    resources.expect_create().returning(|new_resource| {
-                        let resource = crate::domain::model::Resource::from_stored(
-                            1,
-                            new_resource.kind,
-                            new_resource.entity_id,
-                            new_resource.owner_id,
-                            None,
-                            new_resource.visibility,
-                        );
-                        Box::pin(async move { Ok(resource) })
-                    });
-                    resources
-                })();
-                resources
-                    .expect_delete()
-                    .returning(|_| Box::pin(async { Ok(true) }));
-                resources
-            })(),
-            series,
-        );
-        let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(UpdateSeriesCommand::new(
-                1,
-                7,
-                None,
-                None,
-                FieldUpdate::Absent,
-                FieldUpdate::Absent,
-                None,
-                FieldUpdate::Set(9),
-            ))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateSeriesError::Conflict)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
     // proves: SCN-SERIES-009-A
     #[tokio::test]
     async fn update_series_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {

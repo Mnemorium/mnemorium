@@ -1,8 +1,9 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 
 use crate::application::port::GetResourcePermissionCommand;
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::identity::{
     ResourceKindWire, ResourcePermissionBody, parse_address,
 };
@@ -66,6 +67,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
     summary = "Return a resource's permission"
 )]
 pub(crate) async fn get_resource_permission(
+    _query: Query<NoParametersQuery>,
     Path((kind, id)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

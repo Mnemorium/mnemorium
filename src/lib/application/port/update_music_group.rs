@@ -95,12 +95,9 @@ pub(crate) enum UpdateMusicGroupError {
     /// The caller may not manage the library catalogue.
     #[error("the caller may not manage the library")]
     Forbidden,
-    /// The cover image belongs to a user, not to the library.
+    /// The cover image belongs to a user, not to the library, or the caller may
+    /// not view it.
     #[error("the cover image is not a library image")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
     InvalidCover,
     /// The name is empty or made only of whitespace.
     #[error("the name must not be empty")]

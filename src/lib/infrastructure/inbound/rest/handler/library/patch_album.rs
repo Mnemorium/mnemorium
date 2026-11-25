@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::Deserialize;
 use tracing::warn;
@@ -8,10 +8,10 @@ use crate::application::FieldUpdate;
 use crate::application::port::UpdateMusicAlbumCommand;
 use crate::domain::NumericID;
 use crate::domain::model::ProductionType;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     AlbumResponse, ProductionTypeRequest, deserialize_field_update, parse_album_id, parse_wire_date,
 };
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
@@ -103,7 +103,7 @@ pub(crate) struct PatchAlbumRequest {
             status = CONFLICT,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The identity duplicates another album, or the cover is not a library image"
+            description = "The identity duplicates another album, or the cover is not a viewable library image"
         ),
         (
             status = PAYLOAD_TOO_LARGE,
@@ -136,6 +136,7 @@ pub(crate) struct PatchAlbumRequest {
     summary = "Update a music album"
 )]
 pub(crate) async fn patch_album(
+    _query: Query<NoParametersQuery>,
     Path(album_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

@@ -4,7 +4,7 @@ import datetime
 import json
 
 from harness import Sut
-from labels import scenario
+from labels import alternate_flow, business_rule, negative, positive, scenario
 from mnemorium_client.api.library import (
     get_movie,
     list_movies,
@@ -50,6 +50,7 @@ SCAN_TYPE = "PROGRESSIVE"
 SUMMARY_FIELDS = {"id", "file_id", "codec", "duration_ms", "width", "height", "scan_type"}
 
 
+@business_rule
 @scenario("SCN-MOVIES-001-A")
 @scenario("SCN-MOVIES-001-D")
 @scenario("SCN-MOVIES-002-A")
@@ -75,6 +76,7 @@ def test_the_collection_lists_partial_films_in_identifier_order(server: Sut, roo
     assert "cover" not in uncovered["_links"]
 
 
+@business_rule
 @scenario("SCN-MOVIES-001-B")
 def test_the_name_filter_and_page_are_applied(server: Sut, root_token: str) -> None:
     """The name filter narrows the collection and limit/offset select one page."""
@@ -96,6 +98,7 @@ def test_the_name_filter_and_page_are_applied(server: Sut, root_token: str) -> N
     assert [item["id"] for item in json.loads(paged.content)["_embedded"]["items"]] == [PAGE_FILMS[1]]
 
 
+@positive
 @scenario("SCN-MOVIES-003-A")
 def test_the_detail_read_carries_the_film_metadata(server: Sut, root_token: str) -> None:
     """The read carries the metadata, ordered genres, the video summary and the cover."""
@@ -125,6 +128,7 @@ def test_the_detail_read_carries_the_film_metadata(server: Sut, root_token: str)
     assert json.loads(cover.content)["id"] == DETAIL_COVER
 
 
+@positive
 @scenario("SCN-MOVIES-003-B")
 def test_a_film_without_a_date_or_country_reports_null(server: Sut, root_token: str) -> None:
     """A film that stores neither a release date nor a country reports both as null."""
@@ -136,6 +140,7 @@ def test_a_film_without_a_date_or_country_reports_null(server: Sut, root_token: 
     assert film["country_of_origin"] is None
 
 
+@positive
 @scenario("SCN-MOVIES-004-A")
 def test_a_new_film_is_created_from_a_free_video(server: Sut, root_token: str) -> None:
     """An unused video creates the film and answers 201 with a Location."""
@@ -170,6 +175,7 @@ def test_a_new_film_is_created_from_a_free_video(server: Sut, root_token: str) -
     assert [item["id"] for item in json.loads(listed.content)["_embedded"]["items"]] == [film["id"]]
 
 
+@business_rule
 @scenario("SCN-MOVIES-004-B")
 def test_a_repeated_creation_returns_the_existing_film(server: Sut, root_token: str) -> None:
     """The same video answers 200 with the film it already backs and applies no change."""
@@ -194,6 +200,7 @@ def test_a_repeated_creation_returns_the_existing_film(server: Sut, root_token: 
     assert json.loads(listed.content)["_embedded"]["items"] == []
 
 
+@negative
 @scenario("SCN-MOVIES-004-C")
 def test_a_video_attached_to_an_episode_is_refused(server: Sut, root_token: str) -> None:
     """A video the seeded episode already takes answers 409 and creates no film."""
@@ -210,6 +217,7 @@ def test_a_video_attached_to_an_episode_is_refused(server: Sut, root_token: str)
     assert json.loads(listed.content)["_embedded"]["items"] == [], "a refused creation stored a film"
 
 
+@alternate_flow
 @scenario("SCN-MOVIES-004-D")
 def test_an_unknown_genre_is_stored_and_linked(server: Sut, root_token: str) -> None:
     """A genre the catalogue does not hold is stored and the film reports it."""
@@ -230,6 +238,7 @@ def test_an_unknown_genre_is_stored_and_linked(server: Sut, root_token: str) -> 
     assert json.loads(read.content)["genres"] == [UNKNOWN_GENRE.upper()]
 
 
+@negative
 @scenario("SCN-MOVIES-004-E")
 def test_a_film_with_an_unknown_video_is_refused(server: Sut, root_token: str) -> None:
     """A video the instance does not hold answers 422 and stores nothing."""
@@ -246,6 +255,7 @@ def test_a_film_with_an_unknown_video_is_refused(server: Sut, root_token: str) -
     assert json.loads(listed.content)["_embedded"]["items"] == [], "a refused creation stored a film"
 
 
+@negative
 @scenario("SCN-MOVIES-004-E")
 def test_a_film_with_an_empty_or_padded_name_is_refused(server: Sut, root_token: str) -> None:
     """An empty name, or one that begins or ends with whitespace, answers 422 and stores nothing."""
@@ -260,6 +270,7 @@ def test_a_film_with_an_empty_or_padded_name_is_refused(server: Sut, root_token:
         assert json.loads(listed.content)["_embedded"]["items"] == [], "a refused creation stored a film"
 
 
+@negative
 @scenario("SCN-MOVIES-004-E")
 def test_a_film_with_an_empty_genre_is_refused(server: Sut, root_token: str) -> None:
     """A genre identifier that is empty answers 422 and stores nothing."""
@@ -280,6 +291,7 @@ def test_a_film_with_an_empty_genre_is_refused(server: Sut, root_token: str) -> 
     assert json.loads(listed.content)["_embedded"]["items"] == [], "a refused creation stored a film"
 
 
+@negative
 @scenario("SCN-MOVIES-004-E")
 def test_a_film_with_a_malformed_date_is_refused(server: Sut, root_token: str) -> None:
     """A release date that is not YYYY-MM-DD answers 422 and stores nothing."""
@@ -300,6 +312,7 @@ def test_a_film_with_a_malformed_date_is_refused(server: Sut, root_token: str) -
     assert json.loads(listed.content)["_embedded"]["items"] == [], "a refused creation stored a film"
 
 
+@negative
 @scenario("SCN-MOVIES-004-E")
 def test_a_film_with_a_malformed_country_is_refused(server: Sut, root_token: str) -> None:
     """A country of origin that is not a two-letter code answers 422 and stores nothing."""
@@ -320,6 +333,7 @@ def test_a_film_with_a_malformed_country_is_refused(server: Sut, root_token: str
     assert json.loads(listed.content)["_embedded"]["items"] == [], "a refused creation stored a film"
 
 
+@positive
 @scenario("SCN-MOVIES-005-A")
 @scenario("SCN-MOVIES-005-C")
 def test_the_metadata_is_updated_partially(server: Sut, root_token: str) -> None:
@@ -354,6 +368,7 @@ def test_the_metadata_is_updated_partially(server: Sut, root_token: str) -> None
     assert stored_film["video"]["id"] == PATCH_VIDEO
 
 
+@negative
 @scenario("SCN-MOVIES-005-G")
 def test_a_padded_film_name_is_refused_on_update(server: Sut, root_token: str) -> None:
     """A patch name that begins or ends with whitespace answers 422 and applies nothing."""
@@ -370,6 +385,7 @@ def test_a_padded_film_name_is_refused_on_update(server: Sut, root_token: str) -
     assert json.loads(stored.content)["name"] == "Some Like It Hot"
 
 
+@alternate_flow
 @scenario("SCN-MOVIES-005-B")
 def test_null_clears_an_optional_value(server: Sut, root_token: str) -> None:
     """A null clears the release date, country and cover and the read reports each as null."""

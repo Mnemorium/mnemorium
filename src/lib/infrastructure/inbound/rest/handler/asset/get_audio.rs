@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderValue, header};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
@@ -8,6 +8,7 @@ use crate::application::port::{
     GetAudioCommand, GetAudioError, GetAudioResponse as GetAudioResponseData,
 };
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::asset::{
     asset_audio_href, asset_file_href, content_href, parse_asset_id,
 };
@@ -137,6 +138,7 @@ impl From<GetAudioError> for ApiError {
     summary = "Fetch a typed audio"
 )]
 pub(crate) async fn get_audio(
+    _query: Query<NoParametersQuery>,
     Path(audio_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

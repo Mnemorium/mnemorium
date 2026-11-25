@@ -1,8 +1,9 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 
 use crate::application::port::{GetUserCommand, GetUserError};
 use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::user::{GetUserResponse, parse_user_id};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
@@ -70,6 +71,7 @@ impl From<GetUserError> for ApiError {
     summary = "Fetch a user by identifier"
 )]
 pub(crate) async fn get_user(
+    _query: Query<NoParametersQuery>,
     Path(id): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

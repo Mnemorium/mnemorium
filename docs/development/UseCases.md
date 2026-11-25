@@ -1418,7 +1418,8 @@ it.
 - 2a. The video does not exist, the name is empty, a genre is empty, the date is malformed or the country is not a
   two-letter code; the system rejects the request and stores nothing.
 - 2b. The video already backs another film or an episode; the system reports the conflict and stores nothing.
-- 2c. The cover is not library artwork; the system reports the conflict and stores nothing.
+- 2c. The cover is not library artwork, or the caller may not view it; the system reports the conflict and stores
+  nothing.
 - 3a. The film does not exist or the caller may not see it; the system reports it as not found, without distinguishing
   the two cases.
 - 3b. The caller may see the film but may not manage the library; the system refuses the change and stores nothing.
@@ -1471,7 +1472,8 @@ Allow an administrator to create a show and to correct a show's metadata without
 - 1a. The request is unauthenticated; the system rejects the request.
 - 2a. The name is empty, a genre is empty, the date is malformed or the country is not a two-letter code; the system
   rejects the request and stores nothing.
-- 2b. The cover is not library artwork; the system reports the conflict and stores nothing.
+- 2b. The cover is not library artwork, or the caller may not view it; the system reports the conflict and stores
+  nothing.
 - 2c. Another show already carries the same name; the system stores a second show rather than refusing.
 - 3a. The show does not exist or the caller may not see it; the system reports it as not found, without distinguishing
   the two cases.
@@ -1524,7 +1526,8 @@ changing its episodes.
 - 1a. The request is unauthenticated; the system rejects the request.
 - 2a. The show does not exist, or the position is outside the accepted range; the system reports it as not found or
   rejects the request and stores nothing.
-- 2b. The cover is not library artwork; the system reports the conflict and stores nothing.
+- 2b. The cover is not library artwork, or the caller may not view it; the system reports the conflict and stores
+  nothing.
 - 2c. The caller may not see the show, or may see it but may not manage the library; the system reports it as not found
   or refuses the change and stores nothing.
 

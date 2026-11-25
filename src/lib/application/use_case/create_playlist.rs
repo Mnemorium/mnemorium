@@ -7,6 +7,7 @@ use chrono::Utc;
 use tracing::warn;
 
 use crate::application::authorization::authorize;
+use crate::application::cover_is_viewable;
 use crate::application::port::{
     CreatePlaylistCommand, CreatePlaylistError, CreatePlaylistResponse, CreatePlaylistUseCase,
 };
@@ -144,6 +145,23 @@ where
                     .map_err(|error| CreatePlaylistError::Unknown(error.into()))?;
                 if !existing.is_empty() {
                     return Err(CreatePlaylistError::NameAlreadyExists);
+                }
+
+                if let Some(cover_image_id) = command.cover_image_id() {
+                    if !cover_is_viewable(&mut unit_of_work, &caller, Some(cover_image_id)).await {
+                        return Err(CreatePlaylistError::InvalidCover);
+                    }
+                    let backed = unit_of_work
+                        .music_playlists()
+                        .search(&MusicPlaylistFilter {
+                            cover_image_id: Some(cover_image_id),
+                            ..MusicPlaylistFilter::default()
+                        })
+                        .await
+                        .map_err(|error| CreatePlaylistError::Unknown(error.into()))?;
+                    if !backed.is_empty() {
+                        return Err(CreatePlaylistError::InvalidCover);
+                    }
                 }
 
                 let created = unit_of_work
@@ -610,6 +628,166 @@ mod tests {
         // Assert
         assert!(matches!(result, Err(CreatePlaylistError::Unknown(_))));
         assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_playlist_stores_a_viewable_cover() -> Result<(), Box<dyn Error>> {
+        // Arrange: the caller names an image no playlist backs yet.
+        let mut users = MockUserRepository::new();
+        (move |users: &mut MockUserRepository, caller_id: i64| -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
+        let mut playlists = MockMusicPlaylistRepository::new();
+        let stored = MusicPlaylist::new(
+            9,
+            "Mix".to_owned(),
+            NaiveDateTime::default(),
+            NaiveDateTime::default(),
+            1,
+            false,
+            Some(19),
+            Vec::new(),
+        );
+        playlists
+            .expect_search()
+            .times(2)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        playlists
+            .expect_create()
+            .times(1)
+            .withf(|pending| pending.cover_image_id() == Some(19))
+            .return_once(move |_| {
+                let found = stored.clone();
+                Box::pin(async move { Ok(found) })
+            });
+        let harness = harness_with(users, playlists);
+        let use_case: UseCase = CreatePlaylist::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(CreatePlaylistCommand::new(
+                1,
+                "Mix".to_owned(),
+                false,
+                Some(19),
+            ))
+            .await?;
+
+        // Assert
+        assert_eq!(response.playlist().cover_image_id(), Some(19));
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_playlist_unknown_cover_returns_invalid_cover() -> Result<(), Box<dyn Error>> {
+        // Arrange: the named identifier resolves to no image.
+        let mut users = MockUserRepository::new();
+        (move |users: &mut MockUserRepository, caller_id: i64| -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
+        let mut playlists = MockMusicPlaylistRepository::new();
+        playlists
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        playlists.expect_create().times(0);
+        let harness = harness_with(users, playlists).with_unknown_images();
+        let use_case: UseCase = CreatePlaylist::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(CreatePlaylistCommand::new(
+                1,
+                "Mix".to_owned(),
+                false,
+                Some(19),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CreatePlaylistError::InvalidCover)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_playlist_cover_backed_by_another_playlist_returns_invalid_cover()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: another playlist already carries the named image.
+        let mut users = MockUserRepository::new();
+        (move |users: &mut MockUserRepository, caller_id: i64| -> Result<(), Box<dyn Error>> {
+            let caller = User::try_new(
+                caller_id,
+                "caller".to_owned(),
+                None,
+                caller_id,
+                Role::Standard,
+            )?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
+        let mut playlists = MockMusicPlaylistRepository::new();
+        playlists
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.name.is_some())
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let backer = playlist(3, 2, "Theirs", false);
+        playlists
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.cover_image_id == Some(19))
+            .return_once(move |_| {
+                let found = backer.clone();
+                Box::pin(async move { Ok(vec![found]) })
+            });
+        playlists.expect_create().times(0);
+        let harness = harness_with(users, playlists);
+        let use_case: UseCase = CreatePlaylist::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(CreatePlaylistCommand::new(
+                1,
+                "Mix".to_owned(),
+                false,
+                Some(19),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CreatePlaylistError::InvalidCover)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 }

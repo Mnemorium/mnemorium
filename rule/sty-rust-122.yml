@@ -1,0 +1,36 @@
+---
+id: sty-rust-122
+language: Rust
+severity: error
+message: >-
+  every REST handler extracts the query — its own <Context>Query when it takes
+  parameters, Query<NoParametersQuery> when it takes none — so an undeclared
+  query parameter answers 400 instead of being ignored
+files:
+  - src/lib/infrastructure/inbound/rest/handler/**/*.rs
+  - src/lib/infrastructure/inbound/rest/handler.rs
+rule:
+  all:
+    - kind: function_item
+    # A handler is the endpoint function of its file: the top-level `pub async
+    # fn` shape STY-RUST-005 recognises. A helper inside a `#[cfg(test)]` module
+    # is not a handler.
+    - regex: '^(pub(\(crate\))? )?async fn '
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: cfg\(test\)
+    # A handler is a free function; an async method of an `impl` (the
+    # `JsonObject` extractor) is not an endpoint.
+    - not:
+        inside:
+          kind: impl_item
+          stopBy: end
+    # The signature carries a query extractor, which either names the
+    # operation's parameters or declares that it has none.
+    - not:
+        has:
+          regex: 'Query\s*[<(]'

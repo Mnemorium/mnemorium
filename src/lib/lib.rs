@@ -170,7 +170,31 @@ mod test_helpers {
                     });
                     grants
                 })(),
-                images: MockImageRepository::new(),
+                images: (move || -> crate::domain::port::MockImageRepository {
+                    let mut images = crate::domain::port::MockImageRepository::new();
+                    // A cover identifier resolves to one readable image unless
+                    // the test replaces this mock: a case whose subject is not
+                    // the cover rule must not stub the lookup to reach its own.
+                    images.expect_search().returning(|filter| {
+                        let id = filter.image_id.unwrap_or_default();
+                        Box::pin(async move {
+                            match crate::domain::model::Image::try_new(
+                                id,
+                                "cover.png".to_owned(),
+                                10,
+                                10,
+                                crate::domain::model::Orientation::Square,
+                                chrono::NaiveDate::default(),
+                                1,
+                                None,
+                            ) {
+                                Ok(image) => Ok(vec![image]),
+                                Err(_) => Ok(Vec::new()),
+                            }
+                        })
+                    });
+                    images
+                })(),
                 mime_types: MockMimeTypeRepository::new(),
                 movies: MockMovieRepository::new(),
                 music_albums: MockMusicAlbumRepository::new(),
@@ -257,6 +281,12 @@ mod test_helpers {
                     resources
                         .expect_delete()
                         .returning(|_| Box::pin(async { Ok(true) }));
+                    resources
+                        .expect_reassign_owner()
+                        .returning(|_, _, _| Box::pin(async { Ok(true) }));
+                    resources
+                        .expect_set_visibility()
+                        .returning(|_, _| Box::pin(async { Ok(true) }));
                     resources
                 })(),
                 rolled_back: Arc::new(AtomicBool::new(false)),
@@ -499,6 +529,24 @@ mod test_helpers {
                 factory: Arc::new(TestFactory::new(unit_of_work)),
                 rolled_back,
             }
+        }
+
+        /// Make the queued unit of work resolve no cover image.
+        ///
+        /// A case about an unknown cover uses it: the identifier names no image
+        /// row, so the cover rule refuses before the write reaches a repository.
+        #[must_use]
+        pub(crate) fn with_unknown_images(self) -> Self {
+            if let Ok(mut queue) = self.factory.unit_of_works.lock() {
+                for unit_of_work in queue.iter_mut() {
+                    let mut images = crate::domain::port::MockImageRepository::new();
+                    images
+                        .expect_search()
+                        .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                    unit_of_work.images = images;
+                }
+            }
+            self
         }
     }
 

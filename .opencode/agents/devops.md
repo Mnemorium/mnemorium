@@ -122,7 +122,7 @@ does).
 
 Read the governing material at run time; never work from memory. Cite one of:
 
-- `docs/development/TechnicalDesign.md` § 6 (Dependencies & Dev Environment) —
+- `docs/development/TechnicalDesign.md` § 5 (Dependencies & Dev Environment) —
   the `DEPS-*` rules.
 - `docs/development/DependencyManifest.md` — the direct dependencies, tools,
   container images and runtime binaries, with their versions and licences.
@@ -233,7 +233,7 @@ When the caller supplies an output contract, it overrides this section.
 
 ## Evidence
 
-- `<path:line>` — <fact> — `TechnicalDesign.md` § 6 (Dependencies & Dev Environment), `DEPS-0xx` | no rule covers this
+- `<path:line>` — <fact> — `TechnicalDesign.md` § 5 (Dependencies & Dev Environment), `DEPS-0xx` | no rule covers this
 
 ## Verification
 

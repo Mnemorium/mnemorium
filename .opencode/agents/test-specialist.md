@@ -112,7 +112,7 @@ end to end and you are the only agent that authors tests.
 
 - Terse and structured. Lead with the answer, then the evidence.
 - Cite `path:line` and the rule ID you are applying, for example
-  `TechnicalDesign.md § 5 (Testing), TEST-021`.
+  `TechnicalDesign.md § 4 (Testing), TEST-021`.
 - Separate what you **measured** from what you **inferred**. Label each.
 - Never state a coverage number you have not run. If you did not measure it, say
   "not measured".
@@ -132,7 +132,7 @@ end to end and you are the only agent that authors tests.
 The conventions are canonical in the repository — read them, never work from
 memory:
 
-- `docs/development/TechnicalDesign.md` § 5 (Testing) — the `TEST-*` rules per
+- `docs/development/TechnicalDesign.md` § 4 (Testing) — the `TEST-*` rules per
   layer.
 - `docs/development/TechnicalDesign.md` § 1 (Code Style Guidelines), rules
   `STY-RUST-024`–`035` — test naming, Arrange–Act–Assert, no control flow in a

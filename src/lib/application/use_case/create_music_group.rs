@@ -1,4 +1,5 @@
 use crate::application::authorization::authorize;
+use crate::application::cover_is_viewable;
 use crate::domain::model::ChildKind;
 use std::future::Future;
 use std::pin::Pin;
@@ -130,6 +131,10 @@ where
                     .map_err(|error| CreateMusicGroupError::Unknown(error.into()))?;
                 if !existing.is_empty() {
                     return Err(CreateMusicGroupError::NameAlreadyExists);
+                }
+
+                if !cover_is_viewable(&mut unit_of_work, &caller, command.cover_image_id()).await {
+                    return Err(CreateMusicGroupError::InvalidCover);
                 }
 
                 let group = MusicGroup::try_new(0, name, command.cover_image_id())
@@ -438,9 +443,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_music_group_missing_cover_returns_invalid_cover() -> Result<(), Box<dyn Error>>
+    async fn create_music_group_unknown_cover_returns_invalid_cover() -> Result<(), Box<dyn Error>>
     {
-        // Arrange: the repository reports the USER image as a trigger conflict.
+        // Arrange: the named identifier resolves to no image, so the cover rule
+        // refuses before the repository is reached.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
                caller_id: NumericID|
@@ -459,10 +465,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        groups
-            .expect_create()
-            .times(1)
-            .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
+        groups.expect_create().times(0);
         let harness = (move |users: MockUserRepository,
                              groups: MockMusicGroupRepository|
               -> GalleryFactoryHarness {
@@ -471,7 +474,7 @@ mod tests {
                 users,
                 ..TestUnitOfWork::default()
             };
-            GalleryFactoryHarness::new(unit_of_work)
+            GalleryFactoryHarness::new(unit_of_work).with_unknown_images()
         })(users, groups);
         let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
 

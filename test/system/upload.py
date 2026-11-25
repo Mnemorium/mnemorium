@@ -19,7 +19,7 @@ from conftest import (
     store_chunk,
 )
 from harness import ROOT_ADMIN_USERNAME, STAGING_DIRECTORY, Sut
-from labels import scenario
+from labels import TestType, business_rule, error_handling, negative, positive, recovery, scenario
 from mnemorium_client.api.asset import (
     delete_upload,
     get_audio,
@@ -56,6 +56,7 @@ AUDIO_SAMPLE_RATE_HZ = 44_100
 _ACCOUNTS = count()
 
 
+@positive
 @scenario("SCN-UPLOAD-001-A")
 def test_a_valid_request_creates_a_session(server: Sut, root_token: str) -> None:
     """A valid declaration creates a readable session and its staged content."""
@@ -66,6 +67,7 @@ def test_a_valid_request_creates_a_session(server: Sut, root_token: str) -> None
     assert session_state(server, root_token, session)["bitmap"] == "0"
 
 
+@negative
 @scenario("SCN-UPLOAD-001-B")
 @scenario("SCN-UPLOAD-001-C")
 @scenario("SCN-UPLOAD-001-D")
@@ -108,6 +110,7 @@ def test_an_invalid_declaration_creates_nothing(sut: Sut) -> None:
     assert json.loads(list_files.sync_detailed(client=server.client(token)).content)["items"] == []
 
 
+@recovery
 @scenario("SCN-UPLOAD-002-A")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_failed_begin_leaves_nothing(sut: Sut) -> None:
@@ -133,6 +136,7 @@ def test_a_failed_begin_leaves_nothing(sut: Sut) -> None:
     assert server.listing(STAGING_DIRECTORY) == [str(session.id)]
 
 
+@recovery
 @scenario("SCN-UPLOAD-002-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_leftover_staging_file_is_reclaimed(sut: Sut) -> None:
@@ -149,6 +153,7 @@ def test_a_leftover_staging_file_is_reclaimed(sut: Sut) -> None:
     )
 
 
+@recovery
 @scenario("SCN-UPLOAD-003-B")
 @pytest.mark.own_instance(reason="restart")
 def test_a_new_chunk_size_applies_to_sessions_created_after_a_restart(sut: Sut) -> None:
@@ -168,6 +173,7 @@ def test_a_new_chunk_size_applies_to_sessions_created_after_a_restart(sut: Sut) 
     assert store_chunk(server, token, new, 0, b"\x02" * 2048, total=2048).status_code == 200
 
 
+@positive
 @scenario("SCN-UPLOAD-004-A")
 def test_a_valid_chunk_is_stored_at_its_offset(server: Sut, root_token: str) -> None:
     """A valid chunk is stored and reported in the bitmap."""
@@ -180,6 +186,7 @@ def test_a_valid_chunk_is_stored_at_its_offset(server: Sut, root_token: str) -> 
     assert (server.dir / staged_path(server, session)).read_bytes() == IMAGE
 
 
+@business_rule
 @scenario("SCN-UPLOAD-004-B")
 def test_a_resent_chunk_changes_nothing(server: Sut, root_token: str) -> None:
     """Re-sending a recorded chunk keeps the stored content and bitmap unchanged."""
@@ -194,6 +201,7 @@ def test_a_resent_chunk_changes_nothing(server: Sut, root_token: str) -> None:
     assert session_state(server, root_token, session)["bitmap"] == "1"
 
 
+@negative
 @scenario("SCN-UPLOAD-004-C")
 def test_a_digest_mismatch_stores_no_bytes(server: Sut, root_token: str) -> None:
     """A chunk whose digest differs from the header stores no bytes and records nothing."""
@@ -214,6 +222,7 @@ def test_a_digest_mismatch_stores_no_bytes(server: Sut, root_token: str) -> None
     assert session_state(server, root_token, session)["bitmap"] == "0"
 
 
+@negative
 @scenario("SCN-UPLOAD-004-D")
 def test_a_range_mismatch_stores_no_bytes(server: Sut, root_token: str) -> None:
     """A range that does not match the chunk stores no bytes and records nothing."""
@@ -227,6 +236,7 @@ def test_a_range_mismatch_stores_no_bytes(server: Sut, root_token: str) -> None:
     assert session_state(server, root_token, session)["bitmap"] == "0"
 
 
+@negative
 @scenario("SCN-UPLOAD-004-E")
 def test_a_malformed_chunk_header_stores_no_bytes(server: Sut, root_token: str) -> None:
     """A present but malformed range or digest header stores no bytes."""
@@ -256,6 +266,7 @@ def test_a_malformed_chunk_header_stores_no_bytes(server: Sut, root_token: str) 
     assert session_state(server, root_token, session)["bitmap"] == "0"
 
 
+@negative
 @scenario("SCN-UPLOAD-004-F")
 def test_a_missing_header_stores_no_bytes(server: Sut, root_token: str) -> None:
     """A missing range, a missing digest or an unsupported digest algorithm stores no bytes."""
@@ -294,7 +305,8 @@ def test_a_missing_header_stores_no_bytes(server: Sut, root_token: str) -> None:
     assert session_state(server, root_token, session)["bitmap"] == "0"
 
 
-@scenario("SCN-UPLOAD-005-B")
+@scenario("SCN-UPLOAD-005-B", TestType.NEGATIVE)
+@scenario("SCN-API-011-C", TestType.BUSINESS_RULE)
 def test_a_chunk_for_a_finished_session_is_refused(server: Sut, root_token: str) -> None:
     """A chunk for a finished session is a conflict and stores no bytes."""
     data = IMAGE + b"\x00" * (next(_ACCOUNTS) + 1)
@@ -310,6 +322,7 @@ def test_a_chunk_for_a_finished_session_is_refused(server: Sut, root_token: str)
     assert server.sha256(f"{MEDIA_DIRECTORY}/{file['path']}") == before
 
 
+@positive
 @scenario("SCN-UPLOAD-006-A")
 def test_a_known_session_is_read(server: Sut, root_token: str) -> None:
     """A known session reports its bitmap, count, expiry, finish flag, file and links."""
@@ -330,6 +343,7 @@ def test_a_known_session_is_read(server: Sut, root_token: str) -> None:
     assert body["_links"]["self"]["href"] == session.self_href
 
 
+@positive
 @scenario("SCN-UPLOAD-006-C")
 def test_a_finished_session_reports_a_complete_bitmap(server: Sut, root_token: str) -> None:
     """A finished session reports every chunk as received and the caller's file."""
@@ -346,6 +360,7 @@ def test_a_finished_session_reports_a_complete_bitmap(server: Sut, root_token: s
     assert body["file_id"] == file["id"]
 
 
+@business_rule
 @scenario("SCN-UPLOAD-006-D")
 def test_no_collection_of_sessions_exists(server: Sut, root_token: str) -> None:
     """The upload entry point is an operation, not a collection that lists sessions."""
@@ -357,7 +372,9 @@ def test_no_collection_of_sessions_exists(server: Sut, root_token: str) -> None:
     assert "upload_id" not in response.text
 
 
+@positive
 @scenario("SCN-UPLOAD-007-A")
+@scenario("SCN-API-004-C", TestType.POSITIVE)
 def test_a_matching_hash_completes(server: Sut, root_token: str) -> None:
     """A session whose staged content matches its hash completes."""
     session = begin(server, root_token, "cover.png", IMAGE)
@@ -368,8 +385,12 @@ def test_a_matching_hash_completes(server: Sut, root_token: str) -> None:
 
     assert completed.status_code == 200
     assert file["id"] > 0
+    body = json.loads(completed.content)
+    assert body["_links"]["self"]["href"] == session.self_href
+    assert "file" in body["_links"], "the produced file is not a named link"
 
 
+@negative
 @scenario("SCN-UPLOAD-007-B")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_hash_mismatch_registers_nothing(sut: Sut) -> None:
@@ -395,6 +416,7 @@ def test_a_hash_mismatch_registers_nothing(sut: Sut) -> None:
     assert server.exists(staged_path(server, session)), "a failed verification must leave the session retryable"
 
 
+@negative
 @scenario("SCN-UPLOAD-007-C")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_incomplete_session_registers_nothing(sut: Sut) -> None:
@@ -413,6 +435,7 @@ def test_an_incomplete_session_registers_nothing(sut: Sut) -> None:
     assert state["is_finished"] is False
 
 
+@positive
 @scenario("SCN-UPLOAD-009-A")
 def test_an_image_is_completed(server: Sut, root_token: str) -> None:
     """A valid image completes to a file and its image row."""
@@ -433,6 +456,7 @@ def test_an_image_is_completed(server: Sut, root_token: str) -> None:
     assert body["orientation"] == "SQUARE"
 
 
+@positive
 @scenario("SCN-UPLOAD-009-B")
 def test_a_video_is_completed(server: Sut, root_token: str) -> None:
     """A valid video completes to a file and its video row with the probed values."""
@@ -454,6 +478,7 @@ def test_a_video_is_completed(server: Sut, root_token: str) -> None:
     assert body["scan_type"] == "PROGRESSIVE"
 
 
+@positive
 @scenario("SCN-UPLOAD-009-C")
 def test_an_audio_file_is_completed(server: Sut, root_token: str) -> None:
     """A valid audio file completes to a file and its audio row with the probed values."""
@@ -474,6 +499,7 @@ def test_an_audio_file_is_completed(server: Sut, root_token: str) -> None:
     assert body["duration_ms"] > 0.0
 
 
+@business_rule
 @scenario("SCN-UPLOAD-009-D")
 def test_unreported_audio_values_stay_absent(server: Sut, root_token: str) -> None:
     """A completion records an unreported bit depth or block size as absent."""
@@ -492,6 +518,7 @@ def test_unreported_audio_values_stay_absent(server: Sut, root_token: str) -> No
     assert body["codec"].lower() == "pcm_s64le"
 
 
+@negative
 @scenario("SCN-UPLOAD-009-E")
 @scenario("SCN-UPLOAD-010-B")
 @pytest.mark.own_instance(reason="global_filesystem")
@@ -512,6 +539,7 @@ def test_content_without_the_declared_family_registers_nothing(sut: Sut) -> None
         assert json.loads(list_files.sync_detailed(client=server.client(token)).content)["items"] == []
 
 
+@negative
 @scenario("SCN-UPLOAD-009-F")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_unprobeable_content_registers_nothing(sut: Sut) -> None:
@@ -528,6 +556,7 @@ def test_unprobeable_content_registers_nothing(sut: Sut) -> None:
     assert json.loads(list_files.sync_detailed(client=server.client(token)).content)["items"] == []
 
 
+@business_rule
 @scenario("SCN-UPLOAD-010-A")
 def test_a_declared_audio_type_over_a_video_track_is_stored_as_declared(server: Sut, root_token: str) -> None:
     """An audio declaration over content with both tracks is stored as audio."""
@@ -542,6 +571,7 @@ def test_a_declared_audio_type_over_a_video_track_is_stored_as_declared(server: 
     assert "video" not in file["_links"]
 
 
+@positive
 @scenario("SCN-UPLOAD-010-C")
 def test_a_declared_image_type_is_stored_unchanged(server: Sut, root_token: str) -> None:
     """An image declaration over image content is stored unchanged."""
@@ -555,6 +585,7 @@ def test_a_declared_image_type_is_stored_unchanged(server: Sut, root_token: str)
     assert "image" in file["_links"]
 
 
+@business_rule
 @scenario("SCN-UPLOAD-011-A")
 def test_a_caller_reuses_its_own_content(server: Sut, root_token: str) -> None:
     """Completing the same bytes twice returns the first file and leaves the second session unfinished."""
@@ -576,6 +607,7 @@ def test_a_caller_reuses_its_own_content(server: Sut, root_token: str) -> None:
     assert state["file_id"] == first_file["id"]
 
 
+@business_rule
 @scenario("SCN-UPLOAD-011-B")
 def test_another_caller_receives_its_own_copy(server: Sut, root_token: str) -> None:
     """A different caller owning the same bytes receives its own copy."""
@@ -595,6 +627,7 @@ def test_another_caller_receives_its_own_copy(server: Sut, root_token: str) -> N
     assert second_file["path"] != first_file["path"]
 
 
+@positive
 @scenario("SCN-UPLOAD-013-A")
 def test_a_pending_session_is_cancelled(server: Sut, root_token: str) -> None:
     """Cancelling a pending session removes it and its staged content."""
@@ -610,6 +643,7 @@ def test_a_pending_session_is_cancelled(server: Sut, root_token: str) -> None:
     assert session_state(server, root_token, replacement)["bitmap"] == "0"
 
 
+@negative
 @scenario("SCN-UPLOAD-013-B")
 def test_a_finished_session_cannot_be_cancelled(server: Sut, root_token: str) -> None:
     """Cancelling a finished session is refused and leaves its file readable."""
@@ -627,6 +661,7 @@ def test_a_finished_session_cannot_be_cancelled(server: Sut, root_token: str) ->
     )
 
 
+@business_rule
 @scenario("SCN-UPLOAD-014-A")
 def test_completing_a_finished_session_returns_the_same_file(server: Sut, root_token: str) -> None:
     """A retried completion returns the same file, whose bitmap is complete."""
@@ -644,6 +679,7 @@ def test_completing_a_finished_session_returns_the_same_file(server: Sut, root_t
     assert session_state(server, root_token, session)["bitmap"] == "1"
 
 
+@business_rule
 @scenario("SCN-UPLOAD-014-B")
 def test_a_finished_identifier_is_not_reused(server: Sut, root_token: str) -> None:
     """A session created after a finished one carries a different identifier."""
@@ -656,11 +692,13 @@ def test_a_finished_identifier_is_not_reused(server: Sut, root_token: str) -> No
     assert later.id != finished.id
 
 
+@negative
 @scenario("SCN-UPLOAD-005-A")
 @scenario("SCN-UPLOAD-012-A")
 @scenario("SCN-UPLOAD-012-B")
 @scenario("SCN-UPLOAD-012-C")
 @scenario("SCN-UPLOAD-012-D")
+@scenario("SCN-API-011-C", TestType.BUSINESS_RULE)
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_expired_session_is_gone(sut: Sut) -> None:
     """An expired session refuses a chunk and a completion, is not readable, and activity did not extend it."""
@@ -690,6 +728,7 @@ def test_an_expired_session_is_gone(sut: Sut) -> None:
         assert not server.exists(staged_path(server, session)), "an expired session's staged content must be removed"
 
 
+@recovery
 @scenario("SCN-UPLOAD-015-A")
 @scenario("SCN-UPLOAD-015-C")
 @scenario("SCN-UPLOAD-015-D")
@@ -723,6 +762,7 @@ def test_the_reaper_removes_expired_and_orphaned_content(sut: Sut) -> None:
         assert "cover.png" not in report
 
 
+@error_handling
 @scenario("SCN-UPLOAD-016-A")
 @scenario("SCN-UPLOAD-016-B")
 @scenario("SCN-UPLOAD-016-C")
@@ -753,6 +793,7 @@ def test_an_absent_library_root_refuses_uploads(sut: Sut) -> None:
     assert server.request("GET", server.href("health")).status_code == 200
 
 
+@business_rule
 @scenario("SCN-UPLOAD-017-A")
 @scenario("SCN-UPLOAD-017-B")
 @scenario("SCN-UPLOAD-017-C")

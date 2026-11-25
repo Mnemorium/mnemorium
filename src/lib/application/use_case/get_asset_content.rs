@@ -20,7 +20,7 @@ use crate::domain::port::{
 ///
 /// The asset is authorized inside the unit of work; only a readable asset's
 /// bytes are read from storage, so a denied caller never reaches the file and
-/// cannot observe its existence through timing or size (`API-041`). Every
+/// cannot observe its existence through timing or size (`REQ-API-013`). Every
 /// request is decided on the spot from its session caller.
 pub(crate) struct GetAssetContent<F, S> {
     /// Storage adapter reading the stored bytes.

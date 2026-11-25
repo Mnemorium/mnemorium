@@ -213,7 +213,7 @@ where
                             }
                         })?;
 
-                unit_of_work
+                let item_resource = unit_of_work
                     .resources()
                     .create(NewResource {
                         kind: ResourceKind::GalleryItem,
@@ -227,6 +227,28 @@ where
                     })
                     .await
                     .map_err(|error| AddGalleryItemError::Unknown(error.into()))?;
+                // The asset follows the item that names it, so the item's owner,
+                // grants and visibility decide the read of its bytes
+                // (`REQ-AUTHORIZATION-025`, `SCN-AUTHORIZATION-025-B`). The
+                // stored owner is the uploader, never the caller attaching it.
+                let asset = match media {
+                    GalleryItemMedia::Image(id) => ResourceRef::new(ResourceKind::Image, id),
+                    GalleryItemMedia::Video(id) => ResourceRef::new(ResourceKind::Video, id),
+                };
+                let attached = unit_of_work
+                    .resources()
+                    .reassign_owner(
+                        asset,
+                        Some(file.user_id()),
+                        Some(item_resource.resource_id()),
+                    )
+                    .await
+                    .map_err(|error| AddGalleryItemError::Unknown(error.into()))?;
+                if !attached {
+                    return Err(AddGalleryItemError::Unknown(anyhow::anyhow!(
+                        "the medium has no stored resource"
+                    )));
+                }
 
                 gallery.touch(now);
                 unit_of_work

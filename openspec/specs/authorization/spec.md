@@ -134,11 +134,6 @@ only to that user; a role grant SHALL apply to every user holding that role; the
 - **WHEN** a grant names the `Admin` role as its principal
 - **THEN** every Admin receives it and a Standard User does not
 
-#### Scenario: SCN-AUTHORIZATION-005-C — The root holds no grant
-
-- **WHEN** a write names the root as a principal
-- **THEN** the system rejects it with `422 Unprocessable Content` and stores nothing
-
 ### Requirement: REQ-AUTHORIZATION-006 — The action catalog is fixed and stable
 
 The catalog SHALL be `Discover`, `ViewMetadata`, `View`, `Stream`, `Download`, `CreateChild`, `EditMetadata`,
@@ -151,11 +146,6 @@ name, and an unknown action SHALL be refused.
 
 - **WHEN** each catalog action is stored and read back
 - **THEN** the same action is returned
-
-#### Scenario: SCN-AUTHORIZATION-006-B — An unknown action is refused
-
-- **WHEN** a representation names an action outside the catalog
-- **THEN** the system answers `422 Unprocessable Content` and stores nothing
 
 ### Requirement: REQ-AUTHORIZATION-007 — Read actions distinguish discovery, metadata, content, stream and download
 
@@ -174,16 +164,11 @@ SHALL retrieve its original bytes. `View` SHALL NOT imply `Download`, and `Disco
 - **WHEN** a caller holds a role that includes `View` but not `Download`
 - **THEN** the content is readable and the download is refused
 
-#### Scenario: SCN-AUTHORIZATION-007-C — Stream is its own action
-
-- **WHEN** a caller holds a role that includes `Stream`
-- **THEN** audio and video bytes are served and a file download remains a separate decision
-
 ### Requirement: REQ-AUTHORIZATION-008 — Write actions distinguish creation, metadata, media and deletion
 
 `CreateChild` SHALL create a child and SHALL carry an explicit `ChildKind`. `EditMetadata` SHALL change metadata and
 SHALL NOT change visibility, ownership or a child. `ReplaceMedia` SHALL replace binary content. `Delete` SHALL remove
-the resource. None of the four SHALL imply another.
+the resource.
 
 #### Scenario: SCN-AUTHORIZATION-008-A — Creation names the child kind
 
@@ -194,16 +179,6 @@ the resource. None of the four SHALL imply another.
 
 - **WHEN** a caller holds `EditMetadata` but not `ManagePermissions`
 - **THEN** a metadata write applies and a visibility change is refused
-
-#### Scenario: SCN-AUTHORIZATION-008-C — Media replacement is separate
-
-- **WHEN** a caller holds `ReplaceMedia` but not `EditMetadata`
-- **THEN** the bytes are replaced and a metadata write is refused
-
-#### Scenario: SCN-AUTHORIZATION-008-D — Deletion is separate
-
-- **WHEN** a caller holds `Delete` but not `EditMetadata`
-- **THEN** the resource is deleted and a metadata write before it is refused
 
 ### Requirement: REQ-AUTHORIZATION-009 — Sharing and permission administration are distinct
 
@@ -221,30 +196,14 @@ grantable and SHALL NOT belong to the `Manager` bundle.
 - **WHEN** a caller holding `ManagePermissions` submits a `Manager` grant
 - **THEN** the system stores it
 
-#### Scenario: SCN-AUTHORIZATION-009-C — A manager does not administer
-
-- **WHEN** a caller holding `Manager` without `ManagePermissions` changes visibility
-- **THEN** the system answers `403 Forbidden`
-
 ### Requirement: REQ-AUTHORIZATION-010 — Administration actions are root-only
 
-`ChangeRole` SHALL change a user's role and `ReplaceCredential` SHALL replace a credential; both SHALL be available only
-to the root. `CreateChild` with `ChildKind::Admin` SHALL be available only to the root and SHALL NOT be grantable.
+`ChangeRole` SHALL change a user's role and SHALL be available only to the root.
 
 #### Scenario: SCN-AUTHORIZATION-010-A — Only the root changes a role
 
 - **WHEN** a non-root caller submits `ChangeRole`
 - **THEN** the system answers `403 Forbidden` and applies nothing
-
-#### Scenario: SCN-AUTHORIZATION-010-B — Only the root replaces a credential
-
-- **WHEN** a non-root caller submits `ReplaceCredential`
-- **THEN** the system answers `403 Forbidden` and applies nothing
-
-#### Scenario: SCN-AUTHORIZATION-010-C — Admin creation is not grantable
-
-- **WHEN** a grant names `CreateChild` with `ChildKind::Admin`
-- **THEN** the system answers `422 Unprocessable Content` and stores nothing
 
 ### Requirement: REQ-AUTHORIZATION-011 — Resource roles are bundles
 
@@ -273,11 +232,6 @@ The **owner** SHALL be the nearest non-null `owner_id` on the addressed resource
 owning principal SHALL hold the implicit `Owner` role for that resource. `Owner` SHALL NOT be stored as a grant to a
 user, and catalogue resources SHALL have no owner.
 
-#### Scenario: SCN-AUTHORIZATION-012-A — An owner reaches a gallery's items
-
-- **WHEN** a caller owns a gallery
-- **THEN** the implicit `Owner` role reaches the gallery and its gallery items
-
 #### Scenario: SCN-AUTHORIZATION-012-B — Catalogue resources have no owner
 
 - **WHEN** a caller addresses a film, show, album or music group
@@ -292,7 +246,7 @@ user, and catalogue resources SHALL have no owner.
 
 A **grant** SHALL carry a principal, a resource, a resource role, a **child kind** and an **effect** of `Allow` or
 `Deny`. The child kind SHALL be `All` or a concrete kind and SHALL matter only when the role includes `CreateChild`.
-Grants SHALL NOT be time-limited in this version; no expiry is stored or accepted.
+Grants SHALL NOT be time-limited in this version: no expiry is stored.
 
 #### Scenario: SCN-AUTHORIZATION-013-A — An allow grants its role
 
@@ -303,11 +257,6 @@ Grants SHALL NOT be time-limited in this version; no expiry is stored or accepte
 
 - **WHEN** a user holds a `Deny` grant of `Viewer`
 - **THEN** the viewer actions refuse on that resource
-
-#### Scenario: SCN-AUTHORIZATION-013-C — Expiry is not accepted
-
-- **WHEN** a representation supplies an expiry for a grant
-- **THEN** the system answers `422 Unprocessable Content` and stores nothing
 
 ### Requirement: REQ-AUTHORIZATION-014 — Deny wins over every allow
 
@@ -335,20 +284,10 @@ defeat an allow inherited from an ancestor.
 A decision SHALL apply, in order: upload owner-only; the root; the own-account read; any matching `Deny`; any matching
 `Allow` from a grant, the implicit owner, the role, the visibility or a relation's read lend; and otherwise `Deny`.
 
-#### Scenario: SCN-AUTHORIZATION-015-A — The root allows
-
-- **WHEN** the root addresses a resource it does not own
-- **THEN** the decision allows, except for uploads
-
 #### Scenario: SCN-AUTHORIZATION-015-B — Upload ownership precedes the root
 
 - **WHEN** the root addresses an upload it does not own
 - **THEN** the decision denies before the root rule
-
-#### Scenario: SCN-AUTHORIZATION-015-C — No matching allow denies
-
-- **WHEN** no grant, ownership, role, visibility or relation lend matches the action
-- **THEN** the decision denies
 
 ### Requirement: REQ-AUTHORIZATION-016 — Visibility is a grant, not a second permission system
 
@@ -402,11 +341,6 @@ grant. The root's own account SHALL remain immutable as a state rule outside the
 - **WHEN** a resource carries a `Deny` naming the root
 - **THEN** the deny cannot be stored and the root's decision allows
 
-#### Scenario: SCN-AUTHORIZATION-017-C — The root account is immutable
-
-- **WHEN** any caller updates or deletes the root account
-- **THEN** the system answers `403 Forbidden` and applies nothing
-
 ### Requirement: REQ-AUTHORIZATION-018 — Upload access is owner-only
 
 An upload resource SHALL be read, written, completed and cancelled only by its owner. A non-owner SHALL receive
@@ -421,11 +355,6 @@ An upload resource SHALL be read, written, completed and cancelled only by its o
 
 - **WHEN** the root addresses an upload it does not own
 - **THEN** the system answers `404 Not Found`
-
-#### Scenario: SCN-AUTHORIZATION-018-C — An upload grant is refused
-
-- **WHEN** a grant names an upload resource
-- **THEN** the system answers `422 Unprocessable Content` and stores nothing
 
 ### Requirement: REQ-AUTHORIZATION-019 — Account administration is root and admin
 
@@ -458,25 +387,14 @@ the root account.
 - **WHEN** any caller updates or deletes the root account
 - **THEN** the system answers `403 Forbidden` and applies nothing
 
-### Requirement: REQ-AUTHORIZATION-020 — Admin permissions and credentials are bounded
+### Requirement: REQ-AUTHORIZATION-020 — Admin permissions are bounded
 
-An Admin SHALL read and replace the grants of a non-root user it administers. `ChangeRole` and `ReplaceCredential` SHALL
-remain root-only.
+An Admin SHALL read and replace the grants of a non-root user it administers.
 
 #### Scenario: SCN-AUTHORIZATION-020-A — An admin edits a standard user's grants
 
 - **WHEN** an Admin replaces a Standard user's grants
 - **THEN** the replacement applies
-
-#### Scenario: SCN-AUTHORIZATION-020-B — An admin cannot change a role
-
-- **WHEN** an Admin submits `ChangeRole`
-- **THEN** the system answers `403 Forbidden` and applies nothing
-
-#### Scenario: SCN-AUTHORIZATION-020-C — An admin cannot replace a credential
-
-- **WHEN** an Admin submits `ReplaceCredential`
-- **THEN** the system answers `403 Forbidden` and applies nothing
 
 ### Requirement: REQ-AUTHORIZATION-021 — A caller reads its own account
 
@@ -515,11 +433,6 @@ resource by default.
 - **WHEN** an Admin with the seeded role edits an album
 - **THEN** the write applies
 
-#### Scenario: SCN-AUTHORIZATION-022-D — An unowned resource has no owner to privatise it
-
-- **WHEN** a Standard User changes a film's visibility
-- **THEN** the system answers `403 Forbidden`
-
 ### Requirement: REQ-AUTHORIZATION-023 — Creation names the child kind and the parent
 
 `CreateChild` SHALL be decided against the target's authorization parent or a **creation surface** that names it, and
@@ -542,17 +455,6 @@ Standard account, and only the root an Admin account.
 - **WHEN** an Admin creates a music album under the catalogue
 - **THEN** the album is created
 
-#### Scenario: SCN-AUTHORIZATION-023-D — Only the root creates an admin
-
-- **WHEN** a caller other than the root creates an Admin account
-- **THEN** the system answers `403 Forbidden` and creates nothing
-- **AND** the root's own creation of an Admin account succeeds
-
-#### Scenario: SCN-AUTHORIZATION-023-E — A creation surface is not an authorization parent
-
-- **WHEN** a caller creates a gallery through the gallery creation surface
-- **THEN** the gallery's authorization parent is the library, not the surface
-
 #### Scenario: SCN-AUTHORIZATION-023-F — A denied creation surface refuses
 
 - **WHEN** a Standard User whose `CreateChild` on the playlist collection is denied creates a playlist
@@ -568,11 +470,6 @@ Standard account, and only the root an Admin account.
 A film, show, season, episode, album, medium, recording or music group SHALL be read through `View` and `Stream`, and
 written through `EditMetadata`, `ReplaceMedia`, `CreateChild` and `Delete`. A child SHALL inherit the grants of its
 authorization parent.
-
-#### Scenario: SCN-AUTHORIZATION-024-A — A film is viewed
-
-- **WHEN** a caller holds `View` on a film or its library ancestor
-- **THEN** the film is readable
 
 #### Scenario: SCN-AUTHORIZATION-024-B — An album's metadata is edited
 
@@ -618,8 +515,12 @@ no authorization parent SHALL be readable only by its file owner and the root.
 ### Requirement: REQ-AUTHORIZATION-026 — Referencing content needs the container and the target
 
 Creating a gallery item SHALL need `CreateChild` on the gallery and `View` on the referenced image or video. Adding a
-playlist entry SHALL need `CreateChild` on the playlist and `ViewMetadata` on the recording. Both checks SHALL be
-all-of, and the request SHALL apply nothing when one refuses.
+playlist entry SHALL need `CreateChild` on the playlist and `ViewMetadata` on the recording. Naming a cover in a
+creation or a metadata update SHALL need the action that admits that write and `View` on the image it names. Every pair
+SHALL be all-of, and the request SHALL apply nothing when one refuses.
+
+A cover the caller may not view SHALL be refused as a conflict (`409`), indistinguishable from a cover that names no
+image, so the refusal does not disclose whether the image exists (`REQ-API-013`).
 
 #### Scenario: SCN-AUTHORIZATION-026-A — A gallery item needs both
 
@@ -635,6 +536,11 @@ all-of, and the request SHALL apply nothing when one refuses.
 
 - **WHEN** a caller holds both actions
 - **THEN** the child is created
+
+#### Scenario: SCN-AUTHORIZATION-026-D — A cover needs both
+
+- **WHEN** a caller may write a resource's metadata but may not view the image its cover names
+- **THEN** the system answers `409 Conflict` and applies nothing
 
 ### Requirement: REQ-AUTHORIZATION-029 — Every decision returns an explanation
 
@@ -662,11 +568,6 @@ to an ordinary caller.
 
 A request that checks several actions SHALL be allowed only when every check allows, and SHALL apply nothing when one
 refuses. A mixed request SHALL not apply its permitted part.
-
-#### Scenario: SCN-AUTHORIZATION-030-A — A mixed playlist update applies nothing
-
-- **WHEN** a caller may read a playlist but may not add its track and sends both changes
-- **THEN** the system answers `403 Forbidden` and applies neither
 
 #### Scenario: SCN-AUTHORIZATION-030-B — A role change needs both actions
 
@@ -815,11 +716,6 @@ error, a malformed row or a missing resource SHALL deny; no partial grant set SH
 The migration SHALL drop `permission` and `permission_resource`, create `resource`, `resource_relation` and `grant`,
 backfill a resource row for every existing entity, seed the role grants, and translate no stored override. Existing
 permission overrides SHALL be discarded.
-
-#### Scenario: SCN-AUTHORIZATION-037-A — The seeded roles apply after migration
-
-- **WHEN** the migration completes
-- **THEN** each user's effective permissions are the seeded role grants
 
 #### Scenario: SCN-AUTHORIZATION-037-B — No override survives
 

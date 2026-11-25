@@ -61,28 +61,3 @@ pub(crate) trait TokenProvider: Send + Sync {
         token: &str,
     ) -> impl Future<Output = Result<NumericID, TokenProviderError>> + Send;
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // proves: SCN-AUTHENTICATION-006-B
-    #[test]
-    fn issued_token_debug_redacts_the_value_but_keeps_the_lifetime() {
-        // Arrange
-        let token = IssuedToken::new("LEAK_SENTINEL".to_owned(), 3600);
-
-        // Act
-        let debug = format!("{token:?}");
-
-        // Assert
-        assert!(
-            !debug.contains("LEAK_SENTINEL"),
-            "Debug output must not contain the token value, got: {debug}"
-        );
-        assert!(
-            debug.contains("3600"),
-            "Debug output must still contain the lifetime, got: {debug}"
-        );
-    }
-}

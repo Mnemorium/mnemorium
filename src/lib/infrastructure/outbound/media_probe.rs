@@ -417,7 +417,7 @@ impl MediaProbe for LocalMediaProbe {
 /// decode, is a client-fixable rejection (`output_validation_failed` at `warn`,
 /// [`MediaProbeError::UnsupportedMedia`] → `422`); a read failure or an exceeded
 /// decoder limit is a dependency fault (`port_fault` at `error`,
-/// [`MediaProbeError::Unknown`] → `500`) (`API-038`, `OBS-005`, `OBS-006`).
+/// [`MediaProbeError::Unknown`] → `500`) (`REQ-API-011`, `OBS-005`, `OBS-006`).
 fn classify_image_error(error: image::ImageError) -> MediaProbeError {
     match error {
         image::ImageError::Unsupported(_) => {
@@ -454,7 +454,7 @@ fn classify_image_error(error: image::ImageError) -> MediaProbeError {
 /// A read failure or an internal decoder limit is a dependency fault: it is
 /// logged as `port_fault` at `error` and surfaces as
 /// [`MediaProbeError::Unknown`] (`500`), never as a client rejection
-/// (`API-038`, `OBS-005`).
+/// (`REQ-API-011`, `OBS-005`).
 fn io_fault(error: impl Into<anyhow::Error>) -> MediaProbeError {
     log_fault("io_failure");
     MediaProbeError::Unknown(error.into())

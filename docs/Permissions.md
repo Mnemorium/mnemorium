@@ -74,7 +74,9 @@ end note
 
 A typed asset attaches to the resource it belongs to: a film's video and artwork to the film, an episode's video to the
 episode, an album's artwork to the album, a playlist's cover to the playlist, a recording's audio to the recording. The
-diagram shows the common cases; each resource still has exactly one solid parent.
+diagram shows the common cases; each resource still has exactly one solid parent. Naming an asset in a write needs
+`View` on that asset as well as the action that admits the container write, so a caller may attach only the artwork it
+could read.
 
 ### Creation surfaces
 
@@ -173,7 +175,9 @@ Visibility is a coarse resource-level grant, not a second permission system.
 
 No visibility implies `Download`, `EditMetadata`, `Share` or `Delete`. Visibility is not inherited: a `Private`
 recording inside a `Public` album stays private unless a grant or a relation lends access. A `Deny` beats visibility.
-`Public` applies to authenticated callers until an anonymous route exists.
+`Public` applies to authenticated callers until an anonymous route exists. A gallery's and a playlist's `is_public`
+representation mirrors the stored visibility: changing it through the permission endpoint moves both, except for the
+seeded default gallery, whose flag stays fixed.
 
 ## Ownership
 

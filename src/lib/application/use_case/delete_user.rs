@@ -475,7 +475,9 @@ mod tests {
         ChunkBitmap, File, Gallery, Image, IntegrityHash, MusicPlaylist, Orientation, Role, Upload,
         User,
     };
-    use crate::domain::port::{MockFileRepository, MockFileStorage, MockUserRepository};
+    use crate::domain::port::{
+        MockFileRepository, MockFileStorage, MockImageRepository, MockUserRepository,
+    };
     use crate::test_helpers::*;
     use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;
@@ -952,7 +954,8 @@ mod tests {
                 Box::pin(async move { Ok(found) })
             });
         })(&mut unit_of_work.files, owned, root_file);
-        unit_of_work.images.expect_search().times(1).returning(|_| {
+        let mut images = MockImageRepository::new();
+        images.expect_search().times(1).returning(|_| {
             let image = Image::try_new(
                 1,
                 "artwork.png".to_owned(),
@@ -965,6 +968,7 @@ mod tests {
             );
             Box::pin(async move { Ok(image.into_iter().collect()) })
         });
+        unit_of_work.images = images;
         unit_of_work
             .videos
             .expect_search()

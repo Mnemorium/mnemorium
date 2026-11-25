@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -6,10 +6,10 @@ use utoipa::ToSchema;
 use crate::application::port::{AlbumPlacement, ApplyMusicAlbumCommand};
 use crate::domain::NumericID;
 use crate::domain::model::{ExternalRef, ProviderId};
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     AlbumResponse, MusicProviderRequest, parse_album_id,
 };
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
@@ -133,6 +133,7 @@ pub(crate) struct ApplyAlbumRequest {
     summary = "Apply external metadata to a music album"
 )]
 pub(crate) async fn post_album_apply(
+    _query: Query<NoParametersQuery>,
     Path(album_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

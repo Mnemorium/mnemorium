@@ -8,15 +8,15 @@ use chrono::Utc;
 
 use tracing::warn;
 
-use crate::application::FieldUpdate;
 use crate::application::port::{
     UpdatePlaylistCommand, UpdatePlaylistError, UpdatePlaylistResponse, UpdatePlaylistUseCase,
 };
-use crate::domain::model::{Action, MusicPlaylistError, MusicRecording, TrackIndex};
+use crate::application::{FieldUpdate, cover_is_viewable};
+use crate::domain::model::{Action, MusicPlaylistError, MusicRecording, TrackIndex, Visibility};
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumRepository as _, MusicPlaylistFilter,
-    MusicPlaylistRepository as _, MusicRecordingFilter, RepositoryError, UnitOfWork as _,
-    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    MusicPlaylistRepository as _, MusicRecordingFilter, RepositoryError, ResourceRepository as _,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
 use crate::domain::service::{NamePolicy, NamePolicyError};
 
@@ -102,7 +102,6 @@ where
                 // request, so a non-owner's `add_track` is rejected with it and
                 // nothing is applied.
                 let metadata_requested = command.name().is_some()
-                    || command.is_public().is_some()
                     || !matches!(command.cover_image_id(), FieldUpdate::Absent);
                 if metadata_requested {
                     authorize(
@@ -110,6 +109,26 @@ where
                         &caller,
                         ResourceRef::new(ResourceKind::MusicPlaylist, playlist.id()),
                         Action::EditMetadata,
+                        None,
+                    )
+                    .await
+                    .map_err(|error| {
+                        if error.conceals() {
+                            UpdatePlaylistError::NoSuchPlaylist
+                        } else {
+                            UpdatePlaylistError::Forbidden
+                        }
+                    })?;
+                }
+                // Visibility is not metadata: it moves the resource between the
+                // grant tiers, so it needs `ManagePermissions` on its own
+                // (`REQ-AUTHORIZATION-008`).
+                if command.is_public().is_some() {
+                    authorize(
+                        &mut unit_of_work.resources(),
+                        &caller,
+                        ResourceRef::new(ResourceKind::MusicPlaylist, playlist.id()),
+                        Action::ManagePermissions,
                         None,
                     )
                     .await
@@ -250,6 +269,22 @@ where
                 if let Some(is_public) = command.is_public() {
                     playlist.set_is_public(is_public);
                 }
+                if let FieldUpdate::Set(cover_image_id) = command.cover_image_id() {
+                    if !cover_is_viewable(&mut unit_of_work, &caller, Some(cover_image_id)).await {
+                        return Err(UpdatePlaylistError::InvalidCover);
+                    }
+                    let backed = unit_of_work
+                        .music_playlists()
+                        .search(&MusicPlaylistFilter {
+                            cover_image_id: Some(cover_image_id),
+                            ..MusicPlaylistFilter::default()
+                        })
+                        .await
+                        .map_err(|error| UpdatePlaylistError::Unknown(error.into()))?;
+                    if backed.iter().any(|backer| backer.id() != playlist.id()) {
+                        return Err(UpdatePlaylistError::InvalidCover);
+                    }
+                }
                 playlist.set_cover_image_id(
                     command.cover_image_id().resolve(playlist.cover_image_id()),
                 );
@@ -266,6 +301,30 @@ where
                         }
                         other => UpdatePlaylistError::Unknown(other.into()),
                     })?;
+
+                // The playlist flag and the resource's visibility are one fact:
+                // storing one without the other would leave the representation
+                // and the decision disagreeing.
+                if let Some(is_public) = command.is_public() {
+                    let visibility = if is_public {
+                        Visibility::Public
+                    } else {
+                        Visibility::Private
+                    };
+                    let updated = unit_of_work
+                        .resources()
+                        .set_visibility(
+                            ResourceRef::new(ResourceKind::MusicPlaylist, saved.id()),
+                            visibility,
+                        )
+                        .await
+                        .map_err(|error| UpdatePlaylistError::Unknown(error.into()))?;
+                    if !updated {
+                        return Err(UpdatePlaylistError::Unknown(anyhow::anyhow!(
+                            "the playlist has no stored resource"
+                        )));
+                    }
+                }
 
                 Ok(UpdatePlaylistResponse::new(saved))
             }
@@ -297,7 +356,8 @@ mod tests {
     use crate::domain::model::{MusicPlaylist, MusicRecording, Role, TrackIndex, User};
 
     use crate::domain::port::{
-        MockMusicAlbumRepository, MockMusicPlaylistRepository, MockUserRepository,
+        MockMusicAlbumRepository, MockMusicPlaylistRepository, MockResourceRepository,
+        MockUserRepository,
     };
 
     use crate::test_helpers::*;
@@ -1028,6 +1088,201 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(UpdatePlaylistError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_playlist_replaces_the_cover() -> Result<(), Box<dyn Error>> {
+        // Arrange: the named image is viewable and no other playlist backs it.
+        let mut users = MockUserRepository::new();
+        users
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.id == Some(4))
+            .returning(|_| {
+                let found = User::try_new(4, "caller".to_owned(), None, 4, Role::Standard);
+                Box::pin(async move { Ok(found.into_iter().collect()) })
+            });
+        let stored = playlist(3, 4, "Mine", false, Vec::new());
+        let playlist_id = stored.id();
+        let mut playlists = MockMusicPlaylistRepository::new();
+        playlists
+            .expect_search()
+            .times(1)
+            .withf(move |filter| filter.id == Some(playlist_id))
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        playlists
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.cover_image_id == Some(19))
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        playlists
+            .expect_save()
+            .times(1)
+            .withf(|saved| saved.cover_image_id() == Some(19))
+            .returning(|saved| Box::pin(async move { Ok(saved) }));
+        let unit_of_work = TestUnitOfWork {
+            music_playlists: playlists,
+            users,
+            ..TestUnitOfWork::default()
+        };
+        let harness = GalleryFactoryHarness::new(unit_of_work);
+        let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(UpdatePlaylistCommand::new(
+                4,
+                3,
+                None,
+                None,
+                None,
+                FieldUpdate::Set(19),
+            ))
+            .await?;
+
+        // Assert
+        assert_eq!(response.playlist().cover_image_id(), Some(19));
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_playlist_cover_backed_by_another_playlist_returns_invalid_cover()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: another playlist already carries the named image.
+        let mut users = MockUserRepository::new();
+        users
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.id == Some(4))
+            .returning(|_| {
+                let found = User::try_new(4, "caller".to_owned(), None, 4, Role::Standard);
+                Box::pin(async move { Ok(found.into_iter().collect()) })
+            });
+        let stored = playlist(3, 4, "Mine", false, Vec::new());
+        let playlist_id = stored.id();
+        let mut playlists = MockMusicPlaylistRepository::new();
+        playlists
+            .expect_search()
+            .times(1)
+            .withf(move |filter| filter.id == Some(playlist_id))
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        let backer = playlist(5, 6, "Theirs", false, Vec::new());
+        playlists
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.cover_image_id == Some(19))
+            .return_once(move |_| {
+                let found = backer.clone();
+                Box::pin(async move { Ok(vec![found]) })
+            });
+        playlists.expect_save().times(0);
+        let unit_of_work = TestUnitOfWork {
+            music_playlists: playlists,
+            users,
+            ..TestUnitOfWork::default()
+        };
+        let harness = GalleryFactoryHarness::new(unit_of_work);
+        let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(UpdatePlaylistCommand::new(
+                4,
+                3,
+                None,
+                None,
+                None,
+                FieldUpdate::Set(19),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdatePlaylistError::InvalidCover)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_playlist_unreadable_cover_returns_invalid_cover() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the caller may edit the playlist but not view the image.
+        let mut users = MockUserRepository::new();
+        users
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.id == Some(4))
+            .returning(|_| {
+                let found = User::try_new(4, "caller".to_owned(), None, 4, Role::Standard);
+                Box::pin(async move { Ok(found.into_iter().collect()) })
+            });
+        let stored = playlist(3, 4, "Mine", false, Vec::new());
+        let playlist_id = stored.id();
+        let mut playlists = MockMusicPlaylistRepository::new();
+        playlists
+            .expect_search()
+            .times(1)
+            .withf(move |filter| filter.id == Some(playlist_id))
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+        playlists.expect_save().times(0);
+        let mut resources = MockResourceRepository::new();
+        resources.expect_search().returning(|filter, caller| {
+            let user_id = caller.id();
+            if filter.kind == Some(crate::domain::model::ResourceKind::File) {
+                return Box::pin(async { Ok(Vec::new()) });
+            }
+            let resource = crate::domain::model::Resource::from_stored(
+                1,
+                filter
+                    .kind
+                    .unwrap_or(crate::domain::model::ResourceKind::Library),
+                filter.entity_id.unwrap_or_default(),
+                Some(user_id),
+                None,
+                crate::domain::model::Visibility::Private,
+            );
+            let grant = crate::domain::model::Grant::from_stored(
+                1,
+                crate::domain::model::Principal::User(user_id),
+                1,
+                crate::domain::model::ResourceRole::Downloader,
+                crate::domain::model::ChildKind::All,
+                crate::domain::model::GrantEffect::Allow,
+            );
+            Box::pin(async move {
+                Ok(vec![crate::domain::model::ResourceAccess::new(
+                    resource,
+                    Vec::new(),
+                    vec![grant],
+                    Vec::new(),
+                )])
+            })
+        });
+        let unit_of_work = TestUnitOfWork {
+            music_playlists: playlists,
+            resources,
+            users,
+            ..TestUnitOfWork::default()
+        };
+        let harness = GalleryFactoryHarness::new(unit_of_work);
+        let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(UpdatePlaylistCommand::new(
+                4,
+                3,
+                None,
+                None,
+                None,
+                FieldUpdate::Set(19),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdatePlaylistError::InvalidCover)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }

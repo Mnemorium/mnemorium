@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -6,10 +6,10 @@ use utoipa::ToSchema;
 use crate::application::FieldUpdate;
 use crate::application::port::UpdateMusicGroupCommand;
 use crate::domain::NumericID;
-use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     MusicGroupResponse, deserialize_field_update, parse_group_id,
 };
+use crate::infrastructure::inbound::rest::handler::{JsonObject, NoParametersQuery};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
@@ -39,7 +39,7 @@ pub(crate) struct PatchMusicGroupRequest {
 ///
 /// Updating a group requires `View` and then `EditMetadata` on it. The name
 /// must not begin or end with whitespace and must be unique; the cover must be a
-/// `LIBRARY` image. The seeded
+/// viewable `LIBRARY` image. The seeded
 /// default group is protected and refuses every update with `409 Conflict`.
 #[utoipa::path(
     patch,
@@ -85,7 +85,7 @@ pub(crate) struct PatchMusicGroupRequest {
             status = CONFLICT,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The name is taken, the cover is not a library image, or the group is protected"
+            description = "The name is taken, the cover is not a viewable library image, or the group is protected"
         ),
         (
             status = PAYLOAD_TOO_LARGE,
@@ -118,6 +118,7 @@ pub(crate) struct PatchMusicGroupRequest {
     summary = "Update a music group"
 )]
 pub(crate) async fn patch_music_group(
+    _query: Query<NoParametersQuery>,
     Path(group_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

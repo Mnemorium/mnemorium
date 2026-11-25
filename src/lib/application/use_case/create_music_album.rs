@@ -1,6 +1,7 @@
 use crate::domain::model::{Action, ChildKind};
 
 use crate::application::authorization::authorize;
+use crate::application::cover_is_viewable;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -163,6 +164,10 @@ where
                     .next();
                 if let Some(album) = existing {
                     return Ok(CreateMusicAlbumResponse::new(album, false));
+                }
+
+                if !cover_is_viewable(&mut unit_of_work, &caller, command.cover_image_id()).await {
+                    return Err(CreateMusicAlbumError::Conflict);
                 }
 
                 let album = MusicAlbum::try_new(
@@ -333,9 +338,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_music_album_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
-        // Arrange: the cover identifier does not resolve, so the insert violates
-        // the cover foreign key.
+    async fn create_music_album_unknown_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange: the cover identifier resolves to no image, so the cover rule
+        // refuses before the insert is reached.
         let mut users = MockUserRepository::new();
         (move |users: &mut MockUserRepository,
                caller_id: NumericID|
@@ -367,10 +372,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        albums
-            .expect_create()
-            .times(1)
-            .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
+        albums.expect_create().times(0);
         let harness = (move |users: MockUserRepository,
                              albums: MockMusicAlbumRepository,
                              groups: MockMusicGroupRepository|
@@ -381,7 +383,7 @@ mod tests {
                 users,
                 ..TestUnitOfWork::default()
             };
-            GalleryFactoryHarness::new(unit_of_work)
+            GalleryFactoryHarness::new(unit_of_work).with_unknown_images()
         })(users, albums, groups);
         let use_case: UseCase = CreateMusicAlbum::new(Arc::clone(&harness.factory));
 

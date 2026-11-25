@@ -7,7 +7,7 @@ from itertools import count
 import pytest
 from conftest import SEED_MEDIA_DIRECTORY, login, provision, start_instance, upload
 from harness import ROOT_ADMIN_USERNAME, Sut
-from labels import scenario
+from labels import alternate_flow, boundary, business_rule, error_handling, positive, scenario, security
 from mnemorium_client.api.asset import get_file
 
 # The seeded slots this module reads, documented in `seed/sql/0005_download.sql`.
@@ -38,6 +38,7 @@ PRIVATE = "PRIVATE"
 _ACCOUNTS = count()
 
 
+@positive
 @scenario("SCN-DOWNLOAD-001-A")
 @scenario("SCN-DOWNLOAD-003-A")
 def test_a_bearer_request_reads_content(server: Sut, root_token: str) -> None:
@@ -58,6 +59,7 @@ def test_a_bearer_request_reads_content(server: Sut, root_token: str) -> None:
     assert response.headers["Content-Type"] == IMAGE_CONTENT_TYPE
 
 
+@business_rule
 @scenario("SCN-DOWNLOAD-002-A")
 def test_image_content_decides_view(server: Sut, root_token: str) -> None:
     """A viewer grant reads image content."""
@@ -92,6 +94,7 @@ def test_image_content_decides_view(server: Sut, root_token: str) -> None:
     assert response.status_code == 200, f"image content failed: {response.status_code} {response.content!r}"
 
 
+@business_rule
 @scenario("SCN-DOWNLOAD-002-B")
 def test_audio_content_decides_stream(server: Sut, root_token: str) -> None:
     """A viewer grant reads audio content."""
@@ -126,6 +129,7 @@ def test_audio_content_decides_stream(server: Sut, root_token: str) -> None:
     assert response.status_code == 200, f"audio content failed: {response.status_code} {response.content!r}"
 
 
+@business_rule
 @scenario("SCN-DOWNLOAD-002-B")
 def test_video_content_decides_stream(server: Sut, root_token: str) -> None:
     """A viewer grant reads video content."""
@@ -160,6 +164,7 @@ def test_video_content_decides_stream(server: Sut, root_token: str) -> None:
     assert response.status_code == 200, f"video content failed: {response.status_code} {response.content!r}"
 
 
+@positive
 @scenario("SCN-DOWNLOAD-003-B")
 def test_audio_content_carries_the_stored_type(server: Sut, root_token: str) -> None:
     """Audio content carries the bytes and type stored for its file."""
@@ -179,6 +184,7 @@ def test_audio_content_carries_the_stored_type(server: Sut, root_token: str) -> 
     assert response.content == AUDIO_BYTES
 
 
+@positive
 @scenario("SCN-DOWNLOAD-003-B")
 def test_video_content_carries_the_stored_type(server: Sut, root_token: str) -> None:
     """Video content carries the bytes and type stored for its file."""
@@ -198,6 +204,7 @@ def test_video_content_carries_the_stored_type(server: Sut, root_token: str) -> 
     assert response.content == VIDEO_BYTES
 
 
+@positive
 @scenario("SCN-DOWNLOAD-003-C")
 def test_file_content_carries_the_stored_type(server: Sut, root_token: str) -> None:
     """File content carries the stored type of the file."""
@@ -212,6 +219,7 @@ def test_file_content_carries_the_stored_type(server: Sut, root_token: str) -> N
     assert response.content == IMAGE_BYTES
 
 
+@alternate_flow
 @scenario("SCN-DOWNLOAD-004-B")
 def test_a_head_request_answers_without_content(server: Sut, root_token: str) -> None:
     """`HEAD` answers the headers of `GET` and no body."""
@@ -234,6 +242,7 @@ def test_a_head_request_answers_without_content(server: Sut, root_token: str) ->
     assert head.headers["Content-Type"] == whole.headers["Content-Type"]
 
 
+@positive
 @scenario("SCN-DOWNLOAD-005-A")
 def test_a_closed_range(server: Sut, root_token: str) -> None:
     """A closed range answers 206 with exactly the requested bytes."""
@@ -258,6 +267,7 @@ def test_a_closed_range(server: Sut, root_token: str) -> None:
     assert response.headers["Content-Range"] == f"bytes 0-99/{len(AUDIO_BYTES)}"
 
 
+@positive
 @scenario("SCN-DOWNLOAD-005-B")
 def test_an_open_ended_range(server: Sut, root_token: str) -> None:
     """An open-ended range answers from its offset to the end."""
@@ -281,6 +291,7 @@ def test_an_open_ended_range(server: Sut, root_token: str) -> None:
     assert response.content == AUDIO_BYTES[100:]
 
 
+@positive
 @scenario("SCN-DOWNLOAD-005-C")
 def test_a_suffix_range(server: Sut, root_token: str) -> None:
     """A suffix range answers the final bytes."""
@@ -304,6 +315,7 @@ def test_a_suffix_range(server: Sut, root_token: str) -> None:
     assert response.content == AUDIO_BYTES[-500:]
 
 
+@boundary
 @scenario("SCN-DOWNLOAD-005-D")
 def test_an_unsatisfiable_range(server: Sut, root_token: str) -> None:
     """A range past the end answers 416 with the content size."""
@@ -327,6 +339,7 @@ def test_an_unsatisfiable_range(server: Sut, root_token: str) -> None:
     assert response.headers["Content-Range"] == f"bytes */{len(AUDIO_BYTES)}"
 
 
+@alternate_flow
 @scenario("SCN-DOWNLOAD-005-E")
 def test_more_than_one_range(server: Sut, root_token: str) -> None:
     """Several ranges in one header answer the whole content."""
@@ -350,6 +363,7 @@ def test_more_than_one_range(server: Sut, root_token: str) -> None:
     assert response.content == AUDIO_BYTES
 
 
+@positive
 @scenario("SCN-DOWNLOAD-006-A")
 def test_a_content_response_carries_its_validators(server: Sut, root_token: str) -> None:
     """Content carries an `ETag` and a `Last-Modified`."""
@@ -368,6 +382,7 @@ def test_a_content_response_carries_its_validators(server: Sut, root_token: str)
     assert response.headers["Last-Modified"].endswith("GMT")
 
 
+@positive
 @scenario("SCN-DOWNLOAD-006-B")
 def test_unchanged_content_answers_not_modified(server: Sut, root_token: str) -> None:
     """A matching `If-None-Match` answers 304 with no body."""
@@ -392,6 +407,7 @@ def test_unchanged_content_answers_not_modified(server: Sut, root_token: str) ->
     assert response.content == b""
 
 
+@positive
 @scenario("SCN-DOWNLOAD-006-C")
 def test_a_range_is_conditional_on_the_content(server: Sut, root_token: str) -> None:
     """A range whose `If-Range` matches answers 206."""
@@ -415,6 +431,7 @@ def test_a_range_is_conditional_on_the_content(server: Sut, root_token: str) -> 
     assert response.status_code == 206
 
 
+@alternate_flow
 @scenario("SCN-DOWNLOAD-006-D")
 def test_a_stale_validator_answers_the_whole_content(server: Sut, root_token: str) -> None:
     """A range whose `If-Range` does not match answers 200."""
@@ -438,6 +455,7 @@ def test_a_stale_validator_answers_the_whole_content(server: Sut, root_token: st
     assert response.content == AUDIO_BYTES
 
 
+@positive
 @scenario("SCN-DOWNLOAD-007-A")
 def test_a_typed_file_keeps_its_original_name(server: Sut, root_token: str) -> None:
     """The file route names the typed media row's original name."""
@@ -451,6 +469,7 @@ def test_a_typed_file_keeps_its_original_name(server: Sut, root_token: str) -> N
     assert response.headers["Content-Disposition"] == 'attachment; filename="holiday.png"'
 
 
+@alternate_flow
 @scenario("SCN-DOWNLOAD-007-B")
 def test_a_bare_file_keeps_its_stored_name(server: Sut, root_token: str) -> None:
     """A file with no typed row names the final segment of its stored path."""
@@ -465,6 +484,7 @@ def test_a_bare_file_keeps_its_stored_name(server: Sut, root_token: str) -> None
     assert response.content == BARE_BYTES
 
 
+@business_rule
 @scenario("SCN-DOWNLOAD-007-C")
 def test_a_display_route_is_not_an_attachment(server: Sut, root_token: str) -> None:
     """Image, audio and video content carry no disposition."""
@@ -485,6 +505,7 @@ def test_a_display_route_is_not_an_attachment(server: Sut, root_token: str) -> N
         assert "Content-Disposition" not in response.headers
 
 
+@boundary
 @scenario("SCN-DOWNLOAD-007-D")
 def test_an_awkward_file_name_is_encoded(server: Sut, root_token: str) -> None:
     """A name carrying a quote is encoded so it round-trips intact."""
@@ -500,6 +521,7 @@ def test_an_awkward_file_name_is_encoded(server: Sut, root_token: str) -> None:
     assert "filename*=UTF-8''odd%20%22name%22.png" in disposition
 
 
+@security
 @scenario("SCN-DOWNLOAD-002-C")
 @scenario("SCN-DOWNLOAD-008-B")
 @scenario("SCN-DOWNLOAD-009-A")
@@ -535,6 +557,7 @@ def test_a_visible_asset_whose_action_refuses_answers_forbidden(server: Sut, roo
     assert refused.content != REFUSAL_BYTES
 
 
+@error_handling
 @scenario("SCN-DOWNLOAD-008-C")
 @pytest.mark.own_instance(reason="restart")
 def test_an_absent_library_root_answers_unavailable(sut: Sut) -> None:
@@ -556,6 +579,7 @@ def test_an_absent_library_root_answers_unavailable(sut: Sut) -> None:
     assert response.status_code == 503
 
 
+@error_handling
 @scenario("SCN-DOWNLOAD-008-D")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_registered_file_without_bytes_answers_server_error(sut: Sut) -> None:

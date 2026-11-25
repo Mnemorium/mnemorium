@@ -17,7 +17,7 @@ pub(crate) mod user;
 #[cfg(feature = "api-docs")]
 pub(crate) use self::get_health::{__path_get_health, get_health};
 
-use axum::extract::{FromRequest, Request};
+use axum::extract::{FromRequest, Query, Request};
 use axum::middleware;
 use axum::response::Response;
 use utoipa::ToSchema;
@@ -40,7 +40,7 @@ use crate::infrastructure::inbound::rest::handler::user::user_routes;
 use crate::infrastructure::inbound::rest::middleware::{LoginRateLimiter, hal_errors, tracing};
 use crate::infrastructure::inbound::rest::{ApiError, AppState, Link, SelfLinks, hal_json};
 
-/// Wire format of every timestamp representation: RFC 3339 UTC (`API-043`).
+/// Wire format of every timestamp representation: RFC 3339 UTC (`REQ-API-017`).
 ///
 /// The database columns store naive UTC, so appending `Z` states the truth
 /// without a timezone conversion.
@@ -122,6 +122,22 @@ pub(crate) struct ApiIndexResponse {
 )]
 pub(crate) struct JsonObject<T>(pub(crate) T);
 
+/// The query a business operation with no query parameters accepts.
+///
+/// Every handler that declares no query parameters extracts this omission-aware
+/// struct, so a parameter the operation does not declare answers `400` rather
+/// than being ignored (`REQ-API-022`). A handler that does take query
+/// parameters declares its own `<Context>Query` instead.
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NoParametersQuery {
+    /// No parameter is declared. The skipped marker keeps the type a struct an
+    /// empty query still deserializes into, and is never published.
+    #[serde(skip)]
+    #[param(ignore)]
+    _private: (),
+}
+
 impl<T, S> FromRequest<S> for JsonObject<T>
 where
     T: DeserializeOwned,
@@ -181,7 +197,7 @@ where
     security(()),
     summary = "Read the API index"
 )]
-pub(crate) async fn get_api_index() -> Response {
+pub(crate) async fn get_api_index(_query: Query<NoParametersQuery>) -> Response {
     hal_json(ApiIndexResponse {
         links: ApiIndexLinks {
             login: Link::new("/api/v1/identity/login"),
@@ -261,7 +277,7 @@ fn normalise_numbers(value: Value) -> Value {
 /// `hal_errors` is applied **last** so it is the outermost layer. It therefore
 /// rewraps every `4xx`/`5xx` the server emits, including the routing fallback
 /// (an unknown or malformed URL) and framework rejections, as the one HAL error
-/// envelope (`API-036`). It must remain outermost.
+/// envelope (`REQ-API-008`). It must remain outermost.
 ///
 /// The `limiter` is the process-lifetime login rate limiter the composition
 /// root built; it is applied to the `login` route here.

@@ -885,6 +885,7 @@ mod tests {
         Ok(())
     }
 
+    // proves: SCN-AUTHENTICATION-015-B — Recovery
     #[tokio::test]
     async fn patch_credential_credential_save_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {

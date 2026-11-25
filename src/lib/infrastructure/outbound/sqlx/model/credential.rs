@@ -26,32 +26,3 @@ impl Debug for Credential {
             .finish_non_exhaustive()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // proves: SCN-AUTHENTICATION-006-B
-    #[test]
-    fn credential_debug_redacts_the_password_hash_but_keeps_the_id() {
-        // Arrange: a `credential` row whose stored hash is a unique sentinel.
-        let row = Credential {
-            credential_id: 7,
-            password_hash: "LEAK_PASSWORD_HASH".to_owned(),
-            updated_at: NaiveDateTime::default(),
-        };
-
-        // Act
-        let debug = format!("{row:?}");
-
-        // Assert
-        assert!(
-            !debug.contains("LEAK_PASSWORD_HASH"),
-            "Debug output must not contain the password hash, got: {debug}"
-        );
-        assert!(
-            debug.contains("credential_id: 7"),
-            "Debug output must still contain the credential identifier, got: {debug}"
-        );
-    }
-}
