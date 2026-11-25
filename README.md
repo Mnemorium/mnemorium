@@ -17,11 +17,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Mnemorium/mnemorium/actions/workflows/ci.yml">
-    <img src="https://github.com/Mnemorium/mnemorium/actions/workflows/ci.yml/badge.svg" alt="Continuous integration" />
-  </a>
-  <a href="https://github.com/Mnemorium/mnemorium/actions/workflows/docs.yml">
-    <img src="https://github.com/Mnemorium/mnemorium/actions/workflows/docs.yml/badge.svg" alt="Documentation" />
+  <a href="https://github.com/Mnemorium/mnemorium/actions/workflows/cd.yml">
+    <img src="https://github.com/Mnemorium/mnemorium/actions/workflows/cd.yml/badge.svg" alt="Continuous delivery" />
   </a>
   <a href="https://github.com/Mnemorium/mnemorium/releases">
     <img src="https://img.shields.io/github/v/release/Mnemorium/mnemorium" alt="Latest release" />
@@ -35,7 +32,6 @@
   <a href="https://www.rust-lang.org/">
     <img src="https://img.shields.io/badge/rust-1.98.0-orange?logo=rust" alt="Rust version" />
   </a>
-  <!-- TODO: add a documentation-site badge once the documentation site is published. -->
 </p>
 
 <p align="center">
