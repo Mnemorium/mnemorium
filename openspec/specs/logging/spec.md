@@ -100,11 +100,6 @@ equal to the lowest severity the catalog declares, so no configured value can si
 Events SHALL be emitted only by the application and infrastructure layers. The domain SHALL return errors as values and
 SHALL emit none; the composition root is infrastructure and may record lifecycle events.
 
-#### Scenario: SCN-LOGGING-005-A — A domain rejection is recorded by its caller
-
-- **WHEN** a domain rule rejects a value
-- **THEN** exactly one event records the rejection and the domain emits none
-
 #### Scenario: SCN-LOGGING-005-B — No emission site sits in the domain
 
 - **WHEN** the repository's rules are checked
@@ -199,20 +194,10 @@ Every emitted event SHALL be one the security-event catalog declares, SHALL targ
 SHALL carry the declared severity and exactly the declared fields. The server SHALL emit no undeclared event and SHALL
 emit every declared event.
 
-#### Scenario: SCN-LOGGING-010-A — An undeclared event is rejected
-
-- **WHEN** an emission site names an event the catalog does not declare
-- **THEN** the repository's rules reject it
-
 #### Scenario: SCN-LOGGING-010-B — A declared event carries its declared shape
 
 - **WHEN** a catalogued event is emitted
 - **THEN** it targets `security` at the declared severity with exactly the declared fields
-
-#### Scenario: SCN-LOGGING-010-C — The catalog holds no dormant event
-
-- **WHEN** the catalog is checked against the emission sites
-- **THEN** every declared event has at least one emission site
 
 The security-event catalog:
 

@@ -1,5 +1,6 @@
 """Black-box proof of the `gallery` capability."""
 
+import json
 import struct
 import time
 import zlib
@@ -8,6 +9,9 @@ from itertools import count
 import pytest
 from conftest import (
     FIXTURE_DIRECTORY,
+    SEED_MEDIA_DIRECTORY,
+    add_to_gallery,
+    auth_path,
     create_gallery,
     linked_id,
     login,
@@ -21,6 +25,8 @@ from harness import (
     link_of,
 )
 from labels import TestType, business_rule, negative, positive, scenario, security
+from mnemorium_client.api.identity import get_permission_summary
+from mnemorium_client.models import GetPermissionSummaryAction, GetPermissionSummaryResourceKind
 
 IMAGE_CONTENT_TYPE = "image/png"
 VIDEO_CONTENT_TYPE = "video/mp4"
@@ -181,10 +187,14 @@ def test_the_default_gallery_cannot_be_deleted(sut: Sut) -> None:
 
 @positive
 @scenario("SCN-GALLERY-003-A")
+@scenario("SCN-GALLERY-012-A", TestType.BUSINESS_RULE)
+@scenario("SCN-GALLERY-012-C", TestType.BUSINESS_RULE)
+@scenario("SCN-GALLERY-013-B")
+@scenario("SCN-GALLERY-014-A")
 @scenario("SCN-AUTHORIZATION-023-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_created_gallery_is_owned_and_private(sut: Sut) -> None:
-    """Creation answers 201 with a Location; the gallery is owned and private."""
+    """Creation answers 201 with a Location; the gallery is owned, private and follows the library."""
     server = start_instance(sut)
     root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     alice_id, alice = provision(server, root_token, "alice")
@@ -202,6 +212,17 @@ def test_a_created_gallery_is_owned_and_private(sut: Sut) -> None:
     assert body["created_at"].endswith("Z"), f"created_at is not RFC 3339 UTC: {body['created_at']!r}"
     assert body["last_modified_at"].endswith("Z"), f"last_modified_at is not RFC 3339 UTC: {body['last_modified_at']!r}"
     assert response.headers["Location"] == body["_links"]["self"]["href"]
+    summary = get_permission_summary.sync_detailed(
+        client=server.client(root_token),
+        user_id=alice_id,
+        resource_kind=GetPermissionSummaryResourceKind.GALLERY,
+        resource_id=body["id"],
+        action=GetPermissionSummaryAction.VIEW,
+    )
+    assert summary.status_code == 200, f"summary failed: {summary.status_code} {summary.content!r}"
+    auth_path = [entry["kind"] for entry in json.loads(summary.content)["decision"]["auth_path"]]
+    assert auth_path == ["GALLERY", "LIBRARY", "INSTANCE"], "the gallery must follow the library"
+    assert "GALLERY_COLLECTION" not in auth_path, "the creation surface must not become the parent"
 
     stored = server.follow(body, "self", token=alice)
     assert stored.status_code == 200, f"read failed: {stored.status_code} {stored.text}"
@@ -212,13 +233,16 @@ def test_a_created_gallery_is_owned_and_private(sut: Sut) -> None:
 
 @positive
 @scenario("SCN-GALLERY-003-B")
+@scenario("SCN-GALLERY-013-A")
+@scenario("SCN-GALLERY-013-C", TestType.SECURITY)
+@scenario("SCN-GALLERY-007-F", TestType.SECURITY)
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_public_gallery_is_created_and_readable_by_another_caller(sut: Sut) -> None:
-    """`is_public` selects a public gallery another authenticated caller may read."""
+    """`is_public` selects a public gallery another caller may read but not moderate."""
     server = start_instance(sut)
     root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
-    _bob_id, bob = provision(server, root_token, "bobby")
+    alice_id, alice = provision(server, root_token, "alice")
+    bob_id, bob = provision(server, root_token, "bobby")
 
     response = create_gallery_response(server, alice, "Shared", is_public=True)
 
@@ -229,6 +253,22 @@ def test_a_public_gallery_is_created_and_readable_by_another_caller(sut: Sut) ->
     readable = server.follow(body, "self", token=bob)
     assert readable.status_code == 200, f"public read failed: {readable.status_code} {readable.text}"
     assert readable.json()["is_public"] is True
+
+    image = image_file(server, alice, "shared.png")
+    removed = server.request("DELETE", f"{server.href('gallery')}/{body['id']}", token=bob)
+    appended = add_item(server, bob, body, "image", image["id"])
+    shared = server.request(
+        "POST",
+        f"{server.href('permission')}/resource/GALLERY/{body['id']}/share",
+        token=bob,
+        json={"principal": {"kind": "USER", "id": bob_id}, "role": "VIEWER"},
+    )
+
+    assert removed.status_code == 403, f"public visibility granted delete: {removed.status_code}"
+    assert appended.status_code == 403, f"public visibility granted edit: {appended.status_code}"
+    assert shared.status_code == 403, f"public visibility granted share: {shared.status_code}"
+    assert server.follow(body, "self", token=alice).json()["items"] == [], "a refused add stored an item"
+    assert body["owner_id"] == alice_id
 
 
 @negative
@@ -448,12 +488,13 @@ def test_a_missing_or_unowned_medium_is_refused(sut: Sut) -> None:
 
 @positive
 @scenario("SCN-GALLERY-008-A")
+@scenario("SCN-GALLERY-012-B", TestType.BUSINESS_RULE)
 @pytest.mark.own_instance(reason="exact_collection")
 def test_an_image_item_carries_the_image_name(sut: Sut) -> None:
-    """An image item reports its medium, file, added instant and the name intake assigned."""
+    """An image item reports its medium, file, added instant, name and its gallery as parent."""
     server = start_instance(sut)
     root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
-    _alice_id, alice = provision(server, root_token, "alice")
+    alice_id, alice = provision(server, root_token, "alice")
     gallery = create_gallery(server, alice, "Images")
     image = image_file(server, alice, "sunset.png", (5, 4))
     added = add_item(server, alice, gallery, "image", image["id"])
@@ -461,6 +502,13 @@ def test_an_image_item_carries_the_image_name(sut: Sut) -> None:
     item_id = added.json()["id"]
 
     response = server.request("GET", added.headers["Location"], token=alice)
+    summary = get_permission_summary.sync_detailed(
+        client=server.client(root_token),
+        user_id=alice_id,
+        resource_kind=GetPermissionSummaryResourceKind.GALLERY_ITEM,
+        resource_id=item_id,
+        action=GetPermissionSummaryAction.VIEW,
+    )
 
     assert response.status_code == 200, f"item read failed: {response.status_code} {response.text}"
     body = response.json()
@@ -471,6 +519,13 @@ def test_an_image_item_carries_the_image_name(sut: Sut) -> None:
     assert body["name"] == "sunset.png"
     assert body["added_at"]
     assert body["_links"]["self"]["href"] == added.headers["Location"]
+    assert summary.status_code == 200, f"summary failed: {summary.status_code} {summary.content!r}"
+    assert [entry["kind"] for entry in json.loads(summary.content)["decision"]["auth_path"]] == [
+        "GALLERY_ITEM",
+        "GALLERY",
+        "LIBRARY",
+        "INSTANCE",
+    ]
 
 
 @positive
@@ -603,3 +658,92 @@ def test_adding_to_and_removing_from_an_unreadable_gallery_is_not_found(sut: Sut
     kept = server.follow(gallery, "self", token=alice).json()
     assert kept["item_count"] == 1
     assert [item["file_id"] for item in kept["items"]] == [owned["id"]]
+
+
+@positive
+@scenario("SCN-GALLERY-014-B")
+def test_an_admin_creates_a_gallery(server: Sut, root_token: str) -> None:
+    """An Admin creates a gallery and owns it."""
+    admin_id, admin = provision(server, root_token, f"admin{time.time_ns()}", role="ADMIN")
+    name = f"Admin Gallery {admin_id}"
+
+    response = create_gallery_response(server, admin, name)
+
+    assert response.status_code == 201, f"admin creation failed: {response.status_code} {response.text}"
+    body = response.json()
+    assert body["owner_id"] == admin_id
+    assert body["is_public"] is False
+
+
+@security
+@scenario("SCN-GALLERY-014-C")
+def test_a_denied_gallery_surface_refuses_creation(server: Sut, root_token: str) -> None:
+    """A denied CreateChild on `GALLERY_COLLECTION` refuses creation and the seeded role survives."""
+    alice_id, alice = provision(server, root_token, f"denied{time.time_ns()}")
+    href = f"{server.href('permission')}/resource/GALLERY_COLLECTION/0"
+    current = server.request("GET", href, token=root_token)
+    assert current.status_code == 200, f"permission read failed: {current.status_code} {current.text}"
+    visibility = current.json()["visibility"]
+
+    denied = server.request(
+        "PUT",
+        href,
+        token=root_token,
+        json={
+            "visibility": visibility,
+            "grants": [
+                {
+                    "principal": {"kind": "USER", "id": alice_id},
+                    "role": "CONTRIBUTOR",
+                    "effect": "DENY",
+                    "child_kind": "GALLERY",
+                }
+            ],
+        },
+    )
+    refused = create_gallery_response(server, alice, "Denied Surface")
+    restored = server.request(
+        "PUT",
+        href,
+        token=root_token,
+        json={"visibility": visibility, "grants": []},
+    )
+    allowed = create_gallery_response(server, alice, "Restored Surface")
+    listed = list_galleries(server, alice, f"?name=Denied Surface&owner_id={alice_id}")
+
+    assert denied.status_code == 200
+    assert refused.status_code == 403, f"denied creation admitted: {refused.status_code} {refused.text}"
+    assert restored.status_code == 200
+    assert allowed.status_code == 201, "the seeded role grant must survive the deny"
+    assert gallery_ids(listed) == []
+
+
+@business_rule
+@scenario("SCN-AUTHORIZATION-002-D")
+def test_a_gallery_item_image_and_file_follow_the_item(server: Sut, root_token: str) -> None:
+    """An image follows its gallery item, and the file follows the image."""
+    gallery = create_gallery(server, root_token, f"Auth Gallery {next(_NONCE)}")
+    file = upload(server, root_token, "auth-image.png", (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes())
+    item = add_to_gallery(server, root_token, gallery, file["id"])
+
+    assert auth_path(server, root_token, GetPermissionSummaryResourceKind.GALLERY_ITEM, item["id"]) == [
+        "GALLERY_ITEM",
+        "GALLERY",
+        "LIBRARY",
+        "INSTANCE",
+    ]
+    assert auth_path(server, root_token, GetPermissionSummaryResourceKind.IMAGE, item["media_id"]) == [
+        "IMAGE",
+        "GALLERY_ITEM",
+        "GALLERY",
+        "LIBRARY",
+        "INSTANCE",
+    ]
+    assert auth_path(server, root_token, GetPermissionSummaryResourceKind.FILE, item["file_id"]) == [
+        "FILE",
+        "IMAGE",
+        "GALLERY_ITEM",
+        "GALLERY",
+        "LIBRARY",
+        "INSTANCE",
+    ]

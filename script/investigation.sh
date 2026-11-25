@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Regenerate the requirement and scenario matrix at docs/development/artifacts/RequirementsTraceabilityCoverage.md.
+# Regenerate the requirement and scenario report at docs/development/artifacts/RequirementsTraceabilityCoverage.html.
 #
 # The generator reads the specification tree and the suites' own annotations, never pytest and never a container:
 # `test/util/investigation.py` parses `openspec/specs/**/spec.md`, the `@scenario` decorators of `test/system/*.py`, the
-# scenario manifest `test/api/scenarios.toml` and the `// proves:` comments of `src/**/*.rs`. Authored `Cause` and `N/A`
-# cells are preserved, so a regeneration with nothing changed produces no diff.
+# scenario manifest `test/api/scenarios.toml` and the `// proves:` comments of `src/**/*.rs`. Authored annotations live
+# in `RequirementsTraceabilityCoverage.json` beside the report and are never written by the generator.
 #
-# Prettier formats the file when it is on PATH (it always is in the dev shell); the generator itself is standard
-# library only and emits Prettier's table padding.
+# With `--check` the report is rendered in memory and compared with the committed file; nothing is written, and a stale
+# report fails. The pre-commit hook and the investigation workflow use that mode.
 #
 # See docs/development/Test.md, "Requirements traceability coverage".
 
@@ -17,10 +17,5 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 readonly REPO_ROOT
-readonly ARTEFACT="${REPO_ROOT}/docs/development/artifacts/RequirementsTraceabilityCoverage.md"
 
-PYTHONPATH="${REPO_ROOT}/test/util" python3 -m investigation "${REPO_ROOT}"
-
-if command -v prettier >/dev/null 2>&1; then
-	prettier --write "${ARTEFACT}"
-fi
+PYTHONPATH="${REPO_ROOT}/test/util" python3 -m investigation "${REPO_ROOT}" "$@"

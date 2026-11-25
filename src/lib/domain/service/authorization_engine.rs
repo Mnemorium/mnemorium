@@ -355,7 +355,7 @@ mod tests {
         Grant::from_stored(0, principal, resource_id, role, ChildKind::All, effect)
     }
 
-    // proves: SCN-AUTHORIZATION-011-C
+    // proves: SCN-AUTHORIZATION-011-C — Business rule
     #[test]
     fn owner_allows_manage_permissions() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -482,7 +482,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-005-B, SCN-AUTHORIZATION-013-A
+    // proves: SCN-AUTHORIZATION-005-B, SCN-AUTHORIZATION-013-A — Business rule
     #[test]
     fn a_role_grant_applies_to_the_role() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -510,7 +510,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-016-A, SCN-AUTHORIZATION-016-B
+    // proves: SCN-AUTHORIZATION-016-A, SCN-AUTHORIZATION-016-B — Security
     #[test]
     fn a_private_resource_conceals_and_a_restricted_one_exposes_metadata()
     -> Result<(), Box<dyn Error>> {
@@ -539,7 +539,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-016-C, SCN-AUTHORIZATION-016-D, SCN-AUTHORIZATION-007-B
+    // proves: SCN-AUTHORIZATION-016-C, SCN-AUTHORIZATION-016-D, SCN-AUTHORIZATION-007-B — Security
     #[test]
     fn public_grants_the_viewer_actions_but_not_download() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -562,7 +562,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-017-B, SCN-AUTHORIZATION-015-B
+    // proves: SCN-AUTHORIZATION-017-B, SCN-AUTHORIZATION-015-B — Business rule
     #[test]
     fn the_root_bypasses_every_deny_but_not_an_upload() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -594,7 +594,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-018-A
+    // proves: SCN-UPLOAD-018-A — Security
     #[test]
     fn an_upload_is_owner_only() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -616,7 +616,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-021-A
+    // proves: SCN-USER-023-A — Positive
     #[test]
     fn a_caller_reads_its_own_account_without_a_grant() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -642,7 +642,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-003-A, SCN-AUTHORIZATION-003-B, SCN-AUTHORIZATION-003-D, SCN-AUTHORIZATION-003-E
+    // proves: SCN-AUTHORIZATION-003-A, SCN-AUTHORIZATION-003-B, SCN-AUTHORIZATION-003-D, SCN-AUTHORIZATION-003-E — Business rule
     #[test]
     fn a_relation_lends_a_read_action_only() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -664,7 +664,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-003-C
+    // proves: SCN-AUTHORIZATION-003-C — Business rule
     #[test]
     fn a_deny_on_the_target_defeats_a_relation_lend() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -690,7 +690,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-008-A
+    // proves: SCN-AUTHORIZATION-008-A — Negative
     #[test]
     fn a_create_child_grant_names_its_child_kind() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -734,7 +734,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-006-A
+    // proves: SCN-AUTHORIZATION-006-A — Business rule
     #[test]
     fn every_action_renders_its_stable_stored_name() {
         // Act & Assert
@@ -753,7 +753,7 @@ mod tests {
         assert_eq!(Action::ReplaceCredential.as_wire(), "replace_credential");
     }
 
-    // proves: SCN-AUTHORIZATION-011-A, SCN-AUTHORIZATION-011-B
+    // proves: SCN-AUTHORIZATION-011-A, SCN-AUTHORIZATION-011-B — Security
     #[test]
     fn the_role_bundles_contain_their_documented_actions() {
         // Act & Assert

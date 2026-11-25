@@ -6,48 +6,35 @@ from itertools import count
 from conftest import (
     SEED_MEDIA_DIRECTORY,
     add_to_gallery,
-    begin,
     create_gallery,
     provision,
     upload,
 )
-from harness import ROOT_ADMIN_USERNAME, SECRET_PASSWORD, Sut
-from labels import business_rule, scenario, security
-from mnemorium_client.api.asset import get_file, get_file_content, get_upload
+from harness import Sut
+from labels import TestType, business_rule, scenario, security
+from mnemorium_client.api.asset import get_file, get_file_content
 from mnemorium_client.api.identity import (
     delete_permission_share,
     get_permission_summary,
     get_resource_permission,
-    post_login,
     post_permission_share,
-    post_register,
     put_resource_permission,
 )
 from mnemorium_client.api.library import (
     delete_gallery,
-    get_album,
     get_gallery,
     get_gallery_item,
     get_movie,
-    get_music_group,
     get_playlist,
-    get_series,
-    list_albums,
     list_galleries,
     list_movies,
-    list_music_groups,
-    patch_album,
     patch_movie,
-    patch_music_group,
     patch_playlist,
-    post_album,
     post_gallery,
     post_gallery_item,
-    post_movie,
-    post_music_group,
     post_playlist,
 )
-from mnemorium_client.api.user import delete_user, get_me, get_user, list_users, update_user
+from mnemorium_client.api.user import get_user, update_user
 from mnemorium_client.models import (
     AddPlaylistTrackRequest,
     ChildKindWire,
@@ -57,22 +44,15 @@ from mnemorium_client.models import (
     GrantEffectWire,
     GrantPayload,
     GrantRoleWire,
-    LoginRequest,
-    PatchAlbumRequest,
     PatchMovieRequest,
-    PatchMusicGroupRequest,
     PatchPlaylistRequest,
     PatchUserRequest,
-    PostAlbumRequest,
     PostGalleryItemRequest,
     PostGalleryRequest,
-    PostMovieRequest,
-    PostMusicGroupRequest,
     PostPlaylistRequest,
     PrincipalKindWire,
     PrincipalPayload,
     PutPermissionRequest,
-    RegisterRequest,
     Role,
     ShareRequest,
     ShareRoleWire,
@@ -81,13 +61,11 @@ from mnemorium_client.models import (
 
 GALLERY = "GALLERY"
 MUSIC_RECORDING = "MUSIC_RECORDING"
-PLAYLIST_COLLECTION = "PLAYLIST_COLLECTION"
 MOVIE = "MOVIE"
 
 VIEWER = GrantRoleWire.VIEWER
 EDITOR = GrantRoleWire.EDITOR
 MANAGER = GrantRoleWire.MANAGER
-CONTRIBUTOR = GrantRoleWire.CONTRIBUTOR
 
 ALLOW = GrantEffectWire.ALLOW
 DENY = GrantEffectWire.DENY
@@ -565,44 +543,6 @@ def test_a_deny_wins_over_a_grant(server: Sut, root_token: str) -> None:
 
 
 @security
-@scenario("SCN-AUTHORIZATION-021-A")
-def test_a_caller_reads_its_own_account(server: Sut, root_token: str) -> None:
-    """A caller reads its own account without a grant."""
-    alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-
-    response = get_user.sync_detailed(alice_id, client=server.client(alice))
-
-    assert response.status_code == 200
-
-
-@security
-@scenario("SCN-AUTHORIZATION-018-B")
-def test_the_root_cannot_read_another_users_upload(server: Sut, root_token: str) -> None:
-    """An upload is owner-only, even for the Root Admin."""
-    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-    session = begin(server, alice, "cover.png", (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes())
-
-    response = get_upload.sync_detailed(session.id, client=server.client(root_token))
-
-    assert response.status_code == 404
-
-
-@security
-@scenario("SCN-AUTHORIZATION-018-A")
-def test_a_non_owner_upload_is_concealed(server: Sut, root_token: str) -> None:
-    """Another authenticated caller reading an upload answers 404 and changes nothing."""
-    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-    _, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
-    session = begin(server, alice, "cover.png", (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes())
-
-    concealed = get_upload.sync_detailed(session.id, client=server.client(bob))
-    owner = get_upload.sync_detailed(session.id, client=server.client(alice))
-
-    assert concealed.status_code == 404
-    assert owner.status_code == 200, "the owner still reads the upload"
-
-
-@security
 @scenario("SCN-AUTHORIZATION-025-B")
 def test_an_asset_is_reachable_through_its_gallery(server: Sut, root_token: str) -> None:
     """A gallery item's image is readable by its owner and by a caller granted the gallery, and concealed otherwise."""
@@ -724,24 +664,6 @@ def test_restricted_visibility_separates_discovery_from_content(server: Sut, roo
     assert gallery["id"] in [item["id"] for item in json.loads(listed.content)["items"]]
     assert read.status_code == 404, "Restricted lends discovery and metadata, not the content read"
     assert restored.status_code == 200
-
-
-@security
-@scenario("SCN-AUTHORIZATION-010-A")
-def test_only_the_root_changes_a_role(server: Sut, root_token: str) -> None:
-    """An Admin promoting a Standard account answers 403 and leaves the role unchanged."""
-    _, admin = provision(server, root_token, f"azadmin{next(_ACCOUNTS)}", role="ADMIN")
-    user_id, _user = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-
-    promoted = update_user.sync_detailed(
-        user_id,
-        client=server.client(admin),
-        body=PatchUserRequest(role=Role.ADMIN),
-    )
-    stored = get_user.sync_detailed(user_id, client=server.client(root_token))
-
-    assert promoted.status_code == 403
-    assert json.loads(stored.content)["role"] == "STANDARD"
 
 
 @security
@@ -954,38 +876,6 @@ def test_a_deny_wins_across_the_chain(server: Sut, root_token: str) -> None:
 
 
 @security
-@scenario("SCN-AUTHORIZATION-026-C")
-def test_a_gallery_item_needs_the_container_and_the_target(server: Sut, root_token: str) -> None:
-    """Adding another uploader's medium is refused, while the caller's own medium is appended."""
-    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-    bob_id, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
-    gallery = create_gallery(server, alice, "shared")
-    granted = put_resource_permission.sync_detailed(
-        GALLERY,
-        gallery["id"],
-        client=server.client(alice),
-        body=PutPermissionRequest(visibility=PRIVATE, grants=[_grant(bob_id, CONTRIBUTOR)]),
-    )
-    foreign = upload(server, alice, "foreign.png", (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes())
-    own = upload(server, bob, "own.png", (SEED_MEDIA_DIRECTORY / "download-image.png").read_bytes())
-
-    refused = post_gallery_item.sync_detailed(
-        gallery["id"],
-        client=server.client(bob),
-        body=PostGalleryItemRequest(media_id=foreign["id"], type_=GalleryItemType.IMAGE),
-    )
-    added = post_gallery_item.sync_detailed(
-        gallery["id"],
-        client=server.client(bob),
-        body=PostGalleryItemRequest(media_id=own["id"], type_=GalleryItemType.IMAGE),
-    )
-
-    assert granted.status_code == 200
-    assert refused.status_code == 422, "the medium refusal is the gallery endpoint's validation answer"
-    assert added.status_code == 201, "both checks allow the caller's own medium"
-
-
-@security
 @scenario("SCN-AUTHORIZATION-029-A")
 @scenario("SCN-AUTHORIZATION-029-B")
 def test_the_explanation_names_the_grant_or_the_deny(server: Sut, root_token: str) -> None:
@@ -1048,197 +938,6 @@ def test_a_role_change_needs_both_actions(server: Sut, root_token: str) -> None:
 
 
 @security
-@scenario("SCN-AUTHORIZATION-022-C")
-def test_an_admin_curates_the_catalogue(server: Sut, root_token: str) -> None:
-    """An Admin writes the catalogue through the seeded role, leaving the value unchanged."""
-    _, admin = provision(server, root_token, f"azadmin{next(_ACCOUNTS)}", role="ADMIN")
-    current = json.loads(get_movie.sync_detailed(SEEDED_MOVIE, client=server.client(root_token)).content)
-
-    edited = patch_movie.sync_detailed(
-        SEEDED_MOVIE,
-        client=server.client(admin),
-        body=PatchMovieRequest(name=current["name"]),
-    )
-
-    assert edited.status_code == 200
-    assert json.loads(edited.content)["name"] == current["name"]
-
-
-@security
-@scenario("SCN-AUTHORIZATION-021-B")
-def test_another_account_follows_the_grants(server: Sut, root_token: str) -> None:
-    """A caller without a grant for another account is refused its profile."""
-    alice_id, _alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-    _, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
-
-    response = get_user.sync_detailed(alice_id, client=server.client(bob))
-
-    assert response.status_code == 403, f"another account must follow the decision: {response.content!r}"
-
-
-@security
-@scenario("SCN-AUTHORIZATION-024-B")
-def test_an_albums_metadata_is_edited(server: Sut, root_token: str) -> None:
-    """An Editor grant on an album applies its metadata write."""
-    bob_id, bob = provision(server, root_token, f"azbobby{next(_ACCOUNTS)}")
-    current = json.loads(get_album.sync_detailed(SEEDED_ALBUM, client=server.client(root_token)).content)
-    permission = json.loads(
-        get_resource_permission.sync_detailed("MUSIC_ALBUM", SEEDED_ALBUM, client=server.client(root_token)).content
-    )
-    visibility = VisibilityWire(permission["visibility"])
-
-    granted = put_resource_permission.sync_detailed(
-        "MUSIC_ALBUM",
-        SEEDED_ALBUM,
-        client=server.client(root_token),
-        body=PutPermissionRequest(visibility=visibility, grants=[_grant(bob_id, EDITOR)]),
-    )
-    edited = patch_album.sync_detailed(
-        SEEDED_ALBUM,
-        client=server.client(bob),
-        body=PatchAlbumRequest(name=current["name"]),
-    )
-    restored = put_resource_permission.sync_detailed(
-        "MUSIC_ALBUM",
-        SEEDED_ALBUM,
-        client=server.client(root_token),
-        body=PutPermissionRequest(visibility=visibility, grants=[]),
-    )
-
-    assert granted.status_code == 200
-    assert edited.status_code == 200, "EditMetadata must apply the write"
-    assert restored.status_code == 200
-
-
-@security
-@scenario("SCN-AUTHORIZATION-019-A")
-def test_an_admin_creates_a_standard_account(server: Sut, root_token: str) -> None:
-    """An Admin creates a Standard account, which then authenticates."""
-    _, admin = provision(server, root_token, f"azadmin{next(_ACCOUNTS)}", role="ADMIN")
-    username = f"azcreated{next(_ACCOUNTS)}"
-
-    created = post_register.sync_detailed(
-        client=server.client(admin),
-        body=RegisterRequest(password=SECRET_PASSWORD, role=Role.STANDARD, username=username),
-    )
-
-    assert created.status_code == 201
-    assert json.loads(created.content)["role"] == "STANDARD"
-    assert (
-        post_login.sync_detailed(
-            client=server.client(), body=LoginRequest(password=SECRET_PASSWORD, identifier=username)
-        ).status_code
-        == 200
-    )
-
-
-@security
-@scenario("SCN-AUTHORIZATION-019-B")
-def test_an_admin_cannot_create_an_admin(server: Sut, root_token: str) -> None:
-    """Neither an Admin nor a Standard user creates an Admin account, while the root does."""
-    _, admin = provision(server, root_token, f"azadmin{next(_ACCOUNTS)}", role="ADMIN")
-    _, standard = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-    refused_name = f"azmallory{next(_ACCOUNTS)}"
-
-    for token in (admin, standard):
-        refused = post_register.sync_detailed(
-            client=server.client(token),
-            body=RegisterRequest(password=SECRET_PASSWORD, role=Role.ADMIN, username=refused_name),
-        )
-        assert refused.status_code == 403
-
-    listed = list_users.sync_detailed(client=server.client(root_token), username=refused_name)
-    assert json.loads(listed.content)["items"] == []
-    assert (
-        post_login.sync_detailed(
-            client=server.client(), body=LoginRequest(password=SECRET_PASSWORD, identifier=refused_name)
-        ).status_code
-        == 401
-    )
-
-    promoted_name = f"azpromoted{next(_ACCOUNTS)}"
-    created = post_register.sync_detailed(
-        client=server.client(root_token),
-        body=RegisterRequest(password=SECRET_PASSWORD, role=Role.ADMIN, username=promoted_name),
-    )
-
-    assert created.status_code == 201
-    assert json.loads(created.content)["role"] == "ADMIN"
-
-
-@security
-@scenario("SCN-AUTHORIZATION-019-C")
-def test_an_admin_cannot_touch_an_admin(server: Sut, root_token: str) -> None:
-    """An Admin deleting an Admin peer or itself answers 403 and applies nothing."""
-    admin_id, admin = provision(server, root_token, f"azadmina{next(_ACCOUNTS)}", role="ADMIN")
-    peer_id, peer = provision(server, root_token, f"azadminb{next(_ACCOUNTS)}", role="ADMIN")
-
-    peer_deleted = delete_user.sync_detailed(peer_id, client=server.client(admin))
-    self_deleted = delete_user.sync_detailed(admin_id, client=server.client(admin))
-
-    assert peer_deleted.status_code == 403
-    assert self_deleted.status_code == 403
-    assert get_me.sync_detailed(client=server.client(peer)).status_code == 200
-    assert get_me.sync_detailed(client=server.client(admin)).status_code == 200
-
-
-@security
-@scenario("SCN-AUTHORIZATION-019-D")
-def test_the_root_admin_deletes_an_admin(server: Sut, root_token: str) -> None:
-    """The Root Admin deletes an Admin account and the account is gone."""
-    admin_id, admin = provision(server, root_token, f"azadmina{next(_ACCOUNTS)}", role="ADMIN")
-
-    deleted = delete_user.sync_detailed(admin_id, client=server.client(root_token))
-
-    assert deleted.status_code == 204
-    assert get_user.sync_detailed(admin_id, client=server.client(root_token)).status_code == 404
-    assert get_me.sync_detailed(client=server.client(admin)).status_code == 401
-
-
-@security
-@scenario("SCN-AUTHORIZATION-019-E")
-def test_the_root_account_is_untouchable(server: Sut, root_token: str) -> None:
-    """Deleting or updating account 0 answers 403 and applies nothing."""
-    deleted = delete_user.sync_detailed(0, client=server.client(root_token))
-    updated = update_user.sync_detailed(
-        0,
-        client=server.client(root_token),
-        body=PatchUserRequest(username="notroot"),
-    )
-
-    assert deleted.status_code == 403
-    assert updated.status_code == 403
-    stored = get_user.sync_detailed(0, client=server.client(root_token))
-    assert stored.status_code == 200
-    assert json.loads(stored.content)["username"] == ROOT_ADMIN_USERNAME
-
-
-@security
-@scenario("SCN-AUTHORIZATION-020-A")
-def test_an_admin_replaces_a_standard_users_grants(server: Sut, root_token: str) -> None:
-    """An Admin replaces the grant set naming a Standard user and reads the replacement back."""
-    _, admin = provision(server, root_token, f"azadmin{next(_ACCOUNTS)}", role="ADMIN")
-    alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-    gallery = create_gallery(server, admin, "holiday")
-
-    replaced = put_resource_permission.sync_detailed(
-        GALLERY,
-        gallery["id"],
-        client=server.client(admin),
-        body=PutPermissionRequest(visibility=PRIVATE, grants=[_grant(alice_id, VIEWER)]),
-    )
-    followed = get_resource_permission.sync_detailed(GALLERY, gallery["id"], client=server.client(admin))
-    readable = get_gallery.sync_detailed(gallery["id"], client=server.client(alice))
-
-    assert replaced.status_code == 200
-    assert followed.status_code == 200
-    body = json.loads(followed.content)
-    assert body["visibility"] == PRIVATE
-    assert [item["principal"] for item in body["grants"]] == [{"kind": "USER", "id": alice_id}]
-    assert readable.status_code == 200
-
-
-@security
 @scenario("SCN-AUTHORIZATION-017-A")
 def test_the_root_administers_another_callers_private_gallery(server: Sut, root_token: str) -> None:
     """The Root Admin reads, appends media to and deletes another caller's private gallery."""
@@ -1277,144 +976,8 @@ def test_an_admin_cannot_delete_a_readable_public_gallery(server: Sut, root_toke
 
 
 @security
-@scenario("SCN-AUTHORIZATION-022-A")
-def test_a_standard_user_reads_the_catalogue(server: Sut, root_token: str) -> None:
-    """A Standard user with the seeded role reads a film, a show, a music group and an album."""
-    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-
-    film = get_movie.sync_detailed(SEEDED_MOVIE, client=server.client(alice))
-    show = get_series.sync_detailed(SEEDED_SERIES, client=server.client(alice))
-    group = get_music_group.sync_detailed(SEEDED_GROUP, client=server.client(alice))
-    album = get_album.sync_detailed(SEEDED_ALBUM, client=server.client(alice))
-
-    assert film.status_code == 200
-    assert show.status_code == 200
-    assert group.status_code == 200
-    assert album.status_code == 200
-
-
-@security
-@scenario("SCN-AUTHORIZATION-022-B")
-def test_a_standard_user_cannot_rename_the_catalogue(server: Sut, root_token: str) -> None:
-    """A Standard user renaming a film, a music group or an album answers 403 and applies nothing."""
-    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-    renamed = f"renamed{next(_ACCOUNTS)}"
-
-    film = patch_movie.sync_detailed(
-        SEEDED_MOVIE,
-        client=server.client(alice),
-        body=PatchMovieRequest(name=renamed),
-    )
-    group = patch_music_group.sync_detailed(
-        SEEDED_GROUP,
-        client=server.client(alice),
-        body=PatchMusicGroupRequest(name=renamed),
-    )
-    album = patch_album.sync_detailed(
-        SEEDED_ALBUM,
-        client=server.client(alice),
-        body=PatchAlbumRequest(name=renamed),
-    )
-
-    assert film.status_code == 403
-    assert group.status_code == 403
-    assert album.status_code == 403
-    stored_film = get_movie.sync_detailed(SEEDED_MOVIE, client=server.client(alice))
-    stored_group = get_music_group.sync_detailed(SEEDED_GROUP, client=server.client(alice))
-    stored_album = get_album.sync_detailed(SEEDED_ALBUM, client=server.client(alice))
-    assert json.loads(stored_film.content)["name"] == "Listed One"
-    assert json.loads(stored_group.content)["name"] == "Covered Group"
-    assert json.loads(stored_album.content)["name"] == "Covered Album"
-
-
-@security
-@scenario("SCN-AUTHORIZATION-023-G")
-def test_a_standard_user_cannot_create_a_music_group(server: Sut, root_token: str) -> None:
-    """A Standard user creating a music group answers 403 and creates nothing."""
-    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-    name = f"forbidden-group{next(_ACCOUNTS)}"
-
-    created = post_music_group.sync_detailed(
-        client=server.client(alice),
-        body=PostMusicGroupRequest(name=name),
-    )
-    listed = list_music_groups.sync_detailed(client=server.client(root_token), name=name)
-
-    assert created.status_code == 403
-    assert json.loads(listed.content)["_embedded"]["items"] == []
-
-
-@security
-@scenario("SCN-AUTHORIZATION-023-G")
-def test_a_standard_user_cannot_create_a_music_album(server: Sut, root_token: str) -> None:
-    """A Standard user creating a music album answers 403 and creates nothing."""
-    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-    name = f"forbidden-album{next(_ACCOUNTS)}"
-
-    created = post_album.sync_detailed(
-        client=server.client(alice),
-        body=PostAlbumRequest(name=name, music_group_id=SEEDED_GROUP),
-    )
-    listed = list_albums.sync_detailed(client=server.client(root_token), name=name)
-
-    assert created.status_code == 403
-    assert json.loads(listed.content)["_embedded"]["items"] == []
-
-
-@security
-@scenario("SCN-AUTHORIZATION-023-B")
-def test_a_standard_user_cannot_create_a_film(server: Sut, root_token: str) -> None:
-    """A Standard user creating a film answers 403 and creates nothing."""
-    _, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-    name = f"forbidden-film{next(_ACCOUNTS)}"
-
-    created = post_movie.sync_detailed(
-        client=server.client(alice),
-        body=PostMovieRequest(name=name, video_id=13212),
-    )
-    listed = list_movies.sync_detailed(client=server.client(root_token), name=name)
-
-    assert created.status_code == 403
-    assert json.loads(listed.content)["_embedded"]["items"] == []
-
-
-@security
-@scenario("SCN-AUTHORIZATION-023-F")
-def test_a_denied_playlist_surface_refuses_creation(server: Sut, root_token: str) -> None:
-    """A denied CreateChild on the playlist collection refuses creation and leaves the seeded role intact."""
-    alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")
-    current = get_resource_permission.sync_detailed(PLAYLIST_COLLECTION, 0, client=server.client(root_token))
-    assert current.status_code == 200
-    visibility = VisibilityWire(json.loads(current.content)["visibility"])
-
-    denied = put_resource_permission.sync_detailed(
-        PLAYLIST_COLLECTION,
-        0,
-        client=server.client(root_token),
-        body=PutPermissionRequest(
-            visibility=visibility,
-            grants=[_grant(alice_id, CONTRIBUTOR, effect=DENY, child_kind=ChildKindWire.MUSIC_PLAYLIST)],
-        ),
-    )
-    refused = post_playlist.sync_detailed(client=server.client(alice), body=PostPlaylistRequest(name="denied-surface"))
-    restored = put_resource_permission.sync_detailed(
-        PLAYLIST_COLLECTION,
-        0,
-        client=server.client(root_token),
-        body=PutPermissionRequest(visibility=visibility, grants=[]),
-    )
-    allowed = post_playlist.sync_detailed(
-        client=server.client(alice), body=PostPlaylistRequest(name="restored-surface")
-    )
-
-    assert denied.status_code == 200
-    assert refused.status_code == 403
-    assert restored.status_code == 200
-    assert allowed.status_code == 201, "the seeded role grant must survive the deny"
-
-
-@security
 @scenario("SCN-AUTHORIZATION-040-A")
+@scenario("SCN-MUSIC-025-B", TestType.SECURITY)
 def test_an_unreadable_recording_refuses_the_append(server: Sut, root_token: str) -> None:
     """A caller that cannot read the named recording answers 403 and appends nothing."""
     alice_id, alice = provision(server, root_token, f"azalice{next(_ACCOUNTS)}")

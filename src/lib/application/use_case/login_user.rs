@@ -1038,6 +1038,7 @@ mod tests {
         Ok(())
     }
 
+    // proves: SCN-LOGGING-014-C — Error handling
     #[tokio::test]
     #[traced_test]
     async fn login_user_missing_credential_emits_application_error() -> Result<(), Box<dyn Error>> {

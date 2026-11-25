@@ -452,6 +452,7 @@ mod tests {
         Ok(())
     }
 
+    // proves: SCN-LOGGING-008-C — Security
     #[tokio::test]
     async fn user_debug_redacts_personal_data_but_keeps_id_and_role() -> Result<(), Box<dyn Error>>
     {

@@ -6,43 +6,47 @@ and what a failing measurement means.
 
 ## Requirements traceability coverage
 
-`docs/development/artifacts/RequirementsTraceabilityCoverage.md` is the generated map of the specification tree's
+`docs/development/artifacts/RequirementsTraceabilityCoverage.html` is the generated report of the specification tree's
 requirements and scenarios to the tests that prove them. It is committed, and `script/investigation.sh` (or
 `devenv tasks run system:investigation`) regenerates it from `openspec/specs/**/spec.md`, the `@scenario` decorators and
 case-level type decorators in `test/system/*.py`, the scenario manifest in `test/api/scenarios.toml`, and the
-`// proves:` comments in `src/` — no pytest run and no container.
+`// proves:` comments in `src/` — no pytest run and no container. `script/investigation.sh --check` renders the same
+report in memory and fails when the committed file is stale; the pre-commit hook and the investigation workflow run it.
 
-A requirement's `Status` is presence-based: `Tested` means every scenario it declares carries a committed system case or
-an API-suite entry, and CI is green, not that a run passed. In a requirement row the eight type columns count the
-scenarios carrying a proof of each type, from any suite, so `0` means a type has no proof yet; `N/A` is a hand judgement
-that the type does not apply, and the generator warns in `## Contradictions` when a proof appears behind it. A scenario
-is not a type: every system claim carries one of the eight, named on its own decorator or declared once for the case,
-and a system claim that names neither is counted in `Unspecified`. A Rust proof may name its kind after the em dash of
-its `// proves:` comment, and a scenario typed that way contributes to its requirement's columns exactly as a system
-proof does, while staying untested until a system case claims it. The fixture fuzz run has no pytest case to decorate,
-so the scenarios it proves are declared in `test/api/scenarios.toml` with their kinds; the matrix records them as
-`API suite`, adds their kind to the requirement's columns and counts them as `Tested`. `Tested` counts the scenarios a
-system case or an API-suite entry claims and `Untested` the rest, so the two sum to the requirement's declared scenario
-count. In a scenario row, `Evidence` says what proves the scenario — `System suite`, `API suite`, `Proven in Rust`, or a
-combination — and names neither the case nor the function, so a renamed test is not a matrix change; a row with an empty
-`Evidence` cell is a scenario no committed suite claims, and the row carries no `Status` column to say it twice. The
-requirement is not repeated either: the scenario identifier names it. `Cause` is the one hand-authored place for
-"another layer owns this" or "nobody wrote it yet"; an empty `Evidence` and an empty `Cause` together are the worklist.
+The report is a self-contained HTML page: summary cards, coverage charts, a search box and filters, the requirement
+descriptions read from the specifications, and one card per requirement with its scenarios. Each requirement card
+carries the requirement's declared text, its proof-source bar, its type breakdown and the scenarios themselves. The page
+is read-only: the annotations are authored in `docs/development/artifacts/RequirementsTraceabilityCoverage.json` and the
+report is regenerated. `causes` maps a scenario to why it is skipped, `not_black_box` explains why a Rust proof stands
+in for a black-box case, `notes` is free-form commentary on any scenario, and `not_applicable` maps a requirement to the
+type labels it does not exercise. A malformed JSON document, an unknown top-level key or a malformed identifier is an
+error; an identifier that leaves the specification keeps its annotation and is reported as stale rather than dropped.
+The generator never writes the JSON.
+
+Coverage counts three kinds of proof: a committed system case, an API-suite entry and a Rust `// proves:` claim. A
+scenario is **covered** (green) when any of them proves it, **skipped** (yellow) when it has no proof but a non-empty
+Cause, and **uncovered** (red) when it has neither. The page counts each scenario once by its strongest source — system
+suite, then API suite, then Rust, then a Cause (Skipped), then no proof (Uncovered) — and every requirement card shows
+that distribution in a single bar. A `System/API` or `Rust-only` figure is an evidence breakdown, not a second coverage
+rule.
+
+A requirement is `Tested` when every scenario it declares is covered, `Partial` when some are and `Not tested` when none
+is. Its type chips count the scenarios carrying a proof of each type, from any proof; an authored `N/A` replaces the
+count, and the generator warns when a proof appears behind it. A scenario carries one or more of the eight types from
+its system decorator, its API-suite entry or the kind named after a Rust proof's em dash; a system or API claim that
+names none is counted as `Unspecified`. The type names the kind of rule a proof exercises, never the layer that runs it.
 
 An entry in `test/api/scenarios.toml` is added by hand, because the fuzz run is a Schemathesis invocation rather than a
 pytest module. Add one only when a named checker or declared expectation in `test/api/checks.py`, `test/api/hooks.py` or
 `schemathesis.toml` fails if the rule breaks; the file's header lists the checkers and the mapping each supports.
 
-One `api` scenario stays unproven by design and is recorded here as the residual: `SCN-API-014-C` — the documentation
-feature is off by default — can only be observed on a server built without `api-docs`, and every image a suite drives is
-built with that feature, so no suite claims it. The matrix's empty `Evidence` cell, its hand-authored `Cause` naming the
-Docker image publish — the release build compiles the image without `api-docs` — and this note are the record; the
-alternative, a CI assertion that `api-docs` is not a default Cargo feature, is deferred rather than smuggled in as a
-shell rule.
+One `api` scenario stays unproven by design and is recorded in the JSON as the residual: `SCN-API-014-C` — the
+documentation feature is off by default — can only be observed on a server built without `api-docs`, and every image a
+suite drives is built with that feature, so no proof covers it. Its `Cause` names the Docker image publish — the release
+build compiles the image without `api-docs` — and this note are the record; the alternative, a CI assertion that
+`api-docs` is not a default Cargo feature, is deferred rather than smuggled in as a shell rule.
 
-The generator never overwrites authored text: a type cell survives unless it is empty or a bare integer, a `Cause`
-survives while it is non-empty, and a row whose identifier leaves the specification moves to `## Detached notes` rather
-than disappearing. A regeneration with nothing changed produces no diff.
+A regeneration with nothing changed produces no diff.
 
 ### Scenario types
 

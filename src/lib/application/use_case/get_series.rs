@@ -139,7 +139,7 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = GetSeries<TestFactory>;
 
-    // proves: SCN-SERIES-002-A, SCN-SERIES-002-B
+    // proves: SCN-SERIES-002-A, SCN-SERIES-002-B — Positive
     #[tokio::test]
     async fn get_series_returns_its_metadata_and_season_summaries() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -210,7 +210,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-002-B
+    // proves: SCN-SERIES-002-B — Positive
     #[tokio::test]
     async fn get_series_carries_the_cover_of_the_show_and_each_season() -> Result<(), Box<dyn Error>>
     {
@@ -301,7 +301,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-002-B
+    // proves: SCN-SERIES-002-B — Positive
     #[tokio::test]
     async fn get_series_without_a_season_returns_no_season_summaries() -> Result<(), Box<dyn Error>>
     {
@@ -353,7 +353,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-002-D
+    // proves: SCN-SERIES-002-D — Security
     #[tokio::test]
     async fn get_series_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -407,7 +407,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-002-A
+    // proves: SCN-SERIES-002-A — Positive
     #[tokio::test]
     async fn get_series_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -439,7 +439,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-002-A
+    // proves: SCN-SERIES-002-A — Positive
     #[tokio::test]
     async fn get_series_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange

@@ -811,7 +811,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-UPLOAD-005-C, SCN-UPLOAD-008-A
+    // proves: SCN-UPLOAD-005-C, SCN-UPLOAD-008-A — Negative
     #[tokio::test]
     async fn write_upload_chunk_sealed_upload_returns_completion_in_progress()
     -> Result<(), Box<dyn Error>> {

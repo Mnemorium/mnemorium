@@ -290,7 +290,7 @@ mod tests {
         )
     }
 
-    // proves: SCN-SERIES-012-A
+    // proves: SCN-SERIES-012-A — Positive
     #[tokio::test]
     async fn put_series_episode_new_index_reports_created() -> Result<(), Box<dyn Error>> {
         // Arrange: the season holds no episode and video 5 is free.
@@ -454,7 +454,8 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-012-B, SCN-SERIES-012-C
+    // proves: SCN-SERIES-012-B — Positive
+    // proves: SCN-SERIES-012-C — Business rule
     #[tokio::test]
     async fn put_series_episode_existing_index_replaces_the_video() -> Result<(), Box<dyn Error>> {
         // Arrange: episode 1 already backs video 20; the request names video 5.
@@ -610,7 +611,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-012-B
+    // proves: SCN-SERIES-012-B — Positive
     #[tokio::test]
     async fn put_series_episode_same_video_is_not_a_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange: episode 1 already backs video 5, the same video named again.
@@ -762,7 +763,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-012-D
+    // proves: SCN-SERIES-012-D — Negative
     #[tokio::test]
     async fn put_series_episode_video_backing_a_film_is_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange: film 9 already backs video 5.
@@ -904,7 +905,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-012-D
+    // proves: SCN-SERIES-012-D — Negative
     #[tokio::test]
     async fn put_series_episode_video_backing_another_episode_is_conflict()
     -> Result<(), Box<dyn Error>> {
@@ -1053,7 +1054,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-012-E
+    // proves: SCN-SERIES-012-E — Negative
     #[tokio::test]
     async fn put_series_episode_unknown_video_is_unprocessable() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1187,7 +1188,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-012-F
+    // proves: SCN-SERIES-012-F — Negative
     #[tokio::test]
     async fn put_series_episode_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>>
     {
@@ -1309,7 +1310,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-012-F
+    // proves: SCN-SERIES-012-F — Negative
     #[tokio::test]
     async fn put_series_episode_unknown_season_returns_no_such_season() -> Result<(), Box<dyn Error>>
     {
@@ -1438,7 +1439,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-012-E
+    // proves: SCN-SERIES-012-E — Negative
     #[tokio::test]
     async fn put_series_episode_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1576,7 +1577,7 @@ mod tests {
         assert!(matches!(result, Err(PutSeriesEpisodeError::InvalidName)));
         Ok(())
     }
-    // proves: SCN-SERIES-012-F
+    // proves: SCN-SERIES-012-F — Negative
     #[tokio::test]
     async fn put_series_episode_absent_at_write_returns_no_such_season()
     -> Result<(), Box<dyn Error>> {
@@ -1724,7 +1725,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-012-A
+    // proves: SCN-SERIES-012-A — Positive
     #[tokio::test]
     async fn put_series_episode_dependency_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange: the show load fails at the port.

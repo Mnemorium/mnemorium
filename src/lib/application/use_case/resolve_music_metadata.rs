@@ -190,7 +190,7 @@ mod tests {
         })
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-023-D
+    // proves: SCN-METADATA-ENRICHMENT-023-D — Business rule
     #[tokio::test]
     async fn resolve_music_metadata_reports_unavailable_without_a_provider()
     -> Result<(), Box<dyn Error>> {
@@ -312,7 +312,7 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-    // proves: SCN-METADATA-ENRICHMENT-008-A
+    // proves: SCN-METADATA-ENRICHMENT-008-A — Business rule
     #[tokio::test]
     async fn resolve_music_metadata_reports_a_reference_another_provider_issued()
     -> Result<(), Box<dyn Error>> {
@@ -445,7 +445,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-023-E
+    // proves: SCN-METADATA-ENRICHMENT-023-E — Negative
     #[tokio::test]
     async fn resolve_music_metadata_reports_a_missing_item_as_no_response()
     -> Result<(), Box<dyn Error>> {
@@ -580,7 +580,8 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-004-A, SCN-METADATA-ENRICHMENT-023-B
+    // proves: SCN-METADATA-ENRICHMENT-004-A — Business rule
+    // proves: SCN-METADATA-ENRICHMENT-023-B — Positive
     #[tokio::test]
     async fn resolve_music_metadata_returns_the_providers_document() -> Result<(), Box<dyn Error>> {
         // Arrange: the provider resolves the target into album metadata.
@@ -713,7 +714,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-008-B
+    // proves: SCN-METADATA-ENRICHMENT-008-B — Error handling
     #[tokio::test]
     async fn resolve_music_metadata_reports_a_provider_failure() -> Result<(), Box<dyn Error>> {
         // Arrange: the configured provider fails.

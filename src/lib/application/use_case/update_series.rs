@@ -280,7 +280,7 @@ mod tests {
         )
     }
 
-    // proves: SCN-SERIES-009-A, SCN-SERIES-009-C
+    // proves: SCN-SERIES-009-A, SCN-SERIES-009-C — Positive
     #[tokio::test]
     async fn update_series_replaces_metadata_keeping_seasons_and_episodes()
     -> Result<(), Box<dyn Error>> {
@@ -438,7 +438,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-009-B
+    // proves: SCN-SERIES-009-B — Alternate flow
     #[tokio::test]
     async fn update_series_null_clears_optional_values() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -587,7 +587,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-009-E
+    // proves: SCN-SERIES-009-E — Security
     #[tokio::test]
     async fn update_series_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -705,7 +705,7 @@ mod tests {
         assert!(matches!(result, Err(UpdateSeriesError::NoSuchSeries)));
         Ok(())
     }
-    // proves: SCN-SERIES-009-A
+    // proves: SCN-SERIES-009-A — Positive
     #[tokio::test]
     async fn update_series_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange: the repository rejects the cover through the scope trigger.
@@ -848,8 +848,8 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-009-A
-    // proves: SCN-SERIES-009-A
+    // proves: SCN-SERIES-009-A — Positive
+    // proves: SCN-SERIES-009-A — Positive
     #[tokio::test]
     async fn update_series_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
         // Arrange

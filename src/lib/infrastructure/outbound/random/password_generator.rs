@@ -51,7 +51,7 @@ mod tests {
 
     use super::*;
 
-    // proves: SCN-AUTHENTICATION-002-A
+    // proves: SCN-AUTHENTICATION-002-A — Business rule
     #[tokio::test]
     async fn random_password_generator_samples_follow_declared_shape() -> Result<(), Box<dyn Error>>
     {

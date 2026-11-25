@@ -332,6 +332,7 @@ mod tests {
         );
     }
 
+    // proves: SCN-CONFIGURATION-005-C — Security
     #[test]
     fn environment_configuration_video_provider_settings_are_not_overridable()
     -> Result<(), Box<dyn Error>> {

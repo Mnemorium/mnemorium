@@ -1000,6 +1000,7 @@ mod tests {
             .ok_or_else(|| "the search must return a candidate".into())
     }
 
+    // proves: SCN-METADATA-ENRICHMENT-018-C — Business rule
     #[tokio::test]
     async fn musicbrainz_sends_the_user_agent_and_the_format() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1022,6 +1023,68 @@ mod tests {
 
         // Assert
         assert_eq!(candidates.len(), 1);
+        Ok(())
+    }
+
+    // proves: SCN-METADATA-ENRICHMENT-018-A — Business rule
+    #[tokio::test]
+    async fn musicbrainz_album_query_carries_the_group_and_year() -> Result<(), Box<dyn Error>> {
+        // Arrange: every value the query names reaches the provider expression.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/release-group"))
+            .and(query_param(
+                "query",
+                "releasegroup:\"Kind of Blue\" AND artist:\"Miles Davis\" AND firstreleasedate:1959",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_string(EMPTY_RELEASE_GROUPS))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider = provider(&server);
+
+        // Act
+        let candidates = provider
+            .search(&MusicQuery::try_new(
+                MusicKind::Album,
+                "Kind of Blue".to_owned(),
+                Some("Miles Davis".to_owned()),
+                Some(1959),
+            )?)
+            .await?;
+
+        // Assert
+        assert!(candidates.is_empty());
+        Ok(())
+    }
+
+    // proves: SCN-METADATA-ENRICHMENT-018-B — Business rule
+    #[tokio::test]
+    async fn musicbrainz_release_query_searches_one_edition() -> Result<(), Box<dyn Error>> {
+        // Arrange: a release query addresses the release field, so each hit is one edition.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/release"))
+            .and(query_param("query", "release:\"Kind of Blue\""))
+            .respond_with(ResponseTemplate::new(200).set_body_string(SEARCH_RELEASE))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider = provider(&server);
+
+        // Act
+        let candidates = provider
+            .search(&query(MusicKind::Release, "Kind of Blue")?)
+            .await?;
+
+        // Assert
+        assert_eq!(candidates.len(), 2);
+        assert!(
+            candidates
+                .iter()
+                .all(|candidate| candidate.kind() == MusicKind::Release),
+            "a release query must return editions, never album groups"
+        );
         Ok(())
     }
 
@@ -1048,7 +1111,7 @@ mod tests {
         );
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-021-A, SCN-METADATA-ENRICHMENT-021-B
+    // proves: SCN-METADATA-ENRICHMENT-021-A, SCN-METADATA-ENRICHMENT-021-B — Security
     #[rstest]
     #[case::quote("He said \"Hi\"", "releasegroup:\"He said \\\"Hi\\\"\"")]
     #[case::conjunction("Rock AND Roll", "releasegroup:\"Rock AND Roll\"")]
@@ -1078,7 +1141,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-002-A, SCN-METADATA-ENRICHMENT-002-B
+    // proves: SCN-METADATA-ENRICHMENT-002-A, SCN-METADATA-ENRICHMENT-002-B — Business rule
     #[tokio::test]
     async fn musicbrainz_search_maps_a_release_group_hit() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1108,7 +1171,8 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-002-D
+    // proves: SCN-METADATA-ENRICHMENT-002-D — Business rule
+    // proves: SCN-METADATA-ENRICHMENT-004-D — Business rule
     #[tokio::test]
     async fn musicbrainz_search_maps_a_release_hit_with_its_mediums() -> Result<(), Box<dyn Error>>
     {
@@ -1138,6 +1202,16 @@ mod tests {
             Some(&MediumFormat::Other("12\" Vinyl".to_owned()))
         );
         assert_eq!(
+            candidate.mediums().first().map(MediumSummary::index),
+            Some(1),
+            "a medium must carry its album-scoped position"
+        );
+        assert_eq!(
+            candidate.mediums().first().map(MediumSummary::track_count),
+            Some(5),
+            "a medium must carry its track count"
+        );
+        assert_eq!(
             candidates
                 .get(1)
                 .and_then(|release| release.mediums().first())
@@ -1148,7 +1222,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-002-A
+    // proves: SCN-METADATA-ENRICHMENT-002-A — Business rule
     #[tokio::test]
     async fn musicbrainz_search_maps_a_recording_hit() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1172,7 +1246,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-002-C
+    // proves: SCN-METADATA-ENRICHMENT-002-C — Business rule
     #[tokio::test]
     async fn musicbrainz_search_leaves_an_unreported_group_absent() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1192,7 +1266,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-004-A, SCN-METADATA-ENRICHMENT-020-A
+    // proves: SCN-METADATA-ENRICHMENT-004-A, SCN-METADATA-ENRICHMENT-020-A — Business rule
     #[tokio::test]
     async fn musicbrainz_lookup_maps_an_album_and_orders_its_editions() -> Result<(), Box<dyn Error>>
     {
@@ -1268,7 +1342,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-004-C, SCN-METADATA-ENRICHMENT-006-A, SCN-METADATA-ENRICHMENT-006-B
+    // proves: SCN-METADATA-ENRICHMENT-004-C, SCN-METADATA-ENRICHMENT-006-A, SCN-METADATA-ENRICHMENT-006-B — Business rule
     #[tokio::test]
     async fn musicbrainz_lookup_maps_a_release_and_reports_absent_values()
     -> Result<(), Box<dyn Error>> {
@@ -1318,7 +1392,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-004-E
+    // proves: SCN-METADATA-ENRICHMENT-004-E — Business rule
     #[tokio::test]
     async fn musicbrainz_lookup_maps_a_recording() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1353,7 +1427,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-019-A, SCN-METADATA-ENRICHMENT-019-C
+    // proves: SCN-METADATA-ENRICHMENT-019-A, SCN-METADATA-ENRICHMENT-019-C — Business rule
     #[rstest]
     #[case::album("Album", Some(ProductionType::Studio))]
     #[case::compilation("compilation", Some(ProductionType::Compilation))]
@@ -1404,7 +1478,7 @@ mod tests {
         Ok(production_type)
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-019-B
+    // proves: SCN-METADATA-ENRICHMENT-019-B — Business rule
     #[tokio::test]
     async fn musicbrainz_secondary_production_type_takes_precedence() -> Result<(), Box<dyn Error>>
     {
@@ -1416,7 +1490,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-019-C
+    // proves: SCN-METADATA-ENRICHMENT-019-C — Business rule
     #[tokio::test]
     async fn musicbrainz_unmappable_secondary_type_stays_absent() -> Result<(), Box<dyn Error>> {
         // Act
@@ -1427,7 +1501,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-007-A, SCN-METADATA-ENRICHMENT-007-B
+    // proves: SCN-METADATA-ENRICHMENT-007-A, SCN-METADATA-ENRICHMENT-007-B — Business rule
     #[test]
     fn musicbrainz_genre_normalisation_folds_case_and_drops_empty_entries() {
         // Arrange
@@ -1450,7 +1524,7 @@ mod tests {
         assert_eq!(mapped, vec!["cool jazz", "jazz"]);
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-006-A, SCN-METADATA-ENRICHMENT-006-B, SCN-METADATA-ENRICHMENT-006-C, SCN-METADATA-ENRICHMENT-014-B
+    // proves: SCN-METADATA-ENRICHMENT-006-A, SCN-METADATA-ENRICHMENT-006-B, SCN-METADATA-ENRICHMENT-006-C, SCN-METADATA-ENRICHMENT-014-B — Business rule
     #[test]
     fn musicbrainz_country_and_date_placeholders_are_absent() {
         // Arrange
@@ -1503,7 +1577,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-023-E
+    // proves: SCN-METADATA-ENRICHMENT-023-E — Negative
     #[tokio::test]
     async fn musicbrainz_lookup_returns_none_for_an_unknown_mbid() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1528,7 +1602,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-022-C
+    // proves: SCN-METADATA-ENRICHMENT-022-C — Recovery
     #[tokio::test]
     async fn musicbrainz_retries_a_rate_limited_request() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1551,7 +1625,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-022-D
+    // proves: SCN-METADATA-ENRICHMENT-022-D — Error handling
     #[tokio::test]
     #[traced_test]
     async fn musicbrainz_exhausts_the_retry_budget_and_logs_once() -> Result<(), Box<dyn Error>> {
@@ -1595,7 +1669,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-022-E
+    // proves: SCN-METADATA-ENRICHMENT-022-E — Error handling
     #[tokio::test]
     async fn musicbrainz_does_not_retry_an_invalid_request() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1621,7 +1695,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-022-F
+    // proves: SCN-METADATA-ENRICHMENT-022-F — Error handling
     #[tokio::test]
     async fn musicbrainz_does_not_retry_an_undecodable_payload() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1647,7 +1721,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-022-A
+    // proves: SCN-METADATA-ENRICHMENT-022-A — Business rule
     #[tokio::test]
     async fn musicbrainz_spaces_sequential_requests() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1674,7 +1748,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-022-B
+    // proves: SCN-METADATA-ENRICHMENT-022-B — Business rule
     #[tokio::test]
     async fn musicbrainz_serialises_concurrent_requests() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1705,7 +1779,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-005-A
+    // proves: SCN-METADATA-ENRICHMENT-005-A — Business rule
     #[tokio::test]
     async fn musicbrainz_artwork_follows_the_cover_art_json_hop() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1748,7 +1822,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-004-B, SCN-METADATA-ENRICHMENT-006-A, SCN-METADATA-ENRICHMENT-007-C
+    // proves: SCN-METADATA-ENRICHMENT-004-B, SCN-METADATA-ENRICHMENT-006-A, SCN-METADATA-ENRICHMENT-007-C — Business rule
     #[tokio::test]
     async fn musicbrainz_lookup_maps_an_album_without_editions() -> Result<(), Box<dyn Error>> {
         // Arrange: the payload lists no edition and no genre, and its date is partial.
@@ -1791,7 +1865,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-008-A
+    // proves: SCN-METADATA-ENRICHMENT-008-A — Business rule
     #[tokio::test]
     async fn musicbrainz_lookup_ignores_another_providers_reference() -> Result<(), Box<dyn Error>>
     {
@@ -1813,7 +1887,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-008-B
+    // proves: SCN-METADATA-ENRICHMENT-008-B — Error handling
     #[tokio::test]
     #[traced_test]
     async fn musicbrainz_lookup_reports_a_provider_failure_without_another_provider()
@@ -1843,7 +1917,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-005-A
+    // proves: SCN-METADATA-ENRICHMENT-005-A — Business rule
     #[tokio::test]
     async fn musicbrainz_artwork_follows_the_archives_redirect_hop() -> Result<(), Box<dyn Error>> {
         // Arrange: the index names an address the archive answers with a redirect.
@@ -1894,7 +1968,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-005-B
+    // proves: SCN-METADATA-ENRICHMENT-005-B — Alternate flow
     #[tokio::test]
     #[traced_test]
     async fn musicbrainz_artwork_refuses_a_hop_outside_the_allow_list() -> Result<(), Box<dyn Error>>
@@ -1949,7 +2023,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-005-B
+    // proves: SCN-METADATA-ENRICHMENT-005-B — Alternate flow
     #[tokio::test]
     #[traced_test]
     async fn musicbrainz_artwork_absence_yields_none_and_one_event() -> Result<(), Box<dyn Error>> {
@@ -2019,7 +2093,7 @@ mod tests {
         }
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-008-A
+    // proves: SCN-METADATA-ENRICHMENT-008-A — Business rule
     #[rstest]
     #[case(
         MusicKind::Album,

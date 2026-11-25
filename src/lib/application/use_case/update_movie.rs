@@ -280,7 +280,7 @@ mod tests {
         )
     }
 
-    // proves: SCN-MOVIES-005-A
+    // proves: SCN-MOVIES-005-A — Positive
     #[tokio::test]
     async fn update_movie_replaces_metadata_keeping_the_video() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -434,7 +434,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-005-A
+    // proves: SCN-MOVIES-005-A — Positive
     #[tokio::test]
     async fn update_movie_absent_fields_keep_the_stored_values() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -574,7 +574,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-005-B
+    // proves: SCN-MOVIES-005-B — Alternate flow
     #[tokio::test]
     async fn update_movie_null_clears_optional_values() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -723,7 +723,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-005-E
+    // proves: SCN-MOVIES-005-E — Security
     #[tokio::test]
     async fn update_movie_unknown_movie_returns_no_such_movie() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -841,7 +841,7 @@ mod tests {
         assert!(matches!(result, Err(UpdateMovieError::NoSuchMovie)));
         Ok(())
     }
-    // proves: SCN-MOVIES-005-A
+    // proves: SCN-MOVIES-005-A — Positive
     #[tokio::test]
     async fn update_movie_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange: the repository rejects the cover through the scope trigger.
@@ -984,8 +984,8 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-005-A
-    // proves: SCN-MOVIES-005-A
+    // proves: SCN-MOVIES-005-A — Positive
+    // proves: SCN-MOVIES-005-A — Positive
     #[tokio::test]
     async fn update_movie_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1123,7 +1123,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-005-A
+    // proves: SCN-MOVIES-005-A — Positive
     #[tokio::test]
     async fn update_movie_invalid_country_is_unprocessable() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1261,7 +1261,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-005-A
+    // proves: SCN-MOVIES-005-A — Positive
     #[tokio::test]
     async fn update_movie_empty_genre_is_invalid() -> Result<(), Box<dyn Error>> {
         // Arrange

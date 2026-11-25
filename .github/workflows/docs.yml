@@ -14,6 +14,8 @@ on:
       - '**/*.md'
       - 'docs/**/*.css'
       - 'docs/**/*.js'
+      - 'docs/**/*.html'
+      - 'docs/**/*.json'
       - 'mkdocs.yml'
       - 'requirements.txt'
       - '.prettierrc'

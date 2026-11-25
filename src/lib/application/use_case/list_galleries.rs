@@ -175,7 +175,7 @@ mod tests {
         Gallery::new(gallery_id, user_id, name.to_owned(), is_public, now, now)
     }
 
-    // proves: SCN-GALLERY-004-A
+    // proves: SCN-GALLERY-004-A — Business rule
     #[tokio::test]
     async fn list_galleries_root_admin_sees_every_gallery_with_item_counts()
     -> Result<(), Box<dyn Error>> {
@@ -254,7 +254,7 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-    // proves: SCN-GALLERY-004-B
+    // proves: SCN-GALLERY-004-B — Business rule
     #[tokio::test]
     async fn list_galleries_forwards_filters_and_paginates() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -328,7 +328,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-004-A
+    // proves: SCN-GALLERY-004-A — Business rule
     #[tokio::test]
     async fn list_galleries_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -360,7 +360,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-004-A
+    // proves: SCN-GALLERY-004-A — Business rule
     #[tokio::test]
     async fn list_galleries_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -405,7 +405,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-004-A
+    // proves: SCN-GALLERY-004-A — Business rule
     #[tokio::test]
     async fn list_galleries_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange

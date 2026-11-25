@@ -4,8 +4,8 @@
 
 Accepts caller-supplied content into the library through a resumable, chunked **Upload session**, so a client can send a
 file larger than one request, resume after an interruption, and receive one registered asset. It owns the session
-lifecycle, the chunk protocol, integrity and type verification, expiry, cancellation, reaping and promotion; serving a
-stored asset and deciding who may address a session belong to their own capabilities.
+lifecycle, the chunk protocol, integrity and type verification, expiry, cancellation, reaping, promotion and who may
+address a session; serving a stored asset belongs to `download`.
 
 ## Requirements
 
@@ -415,3 +415,19 @@ size and last modification instant, at a path unique under the **Library root** 
 
 - **WHEN** an upload completes
 - **THEN** its path is relative to the library root, no earlier file record uses it, and it resolves to the stored bytes
+
+### Requirement: REQ-UPLOAD-018 — An upload is owner-only
+
+An upload SHALL be a resource whose authorization parent is the instance root. It SHALL be read, written, completed and
+cancelled only by its owner. A non-owner SHALL receive `404 Not Found`, no grant SHALL widen upload access, and the root
+SHALL not be exempt.
+
+#### Scenario: SCN-UPLOAD-018-A — A non-owner is concealed
+
+- **WHEN** an authenticated caller addresses another user's upload
+- **THEN** the system answers `404 Not Found` and applies nothing
+
+#### Scenario: SCN-UPLOAD-018-B — The root is not exempt
+
+- **WHEN** the root addresses an upload it does not own
+- **THEN** the system answers `404 Not Found`

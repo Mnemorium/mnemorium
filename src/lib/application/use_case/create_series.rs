@@ -253,7 +253,7 @@ mod tests {
         )
     }
 
-    // proves: SCN-SERIES-008-A
+    // proves: SCN-SERIES-008-A — Positive
     #[tokio::test]
     async fn create_series_stores_the_show_with_no_seasons() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -398,7 +398,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-008-B
+    // proves: SCN-SERIES-008-B — Business rule
     #[tokio::test]
     async fn create_series_repeated_name_returns_a_second_show() -> Result<(), Box<dyn Error>> {
         // Arrange: the schema holds no unique show name, so creation never looks
@@ -523,7 +523,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-008-C
+    // proves: SCN-SERIES-008-C — Alternate flow
     #[tokio::test]
     async fn create_series_unknown_genre_is_written() -> Result<(), Box<dyn Error>> {
         // Arrange: the genre vocabulary is open on write.
@@ -657,7 +657,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-008-D
+    // proves: SCN-SERIES-008-D — Negative
     #[tokio::test]
     async fn create_series_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -781,7 +781,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-008-D
+    // proves: SCN-SERIES-008-D — Negative
     #[tokio::test]
     async fn create_series_invalid_country_is_unprocessable() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -905,7 +905,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-008-D
+    // proves: SCN-SERIES-008-D — Negative
     #[tokio::test]
     async fn create_series_empty_genre_is_invalid() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1028,7 +1028,7 @@ mod tests {
         assert!(matches!(result, Err(CreateSeriesError::InvalidGenre)));
         Ok(())
     }
-    // proves: SCN-SERIES-008-E
+    // proves: SCN-SERIES-008-E — Negative
     #[tokio::test]
     async fn create_series_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange: the repository rejects the cover through the scope trigger.

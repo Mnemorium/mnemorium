@@ -187,7 +187,7 @@ mod tests {
         PutSeriesSeasonCommand::new(1, 7, 1, Some("Season One".to_owned()), Some(9))
     }
 
-    // proves: SCN-SERIES-010-A
+    // proves: SCN-SERIES-010-A — Positive
     #[tokio::test]
     async fn put_series_season_new_index_reports_created() -> Result<(), Box<dyn Error>> {
         // Arrange: the show holds no season.
@@ -333,7 +333,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-010-B, SCN-SERIES-010-C
+    // proves: SCN-SERIES-010-B, SCN-SERIES-010-C — Positive
     #[tokio::test]
     async fn put_series_season_existing_index_reports_replaced_keeping_episodes()
     -> Result<(), Box<dyn Error>> {
@@ -474,7 +474,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-010-D
+    // proves: SCN-SERIES-010-D — Negative
     #[tokio::test]
     async fn put_series_season_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -593,7 +593,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-010-D
+    // proves: SCN-SERIES-010-D — Negative
     #[tokio::test]
     async fn put_series_season_absent_at_write_returns_no_such_series() -> Result<(), Box<dyn Error>>
     {
@@ -724,7 +724,7 @@ mod tests {
         assert!(matches!(result, Err(PutSeriesSeasonError::NoSuchSeries)));
         Ok(())
     }
-    // proves: SCN-SERIES-010-E
+    // proves: SCN-SERIES-010-E — Negative
     #[tokio::test]
     async fn put_series_season_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange: the repository rejects the cover through the scope trigger.
@@ -856,7 +856,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-010-A
+    // proves: SCN-SERIES-010-A — Positive
     #[tokio::test]
     async fn put_series_season_null_name_and_cover_are_stored() -> Result<(), Box<dyn Error>> {
         // Arrange: a put with neither a name nor a cover clears both.

@@ -319,6 +319,22 @@ def file_at(server: Sut, token: str, path: str) -> dict | None:
     return items[0] if items else None
 
 
+def auth_path(server: Sut, token: str, kind: object, resource_id: int, user_id: int = 0) -> list[str]:
+    """The authorization-parent kinds of one resource, from itself up to the instance root."""
+    from mnemorium_client.api.identity import get_permission_summary
+    from mnemorium_client.models import GetPermissionSummaryAction
+
+    response = get_permission_summary.sync_detailed(
+        client=server.client(token),
+        user_id=user_id,
+        resource_kind=kind,
+        resource_id=resource_id,
+        action=GetPermissionSummaryAction.VIEW,
+    )
+    assert response.status_code == 200, f"summary failed: {response.status_code} {response.content!r}"
+    return [entry["kind"] for entry in json.loads(response.content)["decision"]["auth_path"]]
+
+
 def ingest_report(record: dict[str, str]) -> dict[str, int]:
     """The aggregate counters one logged ingest event reported."""
     names = ("registered", "completed", "untouched", "changed", "missing", "removed", "skipped")

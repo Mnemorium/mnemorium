@@ -235,7 +235,7 @@ where
                         .ok_or(UpdatePlaylistError::NoSuchRecording)?;
                     // The container check admits the write; the target must also
                     // be readable, which is what `authorization` requires of a
-                    // playlist entry (`REQ-AUTHORIZATION-026`).
+                    // playlist entry (`REQ-MUSIC-025`).
                     authorize(
                         &mut unit_of_work.resources(),
                         &caller,

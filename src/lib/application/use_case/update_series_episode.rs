@@ -246,7 +246,7 @@ mod tests {
         UpdateSeriesEpisodeCommand::new(1, 7, 1, 1, None, None, FieldUpdate::Absent)
     }
 
-    // proves: SCN-SERIES-013-A, SCN-SERIES-013-C
+    // proves: SCN-SERIES-013-A, SCN-SERIES-013-C — Positive
     #[tokio::test]
     async fn update_series_episode_replaces_metadata_keeping_the_video()
     -> Result<(), Box<dyn Error>> {
@@ -408,7 +408,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-013-A
+    // proves: SCN-SERIES-013-A — Positive
     #[tokio::test]
     async fn update_series_episode_absent_fields_keep_stored_values() -> Result<(), Box<dyn Error>>
     {
@@ -551,7 +551,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-013-B
+    // proves: SCN-SERIES-013-B — Alternate flow
     #[tokio::test]
     async fn update_series_episode_null_clears_the_air_date() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -695,7 +695,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-013-D
+    // proves: SCN-SERIES-013-D — Security
     #[tokio::test]
     async fn update_series_episode_absent_episode_returns_no_such_episode()
     -> Result<(), Box<dyn Error>> {
@@ -825,7 +825,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-013-D
+    // proves: SCN-SERIES-013-D — Security
     #[tokio::test]
     async fn update_series_episode_absent_season_returns_no_such_season()
     -> Result<(), Box<dyn Error>> {
@@ -955,7 +955,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-013-D
+    // proves: SCN-SERIES-013-D — Security
     #[tokio::test]
     async fn update_series_episode_unknown_show_returns_no_such_series()
     -> Result<(), Box<dyn Error>> {
@@ -1077,7 +1077,7 @@ mod tests {
         ));
         Ok(())
     }
-    // proves: SCN-SERIES-013-A
+    // proves: SCN-SERIES-013-A — Positive
     #[tokio::test]
     async fn update_series_episode_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1216,7 +1216,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-013-D
+    // proves: SCN-SERIES-013-D — Security
     #[tokio::test]
     async fn update_series_episode_absent_at_write_returns_no_such_episode()
     -> Result<(), Box<dyn Error>> {
@@ -1353,7 +1353,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-013-A
+    // proves: SCN-SERIES-013-A — Positive
     #[tokio::test]
     async fn update_series_episode_dependency_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {

@@ -362,6 +362,7 @@ mod tests {
         Ok(())
     }
 
+    // proves: SCN-LOGGING-014-B — Error handling
     #[tokio::test]
     #[traced_test]
     async fn unique_violation_logs_constraint_rejected() -> Result<(), Box<dyn Error>> {

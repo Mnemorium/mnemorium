@@ -5,10 +5,10 @@ import json
 import time
 from itertools import count
 
-from conftest import provision
+from conftest import auth_path, provision
 from harness import API_PREFIX, Sut
-from labels import TestType, alternate_flow, business_rule, negative, positive, scenario
-from mnemorium_client.api.identity import put_resource_permission
+from labels import TestType, alternate_flow, business_rule, negative, positive, scenario, security
+from mnemorium_client.api.identity import get_permission_summary, put_resource_permission
 from mnemorium_client.api.library import (
     delete_playlist,
     delete_playlist_track,
@@ -36,6 +36,8 @@ from mnemorium_client.api.library import (
 )
 from mnemorium_client.models import (
     AddPlaylistTrackRequest,
+    GetPermissionSummaryAction,
+    GetPermissionSummaryResourceKind,
     MediumTypeRequest,
     PatchAlbumRequest,
     PatchAlbumTrackRequest,
@@ -168,6 +170,37 @@ def test_the_album_collection_filters_on_name(server: Sut, root_token: str) -> N
     assert [item["id"] for item in json.loads(response.content)["_embedded"]["items"]] == [FILTERED_ALBUM]
 
 
+@business_rule
+@scenario("SCN-MUSIC-001-C")
+def test_an_invisible_album_is_filtered_out(server: Sut, root_token: str) -> None:
+    """A caller denied the only new album discovers none and receives an empty collection."""
+    user_id, user = provision(server, root_token, f"albumstranger{next(_ACCOUNTS)}")
+    name = f"Invisible Album {user_id}"
+    created = post_album.sync_detailed(
+        client=server.client(root_token),
+        body=PostAlbumRequest(music_group_id=NEW_ALBUM_GROUP, name=name),
+    )
+    assert created.status_code == 201, f"creation failed: {created.status_code} {created.content!r}"
+    album = json.loads(created.content)
+
+    before = list_albums.sync_detailed(client=server.client(user), name=name)
+    denied = server.request(
+        "PUT",
+        f"{server.href('permission')}/resource/MUSIC_ALBUM/{album['id']}",
+        token=root_token,
+        json={
+            "visibility": "PUBLIC",
+            "grants": [{"principal": {"kind": "USER", "id": user_id}, "role": "VIEWER", "effect": "DENY"}],
+        },
+    )
+    after = list_albums.sync_detailed(client=server.client(user), name=name)
+
+    assert [item["id"] for item in json.loads(before.content)["_embedded"]["items"]] == [album["id"]]
+    assert denied.status_code == 200, f"deny failed: {denied.status_code} {denied.text}"
+    assert after.status_code == 200
+    assert json.loads(after.content)["_embedded"]["items"] == []
+
+
 @positive
 @scenario("SCN-MUSIC-002-A")
 def test_an_album_detail_read_carries_its_metadata(server: Sut, root_token: str) -> None:
@@ -262,6 +295,7 @@ def test_an_existing_album_is_returned_unchanged(server: Sut, root_token: str) -
 
 @negative
 @scenario("SCN-MUSIC-008-D")
+@scenario("SCN-MUSIC-029-E")
 def test_an_album_with_an_unusable_name_is_refused(server: Sut, root_token: str) -> None:
     """An empty or over-long name is refused on creation and update and stores nothing."""
     empty = post_album.sync_detailed(
@@ -763,6 +797,7 @@ def test_editing_a_default_album_track_is_refused(server: Sut, root_token: str) 
 @positive
 @scenario("SCN-MUSIC-007-A")
 @scenario("SCN-MUSIC-006-A")
+@scenario("SCN-MUSIC-007-B")
 def test_a_track_read_carries_its_recording(server: Sut, root_token: str) -> None:
     """A track read carries its position, recording, file, links and no artwork of its own."""
     response = get_album_track.sync_detailed(TRACK_READ_ALBUM, 1, 0, client=server.client(root_token))
@@ -1109,8 +1144,9 @@ def test_a_default_album_write_is_refused(server: Sut, root_token: str) -> None:
 
 @positive
 @scenario("SCN-MUSIC-019-A")
+@scenario("SCN-MUSIC-032-A")
 def test_a_private_playlist_is_created(server: Sut, root_token: str) -> None:
-    """A creation with no visibility is private and owned by the caller."""
+    """A creation with no visibility is private, owned by the caller and follows the library."""
     alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
     response = post_playlist.sync_detailed(
         client=server.client(alice),
@@ -1119,12 +1155,26 @@ def test_a_private_playlist_is_created(server: Sut, root_token: str) -> None:
     assert response.status_code == 201, f"creation failed: {response.status_code} {response.content!r}"
     playlist = json.loads(response.content)
 
+    summary = get_permission_summary.sync_detailed(
+        client=server.client(root_token),
+        user_id=alice_id,
+        resource_kind=GetPermissionSummaryResourceKind.MUSIC_PLAYLIST,
+        resource_id=playlist["id"],
+        action=GetPermissionSummaryAction.VIEW,
+    )
+
     assert playlist["name"] == "Mine"
     assert playlist["is_public"] is False
     assert playlist["owner_id"] == alice_id
     assert playlist["tracks"] == []
     assert playlist["track_count"] == 0
     assert playlist.get("cover_image_id") is None
+    assert summary.status_code == 200, f"summary failed: {summary.status_code} {summary.content!r}"
+    assert [entry["kind"] for entry in json.loads(summary.content)["decision"]["auth_path"]] == [
+        "MUSIC_PLAYLIST",
+        "LIBRARY",
+        "INSTANCE",
+    ]
 
 
 @positive
@@ -1779,3 +1829,259 @@ def test_deleting_an_unknown_playlist_is_refused(server: Sut, root_token: str) -
     _alice_id, alice = provision(server, root_token, f"alice{next(_ACCOUNTS)}")
     response = delete_playlist.sync_detailed(UNKNOWN_ID, client=server.client(alice))
     assert response.status_code == 404, f"unknown playlist delete answered {response.status_code}"
+
+
+@security
+@scenario("SCN-MUSIC-031-A")
+def test_a_standard_user_reads_the_catalogue(server: Sut, root_token: str) -> None:
+    """A Standard user reads an album, a recording and a group, whose parent is the catalogue."""
+    alice_id, alice = provision(server, root_token, f"reader{next(_ACCOUNTS)}")
+
+    album = get_album.sync_detailed(DETAIL_ALBUM, client=server.client(alice))
+    recording = get_album_track.sync_detailed(TRACK_READ_ALBUM, 1, 0, client=server.client(alice))
+    group = get_music_group.sync_detailed(DETAIL_GROUP_ENTITY, client=server.client(alice))
+    summary = get_permission_summary.sync_detailed(
+        client=server.client(root_token),
+        user_id=alice_id,
+        resource_kind=GetPermissionSummaryResourceKind.MUSIC_ALBUM,
+        resource_id=DETAIL_ALBUM,
+        action=GetPermissionSummaryAction.VIEW,
+    )
+
+    assert album.status_code == 200, f"album read failed: {album.status_code} {album.content!r}"
+    assert recording.status_code == 200, f"recording read failed: {recording.status_code} {recording.content!r}"
+    assert group.status_code == 200, f"group read failed: {group.status_code} {group.content!r}"
+    assert summary.status_code == 200, f"summary failed: {summary.status_code} {summary.content!r}"
+    assert [entry["kind"] for entry in json.loads(summary.content)["decision"]["auth_path"]] == [
+        "MUSIC_ALBUM",
+        "CATALOGUE",
+        "LIBRARY",
+        "INSTANCE",
+    ]
+
+
+@security
+@scenario("SCN-MUSIC-031-B")
+def test_a_standard_user_cannot_write_the_catalogue(server: Sut, root_token: str) -> None:
+    """A Standard user renaming an album or a group answers 403 and applies nothing."""
+    _, alice = provision(server, root_token, f"writer{next(_ACCOUNTS)}")
+
+    album = patch_album.sync_detailed(
+        DETAIL_ALBUM,
+        client=server.client(alice),
+        body=PatchAlbumRequest(name="Hijacked Album"),
+    )
+    group = patch_music_group.sync_detailed(
+        DETAIL_GROUP_ENTITY,
+        client=server.client(alice),
+        body=PatchMusicGroupRequest(name="Hijacked Group"),
+    )
+    stored_album = get_album.sync_detailed(DETAIL_ALBUM, client=server.client(root_token))
+    stored_group = get_music_group.sync_detailed(DETAIL_GROUP_ENTITY, client=server.client(root_token))
+
+    assert album.status_code == 403, f"standard album write accepted: {album.status_code} {album.content!r}"
+    assert group.status_code == 403, f"standard group write accepted: {group.status_code} {group.content!r}"
+    assert json.loads(stored_album.content)["name"] == "Detailed Album"
+    assert json.loads(stored_group.content)["name"] == "Detail Group"
+
+
+@security
+@scenario("SCN-MUSIC-031-C")
+def test_an_admin_curates_an_album(server: Sut, root_token: str) -> None:
+    """An Admin writes an album through the seeded role, leaving the value unchanged."""
+    _, admin = provision(server, root_token, f"catalogueadmin{next(_ACCOUNTS)}", role="ADMIN")
+    current = json.loads(get_album.sync_detailed(DETAIL_ALBUM, client=server.client(root_token)).content)
+
+    edited = patch_album.sync_detailed(
+        DETAIL_ALBUM,
+        client=server.client(admin),
+        body=PatchAlbumRequest(name=current["name"]),
+    )
+
+    assert edited.status_code == 200, f"admin write refused: {edited.status_code} {edited.content!r}"
+    assert json.loads(edited.content)["name"] == current["name"]
+
+
+@security
+@scenario("SCN-MUSIC-031-C")
+def test_an_editor_grant_admits_an_album_edit(server: Sut, root_token: str) -> None:
+    """An Editor grant on an album applies the metadata write."""
+    bob_id, bob = provision(server, root_token, f"editor{next(_ACCOUNTS)}")
+    current = json.loads(get_album.sync_detailed(DETAIL_ALBUM, client=server.client(root_token)).content)
+    href = f"{server.href('permission')}/resource/MUSIC_ALBUM/{DETAIL_ALBUM}"
+    permission = server.request("GET", href, token=root_token)
+    assert permission.status_code == 200, f"permission read failed: {permission.status_code} {permission.text}"
+    visibility = json.loads(permission.content)["visibility"]
+
+    granted = server.request(
+        "PUT",
+        href,
+        token=root_token,
+        json={
+            "visibility": visibility,
+            "grants": [{"principal": {"kind": "USER", "id": bob_id}, "role": "EDITOR", "effect": "ALLOW"}],
+        },
+    )
+    edited = patch_album.sync_detailed(
+        DETAIL_ALBUM,
+        client=server.client(bob),
+        body=PatchAlbumRequest(name=current["name"]),
+    )
+    restored = server.request(
+        "PUT",
+        href,
+        token=root_token,
+        json={"visibility": visibility, "grants": []},
+    )
+
+    assert granted.status_code == 200
+    assert edited.status_code == 200, f"editor write refused: {edited.status_code} {edited.content!r}"
+    assert restored.status_code == 200
+
+
+@security
+@scenario("SCN-MUSIC-032-B")
+@scenario("SCN-AUTHORIZATION-023-G")
+def test_a_standard_user_cannot_create_a_music_group(server: Sut, root_token: str) -> None:
+    """A Standard user creating a music group answers 403 and creates nothing."""
+    _, alice = provision(server, root_token, f"groupcreator{next(_ACCOUNTS)}")
+    name = f"forbidden-group-{next(_ACCOUNTS)}"
+
+    created = post_music_group.sync_detailed(
+        client=server.client(alice),
+        body=PostMusicGroupRequest(name=name),
+    )
+    listed = list_music_groups.sync_detailed(client=server.client(root_token), name=name)
+
+    assert created.status_code == 403, f"standard creation accepted: {created.status_code} {created.content!r}"
+    assert json.loads(listed.content)["_embedded"]["items"] == []
+
+
+@security
+@scenario("SCN-MUSIC-032-B")
+@scenario("SCN-AUTHORIZATION-023-G")
+def test_a_standard_user_cannot_create_a_music_album(server: Sut, root_token: str) -> None:
+    """A Standard user creating a music album answers 403 and creates nothing."""
+    _, alice = provision(server, root_token, f"albumcreator{next(_ACCOUNTS)}")
+    name = f"forbidden-album-{next(_ACCOUNTS)}"
+
+    created = post_album.sync_detailed(
+        client=server.client(alice),
+        body=PostAlbumRequest(name=name, music_group_id=ALBUM_GROUP),
+    )
+    listed = list_albums.sync_detailed(client=server.client(root_token), name=name)
+
+    assert created.status_code == 403, f"standard creation accepted: {created.status_code} {created.content!r}"
+    assert json.loads(listed.content)["_embedded"]["items"] == []
+
+
+@security
+@scenario("SCN-MUSIC-032-C")
+@scenario("SCN-AUTHORIZATION-023-C")
+def test_an_admin_creates_catalogue_music(server: Sut, root_token: str) -> None:
+    """An Admin creates a group and an album under the catalogue, whose parent is the catalogue."""
+    admin_id, admin = provision(server, root_token, f"musicadmin{next(_ACCOUNTS)}", role="ADMIN")
+    group_name = f"Admin Group {next(_ACCOUNTS)}"
+    group = post_music_group.sync_detailed(
+        client=server.client(admin),
+        body=PostMusicGroupRequest(name=group_name),
+    )
+    assert group.status_code == 201, f"group creation failed: {group.status_code} {group.content!r}"
+    group_body = json.loads(group.content)
+    album_name = f"Admin Album {next(_ACCOUNTS)}"
+
+    created = post_album.sync_detailed(
+        client=server.client(admin),
+        body=PostAlbumRequest(music_group_id=group_body["id"], name=album_name),
+    )
+    assert created.status_code == 201, f"album creation failed: {created.status_code} {created.content!r}"
+    album = json.loads(created.content)
+    summary = get_permission_summary.sync_detailed(
+        client=server.client(root_token),
+        user_id=admin_id,
+        resource_kind=GetPermissionSummaryResourceKind.MUSIC_ALBUM,
+        resource_id=album["id"],
+        action=GetPermissionSummaryAction.VIEW,
+    )
+
+    assert album["name"] == album_name
+    assert summary.status_code == 200, f"summary failed: {summary.status_code} {summary.content!r}"
+    assert [entry["kind"] for entry in json.loads(summary.content)["decision"]["auth_path"]] == [
+        "MUSIC_ALBUM",
+        "CATALOGUE",
+        "LIBRARY",
+        "INSTANCE",
+    ]
+
+
+@security
+@scenario("SCN-MUSIC-032-D")
+@scenario("SCN-AUTHORIZATION-023-F")
+def test_a_denied_playlist_surface_refuses_creation(server: Sut, root_token: str) -> None:
+    """A denied CreateChild on the playlist collection refuses creation and the seeded role survives."""
+    alice_id, alice = provision(server, root_token, f"playlistcreator{next(_ACCOUNTS)}")
+    href = f"{server.href('permission')}/resource/PLAYLIST_COLLECTION/0"
+    current = server.request("GET", href, token=root_token)
+    assert current.status_code == 200, f"permission read failed: {current.status_code} {current.text}"
+    visibility = json.loads(current.content)["visibility"]
+
+    denied = server.request(
+        "PUT",
+        href,
+        token=root_token,
+        json={
+            "visibility": visibility,
+            "grants": [
+                {
+                    "principal": {"kind": "USER", "id": alice_id},
+                    "role": "CONTRIBUTOR",
+                    "effect": "DENY",
+                    "child_kind": "MUSIC_PLAYLIST",
+                }
+            ],
+        },
+    )
+    refused = post_playlist.sync_detailed(
+        client=server.client(alice),
+        body=PostPlaylistRequest(name=f"denied-surface-{next(_ACCOUNTS)}"),
+    )
+    restored = server.request(
+        "PUT",
+        href,
+        token=root_token,
+        json={"visibility": visibility, "grants": []},
+    )
+    allowed = post_playlist.sync_detailed(
+        client=server.client(alice),
+        body=PostPlaylistRequest(name=f"restored-surface-{next(_ACCOUNTS)}"),
+    )
+
+    assert denied.status_code == 200
+    assert refused.status_code == 403, f"denied creation admitted: {refused.status_code} {refused.content!r}"
+    assert restored.status_code == 200
+    assert allowed.status_code == 201, "the seeded role grant must survive the deny"
+
+
+@business_rule
+@scenario("SCN-AUTHORIZATION-002-F")
+def test_an_album_and_its_group_follow_the_catalogue(server: Sut, root_token: str) -> None:
+    """A created album and its group both follow the catalogue."""
+    created = post_album.sync_detailed(
+        client=server.client(root_token),
+        body=PostAlbumRequest(music_group_id=NEW_ALBUM_GROUP, name=f"Auth Album {next(_ACCOUNTS)}"),
+    )
+    assert created.status_code == 201, f"creation failed: {created.status_code} {created.content!r}"
+    album = json.loads(created.content)
+
+    assert auth_path(server, root_token, GetPermissionSummaryResourceKind.MUSIC_ALBUM, album["id"]) == [
+        "MUSIC_ALBUM",
+        "CATALOGUE",
+        "LIBRARY",
+        "INSTANCE",
+    ]
+    assert auth_path(server, root_token, GetPermissionSummaryResourceKind.MUSIC_GROUP, NEW_ALBUM_GROUP) == [
+        "MUSIC_GROUP",
+        "CATALOGUE",
+        "LIBRARY",
+        "INSTANCE",
+    ]

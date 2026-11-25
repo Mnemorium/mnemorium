@@ -147,7 +147,7 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = ListMovies<TestFactory>;
 
-    // proves: SCN-MOVIES-001-A
+    // proves: SCN-MOVIES-001-A — Business rule
     #[tokio::test]
     async fn list_movies_returns_the_page_with_its_video() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -217,7 +217,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-001-D
+    // proves: SCN-MOVIES-001-D — Business rule
     #[tokio::test]
     async fn list_movies_carries_the_cover_of_a_film_with_artwork() -> Result<(), Box<dyn Error>> {
         // Arrange: one covered film beside one without artwork.
@@ -300,7 +300,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-001-B
+    // proves: SCN-MOVIES-001-B — Business rule
     #[tokio::test]
     async fn list_movies_forwards_the_filter_and_paginates() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -362,7 +362,7 @@ mod tests {
         );
         Ok(())
     }
-    // proves: SCN-MOVIES-001-A
+    // proves: SCN-MOVIES-001-A — Business rule
     #[tokio::test]
     async fn list_movies_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -400,7 +400,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-001-A
+    // proves: SCN-MOVIES-001-A — Business rule
     #[tokio::test]
     async fn list_movies_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -456,7 +456,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-001-A
+    // proves: SCN-MOVIES-001-A — Business rule
     #[tokio::test]
     async fn list_movies_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange

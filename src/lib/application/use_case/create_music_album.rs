@@ -475,6 +475,78 @@ mod tests {
         Ok(())
     }
 
+    // proves: SCN-MUSIC-008-E — Negative
+    #[tokio::test]
+    async fn create_music_album_raced_duplicate_returns_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange: the search finds nothing, but the insert loses the identity to a concurrent request.
+        let mut users = MockUserRepository::new();
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
+        let mut groups = MockMusicGroupRepository::new();
+        (move |groups: &mut MockMusicGroupRepository| -> Result<(), Box<dyn Error>> {
+            let group = MusicGroup::try_new(0, "Unknown".to_owned(), None)?;
+            groups
+                .expect_search()
+                .times(1)
+                .withf(|filter| filter.id == Some(0))
+                .return_once(move |_| {
+                    let found = group.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+            Ok(())
+        })(&mut groups)?;
+        let mut albums = MockMusicAlbumRepository::new();
+        albums
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        albums
+            .expect_create()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
+        let harness = (move |users: MockUserRepository,
+                             albums: MockMusicAlbumRepository,
+                             groups: MockMusicGroupRepository|
+              -> GalleryFactoryHarness {
+            let unit_of_work = TestUnitOfWork {
+                music_albums: albums,
+                music_groups: groups,
+                users,
+                ..TestUnitOfWork::default()
+            };
+            GalleryFactoryHarness::new(unit_of_work)
+        })(users, albums, groups);
+        let use_case: UseCase = CreateMusicAlbum::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(CreateMusicAlbumCommand::new(
+                1,
+                "Raced Album".to_owned(),
+                0,
+                None,
+                None,
+                vec!["JAZZ".to_owned()],
+                None,
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CreateMusicAlbumError::Conflict)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
     #[tokio::test]
     async fn create_music_album_unknown_group_is_unprocessable() -> Result<(), Box<dyn Error>> {
         // Arrange

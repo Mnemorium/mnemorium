@@ -23,6 +23,7 @@ from conftest import (
     store_chunk,
 )
 from harness import (
+    DATABASE_PATH,
     LOG_DIRECTORY,
     MEDIA_DIRECTORY,
     MSG_CONFIG_GENERATED,
@@ -61,6 +62,25 @@ def test_the_standard_output_sink_holds_the_event(server: Sut, root_token: str) 
 
     emitted = [record for record in server.events("authn_succeeded")[before:] if record["actor"] == str(owner_id)]
     assert len(emitted) == 1
+
+
+@business_rule
+@scenario("SCN-LOGGING-010-B")
+def test_a_catalogued_event_carries_its_declared_shape(server: Sut, root_token: str) -> None:
+    """A catalogued event targets `security`, carries its declared severity and exactly its fields."""
+    before = len(server.events("authn_succeeded"))
+    login(server, ROOT_ADMIN_USERNAME, server.root_password())
+    server.wait_until(
+        lambda: len(server.events("authn_succeeded")) > before,
+        "the sink recorded an authn_succeeded event",
+    )
+
+    emitted = server.events("authn_succeeded")[before:]
+    mine = emitted[:1]
+    assert len(mine) == 1
+    assert set(mine[0]) == {"event", "actor"}
+    lines = [line for line in server.logs().splitlines() if 'event="authn_succeeded"' in line]
+    assert lines and all("security:" in line and " INFO " in line for line in lines)
 
 
 @business_rule
@@ -320,6 +340,32 @@ def test_the_file_sink_is_never_coloured(sut: Sut) -> None:
     assert "\x1b[" not in server.log_text()
 
 
+@error_handling
+@scenario("SCN-LOGGING-003-A")
+@pytest.mark.own_instance(reason="log_sink")
+def test_an_empty_verbosity_is_refused(sut: Sut) -> None:
+    """An empty `logging.level` stops startup, naming the setting and accepting no request."""
+    failure = sut.start_expecting_failure(config={"logging": {"level": ""}})
+
+    assert failure.exit_code != 0, f"the server started instead of refusing:\n{failure.output}"
+    assert "logging.level" in failure.output, f"the refusal does not name the setting:\n{failure.output}"
+    assert not sut.exists(DATABASE_PATH), "a refused startup created the datastore"
+
+
+@error_handling
+@scenario("SCN-LOGGING-003-B")
+@pytest.mark.parametrize("level", ["off", "none"])
+@pytest.mark.own_instance(reason="log_sink")
+def test_a_disabling_verbosity_is_refused(sut: Sut, level: str) -> None:
+    """`off` and `none` stop startup, naming the setting and never echoing the value."""
+    failure = sut.start_expecting_failure(config={"logging": {"level": level}})
+
+    assert failure.exit_code != 0, f"the server started instead of refusing:\n{failure.output}"
+    assert "logging.level" in failure.output, f"the refusal does not name the setting:\n{failure.output}"
+    assert level not in failure.output, f"the refusal carries the value:\n{failure.output}"
+    assert not sut.exists(DATABASE_PATH), "a refused startup created the datastore"
+
+
 @business_rule
 @scenario("SCN-LOGGING-003-D")
 @pytest.mark.own_instance(reason="log_sink")
@@ -444,7 +490,10 @@ def test_startup_records_a_lifecycle_event(sut: Sut) -> None:
 
 @security
 @scenario("SCN-LOGGING-007-B")
+@scenario("SCN-LOGGING-007-C", TestType.SECURITY)
 @scenario("SCN-LOGGING-009-B")
+@scenario("SCN-LOGGING-006-B", TestType.ERROR_HANDLING)
+@scenario("SCN-LOGGING-014-A", TestType.ERROR_HANDLING)
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_a_file_name_is_withheld_from_a_storage_fault(sut: Sut) -> None:
     """A failed promotion records its classification at `error` and never the user-supplied name."""

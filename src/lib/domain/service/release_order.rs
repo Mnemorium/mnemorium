@@ -185,7 +185,7 @@ mod tests {
             .collect()
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-020-A
+    // proves: SCN-METADATA-ENRICHMENT-020-A — Business rule
     #[test]
     fn order_editions_places_compact_discs_first() {
         // Arrange
@@ -201,7 +201,7 @@ mod tests {
         assert_eq!(edition_ids(&ordered), vec!["cd", "vinyl"]);
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-020-B
+    // proves: SCN-METADATA-ENRICHMENT-020-B — Business rule
     #[test]
     fn order_editions_keeps_the_provider_order_within_a_bucket() {
         // Arrange
@@ -222,7 +222,7 @@ mod tests {
         );
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-020-C
+    // proves: SCN-METADATA-ENRICHMENT-020-C — Business rule
     #[test]
     fn a_mixed_format_edition_is_not_a_compact_disc() {
         // Arrange
@@ -238,7 +238,7 @@ mod tests {
         assert_eq!(edition_ids(&ordered), vec!["cd", "mixed"]);
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-020-D
+    // proves: SCN-METADATA-ENRICHMENT-020-D — Business rule
     #[test]
     fn an_edition_without_a_medium_is_not_a_compact_disc() {
         // Arrange

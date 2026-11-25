@@ -296,7 +296,7 @@ mod tests {
         )
     }
 
-    // proves: SCN-MOVIES-004-A
+    // proves: SCN-MOVIES-004-A — Positive
     #[tokio::test]
     async fn create_movie_new_film_reports_created() -> Result<(), Box<dyn Error>> {
         // Arrange: the video is free and no film or episode backs it.
@@ -451,7 +451,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-004-B
+    // proves: SCN-MOVIES-004-B — Business rule
     #[tokio::test]
     async fn create_movie_existing_film_returns_it_unchanged() -> Result<(), Box<dyn Error>> {
         // Arrange: the video already backs film 7.
@@ -586,7 +586,7 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-    // proves: SCN-MOVIES-004-E
+    // proves: SCN-MOVIES-004-E — Negative
     #[tokio::test]
     async fn create_movie_unknown_video_is_unprocessable() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -708,7 +708,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-004-E
+    // proves: SCN-MOVIES-004-E — Negative
     #[tokio::test]
     async fn create_movie_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -835,7 +835,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-004-E
+    // proves: SCN-MOVIES-004-E — Negative
     #[tokio::test]
     async fn create_movie_invalid_country_is_unprocessable() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -962,7 +962,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-004-E
+    // proves: SCN-MOVIES-004-E — Negative
     #[tokio::test]
     async fn create_movie_empty_genre_is_invalid() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1089,7 +1089,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-004-C
+    // proves: SCN-MOVIES-004-C — Negative
     #[tokio::test]
     async fn create_movie_video_backing_an_episode_is_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange: an episode already backs video 5.
@@ -1227,7 +1227,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-004-F
+    // proves: SCN-MOVIES-004-F — Negative
     #[tokio::test]
     async fn create_movie_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange: the repository rejects the cover through the scope trigger.
@@ -1375,7 +1375,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-004-A
+    // proves: SCN-MOVIES-004-A — Positive
     #[tokio::test]
     async fn create_movie_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1483,7 +1483,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-004-A
+    // proves: SCN-MOVIES-004-A — Positive
     #[tokio::test]
     async fn create_movie_dependency_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange: the video load fails at the port.

@@ -190,7 +190,18 @@ mod tests {
         )
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-012-A
+    #[fixture]
+    fn series_candidate() -> Candidate {
+        Candidate::new(
+            ExternalRef::new(ProviderId::Tmdb, "1399".to_owned()),
+            VideoKind::Series,
+            "Show".to_owned(),
+            Some(2020),
+        )
+    }
+
+    // proves: SCN-METADATA-ENRICHMENT-012-A — Business rule
+    // proves: SCN-METADATA-ENRICHMENT-017-A — Business rule
     #[tokio::test]
     async fn identify_video_returns_the_first_query_that_hits() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -326,7 +337,144 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-012-B
+    // proves: SCN-METADATA-ENRICHMENT-017-B — Business rule
+    #[tokio::test]
+    async fn identify_video_returns_the_first_series_query_that_hits() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the folder year is empty, the parsed year hits.
+        let mut provider = MockVideoMetadataProvider::new();
+        provider.expect_search().times(2).returning(|query| {
+            let found = (query.year() == Some(2020))
+                .then_some(vec![series_candidate()])
+                .unwrap_or_default();
+            Box::pin(async move { Ok(found) })
+        });
+        provider.expect_lookup().times(0);
+        let harness = use_case_with(
+            (move || -> crate::domain::port::MockUserRepository {
+                let mut users = crate::domain::port::MockUserRepository::new();
+                users.expect_search().returning(|filter| {
+                    let found = filter.id.and_then(|id| {
+                        let role = if id == 0 {
+                            crate::domain::model::Role::Admin
+                        } else {
+                            crate::domain::model::Role::Standard
+                        };
+                        crate::domain::model::User::try_new(
+                            id,
+                            "caller".to_owned(),
+                            None,
+                            id.max(1),
+                            role,
+                        )
+                        .ok()
+                    });
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+                users
+            })(),
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            Some(provider),
+        );
+
+        // Act
+        let response = harness
+            .use_case
+            .execute(IdentifyVideoCommand::new(
+                CALLER_ID,
+                VideoKind::Series,
+                "Show (2019)/Show.2020.S01E01.1080p.mkv".to_owned(),
+            ))
+            .await?;
+
+        // Assert
+        assert_eq!(response.candidates(), &[series_candidate()]);
+        Ok(())
+    }
+
+    // proves: SCN-METADATA-ENRICHMENT-012-B — Alternate flow
     #[tokio::test]
     async fn identify_video_advances_past_a_query_that_yields_nothing() -> Result<(), Box<dyn Error>>
     {
@@ -463,7 +611,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-017-C
+    // proves: SCN-METADATA-ENRICHMENT-017-C — Business rule
     #[tokio::test]
     async fn identify_video_skips_show_hypotheses_on_the_movie_route() -> Result<(), Box<dyn Error>>
     {
@@ -599,7 +747,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-017-C
+    // proves: SCN-METADATA-ENRICHMENT-017-C — Business rule
     #[tokio::test]
     async fn identify_video_skips_film_hypotheses_on_the_series_route() -> Result<(), Box<dyn Error>>
     {
@@ -735,7 +883,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-012-C
+    // proves: SCN-METADATA-ENRICHMENT-012-C — Error handling
     #[tokio::test]
     async fn identify_video_stops_on_a_provider_failure() -> Result<(), Box<dyn Error>> {
         // Arrange: the first query fails, so the remaining queries are not searched.
@@ -873,7 +1021,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-001-B, SCN-METADATA-ENRICHMENT-017-E
+    // proves: SCN-METADATA-ENRICHMENT-001-B, SCN-METADATA-ENRICHMENT-017-E — Alternate flow
     #[tokio::test]
     async fn identify_video_reports_no_candidate_for_a_usable_name() -> Result<(), Box<dyn Error>> {
         // Arrange: every query is empty, so the response carries no candidate.
@@ -1009,7 +1157,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-009-D
+    // proves: SCN-METADATA-ENRICHMENT-009-D — Business rule
     #[tokio::test]
     async fn identify_video_does_not_search_an_unusable_name() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1140,7 +1288,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-001-A, SCN-METADATA-ENRICHMENT-017-F
+    // proves: SCN-METADATA-ENRICHMENT-001-A, SCN-METADATA-ENRICHMENT-017-F — Business rule
     #[tokio::test]
     async fn identify_video_reports_unavailable_without_a_provider() -> Result<(), Box<dyn Error>> {
         // Arrange: no provider is configured.

@@ -236,7 +236,8 @@ mod tests {
         }
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-A, SCN-METADATA-ENRICHMENT-025-A, SCN-METADATA-ENRICHMENT-025-C
+    // proves: SCN-METADATA-ENRICHMENT-024-A, SCN-METADATA-ENRICHMENT-025-C — Business rule
+    // proves: SCN-METADATA-ENRICHMENT-025-A — Positive
     #[tokio::test]
     async fn apply_movie_writes_the_reported_metadata() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -375,7 +376,168 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-B, SCN-METADATA-ENRICHMENT-025-B
+    // proves: SCN-METADATA-ENRICHMENT-005-C — Business rule
+    #[tokio::test]
+    async fn apply_movie_keeps_the_stored_cover() -> Result<(), Box<dyn Error>> {
+        // Arrange: the stored film carries artwork of its own, and the provider reports artwork.
+        let mut users = MockUserRepository::new();
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
+        let stored = Movie::try_new(
+            7,
+            "Movie 7".to_owned(),
+            "A plot".to_owned(),
+            Some("US".to_owned()),
+            Some(video_date()),
+            vec!["DRAMA".to_owned()],
+            Some(42),
+            sample_video(7, 7)?,
+        )?;
+        let mut movies = MockMovieRepository::new();
+        (move |movies: &mut MockMovieRepository, stored: Movie| {
+            movies.expect_search().times(1).return_once(move |_| {
+                let found = stored.clone();
+                Box::pin(async move { Ok(vec![found]) })
+            });
+        })(&mut movies, stored);
+        movies
+            .expect_save()
+            .times(1)
+            .returning(|movie| Box::pin(async move { Ok(movie) }));
+        let mut provider = MockVideoMetadataProvider::new();
+        provider
+            .expect_lookup()
+            .times(1)
+            .withf(|target| matches!(target, Target::Movie(_)))
+            .return_once(|_| {
+                Box::pin(async {
+                    Ok(Some(MediaMetadata::Movie {
+                        artwork: Some(crate::domain::model::Artwork::new(
+                            vec![1, 2, 3],
+                            "image/png".to_owned(),
+                        )),
+                        country_of_origin: None,
+                        genres: Vec::new(),
+                        plot: String::new(),
+                        release_date: None,
+                        title: "A new name".to_owned(),
+                    }))
+                })
+            });
+        let harness = harness_with(
+            users,
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            movies,
+        );
+
+        // Act
+        let response = use_case(&harness, Some(provider))
+            .execute(command())
+            .await?;
+
+        // Assert
+        assert_eq!(
+            response.movie().cover_image_id(),
+            Some(42),
+            "an apply must keep the stored cover and never store provider artwork"
+        );
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    // proves: SCN-METADATA-ENRICHMENT-024-B, SCN-METADATA-ENRICHMENT-025-B — Business rule
     #[tokio::test]
     async fn apply_movie_clears_what_the_provider_does_not_report() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -516,7 +678,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-E
+    // proves: SCN-METADATA-ENRICHMENT-024-E — Error handling
     #[tokio::test]
     async fn apply_movie_reports_a_provider_failure() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -642,7 +804,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-D
+    // proves: SCN-METADATA-ENRICHMENT-024-D — Negative
     #[tokio::test]
     async fn apply_movie_reports_an_unknown_reference() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -767,7 +929,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-C
+    // proves: SCN-METADATA-ENRICHMENT-024-C — Error handling
     #[tokio::test]
     async fn apply_movie_rejects_another_kind() -> Result<(), Box<dyn Error>> {
         // Arrange: the provider resolves a show under the film route.
@@ -900,7 +1062,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-E
+    // proves: SCN-METADATA-ENRICHMENT-024-E — Error handling
     #[tokio::test]
     async fn apply_movie_reports_an_unconfigured_provider() -> Result<(), Box<dyn Error>> {
         // Arrange

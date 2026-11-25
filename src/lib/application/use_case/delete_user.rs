@@ -90,7 +90,7 @@ where
                     return Err(DeleteUserError::TargetNotModifiable);
                 }
                 // Only the root administers Admin accounts, and an Admin may
-                // not delete itself (`REQ-AUTHORIZATION-019`).
+                // not delete itself (`REQ-USER-021`).
                 if target.role() == Role::Admin && !caller.is_root_admin() {
                     return Err(DeleteUserError::TargetNotModifiable);
                 }
@@ -476,7 +476,8 @@ mod tests {
         User,
     };
     use crate::domain::port::{
-        MockFileRepository, MockFileStorage, MockImageRepository, MockUserRepository,
+        MockAudioRepository, MockFileRepository, MockFileStorage, MockImageRepository,
+        MockUserRepository, MockVideoRepository,
     };
     use crate::test_helpers::*;
     use chrono::{NaiveDate, NaiveDateTime};
@@ -712,6 +713,132 @@ mod tests {
             .await;
 
         // Assert
+        assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    // proves: SCN-USER-017-B — Business rule
+    #[tokio::test]
+    async fn delete_user_removes_an_uploaded_file_with_no_media_row() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let caller = user(7, Role::Admin)?;
+        let target = user(8, Role::Standard)?;
+        let owned = File::try_new(
+            1,
+            "files/1_orphan.png".to_owned(),
+            8,
+            false,
+            "image/png".to_owned(),
+            NaiveDate::default(),
+            8,
+            NaiveDateTime::default(),
+            Some(IntegrityHash::try_new(DIGEST.to_owned())?),
+            Some(Origin::Uploaded),
+        )?;
+        let mut unit_of_work = (move |caller: &User, target: &User| -> TestUnitOfWork {
+            let mut users = MockUserRepository::new();
+            (move |users: &mut MockUserRepository, caller: User, target: Option<User>| {
+                let caller_id = caller.id();
+                users.expect_search().times(2).returning(move |filter| {
+                    let found = if filter.id == Some(caller_id) {
+                        Some(caller.clone())
+                    } else {
+                        target
+                            .clone()
+                            .filter(|candidate| filter.id == Some(candidate.id()))
+                    };
+                    Box::pin(async move { Ok(found.into_iter().collect()) })
+                });
+            })(&mut users, caller.clone(), Some(target.clone()));
+            TestUnitOfWork {
+                users,
+                ..TestUnitOfWork::default()
+            }
+        })(&caller, &target);
+        unit_of_work
+            .galleries
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        unit_of_work
+            .music_playlists
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        unit_of_work
+            .uploads
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        (move |files: &mut MockFileRepository, owned: File| {
+            files.expect_search().times(1).returning(move |filter| {
+                assert_eq!(filter.user_id, Some(8));
+                let found = vec![owned.clone()];
+                Box::pin(async move { Ok(found) })
+            });
+            files
+                .expect_delete()
+                .times(1)
+                .withf(|filter| filter.id == Some(1))
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut unit_of_work.files, owned);
+        unit_of_work.images = {
+            let mut images = MockImageRepository::new();
+            images
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            images
+        };
+        unit_of_work.videos = {
+            let mut videos = MockVideoRepository::new();
+            videos
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            videos
+        };
+        unit_of_work.audios = {
+            let mut audios = MockAudioRepository::new();
+            audios
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            audios
+        };
+        (move |unit_of_work: &mut TestUnitOfWork, target: &User| {
+            let target_id = target.id();
+            unit_of_work
+                .users
+                .expect_delete()
+                .times(1)
+                .withf(move |filter| filter.id == Some(target_id))
+                .returning(|_| Box::pin(async { Ok(true) }));
+            let credential_id = target.credential_id();
+            unit_of_work
+                .credentials
+                .expect_delete()
+                .times(1)
+                .withf(move |filter| filter.id == Some(credential_id))
+                .returning(|_| Box::pin(async { Ok(true) }));
+        })(&mut unit_of_work, &target);
+        let mut file_storage = MockFileStorage::new();
+        file_storage
+            .expect_delete_upload_file()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(()) }));
+        let harness = harness(unit_of_work, file_storage);
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(DeleteUserCommand::new(caller.id(), target.id()))
+            .await;
+
+        // Assert: the orphan file row is removed and its bytes are queued.
         assert!(result.is_ok());
         assert!(harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
@@ -1381,6 +1508,7 @@ mod tests {
         Ok(())
     }
 
+    // proves: SCN-USER-015-C — Recovery
     #[tokio::test]
     async fn delete_user_identity_removal_failure_rolls_back() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1549,6 +1677,7 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
+    // proves: SCN-USER-015-C — Recovery
     #[tokio::test]
     async fn delete_user_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange

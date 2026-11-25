@@ -9,6 +9,8 @@ from conftest import login
 from harness import (
     CONFIG_PATH,
     DATABASE_PATH,
+    MSG_STATE_OVERSIZED,
+    MSG_STATE_UNSUPPORTED_VERSION,
     ROOT_ADMIN_USERNAME,
     SECRET_PASSWORD,
     STATE_PATH,
@@ -39,21 +41,33 @@ def _state(sut: Sut) -> dict:
     return yaml.safe_load(sut.read(STATE_PATH))
 
 
-def _restored(sut: Sut, mode: int, *, created_at: int = 1_700_000_000) -> str:
-    """Write a valid state document at `mode` and return its digest."""
-    sut.write(
-        STATE_PATH,
-        yaml.safe_dump(
-            {
-                "created_at": created_at,
-                "jwt_secret": SEED_B,
-                "pepper": SEED_A,
-                "version": _STATE_VERSION,
-            }
-        ),
-    )
+def _document(
+    *,
+    version: int = _STATE_VERSION,
+    created_at: int = 1_700_000_000,
+    extra: dict | None = None,
+) -> str:
+    """A valid state document, optionally at another version or with an extra field."""
+    fields = {
+        "created_at": created_at,
+        "jwt_secret": SEED_B,
+        "pepper": SEED_A,
+        "version": version,
+    }
+    fields.update(extra or {})
+    return yaml.safe_dump(fields)
+
+
+def _placed(sut: Sut, document: str, *, mode: int = 0o600) -> str:
+    """Place a raw state document at `mode` and return its digest."""
+    sut.write(STATE_PATH, document)
     os.chmod(sut.dir / STATE_PATH, mode)
     return sut.sha256(STATE_PATH)
+
+
+def _restored(sut: Sut, mode: int, *, created_at: int = 1_700_000_000) -> str:
+    """Write a valid state document at `mode` and return its digest."""
+    return _placed(sut, _document(created_at=created_at), mode=mode)
 
 
 @scenario("SCN-STATE-001-A", TestType.POSITIVE)
@@ -279,6 +293,25 @@ def test_an_identity_without_a_datastore_is_reused(sut: Sut) -> None:
     assert login(sut, ROOT_ADMIN_USERNAME, sut.root_password())
 
 
+@error_handling
+@scenario("SCN-STATE-006-D")
+def test_an_undecidable_datastore_presence_stops_startup(sut: Sut) -> None:
+    """A datastore path that cannot be probed stops startup before a state is written."""
+    sealed = sut.dir / "sealed"
+    sealed.mkdir()
+    (sealed / DATABASE_PATH).write_bytes(b"")
+    os.chmod(sealed, 0o000)
+    (sut.dir / DATABASE_PATH).symlink_to(f"sealed/{DATABASE_PATH}")
+    try:
+        failure = sut.start_expecting_failure()
+    finally:
+        os.chmod(sealed, 0o700)
+
+    assert failure.exit_code != 0
+    assert not sut.exists(STATE_PATH)
+    assert not sut.exists(CONFIG_PATH)
+
+
 @positive
 @scenario("SCN-STATE-007-E")
 def test_the_state_is_written_at_the_fixed_path(sut: Sut) -> None:
@@ -287,6 +320,85 @@ def test_the_state_is_written_at_the_fixed_path(sut: Sut) -> None:
 
     assert sut.exists(STATE_PATH)
     assert _state(sut)["version"] == _STATE_VERSION
+
+
+@error_handling
+@scenario("SCN-STATE-007-A")
+def test_a_corrupt_state_is_not_regenerated(sut: Sut) -> None:
+    """A truncated state stops startup and is never replaced."""
+    before = _placed(sut, f'version: {_STATE_VERSION}\ncreated_at: 1\npepper: "{SEED_A[:8]}')
+
+    failure = sut.start_expecting_failure()
+
+    assert failure.exit_code != 0
+    assert sut.sha256(STATE_PATH) == before
+    assert not sut.exists(CONFIG_PATH)
+    assert not sut.exists(DATABASE_PATH)
+    assert SEED_A not in failure.output
+
+
+@error_handling
+@scenario("SCN-STATE-007-B")
+def test_an_unsupported_format_version_is_refused(sut: Sut) -> None:
+    """A state declaring another format version stops startup naming that version."""
+    version = _STATE_VERSION + 1
+    before = _placed(sut, _document(version=version))
+
+    failure = sut.start_expecting_failure()
+
+    assert failure.exit_code != 0
+    assert f"{MSG_STATE_UNSUPPORTED_VERSION} {version}" in failure.output
+    assert sut.sha256(STATE_PATH) == before
+    assert not sut.exists(CONFIG_PATH)
+    assert not sut.exists(DATABASE_PATH)
+    assert SEED_A not in failure.output
+
+
+@error_handling
+@scenario("SCN-STATE-007-C")
+def test_an_oversized_state_is_refused(sut: Sut) -> None:
+    """A valid state padded past 4 KiB stops startup on its size, before any decode."""
+    document = f"{_document()}# {'padding' * 700}\n"
+    assert len(document.encode()) > 4096
+    before = _placed(sut, document)
+
+    failure = sut.start_expecting_failure()
+
+    assert failure.exit_code != 0
+    assert MSG_STATE_OVERSIZED in failure.output
+    assert sut.sha256(STATE_PATH) == before
+    assert not sut.exists(CONFIG_PATH)
+    assert not sut.exists(DATABASE_PATH)
+    assert SEED_A not in failure.output
+
+
+@error_handling
+@scenario("SCN-STATE-007-D")
+def test_an_unknown_state_field_is_refused(sut: Sut) -> None:
+    """A state carrying an undeclared field stops startup and is not replaced."""
+    before = _placed(sut, _document(extra={"instance_id": 7}))
+
+    failure = sut.start_expecting_failure()
+
+    assert failure.exit_code != 0
+    assert sut.sha256(STATE_PATH) == before
+    assert not sut.exists(CONFIG_PATH)
+    assert not sut.exists(DATABASE_PATH)
+    assert SEED_A not in failure.output
+
+
+@error_handling
+@scenario("SCN-STATE-007-F")
+def test_a_failed_state_write_leaves_no_partial_file(sut: Sut) -> None:
+    """A temp file that cannot be created stops startup without writing `state.yaml`."""
+    (sut.dir / f"{STATE_PATH}.tmp").mkdir()
+
+    failure = sut.start_expecting_failure()
+
+    assert failure.exit_code != 0
+    assert not sut.exists(STATE_PATH)
+    assert not sut.exists(CONFIG_PATH)
+    assert not sut.exists(DATABASE_PATH)
 
 
 @security
@@ -320,3 +432,20 @@ def test_a_private_restored_state_is_accepted(sut: Sut) -> None:
     assert sut.request("GET", sut.href("health")).status_code == 200
     assert sut.mode(STATE_PATH) == 0o600
     assert sut.sha256(STATE_PATH) == before
+
+
+@security
+@scenario("SCN-STATE-008-E")
+def test_a_state_path_that_is_not_a_regular_file_is_refused(sut: Sut) -> None:
+    """A state path that is not a regular file stops startup and is left unchanged."""
+    state_path = sut.dir / STATE_PATH
+    state_path.mkdir()
+    os.chmod(state_path, 0o750)
+
+    failure = sut.start_expecting_failure()
+
+    assert failure.exit_code != 0
+    assert state_path.is_dir()
+    assert sut.mode(STATE_PATH) == 0o750
+    assert not sut.exists(CONFIG_PATH)
+    assert not sut.exists(DATABASE_PATH)

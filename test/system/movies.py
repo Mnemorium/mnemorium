@@ -2,16 +2,20 @@
 
 import datetime
 import json
+from itertools import count
 
-from harness import Sut
-from labels import alternate_flow, business_rule, negative, positive, scenario
+import pytest
+from conftest import auth_path, login, provision, start_instance
+from gallery import video_file
+from harness import ROOT_ADMIN_USERNAME, Sut
+from labels import TestType, alternate_flow, business_rule, negative, positive, scenario, security
 from mnemorium_client.api.library import (
     get_movie,
     list_movies,
     patch_movie,
     post_movie,
 )
-from mnemorium_client.models import PatchMovieRequest, PostMovieRequest
+from mnemorium_client.models import GetPermissionSummaryResourceKind, PatchMovieRequest, PostMovieRequest
 
 # The seeded slots this module reads, documented in `seed/sql/0003_movies.sql`.
 LISTED_FIRST = 13011
@@ -48,6 +52,21 @@ WIDTH = 16
 HEIGHT = 16
 SCAN_TYPE = "PROGRESSIVE"
 SUMMARY_FIELDS = {"id", "file_id", "codec", "duration_ms", "width", "height", "scan_type"}
+
+_ACCOUNTS = count()
+
+
+def fresh_video(server: Sut, token: str) -> int:
+    """Upload a video no film uses and return its typed identifier."""
+    file = video_file(server, token, "film-creation.mp4")
+    response = server.follow(file, "video", token=token)
+    assert response.status_code == 200, f"video read failed: {response.status_code} {response.text}"
+    return response.json()["id"]
+
+
+def movie_collection(server: Sut, token: str, query: str = ""):
+    """GET the film collection with an optional query string."""
+    return server.request("GET", f"{server.href('movie')}{query}", token=token)
 
 
 @business_rule
@@ -98,8 +117,55 @@ def test_the_name_filter_and_page_are_applied(server: Sut, root_token: str) -> N
     assert [item["id"] for item in json.loads(paged.content)["_embedded"]["items"]] == [PAGE_FILMS[1]]
 
 
+@business_rule
+@scenario("SCN-MOVIES-001-C")
+@pytest.mark.own_instance(reason="exact_collection")
+def test_a_caller_that_discovers_no_film_lists_an_empty_collection(sut: Sut) -> None:
+    """A caller denied the only film discovers none and receives an empty collection."""
+    server = start_instance(sut)
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
+    alice_id, alice = provision(server, root_token, f"filmdenied{next(_ACCOUNTS)}")
+    created = post_movie.sync_detailed(
+        client=server.client(root_token),
+        body=PostMovieRequest(name="Hidden Film", video_id=fresh_video(server, root_token)),
+    )
+    assert created.status_code == 201, f"creation failed: {created.status_code} {created.content!r}"
+    film = json.loads(created.content)
+
+    before = movie_collection(server, alice)
+    denied = server.request(
+        "PUT",
+        f"{server.href('permission')}/resource/MOVIE/{film['id']}",
+        token=root_token,
+        json={
+            "visibility": "PUBLIC",
+            "grants": [{"principal": {"kind": "USER", "id": alice_id}, "role": "VIEWER", "effect": "DENY"}],
+        },
+    )
+    after = movie_collection(server, alice)
+
+    assert [item["id"] for item in json.loads(before.content)["_embedded"]["items"]] == [film["id"]]
+    assert denied.status_code == 200, f"deny failed: {denied.status_code} {denied.text}"
+    assert after.status_code == 200
+    assert json.loads(after.content)["_embedded"]["items"] == []
+
+
+@scenario("SCN-MOVIES-001-E", TestType.BOUNDARY)
+@scenario("SCN-MOVIES-001-F", TestType.NEGATIVE)
+def test_an_out_of_range_limit_and_a_malformed_query_are_refused(server: Sut, root_token: str) -> None:
+    """A limit outside 1..100 answers 422 and an undecodable query answers 400, each with one message."""
+    out_of_range = [movie_collection(server, root_token, query) for query in ("?limit=0", "?limit=101")]
+    assert {response.status_code for response in out_of_range} == {422}
+    assert len({json.loads(response.content)["error"] for response in out_of_range}) == 1
+
+    malformed = [movie_collection(server, root_token, query) for query in ("?limit=abc", "?offset=abc")]
+    assert {response.status_code for response in malformed} == {400}
+    assert len({json.loads(response.content)["error"] for response in malformed}) == 1
+
+
 @positive
 @scenario("SCN-MOVIES-003-A")
+@scenario("SCN-VIDEO-005-A")
 def test_the_detail_read_carries_the_film_metadata(server: Sut, root_token: str) -> None:
     """The read carries the metadata, ordered genres, the video summary and the cover."""
     response = get_movie.sync_detailed(DETAIL_FILM, client=server.client(root_token))
@@ -138,6 +204,16 @@ def test_a_film_without_a_date_or_country_reports_null(server: Sut, root_token: 
 
     assert film["release_date"] is None
     assert film["country_of_origin"] is None
+
+
+@negative
+@scenario("SCN-MOVIES-003-D")
+def test_a_malformed_film_identifier_is_refused(server: Sut, root_token: str) -> None:
+    """A movie_id that is not an identifier answers 400 with the stable message."""
+    response = server.request("GET", f"{server.href('movie')}/not-an-identifier", token=root_token)
+
+    assert response.status_code == 400
+    assert json.loads(response.content)["error"] == "invalid film identifier"
 
 
 @positive
@@ -385,6 +461,23 @@ def test_a_padded_film_name_is_refused_on_update(server: Sut, root_token: str) -
     assert json.loads(stored.content)["name"] == "Some Like It Hot"
 
 
+@negative
+@scenario("SCN-MOVIES-005-F")
+def test_a_malformed_film_identifier_cannot_be_patched(server: Sut, root_token: str) -> None:
+    """A patch addressing a non-identifier answers 400 and changes no film."""
+    response = server.request(
+        "PATCH",
+        f"{server.href('movie')}/not-an-identifier",
+        token=root_token,
+        json={"name": "Hijacked Film"},
+    )
+    listed = list_movies.sync_detailed(client=server.client(root_token), name="Hijacked Film")
+
+    assert response.status_code == 400
+    assert json.loads(response.content)["error"] == "invalid film identifier"
+    assert json.loads(listed.content)["_embedded"]["items"] == []
+
+
 @alternate_flow
 @scenario("SCN-MOVIES-005-B")
 def test_null_clears_an_optional_value(server: Sut, root_token: str) -> None:
@@ -412,3 +505,149 @@ def test_null_clears_an_optional_value(server: Sut, root_token: str) -> None:
     assert stored_film["release_date"] is None
     assert stored_film["country_of_origin"] is None
     assert stored_film["cover_image_id"] is None
+
+
+@security
+@scenario("SCN-MOVIES-006-A")
+@scenario("SCN-MOVIES-006-B")
+@scenario("SCN-MOVIES-005-D")
+def test_a_standard_user_reads_but_cannot_write_a_film(server: Sut, root_token: str) -> None:
+    """A Standard user reads a film, while a rename answers 403 and applies nothing."""
+    _, alice = provision(server, root_token, f"filmreader{next(_ACCOUNTS)}")
+
+    read = get_movie.sync_detailed(DETAIL_FILM, client=server.client(alice))
+    renamed = patch_movie.sync_detailed(
+        DETAIL_FILM,
+        client=server.client(alice),
+        body=PatchMovieRequest(name="Hijacked Film"),
+    )
+    stored = get_movie.sync_detailed(DETAIL_FILM, client=server.client(root_token))
+
+    assert read.status_code == 200, f"standard read failed: {read.status_code} {read.content!r}"
+    assert renamed.status_code == 403, f"standard write accepted: {renamed.status_code} {renamed.content!r}"
+    assert json.loads(stored.content)["name"] == "Some Like It Hot"
+
+
+@security
+@scenario("SCN-MOVIES-006-C")
+def test_an_admin_curates_a_film(server: Sut, root_token: str) -> None:
+    """An Admin writes the catalogue through the seeded role, leaving the value unchanged."""
+    _, admin = provision(server, root_token, f"filmadmin{next(_ACCOUNTS)}", role="ADMIN")
+    current = json.loads(get_movie.sync_detailed(DETAIL_FILM, client=server.client(root_token)).content)
+
+    edited = patch_movie.sync_detailed(
+        DETAIL_FILM,
+        client=server.client(admin),
+        body=PatchMovieRequest(name=current["name"]),
+    )
+
+    assert edited.status_code == 200, f"admin write refused: {edited.status_code} {edited.content!r}"
+    assert json.loads(edited.content)["name"] == current["name"]
+
+
+@security
+@scenario("SCN-MOVIES-007-A")
+@scenario("SCN-AUTHORIZATION-023-B")
+def test_a_standard_user_cannot_create_a_film(server: Sut, root_token: str) -> None:
+    """A Standard user creating a film answers 403 and creates nothing."""
+    alice_id, alice = provision(server, root_token, f"filmcreator{next(_ACCOUNTS)}")
+    name = f"Forbidden Film {alice_id}"
+
+    created = post_movie.sync_detailed(
+        client=server.client(alice),
+        body=PostMovieRequest(name=name, video_id=fresh_video(server, root_token)),
+    )
+    listed = list_movies.sync_detailed(client=server.client(root_token), name=name)
+
+    assert created.status_code == 403, f"standard creation accepted: {created.status_code} {created.content!r}"
+    assert json.loads(listed.content)["_embedded"]["items"] == []
+
+
+@security
+@scenario("SCN-MOVIES-007-B")
+def test_an_admin_creates_a_film(server: Sut, root_token: str) -> None:
+    """An Admin creates a film under the catalogue and it is listed."""
+    admin_id, admin = provision(server, root_token, f"filmadmin{next(_ACCOUNTS)}", role="ADMIN")
+    name = f"Admin Film {admin_id}"
+
+    created = post_movie.sync_detailed(
+        client=server.client(admin),
+        body=PostMovieRequest(name=name, video_id=fresh_video(server, root_token)),
+    )
+    listed = list_movies.sync_detailed(client=server.client(root_token), name=name)
+
+    assert created.status_code == 201, f"admin creation failed: {created.status_code} {created.content!r}"
+    film = json.loads(created.content)
+    assert film["name"] == name
+    assert [item["id"] for item in json.loads(listed.content)["_embedded"]["items"]] == [film["id"]]
+
+
+@security
+@scenario("SCN-MOVIES-007-C")
+@scenario("SCN-MOVIES-004-G")
+def test_a_denied_catalogue_refuses_film_creation(server: Sut, root_token: str) -> None:
+    """A denied CreateChild on the catalogue refuses creation and the restored role admits it."""
+    admin_id, admin = provision(server, root_token, f"filmadmin{next(_ACCOUNTS)}", role="ADMIN")
+    href = f"{server.href('permission')}/resource/CATALOGUE/0"
+    current = server.request("GET", href, token=root_token)
+    assert current.status_code == 200, f"permission read failed: {current.status_code} {current.text}"
+    visibility = json.loads(current.content)["visibility"]
+    name = f"Denied Film {admin_id}"
+    video_id = fresh_video(server, root_token)
+
+    denied = server.request(
+        "PUT",
+        href,
+        token=root_token,
+        json={
+            "visibility": visibility,
+            "grants": [
+                {
+                    "principal": {"kind": "USER", "id": admin_id},
+                    "role": "CONTRIBUTOR",
+                    "effect": "DENY",
+                    "child_kind": "MOVIE",
+                }
+            ],
+        },
+    )
+    refused = post_movie.sync_detailed(
+        client=server.client(admin),
+        body=PostMovieRequest(name=name, video_id=video_id),
+    )
+    restored = server.request(
+        "PUT",
+        href,
+        token=root_token,
+        json={"visibility": visibility, "grants": []},
+    )
+    listed = list_movies.sync_detailed(client=server.client(root_token), name=name)
+
+    assert denied.status_code == 200
+    assert refused.status_code == 403, f"denied creation admitted: {refused.status_code} {refused.content!r}"
+    assert restored.status_code == 200
+    assert json.loads(listed.content)["_embedded"]["items"] == []
+
+
+@business_rule
+@scenario("SCN-AUTHORIZATION-002-F")
+def test_a_film_follows_the_catalogue(server: Sut, root_token: str) -> None:
+    """A created film's authorization parent is the catalogue."""
+    created = post_movie.sync_detailed(
+        client=server.client(root_token),
+        body=PostMovieRequest(name=f"Auth Film {next(_ACCOUNTS)}", video_id=fresh_video(server, root_token)),
+    )
+    assert created.status_code == 201, f"creation failed: {created.status_code} {created.content!r}"
+    film = json.loads(created.content)
+
+    assert auth_path(server, root_token, GetPermissionSummaryResourceKind.MOVIE, film["id"]) == [
+        "MOVIE",
+        "CATALOGUE",
+        "LIBRARY",
+        "INSTANCE",
+    ]
+    assert auth_path(server, root_token, GetPermissionSummaryResourceKind.CATALOGUE, 0) == [
+        "CATALOGUE",
+        "LIBRARY",
+        "INSTANCE",
+    ]

@@ -237,7 +237,7 @@ mod tests {
         }
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-003-A, SCN-METADATA-ENRICHMENT-008-A
+    // proves: SCN-METADATA-ENRICHMENT-003-A, SCN-METADATA-ENRICHMENT-008-A — Business rule
     #[tokio::test]
     async fn resolve_video_metadata_routes_a_film_lookup() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -373,7 +373,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-017-G
+    // proves: SCN-METADATA-ENRICHMENT-017-G — Negative
     #[tokio::test]
     async fn resolve_video_metadata_reports_an_unknown_reference() -> Result<(), Box<dyn Error>> {
         // Arrange: the provider does not know the reference.
@@ -505,7 +505,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-017-F
+    // proves: SCN-METADATA-ENRICHMENT-017-F — Business rule
     #[tokio::test]
     async fn resolve_video_metadata_reports_unavailable_without_a_provider()
     -> Result<(), Box<dyn Error>> {
@@ -634,7 +634,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-008-B
+    // proves: SCN-METADATA-ENRICHMENT-008-B — Error handling
     #[tokio::test]
     async fn resolve_video_metadata_reports_a_provider_failure() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -767,7 +767,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-017-K
+    // proves: SCN-METADATA-ENRICHMENT-017-K — Error handling
     #[tokio::test]
     async fn resolve_video_metadata_rejects_another_episode_position() -> Result<(), Box<dyn Error>>
     {
@@ -911,7 +911,8 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-003-C, SCN-METADATA-ENRICHMENT-017-H
+    // proves: SCN-METADATA-ENRICHMENT-003-C — Business rule
+    // proves: SCN-METADATA-ENRICHMENT-017-H — Positive
     #[tokio::test]
     async fn resolve_video_metadata_accepts_the_addressed_episode() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1053,7 +1054,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-008-C
+    // proves: SCN-METADATA-ENRICHMENT-008-C — Error handling
     #[tokio::test]
     async fn resolve_video_metadata_rejects_another_kind() -> Result<(), Box<dyn Error>> {
         // Arrange: the film route resolves a show.

@@ -7,6 +7,7 @@ import pytest
 from conftest import (
     SEED_MEDIA_DIRECTORY,
     add_to_gallery,
+    auth_path,
     create_gallery,
     login,
     provision,
@@ -19,9 +20,13 @@ from harness import (
     begin_upload,
     register,
 )
-from labels import alternate_flow, boundary, business_rule, negative, positive, recovery, scenario
-from mnemorium_client.api.identity import post_login
-from mnemorium_client.models import LoginRequest
+from labels import alternate_flow, boundary, business_rule, negative, positive, recovery, scenario, security
+from mnemorium_client.api.identity import get_permission_summary, post_login
+from mnemorium_client.models import (
+    GetPermissionSummaryAction,
+    GetPermissionSummaryResourceKind,
+    LoginRequest,
+)
 
 IMAGE_BYTES = (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes()
 VIDEO_BYTES = (SEED_MEDIA_DIRECTORY / "file-video.mp4").read_bytes()
@@ -29,6 +34,9 @@ IMAGE_CONTENT_TYPE = "image/png"
 VIDEO_CONTENT_TYPE = "video/mp4"
 
 _ACCOUNTS = count()
+
+# An identifier no account ever carries.
+UNKNOWN_USER_ID = 999_999_999
 
 
 @positive
@@ -59,15 +67,60 @@ def test_a_created_account_reads_back_its_profile(server: Sut, root_token: str) 
 
 @positive
 @scenario("SCN-USER-011-A")
+@scenario("SCN-USER-023-A")
 def test_the_caller_reads_its_own_account(server: Sut, root_token: str) -> None:
-    """A request for the caller's own account answers 200 with that account's profile."""
-    response = server.request("GET", server.href("current_user"), token=root_token)
+    """The root and a Standard user with no grant each read their own account."""
+    alice_id, alice = provision(server, root_token, f"self{next(_ACCOUNTS)}")
 
-    assert response.status_code == 200, f"read failed: {response.status_code} {response.content!r}"
-    body = json.loads(response.content)
+    root_response = server.request("GET", server.href("current_user"), token=root_token)
+    standard_response = server.request("GET", f"{server.href('user')}/{alice_id}", token=alice)
+
+    assert root_response.status_code == 200, f"read failed: {root_response.status_code} {root_response.content!r}"
+    body = json.loads(root_response.content)
     assert body["id"] == 0
     assert body["username"] == ROOT_ADMIN_USERNAME
     assert body["role"] == "ADMIN"
+    assert standard_response.status_code == 200, (
+        f"own-account read failed: {standard_response.status_code} {standard_response.content!r}"
+    )
+    assert json.loads(standard_response.content)["id"] == alice_id
+
+
+@negative
+@scenario("SCN-USER-009-B")
+@scenario("SCN-USER-012-F")
+@scenario("SCN-USER-015-B")
+def test_an_unknown_account_is_not_found(server: Sut, root_token: str) -> None:
+    """Reading, updating or deleting an identifier that names no account answers 404."""
+    ghost = f"ghost{next(_ACCOUNTS)}"
+
+    read = server.request("GET", f"{server.href('user')}/{UNKNOWN_USER_ID}", token=root_token)
+    updated = server.request(
+        "PATCH",
+        f"{server.href('user')}/{UNKNOWN_USER_ID}",
+        token=root_token,
+        json={"username": ghost},
+    )
+    deleted = server.request("DELETE", f"{server.href('user')}/{UNKNOWN_USER_ID}", token=root_token)
+
+    assert read.status_code == 404
+    assert updated.status_code == 404
+    assert deleted.status_code == 404
+    listed = server.request("GET", f"{server.href('user')}?username={ghost}", token=root_token)
+    assert json.loads(listed.content)["items"] == []
+
+
+@negative
+@scenario("SCN-USER-009-C")
+@scenario("SCN-USER-010-D")
+def test_a_malformed_user_request_is_refused(server: Sut, root_token: str) -> None:
+    """A non-numeric identifier answers 400 and an unusable filter answers 422."""
+    malformed_id = server.request("GET", f"{server.href('user')}/not-a-number", token=root_token)
+    assert malformed_id.status_code == 400
+
+    for query in ("?username=x", "?email=not-an-email", "?role=SUPERUSER"):
+        response = server.request("GET", f"{server.href('user')}{query}", token=root_token)
+        assert response.status_code == 422, f"{query} was accepted: {response.status_code} {response.content!r}"
 
 
 @positive
@@ -116,6 +169,23 @@ def test_a_username_with_whitespace_is_rejected(server: Sut, root_token: str) ->
         )
         assert response.status_code == 422, f"{username!r} was accepted: {response.status_code} {response.content!r}"
 
+    listed = server.request("GET", f"{server.href('user')}?username={base}", token=root_token)
+    assert json.loads(listed.content)["items"] == [], "a refused username was stored"
+
+
+@negative
+@scenario("SCN-USER-020-G")
+def test_a_nul_username_is_rejected(server: Sut, root_token: str) -> None:
+    """A username carrying a NUL character answers 422 and stores nothing."""
+    base = f"nul{next(_ACCOUNTS)}"
+    response = server.request(
+        "POST",
+        server.href("register"),
+        token=root_token,
+        json={"username": f"{base}\x00", "email": None, "password": SECRET_PASSWORD, "role": "STANDARD"},
+    )
+
+    assert response.status_code == 422, f"a NUL username was accepted: {response.status_code} {response.content!r}"
     listed = server.request("GET", f"{server.href('user')}?username={base}", token=root_token)
     assert json.loads(listed.content)["items"] == [], "a refused username was stored"
 
@@ -424,6 +494,7 @@ def test_the_email_filter_ignores_case(server: Sut, root_token: str) -> None:
 @scenario("SCN-USER-012-A")
 @scenario("SCN-USER-012-B")
 @scenario("SCN-USER-012-C")
+@scenario("SCN-USER-024-B")
 def test_an_update_changes_each_submitted_field(server: Sut, root_token: str) -> None:
     """Each submitted username, email and role is stored and reported."""
     name = f"edit{next(_ACCOUNTS)}"
@@ -809,3 +880,243 @@ def test_a_transferred_file_with_a_colliding_digest_stays_readable(server: Sut, 
         assert profile["_links"]["owner"]["href"] == "/api/v1/user/0"
         content = server.request("GET", profile["_links"]["content"]["href"], token=root_token)
         assert content.status_code == 200
+
+
+@positive
+@scenario("SCN-USER-021-A")
+def test_an_admin_creates_a_standard_account(server: Sut, root_token: str) -> None:
+    """An Admin creates a Standard account, which then authenticates."""
+    _, admin = provision(server, root_token, f"useradmin{next(_ACCOUNTS)}", role="ADMIN")
+    username = f"created{next(_ACCOUNTS)}"
+
+    created = server.request(
+        "POST",
+        server.href("register"),
+        token=admin,
+        json={"username": username, "email": None, "password": SECRET_PASSWORD, "role": "STANDARD"},
+    )
+
+    assert created.status_code == 201, f"creation failed: {created.status_code} {created.content!r}"
+    assert json.loads(created.content)["role"] == "STANDARD"
+    assert login(server, username, SECRET_PASSWORD)
+
+
+@security
+@scenario("SCN-USER-021-F")
+def test_a_standard_user_cannot_create_an_account(server: Sut, root_token: str) -> None:
+    """A Standard User creating a Standard or an Admin account answers 403 and creates nothing."""
+    _, standard = provision(server, root_token, f"userstandard{next(_ACCOUNTS)}")
+    refused_name = f"usermallory{next(_ACCOUNTS)}"
+
+    for role in ("STANDARD", "ADMIN"):
+        refused = server.request(
+            "POST",
+            server.href("register"),
+            token=standard,
+            json={"username": refused_name, "email": None, "password": SECRET_PASSWORD, "role": role},
+        )
+        assert refused.status_code == 403, f"{role} creation admitted: {refused.status_code} {refused.content!r}"
+
+    listed = server.request("GET", f"{server.href('user')}?username={refused_name}", token=root_token)
+    assert json.loads(listed.content)["items"] == []
+
+
+@positive
+@scenario("SCN-USER-021-H")
+def test_an_admin_updates_a_standard_account(server: Sut, root_token: str) -> None:
+    """An Admin updates a Standard account's profile and the value is stored."""
+    _, admin = provision(server, root_token, f"useradmin{next(_ACCOUNTS)}", role="ADMIN")
+    user_id, _user = provision(server, root_token, f"useralice{next(_ACCOUNTS)}")
+    renamed = f"renamed{next(_ACCOUNTS)}"
+
+    updated = server.request(
+        "PATCH",
+        f"{server.href('user')}/{user_id}",
+        token=admin,
+        json={"username": renamed},
+    )
+    stored = server.request("GET", f"{server.href('user')}/{user_id}", token=root_token)
+
+    assert updated.status_code == 200, f"update failed: {updated.status_code} {updated.content!r}"
+    assert json.loads(stored.content)["username"] == renamed
+
+
+@security
+@scenario("SCN-USER-021-B")
+def test_an_admin_cannot_create_an_admin(server: Sut, root_token: str) -> None:
+    """Neither an Admin nor a Standard user creates an Admin account, while the root does."""
+    _, admin = provision(server, root_token, f"useradmin{next(_ACCOUNTS)}", role="ADMIN")
+    _, standard = provision(server, root_token, f"userstandard{next(_ACCOUNTS)}")
+    refused_name = f"usermallory{next(_ACCOUNTS)}"
+
+    for token in (admin, standard):
+        refused = server.request(
+            "POST",
+            server.href("register"),
+            token=token,
+            json={"username": refused_name, "email": None, "password": SECRET_PASSWORD, "role": "ADMIN"},
+        )
+        assert refused.status_code == 403, f"Admin creation admitted: {refused.status_code} {refused.content!r}"
+
+    listed = server.request("GET", f"{server.href('user')}?username={refused_name}", token=root_token)
+    assert json.loads(listed.content)["items"] == []
+    assert (
+        post_login.sync_detailed(
+            client=server.client(), body=LoginRequest(password=SECRET_PASSWORD, identifier=refused_name)
+        ).status_code
+        == 401
+    )
+
+    promoted_name = f"userpromoted{next(_ACCOUNTS)}"
+    created = server.request(
+        "POST",
+        server.href("register"),
+        token=root_token,
+        json={"username": promoted_name, "email": None, "password": SECRET_PASSWORD, "role": "ADMIN"},
+    )
+
+    assert created.status_code == 201, f"root creation failed: {created.status_code} {created.content!r}"
+    assert json.loads(created.content)["role"] == "ADMIN"
+
+
+@security
+@scenario("SCN-USER-021-C")
+@scenario("SCN-USER-021-G")
+def test_an_admin_cannot_touch_an_admin(server: Sut, root_token: str) -> None:
+    """An Admin deleting an Admin peer or itself answers 403 and applies nothing."""
+    admin_id, admin = provision(server, root_token, f"useradmina{next(_ACCOUNTS)}", role="ADMIN")
+    peer_id, peer = provision(server, root_token, f"useradminb{next(_ACCOUNTS)}", role="ADMIN")
+
+    peer_deleted = server.request("DELETE", f"{server.href('user')}/{peer_id}", token=admin)
+    self_deleted = server.request("DELETE", f"{server.href('user')}/{admin_id}", token=admin)
+
+    assert peer_deleted.status_code == 403
+    assert self_deleted.status_code == 403
+    assert server.request("GET", server.href("current_user"), token=peer).status_code == 200
+    assert server.request("GET", server.href("current_user"), token=admin).status_code == 200
+
+
+@security
+@scenario("SCN-USER-021-D")
+def test_the_root_admin_deletes_an_admin(server: Sut, root_token: str) -> None:
+    """The Root Admin deletes an Admin account and the account is gone."""
+    admin_id, admin = provision(server, root_token, f"useradmina{next(_ACCOUNTS)}", role="ADMIN")
+
+    deleted = server.request("DELETE", f"{server.href('user')}/{admin_id}", token=root_token)
+
+    assert deleted.status_code == 204
+    assert server.request("GET", f"{server.href('user')}/{admin_id}", token=root_token).status_code == 404
+    assert server.request("GET", server.href("current_user"), token=admin).status_code == 401
+
+
+@security
+@scenario("SCN-USER-021-E")
+def test_the_root_account_is_untouchable(server: Sut, root_token: str) -> None:
+    """Deleting or updating account 0 answers 403 and applies nothing."""
+    deleted = server.request("DELETE", f"{server.href('user')}/0", token=root_token)
+    updated = server.request(
+        "PATCH",
+        f"{server.href('user')}/0",
+        token=root_token,
+        json={"username": "notroot"},
+    )
+
+    assert deleted.status_code == 403
+    assert updated.status_code == 403
+    stored = server.request("GET", f"{server.href('user')}/0", token=root_token)
+    assert stored.status_code == 200
+    assert json.loads(stored.content)["username"] == ROOT_ADMIN_USERNAME
+
+
+@security
+@scenario("SCN-USER-022-A")
+def test_an_admin_replaces_a_standard_users_grants(server: Sut, root_token: str) -> None:
+    """An Admin replaces the grant set naming a Standard user and reads the replacement back."""
+    _, admin = provision(server, root_token, f"useradmin{next(_ACCOUNTS)}", role="ADMIN")
+    alice_id, alice = provision(server, root_token, f"useralice{next(_ACCOUNTS)}")
+    gallery = create_gallery(server, admin, f"Admin Gallery {next(_ACCOUNTS)}")
+    href = f"{server.href('permission')}/resource/GALLERY/{gallery['id']}"
+
+    replaced = server.request(
+        "PUT",
+        href,
+        token=admin,
+        json={
+            "visibility": "PRIVATE",
+            "grants": [{"principal": {"kind": "USER", "id": alice_id}, "role": "VIEWER", "effect": "ALLOW"}],
+        },
+    )
+    followed = server.request("GET", href, token=admin)
+    readable = server.request("GET", f"{server.href('gallery')}/{gallery['id']}", token=alice)
+
+    assert replaced.status_code == 200
+    assert followed.status_code == 200
+    body = json.loads(followed.content)
+    assert body["visibility"] == "PRIVATE"
+    assert [item["principal"] for item in body["grants"]] == [{"kind": "USER", "id": alice_id}]
+    assert readable.status_code == 200
+
+
+@security
+@scenario("SCN-USER-023-B")
+def test_another_account_follows_the_grants(server: Sut, root_token: str) -> None:
+    """A caller without a grant for another account is refused its profile."""
+    alice_id, _alice = provision(server, root_token, f"useralice{next(_ACCOUNTS)}")
+    _, bob = provision(server, root_token, f"userbobby{next(_ACCOUNTS)}")
+
+    response = server.request("GET", f"{server.href('user')}/{alice_id}", token=bob)
+
+    assert response.status_code == 403, f"another account must follow the decision: {response.content!r}"
+
+
+@security
+@scenario("SCN-USER-024-A")
+def test_only_the_root_changes_a_role(server: Sut, root_token: str) -> None:
+    """An Admin promoting a Standard account answers 403 and leaves the role unchanged."""
+    _, admin = provision(server, root_token, f"useradmin{next(_ACCOUNTS)}", role="ADMIN")
+    user_id, _user = provision(server, root_token, f"useralice{next(_ACCOUNTS)}")
+
+    promoted = server.request(
+        "PATCH",
+        f"{server.href('user')}/{user_id}",
+        token=admin,
+        json={"role": "ADMIN"},
+    )
+    stored = server.request("GET", f"{server.href('user')}/{user_id}", token=root_token)
+
+    assert promoted.status_code == 403
+    assert json.loads(stored.content)["role"] == "STANDARD"
+
+
+@business_rule
+@scenario("SCN-USER-025-A")
+def test_a_created_account_follows_the_instance_root(server: Sut, root_token: str) -> None:
+    """A created account's authorization parent is the instance root."""
+    name = f"rooted{next(_ACCOUNTS)}"
+    created = register(server, root_token, name, None, SECRET_PASSWORD)
+    assert created.status_code == 201, f"creation failed: {created.status_code} {created.content!r}"
+    profile = json.loads(created.content)
+
+    summary = get_permission_summary.sync_detailed(
+        client=server.client(root_token),
+        user_id=profile["id"],
+        resource_kind=GetPermissionSummaryResourceKind.USER,
+        resource_id=profile["id"],
+        action=GetPermissionSummaryAction.VIEW,
+    )
+
+    assert summary.status_code == 200, f"summary failed: {summary.status_code} {summary.content!r}"
+    auth_path = [entry["kind"] for entry in json.loads(summary.content)["decision"]["auth_path"]]
+    assert auth_path == ["USER", "INSTANCE"]
+
+
+@business_rule
+@scenario("SCN-AUTHORIZATION-002-E")
+def test_a_user_account_follows_the_instance_root(server: Sut, root_token: str) -> None:
+    """A created account's authorization parent is the instance root."""
+    user_id, _ = provision(server, root_token, f"authuser{next(_ACCOUNTS)}")
+
+    assert auth_path(server, root_token, GetPermissionSummaryResourceKind.USER, user_id, user_id) == [
+        "USER",
+        "INSTANCE",
+    ]

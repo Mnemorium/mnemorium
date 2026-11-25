@@ -480,7 +480,7 @@ mod tests {
         MediaQuery::try_new(kind, title.to_owned(), year, None)
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-002-B
+    // proves: SCN-METADATA-ENRICHMENT-002-B — Business rule
     #[tokio::test]
     async fn omdb_search_returns_the_provider_order() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -522,7 +522,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-001-B
+    // proves: SCN-METADATA-ENRICHMENT-001-B — Alternate flow
     #[tokio::test]
     async fn omdb_search_reports_not_found_as_no_candidate() -> Result<(), Box<dyn Error>> {
         // Arrange: OMDb reports "not found" as HTTP 200 with `Response:"False"`.
@@ -559,7 +559,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-003-A, SCN-METADATA-ENRICHMENT-007-A, SCN-METADATA-ENRICHMENT-014-A
+    // proves: SCN-METADATA-ENRICHMENT-003-A, SCN-METADATA-ENRICHMENT-007-A, SCN-METADATA-ENRICHMENT-014-A — Business rule
     #[tokio::test]
     async fn omdb_lookup_maps_a_film_to_canonical_metadata() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -603,7 +603,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-006-B
+    // proves: SCN-METADATA-ENRICHMENT-006-B — Business rule
     #[tokio::test]
     async fn omdb_lookup_treats_a_placeholder_release_date_as_absent() -> Result<(), Box<dyn Error>>
     {
@@ -627,7 +627,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-014-B, SCN-METADATA-ENRICHMENT-006-C
+    // proves: SCN-METADATA-ENRICHMENT-014-B, SCN-METADATA-ENRICHMENT-006-C — Business rule
     #[tokio::test]
     async fn omdb_lookup_drops_an_unmappable_country() -> Result<(), Box<dyn Error>> {
         // Arrange: the payload's country has no code in the mapping.
@@ -653,7 +653,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-003-B, SCN-METADATA-ENRICHMENT-007-A, SCN-METADATA-ENRICHMENT-014-A
+    // proves: SCN-METADATA-ENRICHMENT-003-B, SCN-METADATA-ENRICHMENT-007-A, SCN-METADATA-ENRICHMENT-014-A — Business rule
     #[tokio::test]
     async fn omdb_lookup_maps_a_series_to_canonical_metadata() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -683,7 +683,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-003-C
+    // proves: SCN-METADATA-ENRICHMENT-003-C — Business rule
     #[tokio::test]
     async fn omdb_lookup_maps_an_episode_to_canonical_metadata() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -716,7 +716,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-017-G
+    // proves: SCN-METADATA-ENRICHMENT-017-G — Negative
     #[tokio::test]
     async fn omdb_lookup_reports_a_missing_item_as_absent() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -832,7 +832,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-005-A
+    // proves: SCN-METADATA-ENRICHMENT-005-A — Business rule
     #[tokio::test]
     async fn omdb_lookup_downloads_the_artwork_as_content() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -861,7 +861,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-005-B
+    // proves: SCN-METADATA-ENRICHMENT-005-B — Alternate flow
     #[tokio::test]
     #[traced_test]
     async fn omdb_lookup_reports_no_artwork_when_the_download_fails() -> Result<(), Box<dyn Error>>
@@ -889,7 +889,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-005-B
+    // proves: SCN-METADATA-ENRICHMENT-005-B — Alternate flow
     #[tokio::test]
     async fn omdb_lookup_does_not_follow_a_cross_host_redirect() -> Result<(), Box<dyn Error>> {
         // Arrange: the poster address redirects to another server.
@@ -924,7 +924,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-016-A
+    // proves: SCN-METADATA-ENRICHMENT-016-A — Security
     #[tokio::test]
     #[traced_test]
     async fn omdb_never_leaks_the_api_key() -> Result<(), Box<dyn Error>> {

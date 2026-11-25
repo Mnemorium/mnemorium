@@ -256,11 +256,14 @@ mod tests {
     use super::*;
 
     use crate::domain::port::{
-        MockCredentialRepository, MockPasswordHasher, MockUserRepository, PasswordHasherError,
+        MockCredentialRepository, MockPasswordHasher, MockResourceRepository, MockUserRepository,
+        PasswordHasherError,
     };
 
+    use crate::domain::model::{Resource, ResourceAccess};
     use crate::test_helpers::*;
     use std::error::Error;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicBool, Ordering};
 
     type UseCase = RegisterUser<TestFactory, MockPasswordHasher>;
@@ -394,6 +397,116 @@ mod tests {
         assert_eq!(response.role(), Role::Standard);
         assert!(harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    // proves: SCN-USER-025-A — Business rule
+    #[tokio::test]
+    async fn register_user_created_account_has_instance_root_parent() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let recorded = Arc::new(Mutex::new(None));
+        let capture = Arc::clone(&recorded);
+        let caller = user(0, "root", Role::Admin)?;
+        let mut user_repository = MockUserRepository::new();
+        user_repository
+            .expect_search()
+            .times(1)
+            .returning(move |_| {
+                let own_caller = caller.clone();
+                Box::pin(async move { Ok(vec![own_caller]) })
+            });
+        user_repository
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        user_repository
+            .expect_create()
+            .times(1)
+            .returning(|user| Box::pin(async { Ok(user) }));
+        let mut credential_repository = MockCredentialRepository::new();
+        credential_repository
+            .expect_create()
+            .times(1)
+            .returning(|credential| Box::pin(async { Ok(credential) }));
+        let mut password_hasher = MockPasswordHasher::new();
+        password_hasher
+            .expect_hash_password()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok("hashed-password".to_owned()) }));
+        let mut resources = MockResourceRepository::new();
+        resources
+            .expect_search()
+            .times(1)
+            .returning(|_filter, caller| {
+                let user_id = caller.id();
+                let resource = Resource::from_stored(
+                    1,
+                    ResourceKind::UserCollection,
+                    0,
+                    Some(user_id),
+                    None,
+                    Visibility::Private,
+                );
+                let grant = Grant::from_stored(
+                    1,
+                    Principal::User(user_id),
+                    1,
+                    ResourceRole::Downloader,
+                    ChildKind::All,
+                    GrantEffect::Allow,
+                );
+                Box::pin(async move {
+                    Ok(vec![ResourceAccess::new(
+                        resource,
+                        Vec::new(),
+                        vec![grant],
+                        Vec::new(),
+                    )])
+                })
+            });
+        resources
+            .expect_create()
+            .times(1)
+            .returning(move |new_resource| {
+                let resource = Resource::from_stored(
+                    1,
+                    new_resource.kind,
+                    new_resource.entity_id,
+                    new_resource.owner_id,
+                    None,
+                    new_resource.visibility,
+                );
+                if let Ok(mut slot) = capture.lock() {
+                    *slot = Some(new_resource);
+                }
+                Box::pin(async move { Ok(resource) })
+            });
+        let unit_of_work = TestUnitOfWork {
+            credentials: credential_repository,
+            resources,
+            users: user_repository,
+            ..TestUnitOfWork::default()
+        };
+        let committed = Arc::clone(&unit_of_work.committed);
+        let factory = TestFactory::new(unit_of_work);
+        let use_case = RegisterUser::new(Arc::new(factory), Arc::new(password_hasher));
+
+        // Act
+        let result = use_case.execute(command(0, "alice", Role::Standard)).await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert!(committed.load(Ordering::SeqCst));
+        let created = recorded.lock().ok().and_then(|slot| slot.as_ref().cloned());
+        assert_eq!(
+            created.as_ref().map(|resource| resource.kind),
+            Some(ResourceKind::User)
+        );
+        assert_eq!(
+            created.and_then(|resource| resource.auth_parent),
+            Some(ResourceRef::new(ResourceKind::Instance, 0))
+        );
         Ok(())
     }
 
@@ -1455,6 +1568,7 @@ mod tests {
         Ok(())
     }
 
+    // proves: SCN-USER-007-C — Recovery
     #[tokio::test]
     async fn register_user_save_credential_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1531,6 +1645,7 @@ mod tests {
         Ok(())
     }
 
+    // proves: SCN-USER-007-C — Recovery
     #[tokio::test]
     async fn register_user_save_user_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange

@@ -1,0 +1,26 @@
+{
+  "causes": {
+    "SCN-API-010-B": "Hard to test black box: absence needs a sentinel at each extraction point, so a case samples one surface rather than the shared mapping.",
+    "SCN-API-014-C": "Enforced by the Docker image publish, which compiles the release without `api-docs`.",
+    "SCN-AUTHENTICATION-006-A": "Nothing on the wire exposes a credential, and the write already receives a hash: the boundary is enforced by the types, so a black-box case could only assert the datastore schema.",
+    "SCN-LOGGING-005-B": "Enforced by OBS-001 (`check_obs_001`), which scans the domain tree for logging facades, standard-output macros and instrumentation attributes."
+  },
+  "not_black_box": {
+    "SCN-API-010-A": "The Rust proof drives the real extractor rejection with a sentinel value and checks both the message and the log sink, which one black-box case cannot generalise.",
+    "SCN-AUTHENTICATION-001-C": "Injected credential-store failure; reaching it black box needs a test-only seam in the server.",
+    "SCN-AUTHENTICATION-001-D": "Injected user-insert failure after the credential write; reaching it black box needs a test-only seam in the server.",
+    "SCN-AUTHENTICATION-015-B": "The credential save failure is injected in the adapter test; reaching it black box needs a test-only seam in the server.",
+    "SCN-LOGGING-014-B": "A datastore unique violation cannot be forced deterministically through the API; the adapter test drives the constraint directly.",
+    "SCN-LOGGING-014-C": "The missing credential is a stored state the API cannot produce; the application test drives the originated error directly.",
+    "SCN-MUSIC-003-A": "A multi-disc release is mapped to one CD medium per disc when a provider release is applied; the system suite configures no provider, so the application test drives the mapping directly.",
+    "SCN-MUSIC-008-E": "A concurrent create winning the (group, name) unique identity cannot be forced deterministically through HTTP; the application test drives the repository conflict directly.",
+    "SCN-STATE-008-D": "Ownership and mode repair are judged against the account that owns the working directory; the suite runs the server as the test account, so it cannot create a foreign-owned state.yaml or make chmod fail. The adapter tests drive both refusals directly.",
+    "SCN-USER-007-C": "Storing the account or its credential fails after the other write; reaching it black box needs a test-only seam in the server.",
+    "SCN-USER-015-C": "A datastore failure inside the deletion transaction is injected; reaching it black box needs a test-only seam in the server.",
+    "SCN-USER-017-B": "An uploaded file with no typed media row cannot be created through the API; the application test drives the orphan branch directly."
+  },
+  "notes": {
+    "SCN-AUTHENTICATION-002-A": "The black box sees only the one revealed password; repeating the first boot enough to prove the sampling shape is not worth the run time, so the distribution stays a Rust proof."
+  },
+  "not_applicable": {}
+}

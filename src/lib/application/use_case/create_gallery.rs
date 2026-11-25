@@ -230,7 +230,7 @@ mod tests {
         GalleryFactoryHarness::new(unit_of_work)
     }
 
-    // proves: SCN-GALLERY-003-A
+    // proves: SCN-GALLERY-003-A — Positive
     #[tokio::test]
     async fn create_gallery_creates_owned_private_gallery() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -375,7 +375,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-003-B
+    // proves: SCN-GALLERY-003-B — Positive
     #[tokio::test]
     async fn create_gallery_public_flag_is_persisted() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -509,7 +509,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-003-D
+    // proves: SCN-GALLERY-003-D — Negative
     #[tokio::test]
     #[traced_test]
     async fn create_gallery_surrounding_whitespace_returns_invalid_name()
@@ -636,7 +636,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-003-D
+    // proves: SCN-GALLERY-003-D — Negative
     #[tokio::test]
     #[traced_test]
     async fn create_gallery_empty_name_returns_invalid_name() -> Result<(), Box<dyn Error>> {
@@ -790,7 +790,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-003-D
+    // proves: SCN-GALLERY-003-D — Negative
     #[tokio::test]
     #[traced_test]
     async fn create_gallery_long_name_returns_name_too_long() -> Result<(), Box<dyn Error>> {
@@ -947,7 +947,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-003-C
+    // proves: SCN-GALLERY-003-C — Negative
     #[tokio::test]
     async fn create_gallery_existing_name_returns_name_already_exists() -> Result<(), Box<dyn Error>>
     {
@@ -1077,7 +1077,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-003-E
+    // proves: SCN-GALLERY-003-E — Security
     #[tokio::test]
     async fn create_gallery_denied_on_the_collection_returns_forbidden()
     -> Result<(), Box<dyn Error>> {
@@ -1140,7 +1140,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-003-C
+    // proves: SCN-GALLERY-003-C — Negative
     #[tokio::test]
     async fn create_gallery_raced_duplicate_name_returns_name_already_exists()
     -> Result<(), Box<dyn Error>> {
@@ -1270,7 +1270,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-003-A
+    // proves: SCN-GALLERY-003-A — Positive
     #[tokio::test]
     async fn create_gallery_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1377,7 +1377,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-003-A
+    // proves: SCN-GALLERY-003-A — Positive
     #[tokio::test]
     async fn create_gallery_caller_load_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1484,7 +1484,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-003-A
+    // proves: SCN-GALLERY-003-A — Positive
     #[tokio::test]
     async fn create_gallery_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1613,7 +1613,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-003-A
+    // proves: SCN-GALLERY-003-A — Positive
     #[tokio::test]
     async fn create_gallery_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange

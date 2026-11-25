@@ -139,7 +139,7 @@ mod tests {
 
     type UseCase = GetVideo<TestFactory>;
 
-    // proves: SCN-VIDEO-003-A
+    // proves: SCN-VIDEO-003-A — Positive
     #[tokio::test]
     async fn a_library_video_is_readable_and_linked() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -219,7 +219,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-VIDEO-003-B
+    // proves: SCN-VIDEO-003-B — Security
     #[tokio::test]
     async fn a_video_repository_failure_is_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -277,7 +277,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-VIDEO-003-B
+    // proves: SCN-VIDEO-003-B — Security
     #[tokio::test]
     async fn an_unknown_video_is_concealed() -> Result<(), Box<dyn Error>> {
         // Arrange

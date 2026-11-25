@@ -72,6 +72,8 @@ MSG_PASSWORD_LOGGED = re.compile(
 )
 MSG_PASSWORD_HIDDEN = "the default password logging is disabled"
 MSG_MEDIA_ROOT_ABSENT = f"the library root '{MEDIA_DIRECTORY}' is absent"
+MSG_STATE_OVERSIZED = "the instance identity exceeds 4096 bytes"
+MSG_STATE_UNSUPPORTED_VERSION = "declares unsupported format version"
 
 SECRET_PASSWORD = "C0rrect!Horse"
 WRONG_PASSWORD = "Wr0ng!pass"

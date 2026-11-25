@@ -82,7 +82,7 @@ where
                     return Err(UpdateUserError::TargetNotModifiable);
                 }
                 // Only the root administers Admin accounts; a non-root Admin
-                // may still update its own profile (`REQ-AUTHORIZATION-019`).
+                // may still update its own profile (`REQ-USER-021`).
                 if user.role() == Role::Admin && !caller.is_root_admin() && caller.id() != user.id()
                 {
                     return Err(UpdateUserError::TargetNotModifiable);
@@ -536,7 +536,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-010-A
+    // proves: SCN-USER-024-A — Security
     #[tokio::test]
     async fn update_user_non_root_admin_changes_role_returns_role_change_forbidden()
     -> Result<(), Box<dyn Error>> {

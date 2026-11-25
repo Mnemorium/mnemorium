@@ -383,7 +383,7 @@ mod tests {
         DeleteGalleryItem::new(Arc::clone(&harness.factory), Arc::new(file_storage))
     }
 
-    // proves: SCN-GALLERY-010-A
+    // proves: SCN-GALLERY-010-A — Business rule
     #[tokio::test]
     async fn delete_gallery_item_owner_deletes_image_and_item() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -581,7 +581,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-010-A
+    // proves: SCN-GALLERY-010-A — Business rule
     #[tokio::test]
     async fn delete_gallery_item_removes_its_resource() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -760,7 +760,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-010-C
+    // proves: SCN-GALLERY-010-C — Business rule
     #[tokio::test]
     async fn delete_gallery_item_storage_failure_still_succeeds() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -954,7 +954,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-010-A
+    // proves: SCN-GALLERY-010-A — Business rule
     #[tokio::test]
     async fn delete_gallery_item_any_caller_deletes_public_item() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1149,7 +1149,7 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-    // proves: SCN-GALLERY-010-A
+    // proves: SCN-GALLERY-010-A — Business rule
     #[tokio::test]
     async fn delete_gallery_item_root_admin_deletes_other_users_private_item()
     -> Result<(), Box<dyn Error>> {
@@ -1346,7 +1346,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-010-A
+    // proves: SCN-GALLERY-010-A — Business rule
     #[tokio::test]
     async fn delete_gallery_item_backing_file_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
@@ -1523,7 +1523,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-010-C
+    // proves: SCN-GALLERY-010-C — Business rule
     #[tokio::test]
     async fn delete_gallery_item_keeps_a_file_an_image_still_references()
     -> Result<(), Box<dyn Error>> {
@@ -1715,7 +1715,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-010-C
+    // proves: SCN-GALLERY-010-C — Business rule
     #[tokio::test]
     async fn delete_gallery_item_keeps_a_file_a_video_still_references()
     -> Result<(), Box<dyn Error>> {
@@ -1911,7 +1911,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-010-C
+    // proves: SCN-GALLERY-010-C — Business rule
     #[tokio::test]
     async fn delete_gallery_item_missing_file_row_removes_no_bytes() -> Result<(), Box<dyn Error>> {
         // Arrange: the file row is already gone when the delete runs, so the
@@ -2092,7 +2092,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-010-C
+    // proves: SCN-GALLERY-010-C — Business rule
     #[tokio::test]
     async fn delete_gallery_item_rejected_file_delete_keeps_the_file() -> Result<(), Box<dyn Error>>
     {
@@ -2279,7 +2279,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-010-C
+    // proves: SCN-GALLERY-010-C — Business rule
     #[tokio::test]
     async fn delete_gallery_item_reference_probe_failure_returns_unknown()
     -> Result<(), Box<dyn Error>> {
@@ -2450,7 +2450,7 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-    // proves: SCN-GALLERY-010-D
+    // proves: SCN-GALLERY-010-D — Negative
     #[tokio::test]
     async fn delete_gallery_item_unknown_item_returns_no_such_item() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -2598,7 +2598,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-010-D
+    // proves: SCN-GALLERY-010-D — Negative
     #[tokio::test]
     async fn delete_gallery_item_unknown_gallery_returns_no_such_gallery()
     -> Result<(), Box<dyn Error>> {
@@ -2738,7 +2738,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-010-A
+    // proves: SCN-GALLERY-010-A — Business rule
     #[tokio::test]
     async fn delete_gallery_item_unknown_caller_returns_no_such_caller()
     -> Result<(), Box<dyn Error>> {
@@ -2865,7 +2865,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-010-D
+    // proves: SCN-GALLERY-010-D — Negative
     #[tokio::test]
     async fn delete_gallery_item_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
@@ -3013,7 +3013,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-010-A
+    // proves: SCN-GALLERY-010-A — Business rule
     #[tokio::test]
     async fn delete_gallery_item_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
