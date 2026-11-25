@@ -1,35 +1,73 @@
 ---
 ls:
-  script:
-    .*: exists:0  # any non-shell scripts aren't allowed
-    .sh: snake_case
-  migrations:
-    .*: exists:0  # any non-sql scripts aren't allowed
-    .sql: snake_case
-  test/api/seed:
-    .sql: snake_case
-  test/performance/seed:
-    .sql: snake_case
-  test/system/seed:
-    .sql: snake_case
+  # Directory names: snake_case (leading dot allowed for tool dirs).
+  .dir: regex:\.?[a-z0-9_]+
 
+  # File-name conventions
   .rs: snake_case
   .py: snake_case
   .md: PascalCase
+  .sh: snake_case
+  .yml: snake_case
+  .yaml: snake_case
+  .nix: snake_case
+  .ts: kebab-case
+  .d.ts: kebab-case
+  .config.js: kebab-case
+  .js: kebab-case
+
+  # script/ holds shell scripts only, at any depth.
+  script/**:
+    .*: exists:0
+    .sh: snake_case
+
+  # migrations/ holds SQL migrations only, at any depth.
+  migrations/**:
+    .*: exists:0
+    .sql: snake_case
+
+  # Seed SQL fixtures are snake_case; seed media keep their own names.
+  test/*/seed:
+    .sql: snake_case
+  test/*/seed/sql:
+    .*: exists:0
+    .sql: snake_case
+
+  # Rule files are named after their kebab-case rule ID.
+  rule:
+    .yml: kebab-case
+
+  # Workflow filenames are kebab-case (overrides the global .yml rule).
+  .github/workflows:
+    .yml: kebab-case
+
 ignore:
+  # VCS and local tool state
+  - .git
   - .devenv
+  - .venv
   - .artifacts
+  - .pytest_cache
+  - .ruff_cache
+  - .hypothesis
+  - .schemathesis
+  - target
+  - site
+  - data
+  - logs
+
+  # Generated or vendored trees
+  - .agents
+  - .opencode
+  - openspec
+  - "**/node_modules"
+  - "**/generated"
+
+  # Conventional names that cannot follow the global casing rules
   - README.md
   - AGENTS.md
   - CHANGELOG.md
   - docs/index.md
   - .github/pull_request_template.md
-  - target
-  - .agents
-  - .opencode
-  - .pytest_cache
-  - test/TODO.md
-  - test/performance/node_modules
-  - test/performance/generated
-  - test/generated
-  - openspec
+  - .github/ISSUE_TEMPLATE   # GitHub mandates the uppercase directory name
+  - .ls-lint.yml
