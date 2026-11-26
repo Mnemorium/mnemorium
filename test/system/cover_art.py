@@ -560,10 +560,11 @@ def test_a_playlist_without_a_cover_reports_none(server: Sut, seed_token: str) -
 
 
 @security
-@scenario("SCN-AUTHORIZATION-026-D")
+@scenario("SCN-COVER-ART-008-A")
+@scenario("SCN-COVER-ART-008-B", TestType.POSITIVE)
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_cover_needs_a_viewable_image(sut: Sut) -> None:
-    """A caller who may create a playlist cannot attach artwork it may not view."""
+    """A caller who may create a playlist cannot attach artwork it may not view, while its own image is stored."""
     server = start_instance(sut)
     root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     _alice_id, alice = provision(server, root_token, "alice")
@@ -585,3 +586,4 @@ def test_a_cover_needs_a_viewable_image(sut: Sut) -> None:
         body=PostPlaylistRequest(name=unique("Own Cover"), cover_image_id=cover),
     )
     assert allowed.status_code == 201, f"the owner's own image refused: {allowed.status_code}"
+    assert json.loads(allowed.content)["cover_image_id"] == cover

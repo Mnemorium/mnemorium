@@ -342,7 +342,205 @@ mod tests {
         }
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-A, SCN-METADATA-ENRICHMENT-028-A, SCN-METADATA-ENRICHMENT-028-D
+    // proves: SCN-METADATA-ENRICHMENT-028-E — Business rule
+    // proves: SCN-METADATA-ENRICHMENT-028-H — Business rule
+    #[tokio::test]
+    async fn apply_music_album_without_genres_keeps_the_cover_and_group()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the provider reports neither a genre nor a group, and the album stores both a cover and a group.
+        let mut users = MockUserRepository::new();
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
+        let stored = MusicAlbum::try_new(
+            7,
+            "Album 7".to_owned(),
+            Some(album_release_date()),
+            None,
+            Vec::new(),
+            3,
+            None,
+            Some(42),
+            Vec::new(),
+        )?;
+        let mut albums = MockMusicAlbumRepository::new();
+        (move |albums: &mut MockMusicAlbumRepository, album: MusicAlbum| {
+            let album_id = album.id();
+            albums
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(album_id))
+                .return_once(move |_| {
+                    let found = album.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+        })(&mut albums, stored);
+        albums
+            .expect_save()
+            .times(1)
+            .withf(|album| {
+                album.id() == 7
+                    && album.genre_ids() == ["UNKNOWN".to_owned()]
+                    && album.cover_image_id() == Some(42)
+                    && album.music_group_id() == 3
+            })
+            .returning(|album| Box::pin(async move { Ok(album) }));
+        albums.expect_save_medium().times(0);
+        let mut provider = MockMusicMetadataProvider::new();
+        (move |provider: &mut MockMusicMetadataProvider| {
+            provider
+                .expect_provider()
+                .returning(|| ProviderId::MusicBrainz);
+            provider.expect_lookup().times(1).return_once(|_| {
+                Box::pin(async {
+                    Ok(Some(MusicMetadata::Album {
+                        artwork: Some(crate::domain::model::Artwork::new(
+                            vec![1, 2, 3],
+                            "image/png".to_owned(),
+                        )),
+                        artist_credits: Vec::new(),
+                        editions: vec![Edition::new(
+                            ExternalRef::new(ProviderId::MusicBrainz, "release".to_owned()),
+                            "Kind of Blue".to_owned(),
+                            NaiveDate::from_ymd_opt(1959, 8, 17),
+                            Some("US".to_owned()),
+                            None,
+                            vec![MediumSummary::new(MediumFormat::Cd, 1, 5)],
+                        )],
+                        first_release_date: NaiveDate::from_ymd_opt(1959, 8, 17),
+                        genres: Vec::new(),
+                        production_type: Some(ProductionType::Studio),
+                        title: "Kind of Blue".to_owned(),
+                    }))
+                })
+            });
+        })(&mut provider);
+        let harness = harness_with_resources(
+            users,
+            albums,
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+        );
+
+        // Act
+        let use_case: UseCase =
+            ApplyMusicAlbum::new(Arc::clone(&harness.factory), Some(Arc::new(provider)));
+        let response = use_case
+            .execute(ApplyMusicAlbumCommand::new(1, 7, reference(), Vec::new()))
+            .await?;
+
+        // Assert
+        assert_eq!(
+            response.album().genre_ids(),
+            ["UNKNOWN".to_owned()],
+            "an album the provider gives no genre must store UNKNOWN"
+        );
+        assert_eq!(
+            response.album().cover_image_id(),
+            Some(42),
+            "an apply must keep the stored cover and never store provider artwork"
+        );
+        assert_eq!(
+            response.album().music_group_id(),
+            3,
+            "an apply must keep the stored group"
+        );
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    // proves: SCN-METADATA-ENRICHMENT-024-A, SCN-METADATA-ENRICHMENT-028-D — Business rule
+    // proves: SCN-METADATA-ENRICHMENT-028-A — Positive
     #[tokio::test]
     async fn apply_music_album_without_placements_writes_the_structure()
     -> Result<(), Box<dyn Error>> {
@@ -503,7 +701,8 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-A, SCN-METADATA-ENRICHMENT-028-B
+    // proves: SCN-METADATA-ENRICHMENT-024-A — Business rule
+    // proves: SCN-METADATA-ENRICHMENT-028-B — Alternate flow
     #[tokio::test]
     async fn apply_music_album_with_placements_moves_the_recordings() -> Result<(), Box<dyn Error>>
     {
@@ -678,7 +877,8 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-028-C
+    // proves: SCN-METADATA-ENRICHMENT-028-C — Business rule
+    // proves: SCN-MUSIC-003-A — Business rule
     #[tokio::test]
     async fn apply_music_album_multi_cd_release_becomes_cd_mediums() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -843,7 +1043,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-E
+    // proves: SCN-METADATA-ENRICHMENT-024-E — Error handling
     #[tokio::test]
     async fn apply_music_album_provider_failure_writes_nothing() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -986,7 +1186,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-028-F
+    // proves: SCN-METADATA-ENRICHMENT-028-F — Negative
     #[tokio::test]
     async fn apply_music_album_rejects_the_default_album() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1121,7 +1321,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-E
+    // proves: SCN-METADATA-ENRICHMENT-024-E — Error handling
     #[tokio::test]
     async fn apply_music_album_without_a_provider_is_unavailable() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1256,7 +1456,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-028-G
+    // proves: SCN-METADATA-ENRICHMENT-028-G — Negative
     #[tokio::test]
     async fn apply_music_album_rejects_a_placement_naming_a_medium_it_does_not_create()
     -> Result<(), Box<dyn Error>> {
@@ -1415,7 +1615,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-038-B
+    // proves: SCN-AUTHORIZATION-038-B — Security
     #[tokio::test]
     async fn apply_music_album_refuses_a_caller_without_edit_metadata() -> Result<(), Box<dyn Error>>
     {
@@ -1490,7 +1690,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-038-A
+    // proves: SCN-AUTHORIZATION-038-A — Security
     #[tokio::test]
     async fn apply_music_album_conceals_an_album_the_caller_cannot_view()
     -> Result<(), Box<dyn Error>> {
@@ -1565,7 +1765,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-D
+    // proves: SCN-METADATA-ENRICHMENT-024-D — Negative
     #[tokio::test]
     async fn apply_music_album_unknown_reference_is_not_found() -> Result<(), Box<dyn Error>> {
         // Arrange

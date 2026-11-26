@@ -229,12 +229,22 @@ in
       fail_fast = true;
     };
 
+    investigation = {
+      enable = true;
+      name = "Verify the requirements coverage report";
+      entry = "script/investigation.sh --check";
+      pass_filenames = false;
+      files = "(openspec/.*|test/system/.*|test/api/scenarios\\.toml|test/util/.*|src/.*\\.rs$|script/investigation\\.sh|requirements\\.txt|docs/development/artifacts/.*)";
+      before = [ "documentation" ];
+      fail_fast = true;
+    };
+
     documentation = {
       enable = true;
       name = "Verify Mkdocs documentation build";
       entry = "mkdocs build --strict";
       pass_filenames = false;
-      files = "docs/.*\\.md$";
+      files = "docs/.*\\.(md|html|json)$";
     };
 
     markdownlint = {

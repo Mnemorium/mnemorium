@@ -4,11 +4,12 @@ import json
 import os
 import time
 from datetime import UTC, datetime
+from itertools import count
 
 import pytest
-from conftest import SEED_MEDIA_DIRECTORY, login, start_instance, upload
+from conftest import SEED_MEDIA_DIRECTORY, login, provision, start_instance, upload
 from harness import MEDIA_DIRECTORY, ROOT_ADMIN_USERNAME, Sut
-from labels import TestType, business_rule, positive, scenario
+from labels import TestType, business_rule, negative, positive, scenario
 from mnemorium_client.api.asset import list_files
 
 LINKED_PATH = "system/file-linked.png"
@@ -33,6 +34,11 @@ FILE_FIELDS = {
 FOUND_PATH = "found.png"
 FOUND_INSTANT = 1_700_000_000
 WAIT_SECONDS = 20.0
+
+# An identifier no intake can mint within a suite run.
+UNKNOWN_FILE_ID = 999_999_999
+
+_ACCOUNTS = count()
 
 
 @positive
@@ -104,6 +110,34 @@ def test_a_file_of_an_existing_identifier_is_read(server: Sut, root_token: str) 
     assert file["is_public"] is True
     assert file["uploaded_date"] == datetime.now(UTC).date().isoformat()
     assert datetime.fromisoformat(file["modified_at"]).tzinfo is UTC
+
+
+@negative
+@scenario("SCN-FILE-002-B")
+def test_an_unknown_or_unviewable_file_is_not_found(server: Sut, root_token: str) -> None:
+    """An identifier naming no file and one the caller may not view answer the same 404."""
+    _, alice = provision(server, root_token, f"filealice{next(_ACCOUNTS)}")
+    _, bob = provision(server, root_token, f"filebob{next(_ACCOUNTS)}")
+    private = upload(server, alice, "private.png", (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes())
+
+    owner = server.request("GET", f"{server.href('file')}/{private['id']}", token=alice)
+    concealed = server.request("GET", f"{server.href('file')}/{private['id']}", token=bob)
+    unknown = server.request("GET", f"{server.href('file')}/{UNKNOWN_FILE_ID}", token=bob)
+
+    assert owner.status_code == 200, "the uploader must read its own file"
+    assert concealed.status_code == 404
+    assert unknown.status_code == 404
+    assert json.loads(concealed.content)["error"] == json.loads(unknown.content)["error"]
+
+
+@negative
+@scenario("SCN-FILE-002-C")
+def test_a_malformed_file_identifier_is_refused(server: Sut, root_token: str) -> None:
+    """A path segment that is not an identifier answers 400 with the stable message."""
+    response = server.request("GET", f"{server.href('file')}/not-a-number", token=root_token)
+
+    assert response.status_code == 400
+    assert json.loads(response.content)["error"] == "invalid file identifier"
 
 
 @scenario("SCN-FILE-003-A", TestType.BUSINESS_RULE)

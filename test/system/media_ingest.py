@@ -128,6 +128,7 @@ def test_a_root_that_appears_within_the_window_is_examined(sut: Sut) -> None:
 
 @error_handling
 @scenario("SCN-MEDIA-INGEST-002-C")
+@scenario("SCN-MEDIA-INGEST-003-C")
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_absent_required_root_refuses_startup(sut: Sut) -> None:
     """A root that never appears while it is required refuses startup and keeps the record it held."""

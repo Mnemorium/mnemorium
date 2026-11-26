@@ -196,7 +196,7 @@ mod tests {
         )?)
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-018-D
+    // proves: SCN-METADATA-ENRICHMENT-018-D — Negative
     #[tokio::test]
     async fn identify_music_rejects_a_query_without_a_title() {
         // Act: the model refuses the query before the use case ever sees it.
@@ -209,7 +209,7 @@ mod tests {
         );
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-001-A, SCN-METADATA-ENRICHMENT-023-D
+    // proves: SCN-METADATA-ENRICHMENT-001-A, SCN-METADATA-ENRICHMENT-023-D — Business rule
     #[tokio::test]
     async fn identify_music_reports_unavailable_without_a_provider() -> Result<(), Box<dyn Error>> {
         // Arrange: no music provider is configured.
@@ -447,7 +447,7 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-    // proves: SCN-METADATA-ENRICHMENT-001-B
+    // proves: SCN-METADATA-ENRICHMENT-001-B — Alternate flow
     #[tokio::test]
     async fn identify_music_reports_no_candidate_when_the_search_is_empty()
     -> Result<(), Box<dyn Error>> {
@@ -582,7 +582,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-002-B, SCN-METADATA-ENRICHMENT-023-A
+    // proves: SCN-METADATA-ENRICHMENT-002-B, SCN-METADATA-ENRICHMENT-023-A — Business rule
     #[tokio::test]
     async fn identify_music_returns_the_providers_candidates_in_its_order()
     -> Result<(), Box<dyn Error>> {

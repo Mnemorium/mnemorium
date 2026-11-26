@@ -21,6 +21,8 @@ VIEW_IMAGE_FILE = 16107
 STREAM_AUDIO_FILE = 16108
 STREAM_VIDEO_FILE = 16109
 REFUSAL_FILE = 16110
+# An identifier no intake can mint within a suite run.
+UNKNOWN_FILE = 999_999_999
 
 IMAGE_CONTENT_TYPE = "image/png"
 AUDIO_CONTENT_TYPE = "audio/flac"
@@ -57,6 +59,22 @@ def test_a_bearer_request_reads_content(server: Sut, root_token: str) -> None:
     assert response.status_code == 200, f"content failed: {response.status_code} {response.content!r}"
     assert response.content == IMAGE_BYTES
     assert response.headers["Content-Type"] == IMAGE_CONTENT_TYPE
+
+
+@security
+@scenario("SCN-DOWNLOAD-001-B")
+@scenario("SCN-DOWNLOAD-001-C")
+def test_a_content_request_without_a_bearer_token_is_refused(server: Sut, root_token: str) -> None:
+    """No bearer header answers 401, even when the query string carries a token and a signature."""
+    path = f"{server.href('file')}/{IMAGE_FILE}/content"
+
+    missing = server.request("GET", path)
+    query_credential = server.request("GET", f"{path}?access_token={root_token}&signature=deadbeef")
+
+    assert missing.status_code == 401
+    assert query_credential.status_code == 401
+    assert missing.content != IMAGE_BYTES
+    assert query_credential.content != IMAGE_BYTES
 
 
 @business_rule
@@ -555,6 +573,25 @@ def test_a_visible_asset_whose_action_refuses_answers_forbidden(server: Sut, roo
     assert visible.status_code == 200, f"file not visible: {visible.status_code} {visible.content!r}"
     assert refused.status_code == 403, f"file content allowed: {refused.status_code} {refused.content!r}"
     assert refused.content != REFUSAL_BYTES
+
+
+@security
+@scenario("SCN-DOWNLOAD-008-A")
+def test_an_unknown_or_undiscoverable_content_route_is_not_found(server: Sut, root_token: str) -> None:
+    """A content request for a missing file or one the caller cannot discover answers 404 and reads no bytes."""
+    _, alice = provision(server, root_token, f"downloadowner{next(_ACCOUNTS)}")
+    _, bob = provision(server, root_token, f"downloadstranger{next(_ACCOUNTS)}")
+    private = upload(server, alice, "private.png", IMAGE_BYTES, IMAGE_CONTENT_TYPE)
+
+    unknown = server.request("GET", f"{server.href('file')}/{UNKNOWN_FILE}/content", token=root_token)
+    undiscoverable = server.request("GET", f"{server.href('file')}/{private['id']}/content", token=bob)
+    concealed = get_file.sync_detailed(private["id"], client=server.client(bob))
+
+    assert unknown.status_code == 404
+    assert undiscoverable.status_code == 404
+    assert concealed.status_code == 404
+    assert unknown.content != IMAGE_BYTES
+    assert undiscoverable.content != IMAGE_BYTES
 
 
 @error_handling

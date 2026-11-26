@@ -9,6 +9,7 @@ from itertools import count
 import pytest
 from conftest import (
     SEED_MEDIA_DIRECTORY,
+    auth_path,
     begin,
     completed_file,
     login,
@@ -24,6 +25,7 @@ from mnemorium_client.api.asset import (
     delete_upload,
     get_audio,
     get_image,
+    get_upload,
     get_video,
     list_files,
     post_upload,
@@ -31,7 +33,7 @@ from mnemorium_client.api.asset import (
     put_upload_chunk,
 )
 from mnemorium_client.api.user import get_me
-from mnemorium_client.models import PostUploadRequest
+from mnemorium_client.models import GetPermissionSummaryResourceKind, PostUploadRequest
 from mnemorium_client.types import File
 
 IMAGE = (SEED_MEDIA_DIRECTORY / "file-linked.png").read_bytes()
@@ -52,6 +54,9 @@ VIDEO_DURATION_MS = 200.0
 VIDEO_DIMENSIONS = (16, 16)
 AUDIO_CODEC = "flac"
 AUDIO_SAMPLE_RATE_HZ = 44_100
+
+# An identifier no upload session ever carries.
+UNKNOWN_UPLOAD_ID = 999_999_999
 
 _ACCOUNTS = count()
 
@@ -627,20 +632,36 @@ def test_another_caller_receives_its_own_copy(server: Sut, root_token: str) -> N
     assert second_file["path"] != first_file["path"]
 
 
-@positive
-@scenario("SCN-UPLOAD-013-A")
+@scenario("SCN-UPLOAD-013-A", TestType.POSITIVE)
+@scenario("SCN-UPLOAD-013-C", TestType.NEGATIVE)
+@scenario("SCN-UPLOAD-018-A", TestType.SECURITY)
+@scenario("SCN-UPLOAD-018-B", TestType.SECURITY)
 def test_a_pending_session_is_cancelled(server: Sut, root_token: str) -> None:
-    """Cancelling a pending session removes it and its staged content."""
-    session = begin(server, root_token, "cover.png", IMAGE)
+    """Cancelling a pending session removes it; another caller and the root are concealed.
+
+    A repeated or an unknown cancel answers 404.
+    """
+    _owner_id, owner = provision(server, root_token, f"uploader{next(_ACCOUNTS)}")
+    _, stranger = provision(server, root_token, f"stranger{next(_ACCOUNTS)}")
+    session = begin(server, owner, "cover.png", IMAGE)
     assert server.exists(staged_path(server, session))
 
-    response = delete_upload.sync_detailed(session.id, client=server.client(root_token))
+    concealed = get_upload.sync_detailed(session.id, client=server.client(stranger))
+    root_read = get_upload.sync_detailed(session.id, client=server.client(root_token))
+    owner_read = get_upload.sync_detailed(session.id, client=server.client(owner))
+    response = delete_upload.sync_detailed(session.id, client=server.client(owner))
+    repeated = delete_upload.sync_detailed(session.id, client=server.client(owner))
+    unknown = delete_upload.sync_detailed(UNKNOWN_UPLOAD_ID, client=server.client(owner))
 
+    assert concealed.status_code == 404
+    assert root_read.status_code == 404
+    assert owner_read.status_code == 200
     assert response.status_code == 204
     assert not server.exists(staged_path(server, session))
-    assert delete_upload.sync_detailed(session.id, client=server.client(root_token)).status_code == 404
-    replacement = begin(server, root_token, "replacement.png", IMAGE)
-    assert session_state(server, root_token, replacement)["bitmap"] == "0"
+    assert repeated.status_code == 404
+    assert unknown.status_code == 404
+    replacement = begin(server, owner, "replacement.png", IMAGE)
+    assert session_state(server, owner, replacement)["bitmap"] == "0"
 
 
 @negative
@@ -694,6 +715,7 @@ def test_a_finished_identifier_is_not_reused(server: Sut, root_token: str) -> No
 
 @negative
 @scenario("SCN-UPLOAD-005-A")
+@scenario("SCN-UPLOAD-006-B")
 @scenario("SCN-UPLOAD-012-A")
 @scenario("SCN-UPLOAD-012-B")
 @scenario("SCN-UPLOAD-012-C")
@@ -701,7 +723,7 @@ def test_a_finished_identifier_is_not_reused(server: Sut, root_token: str) -> No
 @scenario("SCN-API-011-C", TestType.BUSINESS_RULE)
 @pytest.mark.own_instance(reason="global_filesystem")
 def test_an_expired_session_is_gone(sut: Sut) -> None:
-    """An expired session refuses a chunk and a completion, is not readable, and activity did not extend it."""
+    """An unknown or expired session is not readable; an expired one refuses a chunk and a completion."""
     # Three seconds is the longest deliberate wait TEST-056 allows. It keeps the pre-expiry chunk write clear of the
     # one-second boundary, and the sleep starts after the sessions are begun, so their configured instant has passed.
     server = sut.start(config={"asset": {"upload": {"expiry_seconds": 3}}})
@@ -712,6 +734,7 @@ def test_an_expired_session_is_gone(sut: Sut) -> None:
     active_session = begin(server, token, "cover.png", IMAGE)
     # Activity before the expiry instant must not move it.
     assert store_chunk(server, token, active_session, 0, IMAGE).status_code == 200
+    unknown = get_upload.sync_detailed(UNKNOWN_UPLOAD_ID, client=server.client(token))
 
     time.sleep(3)
 
@@ -720,6 +743,7 @@ def test_an_expired_session_is_gone(sut: Sut) -> None:
     read = server.request("GET", status_session.self_href, token=token)
     active = server.request("GET", active_session.self_href, token=token)
 
+    assert unknown.status_code == 404
     assert chunk.status_code == 410
     assert completed.status_code == 410
     assert read.status_code == 404
@@ -824,3 +848,15 @@ def test_a_completed_file_is_attributed_to_its_uploader(server: Sut, root_token:
     other_completed = post_upload_complete.sync_detailed(other_session.id, client=server.client(uploader))
     other = completed_file(server, uploader, other_completed)
     assert other["path"] != file["path"]
+
+
+@business_rule
+@scenario("SCN-AUTHORIZATION-002-E")
+def test_an_upload_session_follows_the_instance_root(server: Sut, root_token: str) -> None:
+    """A created upload session's authorization parent is the instance root."""
+    session = begin(server, root_token, "auth-upload.png", IMAGE)
+
+    assert auth_path(server, root_token, GetPermissionSummaryResourceKind.UPLOAD, session.id) == [
+        "UPLOAD",
+        "INSTANCE",
+    ]

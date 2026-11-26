@@ -967,6 +967,7 @@ mod tests {
         Ok(())
     }
 
+    // proves: SCN-LOGGING-008-C — Security
     #[tokio::test]
     async fn credential_debug_redacts_password_hash_but_keeps_id() -> Result<(), Box<dyn Error>> {
         // Arrange

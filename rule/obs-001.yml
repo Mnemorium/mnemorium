@@ -6,8 +6,12 @@ message: the domain must not log; emit log events only from application and infr
 rule:
   any:
     - kind: use_declaration
-      regex: '(?s)^\s*(pub\s+)?use\s+tracing\b'
+      regex: '(?s)^\s*(pub\s+)?use\s+(tracing|log)\b'
     - kind: scoped_identifier
-      regex: '^tracing\b'
+      regex: '^(tracing|log)\b'
     - kind: extern_crate_declaration
-      regex: '\btracing\b'
+      regex: '\b(tracing|log)\b'
+    - kind: macro_invocation
+      regex: '^(println|eprintln|dbg)!'
+    - kind: attribute_item
+      regex: '^#\[(tracing::)?instrument\b'

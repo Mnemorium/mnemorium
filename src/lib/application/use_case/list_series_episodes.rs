@@ -143,7 +143,8 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = ListSeriesEpisodes<TestFactory>;
 
-    // proves: SCN-SERIES-005-A, SCN-SERIES-007-A
+    // proves: SCN-SERIES-005-A — Positive
+    // proves: SCN-SERIES-007-A — Business rule
     #[tokio::test]
     async fn list_series_episodes_returns_the_season_in_index_order() -> Result<(), Box<dyn Error>>
     {
@@ -226,7 +227,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-005-A
+    // proves: SCN-SERIES-005-A — Positive
     #[tokio::test]
     async fn list_series_episodes_of_an_empty_season_returns_none() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -279,7 +280,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-005-C
+    // proves: SCN-SERIES-005-C — Security
     #[tokio::test]
     async fn list_series_episodes_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>>
     {
@@ -332,7 +333,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-005-C
+    // proves: SCN-SERIES-005-C — Security
     #[tokio::test]
     async fn list_series_episodes_unknown_season_returns_no_such_season()
     -> Result<(), Box<dyn Error>> {
@@ -386,7 +387,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-005-A
+    // proves: SCN-SERIES-005-A — Positive
     #[tokio::test]
     async fn list_series_episodes_unknown_caller_returns_no_such_caller()
     -> Result<(), Box<dyn Error>> {
@@ -421,7 +422,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-005-A
+    // proves: SCN-SERIES-005-A — Positive
     #[tokio::test]
     async fn list_series_episodes_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {

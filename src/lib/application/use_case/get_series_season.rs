@@ -134,7 +134,7 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = GetSeriesSeason<TestFactory>;
 
-    // proves: SCN-SERIES-004-A
+    // proves: SCN-SERIES-004-A — Positive
     #[tokio::test]
     async fn get_series_season_returns_the_requested_season() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -194,7 +194,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-004-A
+    // proves: SCN-SERIES-004-A — Positive
     #[tokio::test]
     async fn get_series_season_carries_the_season_cover() -> Result<(), Box<dyn Error>> {
         // Arrange: the season carries its own artwork.
@@ -259,7 +259,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-004-C
+    // proves: SCN-SERIES-004-C — Security
     #[tokio::test]
     async fn get_series_season_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -311,7 +311,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-004-C
+    // proves: SCN-SERIES-004-C — Security
     #[tokio::test]
     async fn get_series_season_unknown_season_returns_no_such_season() -> Result<(), Box<dyn Error>>
     {
@@ -367,7 +367,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-004-B
+    // proves: SCN-SERIES-004-B — Positive
     #[tokio::test]
     async fn get_series_season_scopes_the_index_to_the_series() -> Result<(), Box<dyn Error>> {
         // Arrange: both shows hold a season 1, so the path must pick the one
@@ -424,7 +424,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-004-A
+    // proves: SCN-SERIES-004-A — Positive
     #[tokio::test]
     async fn get_series_season_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>>
     {
@@ -459,7 +459,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-004-A
+    // proves: SCN-SERIES-004-A — Positive
     #[tokio::test]
     async fn get_series_season_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange

@@ -8,7 +8,7 @@ A case declares what it proves with one decorator per scenario:
 
 The identifier carries the capability and the requirement, so neither is repeated at the call site and neither can
 disagree with the specification. A type is optional: an untested-but-written case may cite its scenario before the
-proof's kind is decided, and `docs/development/artifacts/RequirementsTraceabilityCoverage.md` counts that scenario as
+proof's kind is decided, and `docs/development/artifacts/RequirementsTraceabilityCoverage.html` counts that scenario as
 unspecified until it is.
 
 A case whose scenarios all prove one kind may declare it once for the whole case, and every scenario inherits it:

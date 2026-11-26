@@ -431,6 +431,9 @@ mod tests {
     /// The film detail payload carrying a genre outside the vocabulary.
     const MOVIE_UNKNOWN_GENRE: &str = include_str!("fixtures/tmdb/movie_unknown_genre.json");
 
+    /// The film detail payload whose poster address carries a sentinel.
+    const MOVIE_SENTINEL_ARTWORK: &str = include_str!("fixtures/tmdb/movie_sentinel_artwork.json");
+
     /// The film detail payload that reports no release date.
     const MOVIE_ABSENT_DATE: &str = include_str!("fixtures/tmdb/movie_absent_date.json");
 
@@ -481,7 +484,7 @@ mod tests {
         MediaQuery::try_new(kind, title.to_owned(), year, None)
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-002-B
+    // proves: SCN-METADATA-ENRICHMENT-002-B — Business rule
     #[tokio::test]
     async fn tmdb_search_returns_the_provider_order() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -530,7 +533,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-002-A
+    // proves: SCN-METADATA-ENRICHMENT-002-A — Business rule
     #[tokio::test]
     async fn tmdb_search_maps_a_series_query() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -552,7 +555,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-001-B
+    // proves: SCN-METADATA-ENRICHMENT-001-B — Alternate flow
     #[tokio::test]
     async fn tmdb_search_reports_no_candidate_for_an_empty_result() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -569,7 +572,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-029-A
+    // proves: SCN-METADATA-ENRICHMENT-029-A — Positive
     #[tokio::test]
     async fn tmdb_adapter_makes_no_request() -> Result<(), Box<dyn Error>> {
         // Arrange: a provider built against wiremock, with a search answer mounted.
@@ -599,7 +602,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-003-A, SCN-METADATA-ENRICHMENT-007-A, SCN-METADATA-ENRICHMENT-014-A
+    // proves: SCN-METADATA-ENRICHMENT-003-A, SCN-METADATA-ENRICHMENT-007-A, SCN-METADATA-ENRICHMENT-014-A — Business rule
     #[tokio::test]
     async fn tmdb_lookup_maps_a_film_to_canonical_metadata() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -643,7 +646,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-006-A
+    // proves: SCN-METADATA-ENRICHMENT-006-A — Business rule
     #[tokio::test]
     async fn tmdb_lookup_reports_an_unreported_release_date_as_absent() -> Result<(), Box<dyn Error>>
     {
@@ -667,7 +670,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-014-B, SCN-METADATA-ENRICHMENT-006-C
+    // proves: SCN-METADATA-ENRICHMENT-014-B, SCN-METADATA-ENRICHMENT-006-C — Business rule
     #[tokio::test]
     async fn tmdb_lookup_drops_an_unmappable_country() -> Result<(), Box<dyn Error>> {
         // Arrange: the payload's country is not an ISO alpha-2 code.
@@ -693,7 +696,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-003-B, SCN-METADATA-ENRICHMENT-007-A, SCN-METADATA-ENRICHMENT-014-A
+    // proves: SCN-METADATA-ENRICHMENT-003-B, SCN-METADATA-ENRICHMENT-007-A, SCN-METADATA-ENRICHMENT-014-A — Business rule
     #[tokio::test]
     async fn tmdb_lookup_maps_a_series_to_canonical_metadata() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -723,7 +726,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-003-C
+    // proves: SCN-METADATA-ENRICHMENT-003-C — Business rule
     #[tokio::test]
     async fn tmdb_lookup_maps_an_episode_to_canonical_metadata() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -756,7 +759,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-017-G
+    // proves: SCN-METADATA-ENRICHMENT-017-G — Negative
     #[tokio::test]
     async fn tmdb_lookup_reports_a_missing_item_as_absent() -> Result<(), Box<dyn Error>> {
         // Arrange: the provider answers 404 for the item.
@@ -877,7 +880,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-005-A
+    // proves: SCN-METADATA-ENRICHMENT-005-A — Business rule
     #[tokio::test]
     async fn tmdb_lookup_downloads_the_artwork_as_content() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -904,7 +907,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-005-B
+    // proves: SCN-METADATA-ENRICHMENT-005-B — Alternate flow
     #[tokio::test]
     #[traced_test]
     async fn tmdb_lookup_reports_no_artwork_when_the_download_fails() -> Result<(), Box<dyn Error>>
@@ -932,7 +935,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-005-B
+    // proves: SCN-METADATA-ENRICHMENT-005-B — Alternate flow
     #[tokio::test]
     async fn tmdb_lookup_rejects_oversized_artwork() -> Result<(), Box<dyn Error>> {
         // Arrange: the poster exceeds the size bound.
@@ -960,7 +963,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-005-B
+    // proves: SCN-METADATA-ENRICHMENT-005-B — Alternate flow
     #[tokio::test]
     async fn tmdb_lookup_does_not_follow_a_redirect() -> Result<(), Box<dyn Error>> {
         // Arrange: the poster address redirects to another server.
@@ -995,11 +998,12 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-007-B
+    // proves: SCN-METADATA-ENRICHMENT-007-B — Business rule
+    // proves: SCN-METADATA-ENRICHMENT-007-D — Business rule
     #[tokio::test]
     #[traced_test]
     async fn tmdb_lookup_reports_an_unmatched_genre() -> Result<(), Box<dyn Error>> {
-        // Arrange: the payload names a genre outside the vocabulary.
+        // Arrange: the payload names a genre outside the vocabulary, including a music-only name.
         let server = MockServer::start().await;
         mount_json(&server, "/movie/999001", MOVIE_UNKNOWN_GENRE).await;
         let provider = provider(&server, TEST_TIMEOUT);
@@ -1017,7 +1021,36 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-016-A
+    // proves: SCN-METADATA-ENRICHMENT-016-C — Security
+    #[tokio::test]
+    #[traced_test]
+    async fn tmdb_artwork_failure_carries_no_key_or_address() -> Result<(), Box<dyn Error>> {
+        // Arrange: the poster address carries a sentinel and no route answers it.
+        let server = MockServer::start().await;
+        mount_json(&server, "/movie/27205", MOVIE_SENTINEL_ARTWORK).await;
+        let provider = provider(&server, TEST_TIMEOUT);
+        let target = Target::Movie(ExternalRef::new(ProviderId::Tmdb, "27205".to_owned()));
+
+        // Act
+        let metadata = provider.lookup(&target).await?;
+
+        // Assert
+        let Some(MediaMetadata::Movie { artwork, .. }) = metadata else {
+            return Err("a film lookup must yield film metadata".into());
+        };
+        assert_eq!(artwork, None, "a failed download is not a lookup failure");
+        logs_assert(|lines| {
+            let leaked = lines
+                .iter()
+                .any(|line| line.contains("SENTINEL_ARTWORK") || line.contains("/poster"));
+            (!leaked)
+                .then_some(())
+                .ok_or_else(|| "the artwork failure named its address".to_owned())
+        });
+        Ok(())
+    }
+
+    // proves: SCN-METADATA-ENRICHMENT-016-A — Security
     #[tokio::test]
     #[traced_test]
     async fn tmdb_never_leaks_the_api_key() -> Result<(), Box<dyn Error>> {

@@ -691,7 +691,7 @@ mod tests {
         )
     }
 
-    // proves: SCN-AUTHORIZATION-029-C
+    // proves: SCN-AUTHORIZATION-029-C — Security
     #[tokio::test]
     async fn a_caller_reads_its_own_summary_without_grant_internals() -> Result<(), Box<dyn Error>>
     {
@@ -1188,7 +1188,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-012-C
+    // proves: SCN-AUTHORIZATION-012-C — Negative
     #[tokio::test]
     async fn a_replacement_naming_the_owner_role_is_refused() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1558,7 +1558,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-AUTHORIZATION-009-A
+    // proves: SCN-AUTHORIZATION-009-A — Security
     #[tokio::test]
     async fn sharing_cannot_escalate() -> Result<(), Box<dyn Error>> {
         // Arrange

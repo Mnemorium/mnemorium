@@ -324,7 +324,7 @@ async fn seed_identities(
 
         // Every account is a resource under the instance root, and the Admin
         // role grant gives the seeded Admin owner-level reach over it
-        // (`REQ-AUTHORIZATION-019`, `-035`).
+        // (`REQ-USER-021`, `REQ-AUTHORIZATION-035`).
         sqlx::query(
             "INSERT INTO resource (kind, entity_id, owner_id, auth_parent_id, visibility)
              VALUES ('USER', ?1, NULL, 1, 'PRIVATE')

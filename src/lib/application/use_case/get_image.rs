@@ -175,7 +175,7 @@ mod tests {
         )?)
     }
 
-    // proves: SCN-IMAGE-003-A
+    // proves: SCN-IMAGE-003-A — Positive
     #[tokio::test]
     async fn get_image_projects_the_typed_representation() -> Result<(), Box<dyn Error>> {
         // Arrange: a library image readable through `ViewMetadata` on the catalogue.
@@ -237,7 +237,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-IMAGE-003-B
+    // proves: SCN-IMAGE-003-B — Security
     #[tokio::test]
     async fn get_image_unknown_image_returns_no_such_image() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -284,7 +284,7 @@ mod tests {
         assert!(matches!(result, Err(GetImageError::NoSuchImage)));
         Ok(())
     }
-    // proves: SCN-IMAGE-003-B
+    // proves: SCN-IMAGE-003-B — Security
     #[tokio::test]
     async fn get_image_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange: the image exists, but its caller does not.
@@ -314,7 +314,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-IMAGE-003-B
+    // proves: SCN-IMAGE-003-B — Security
     #[tokio::test]
     async fn get_image_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange: the caller load fails before the image resolves.

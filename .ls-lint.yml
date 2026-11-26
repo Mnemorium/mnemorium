@@ -7,6 +7,7 @@ ls:
   .rs: snake_case
   .py: snake_case
   .md: PascalCase
+  .html: PascalCase
   .sh: snake_case
   .yml: snake_case
   .yaml: snake_case

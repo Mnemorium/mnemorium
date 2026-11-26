@@ -234,7 +234,8 @@ mod tests {
         }
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-A, SCN-METADATA-ENRICHMENT-026-A, SCN-METADATA-ENRICHMENT-026-C
+    // proves: SCN-METADATA-ENRICHMENT-024-A, SCN-METADATA-ENRICHMENT-026-C — Business rule
+    // proves: SCN-METADATA-ENRICHMENT-026-A — Positive
     #[tokio::test]
     async fn apply_series_writes_the_reported_metadata_and_keeps_the_tree()
     -> Result<(), Box<dyn Error>> {
@@ -377,7 +378,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-B, SCN-METADATA-ENRICHMENT-026-B
+    // proves: SCN-METADATA-ENRICHMENT-024-B, SCN-METADATA-ENRICHMENT-026-B — Business rule
     #[tokio::test]
     async fn apply_series_clears_what_the_provider_does_not_report() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -634,7 +635,7 @@ mod tests {
         assert!(matches!(result, Err(ApplySeriesError::NoSuchSeries)));
         Ok(())
     }
-    // proves: SCN-METADATA-ENRICHMENT-024-E
+    // proves: SCN-METADATA-ENRICHMENT-024-E — Error handling
     #[tokio::test]
     async fn apply_series_reports_an_unconfigured_provider() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -754,7 +755,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-D
+    // proves: SCN-METADATA-ENRICHMENT-024-D — Negative
     #[tokio::test]
     async fn apply_series_reports_an_unknown_reference() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -879,7 +880,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-C
+    // proves: SCN-METADATA-ENRICHMENT-024-C — Error handling
     #[tokio::test]
     async fn apply_series_rejects_another_kind() -> Result<(), Box<dyn Error>> {
         // Arrange

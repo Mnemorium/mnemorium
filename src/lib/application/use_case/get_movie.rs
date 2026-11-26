@@ -125,7 +125,7 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = GetMovie<TestFactory>;
 
-    // proves: SCN-MOVIES-003-A
+    // proves: SCN-MOVIES-003-A — Positive
     #[tokio::test]
     async fn get_movie_returns_the_requested_film() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -192,7 +192,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-003-A
+    // proves: SCN-MOVIES-003-A — Positive
     #[tokio::test]
     async fn get_movie_returns_a_film_with_its_cover() -> Result<(), Box<dyn Error>> {
         // Arrange: a film whose artwork is file 19.
@@ -254,7 +254,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-003-C
+    // proves: SCN-MOVIES-003-C — Security
     #[tokio::test]
     async fn get_movie_unknown_film_returns_no_such_movie() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -307,7 +307,7 @@ mod tests {
         );
         Ok(())
     }
-    // proves: SCN-MOVIES-003-A
+    // proves: SCN-MOVIES-003-A — Positive
     #[tokio::test]
     async fn get_movie_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -339,7 +339,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-MOVIES-003-A
+    // proves: SCN-MOVIES-003-A — Positive
     #[tokio::test]
     async fn get_movie_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange

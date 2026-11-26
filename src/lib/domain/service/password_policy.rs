@@ -67,7 +67,7 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    // proves: SCN-AUTHENTICATION-018-A
+    // proves: SCN-AUTHENTICATION-018-A — Positive
     #[rstest]
     #[case::with_letter_and_symbol("password!")]
     #[case::with_digit_and_symbol("12345678#")]
@@ -79,7 +79,7 @@ mod tests {
         assert_eq!(result, Ok(()));
     }
 
-    // proves: SCN-AUTHENTICATION-018-B
+    // proves: SCN-AUTHENTICATION-018-B — Negative
     #[rstest]
     #[case::seven_characters("aB3!xYz")]
     #[case::empty("")]
@@ -91,7 +91,7 @@ mod tests {
         assert_eq!(result, Err(PasswordPolicyError::PasswordTooShort));
     }
 
-    // proves: SCN-AUTHENTICATION-018-C
+    // proves: SCN-AUTHENTICATION-018-C — Negative
     #[rstest]
     #[case::letters_only("password")]
     #[case::digits_only("12345678")]

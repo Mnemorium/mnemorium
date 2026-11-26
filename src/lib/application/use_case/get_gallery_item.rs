@@ -168,7 +168,7 @@ mod tests {
         ))
     }
 
-    // proves: SCN-GALLERY-008-A
+    // proves: SCN-GALLERY-008-A — Positive
     #[tokio::test]
     async fn get_gallery_item_owner_reads_item() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -237,7 +237,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-008-A
+    // proves: SCN-GALLERY-008-A — Positive
     #[tokio::test]
     async fn get_gallery_item_root_admin_reads_private_item() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -293,7 +293,7 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-    // proves: SCN-GALLERY-008-C
+    // proves: SCN-GALLERY-008-C — Security
     #[tokio::test]
     async fn get_gallery_item_unknown_item_returns_no_such_item() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -344,7 +344,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-008-C
+    // proves: SCN-GALLERY-008-C — Security
     #[tokio::test]
     async fn get_gallery_item_unknown_gallery_returns_no_such_gallery() -> Result<(), Box<dyn Error>>
     {
@@ -390,7 +390,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-008-A
+    // proves: SCN-GALLERY-008-A — Positive
     #[tokio::test]
     async fn get_gallery_item_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>>
     {
@@ -423,7 +423,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-008-A
+    // proves: SCN-GALLERY-008-A — Positive
     #[tokio::test]
     async fn get_gallery_item_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -474,7 +474,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-008-A
+    // proves: SCN-GALLERY-008-A — Positive
     #[tokio::test]
     async fn get_gallery_item_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange

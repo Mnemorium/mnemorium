@@ -445,7 +445,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-UPLOAD-015-B
+    // proves: SCN-UPLOAD-015-B — Recovery
     #[tokio::test]
     async fn reap_uploads_unseals_a_stale_verification() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -661,7 +661,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-UPLOAD-015-E
+    // proves: SCN-UPLOAD-015-E — Recovery
     #[tokio::test]
     #[traced_test]
     async fn reap_uploads_never_logs_a_path_or_a_name() -> Result<(), Box<dyn Error>> {

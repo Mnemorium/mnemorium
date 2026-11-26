@@ -123,7 +123,7 @@ where
                     .await
                     .map_err(|error| InitializeRootAdminError::Unknown(error.into()))?;
                 // The root is a resource like every other account, so a caller
-                // reads it through the decision engine (`REQ-AUTHORIZATION-021`).
+                // reads it through the decision engine (`REQ-USER-023`).
                 unit_of_work
                     .resources()
                     .create(NewResource {

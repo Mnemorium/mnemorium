@@ -115,6 +115,8 @@ Source: `requirements.txt`.
 
 | Name                                                         | Description                                                       | Version | License      |
 | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------- | ------------ |
+| [Jinja2](https://pypi.org/project/Jinja2/)                   | Template engine the coverage report renders with.                 | 3.1.6   | BSD-3-Clause |
+| [Markdown](https://pypi.org/project/Markdown/)               | Renders the specification's Markdown in the coverage report.      | 3.11    | BSD-3-Clause |
 | [mkdocs](https://pypi.org/project/mkdocs/)                   | Static site generator for the documentation site.                 | 1.6.0   | BSD-2-Clause |
 | [mkdocs-material](https://pypi.org/project/mkdocs-material/) | Material Design theme for MkDocs.                                 | 9.7.7   | MIT          |
 | [mkdocs_puml](https://pypi.org/project/mkdocs-puml/)         | Renders PlantUML diagrams from fenced blocks.                     | 2.3.0   | MIT          |

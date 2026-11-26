@@ -1,0 +1,75 @@
+---
+name: Mnemorium Investigation
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    paths:
+      - 'openspec/**'
+      - 'test/system/**'
+      - 'test/api/scenarios.toml'
+      - 'test/util/**'
+      - 'src/**'
+      - 'script/investigation.sh'
+      - 'requirements.txt'
+      - 'docs/development/artifacts/**'
+      - '.github/workflows/investigation.yml'
+  # `merge_group` has no path filter: the queue re-runs the required checks on
+  # every queued pull request, so the job gates itself on the diff instead.
+  merge_group:
+    types:
+      - checks_requested
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{
+    github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect report changes
+        id: scope
+        env:
+          BASE_SHA: >-
+            ${{ github.event.pull_request.base.sha ||
+            github.event.merge_group.base_sha }}
+          HEAD_SHA: >-
+            ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          changed="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}")"
+          pattern='^(openspec/|test/system/|test/api/scenarios\.toml$|test/util/|src/'
+          pattern+='|script/investigation\.sh$|requirements\.txt$'
+          pattern+='|docs/development/artifacts/|\.github/workflows/investigation\.yml$)'
+          if grep -qE "${pattern}" <<<"${changed}"; then
+            echo "run=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "run=false" >> "${GITHUB_OUTPUT}"
+          fi
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        if: steps.scope.outputs.run == 'true'
+        with:
+          python-version: "3.14"
+      - name: Install the report dependencies
+        if: steps.scope.outputs.run == 'true'
+        run: pip install -r requirements.txt
+      - name: Check the coverage report
+        if: steps.scope.outputs.run == 'true'
+        run: script/investigation.sh --check

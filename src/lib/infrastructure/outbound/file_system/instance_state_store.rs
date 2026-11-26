@@ -627,6 +627,7 @@ mod tests {
         Ok(())
     }
 
+    // proves: SCN-STATE-008-D — Security
     #[test]
     fn file_instance_state_store_privacy_predicate_classifies_each_case()
     -> Result<(), Box<dyn Error>> {
@@ -693,6 +694,7 @@ mod tests {
         Ok(())
     }
 
+    // proves: SCN-STATE-008-D — Security
     #[tokio::test]
     async fn file_instance_state_store_unrepairable_mode_is_insecure() -> Result<(), Box<dyn Error>>
     {
@@ -714,9 +716,15 @@ mod tests {
             matches!(result, Err(InstanceStateStoreError::Insecure)),
             "a mode the server cannot repair must fail startup, got: {result:?}"
         );
+        assert_eq!(
+            fs::read_to_string(&path)?,
+            "x",
+            "a state that cannot be made private must be left unchanged"
+        );
         Ok(())
     }
 
+    // proves: SCN-STATE-007-F — Error handling
     #[tokio::test]
     async fn file_instance_state_store_failed_rename_leaves_the_previous_state()
     -> Result<(), Box<dyn Error>> {

@@ -32,9 +32,10 @@ exist SHALL be indistinguishable from one the caller may not discover.
 
 ### Requirement: REQ-AUTHORIZATION-002 — The resource tree defines authorization parents
 
-The **authorization parent** SHALL be the single canonical permission-inheritance edge. The resource tree SHALL be the
-one drawn by the PlantUML diagram in `docs/Permissions.md` § Resource tree; that diagram is the canonical picture, and
-this requirement states the rule rather than a second copy of the edges.
+The **authorization parent** SHALL be the single canonical permission-inheritance edge. Each capability SHALL declare
+the authorization parent of the resources it defines. The resource tree SHALL be the one drawn by the PlantUML diagram
+in `docs/Permissions.md` § Resource tree; that diagram is the canonical picture, and this requirement states the rule
+rather than a second copy of the edges.
 
 #### Scenario: SCN-AUTHORIZATION-002-A — A season follows its series
 
@@ -196,15 +197,6 @@ grantable and SHALL NOT belong to the `Manager` bundle.
 - **WHEN** a caller holding `ManagePermissions` submits a `Manager` grant
 - **THEN** the system stores it
 
-### Requirement: REQ-AUTHORIZATION-010 — Administration actions are root-only
-
-`ChangeRole` SHALL change a user's role and SHALL be available only to the root.
-
-#### Scenario: SCN-AUTHORIZATION-010-A — Only the root changes a role
-
-- **WHEN** a non-root caller submits `ChangeRole`
-- **THEN** the system answers `403 Forbidden` and applies nothing
-
 ### Requirement: REQ-AUTHORIZATION-011 — Resource roles are bundles
 
 A **resource role** SHALL bundle actions: `Viewer` = `Discover`, `ViewMetadata`, `View`, `Stream`; `Downloader` =
@@ -230,7 +222,8 @@ A **resource role** SHALL bundle actions: `Viewer` = `Discover`, `ViewMetadata`,
 
 The **owner** SHALL be the nearest non-null `owner_id` on the addressed resource or its authorization-parent chain. The
 owning principal SHALL hold the implicit `Owner` role for that resource. `Owner` SHALL NOT be stored as a grant to a
-user, and catalogue resources SHALL have no owner.
+user. A resource with no owner on its chain SHALL be shared, and the capability that defines it SHALL state that it has
+no owner.
 
 #### Scenario: SCN-AUTHORIZATION-012-B — Catalogue resources have no owner
 
@@ -341,104 +334,11 @@ grant. The root's own account SHALL remain immutable as a state rule outside the
 - **WHEN** a resource carries a `Deny` naming the root
 - **THEN** the deny cannot be stored and the root's decision allows
 
-### Requirement: REQ-AUTHORIZATION-018 — Upload access is owner-only
-
-An upload resource SHALL be read, written, completed and cancelled only by its owner. A non-owner SHALL receive
-`404 Not Found`, no grant SHALL widen upload access, and the root SHALL not be exempt.
-
-#### Scenario: SCN-AUTHORIZATION-018-A — A non-owner is concealed
-
-- **WHEN** an authenticated caller addresses another user's upload
-- **THEN** the system answers `404 Not Found` and applies nothing
-
-#### Scenario: SCN-AUTHORIZATION-018-B — The root is not exempt
-
-- **WHEN** the root addresses an upload it does not own
-- **THEN** the system answers `404 Not Found`
-
-### Requirement: REQ-AUTHORIZATION-019 — Account administration is root and admin
-
-Only the root SHALL create an Admin account. An Admin SHALL create, update, delete and read Standard accounts. A
-non-root caller SHALL NOT update, delete or change the role of an Admin account, and no caller SHALL modify or delete
-the root account.
-
-#### Scenario: SCN-AUTHORIZATION-019-A — An admin creates a standard account
-
-- **WHEN** an Admin creates a Standard account
-- **THEN** the account is created
-
-#### Scenario: SCN-AUTHORIZATION-019-B — An admin cannot create an admin
-
-- **WHEN** an Admin creates an Admin account
-- **THEN** the system answers `403 Forbidden` and creates nothing
-
-#### Scenario: SCN-AUTHORIZATION-019-C — An admin cannot touch an admin
-
-- **WHEN** an Admin updates, deletes or changes the role of another Admin
-- **THEN** the system answers `403 Forbidden` and applies nothing
-
-#### Scenario: SCN-AUTHORIZATION-019-D — The root manages admins
-
-- **WHEN** the root updates, deletes or changes the role of an Admin account
-- **THEN** the operation applies
-
-#### Scenario: SCN-AUTHORIZATION-019-E — The root account is untouchable
-
-- **WHEN** any caller updates or deletes the root account
-- **THEN** the system answers `403 Forbidden` and applies nothing
-
-### Requirement: REQ-AUTHORIZATION-020 — Admin permissions are bounded
-
-An Admin SHALL read and replace the grants of a non-root user it administers.
-
-#### Scenario: SCN-AUTHORIZATION-020-A — An admin edits a standard user's grants
-
-- **WHEN** an Admin replaces a Standard user's grants
-- **THEN** the replacement applies
-
-### Requirement: REQ-AUTHORIZATION-021 — A caller reads its own account
-
-A caller SHALL read its own `User` resource regardless of its grants, including when no grant covers it. Reading another
-account SHALL follow the ordinary decision.
-
-#### Scenario: SCN-AUTHORIZATION-021-A — The own account is readable
-
-- **WHEN** a Standard User with no grant reads its own account
-- **THEN** the system returns `200 OK`
-
-#### Scenario: SCN-AUTHORIZATION-021-B — Another account follows the grants
-
-- **WHEN** a Standard User with no grant reads another account
-- **THEN** the system returns `403 Forbidden`
-
-### Requirement: REQ-AUTHORIZATION-022 — Catalogue resources are unowned and shared
-
-A film, show, album, medium, recording or music group SHALL live under the catalogue container and SHALL have no owner.
-Its reads SHALL follow `View` and `Stream`; its writes SHALL follow `EditMetadata`, `ReplaceMedia`, `CreateChild` and
-`Delete` granted on the resource or an ancestor. A Standard User SHALL NOT edit or privatise an unowned catalogue
-resource by default.
-
-#### Scenario: SCN-AUTHORIZATION-022-A — A standard user reads the catalogue
-
-- **WHEN** a Standard User with the seeded role reads a film, a show, a music group or an album
-- **THEN** the read allows
-
-#### Scenario: SCN-AUTHORIZATION-022-B — A standard user cannot write the catalogue
-
-- **WHEN** a Standard User with the seeded role renames a film, a music group or an album
-- **THEN** the system answers `403 Forbidden` and applies nothing
-
-#### Scenario: SCN-AUTHORIZATION-022-C — An admin curates the catalogue
-
-- **WHEN** an Admin with the seeded role edits an album
-- **THEN** the write applies
-
 ### Requirement: REQ-AUTHORIZATION-023 — Creation names the child kind and the parent
 
 `CreateChild` SHALL be decided against the target's authorization parent or a **creation surface** that names it, and
-SHALL name a `ChildKind`. A surface SHALL NOT become the child's authorization parent. The seeded grants SHALL let a
-Standard User create a gallery, a playlist and an upload, an Admin every catalogue kind, a gallery, a playlist and a
-Standard account, and only the root an Admin account.
+SHALL name a `ChildKind`. A surface SHALL NOT become the child's authorization parent. The capability that decides
+`CreateChild` for a surface SHALL state which roles its default seed admits.
 
 #### Scenario: SCN-AUTHORIZATION-023-A — A standard user creates a gallery
 
@@ -464,27 +364,6 @@ Standard account, and only the root an Admin account.
 
 - **WHEN** a Standard User creates a music group or a music album under the catalogue
 - **THEN** the system answers `403 Forbidden` and creates nothing
-
-### Requirement: REQ-AUTHORIZATION-024 — Content operations follow the generic actions
-
-A film, show, season, episode, album, medium, recording or music group SHALL be read through `View` and `Stream`, and
-written through `EditMetadata`, `ReplaceMedia`, `CreateChild` and `Delete`. A child SHALL inherit the grants of its
-authorization parent.
-
-#### Scenario: SCN-AUTHORIZATION-024-B — An album's metadata is edited
-
-- **WHEN** a caller holds `EditMetadata` on an album
-- **THEN** the metadata write applies
-
-#### Scenario: SCN-AUTHORIZATION-024-C — A season inherits its series
-
-- **WHEN** a caller holds `EditMetadata` on a series
-- **THEN** a season of that series is editable
-
-#### Scenario: SCN-AUTHORIZATION-024-D — A recording inherits its medium
-
-- **WHEN** a caller holds `Stream` on an album
-- **THEN** a recording on one of its media is streamable
 
 ### Requirement: REQ-AUTHORIZATION-025 — Assets are resources with an authorization parent
 
@@ -512,42 +391,12 @@ no authorization parent SHALL be readable only by its file owner and the root.
 - **WHEN** a caller holds `View` on a playlist
 - **THEN** its cover image is readable
 
-### Requirement: REQ-AUTHORIZATION-026 — Referencing content needs the container and the target
-
-Creating a gallery item SHALL need `CreateChild` on the gallery and `View` on the referenced image or video. Adding a
-playlist entry SHALL need `CreateChild` on the playlist and `ViewMetadata` on the recording. Naming a cover in a
-creation or a metadata update SHALL need the action that admits that write and `View` on the image it names. Every pair
-SHALL be all-of, and the request SHALL apply nothing when one refuses.
-
-A cover the caller may not view SHALL be refused as a conflict (`409`), indistinguishable from a cover that names no
-image, so the refusal does not disclose whether the image exists (`REQ-API-013`).
-
-#### Scenario: SCN-AUTHORIZATION-026-A — A gallery item needs both
-
-- **WHEN** a caller may create a gallery item but may not view the referenced image
-- **THEN** the system answers `403 Forbidden` and adds nothing
-
-#### Scenario: SCN-AUTHORIZATION-026-B — A playlist entry needs both
-
-- **WHEN** a caller may add to a playlist but may not read the recording's metadata
-- **THEN** the system answers `403 Forbidden` and adds nothing
-
-#### Scenario: SCN-AUTHORIZATION-026-C — Both allow
-
-- **WHEN** a caller holds both actions
-- **THEN** the child is created
-
-#### Scenario: SCN-AUTHORIZATION-026-D — A cover needs both
-
-- **WHEN** a caller may write a resource's metadata but may not view the image its cover names
-- **THEN** the system answers `409 Conflict` and applies nothing
-
 ### Requirement: REQ-AUTHORIZATION-029 — Every decision returns an explanation
 
 `authorize()` SHALL return a decision with whether it allowed, the reason (root, owner, visibility, grant, relation,
-deny or default), the matching grants, the denying grant when one exists, the authorization path and the resource's
-visibility. The explanation SHALL be available to the permission API and the logs, and SHALL NOT expose grant internals
-to an ordinary caller.
+deny, upload, own_account or default), the matching grants, the denying grant when one exists, the authorization path
+and the resource's visibility. The explanation SHALL be available to the permission API and the logs, and SHALL NOT
+expose grant internals to an ordinary caller.
 
 #### Scenario: SCN-AUTHORIZATION-029-A — An allow names its reason
 

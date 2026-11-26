@@ -36,7 +36,7 @@ nav:
       - Glossary: development/Glossary.md
       - Use Cases: development/UseCases.md
       - Artifacts:
-          - Requirements Traceability Coverage: development/artifacts/RequirementsTraceabilityCoverage.md
+          - Requirements Traceability Coverage: development/artifacts/RequirementsTraceabilityCoverage.html
 
 extra_css:
   - stylesheets/sidebar-toggle.css

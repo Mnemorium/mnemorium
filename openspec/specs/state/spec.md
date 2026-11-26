@@ -185,3 +185,8 @@ account, or that cannot be made private, SHALL fail startup and SHALL be left un
 
 - **WHEN** the state belongs to another account or cannot be set to `0600`
 - **THEN** startup fails and the file is left unchanged
+
+#### Scenario: SCN-STATE-008-E — A state path that is not a regular file is refused
+
+- **WHEN** the persisted state path is not a regular file
+- **THEN** startup fails and the path is left unchanged

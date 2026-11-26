@@ -2,8 +2,9 @@
 
 This guide explains how Mnemorium decides whether a caller may perform an action. It describes the
 **resource-and-grant** engine: every authorizable thing is a resource, every share is a grant, and every denial has a
-reason. The normative contract is the `authorization` capability (`openspec/specs/authorization/spec.md`); this guide is
-the human explanation and carries the canonical tree diagram.
+reason. Each capability owns the binding between its operations and the actions they require; the `authorization`
+capability owns the engine and the meaning of holding an action, and is the normative contract
+(`openspec/specs/authorization/spec.md`). This guide is the human explanation and carries the canonical tree diagram.
 
 The old scope model (`ALL`, `PUBLIC_OR_OWNED`, `OWNED`, `LISTED`, `NONE`) is gone. There is no per-action scope and no
 per-user permission override: a grant names a **principal**, a **resource** and a **resource role**.

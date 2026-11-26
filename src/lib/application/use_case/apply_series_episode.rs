@@ -271,7 +271,8 @@ mod tests {
         }
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-A, SCN-METADATA-ENRICHMENT-027-A, SCN-METADATA-ENRICHMENT-027-D
+    // proves: SCN-METADATA-ENRICHMENT-024-A, SCN-METADATA-ENRICHMENT-027-D — Business rule
+    // proves: SCN-METADATA-ENRICHMENT-027-A — Positive
     #[tokio::test]
     async fn apply_series_episode_writes_the_reported_metadata() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -425,7 +426,166 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-027-C
+    // proves: SCN-METADATA-ENRICHMENT-027-B — Business rule
+    #[tokio::test]
+    async fn apply_series_episode_without_an_air_date_stores_none() -> Result<(), Box<dyn Error>> {
+        // Arrange: the provider reports an episode with no air date.
+        let mut users = MockUserRepository::new();
+        (move |users: &mut MockUserRepository,
+               caller_id: NumericID|
+              -> Result<(), Box<dyn Error>> {
+            let caller =
+                User::try_new(caller_id, "admin".to_owned(), None, caller_id, Role::Admin)?;
+            users
+                .expect_search()
+                .times(1)
+                .withf(move |filter| filter.id == Some(caller_id))
+                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            Ok(())
+        })(&mut users, 1)?;
+        let mut series = MockSeriesRepository::new();
+        (move |series: &mut MockSeriesRepository, stored: Series| {
+            series.expect_search().times(1).return_once(move |_| {
+                let found = stored.clone();
+                Box::pin(async move { Ok(vec![found]) })
+            });
+        })(
+            &mut series,
+            sample_series(7, vec![sample_season(1, vec![sample_episode(1, 20)?])])?,
+        );
+        series
+            .expect_save_episode()
+            .times(1)
+            .returning(|_, _, episode| Box::pin(async move { Ok(Some(episode)) }));
+        let mut provider = MockVideoMetadataProvider::new();
+        provider
+            .expect_lookup()
+            .times(1)
+            .withf(|target| {
+                matches!(
+                    target,
+                    Target::Episode {
+                        season: 1,
+                        episode: 1,
+                        ..
+                    }
+                )
+            })
+            .return_once(|_| {
+                Box::pin(async {
+                    Ok(Some(MediaMetadata::Episode {
+                        air_date: None,
+                        artwork: None,
+                        episode: 1,
+                        plot: "A new plot".to_owned(),
+                        season: 1,
+                        title: "A new name".to_owned(),
+                    }))
+                })
+            });
+        let harness = harness_with(
+            users,
+            (move || -> crate::domain::port::MockResourceRepository {
+                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
+                    let mut resources = crate::domain::port::MockResourceRepository::new();
+                    resources.expect_search().returning(|filter, caller| {
+                        let user_id = caller.id();
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            filter
+                                .kind
+                                .unwrap_or(crate::domain::model::ResourceKind::Library),
+                            filter.entity_id.unwrap_or_default(),
+                            Some(user_id),
+                            None,
+                            crate::domain::model::Visibility::Private,
+                        );
+                        let grant = crate::domain::model::Grant::from_stored(
+                            1,
+                            crate::domain::model::Principal::User(user_id),
+                            1,
+                            crate::domain::model::ResourceRole::Downloader,
+                            crate::domain::model::ChildKind::All,
+                            crate::domain::model::GrantEffect::Allow,
+                        );
+                        Box::pin(async move {
+                            Ok(vec![crate::domain::model::ResourceAccess::new(
+                                resource,
+                                Vec::new(),
+                                vec![grant],
+                                Vec::new(),
+                            )])
+                        })
+                    });
+                    resources
+                        .expect_search_many()
+                        .returning(|addresses, caller| {
+                            let user_id = caller.id();
+                            let found = addresses
+                                .iter()
+                                .map(|address| {
+                                    let resource = crate::domain::model::Resource::from_stored(
+                                        1,
+                                        address.kind(),
+                                        address.id(),
+                                        Some(user_id),
+                                        None,
+                                        crate::domain::model::Visibility::Private,
+                                    );
+                                    let grant = crate::domain::model::Grant::from_stored(
+                                        1,
+                                        crate::domain::model::Principal::User(user_id),
+                                        1,
+                                        crate::domain::model::ResourceRole::Downloader,
+                                        crate::domain::model::ChildKind::All,
+                                        crate::domain::model::GrantEffect::Allow,
+                                    );
+                                    crate::domain::model::ResourceAccess::new(
+                                        resource,
+                                        Vec::new(),
+                                        vec![grant],
+                                        Vec::new(),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            Box::pin(async move { Ok(found) })
+                        });
+                    resources.expect_create().returning(|new_resource| {
+                        let resource = crate::domain::model::Resource::from_stored(
+                            1,
+                            new_resource.kind,
+                            new_resource.entity_id,
+                            new_resource.owner_id,
+                            None,
+                            new_resource.visibility,
+                        );
+                        Box::pin(async move { Ok(resource) })
+                    });
+                    resources
+                })();
+                resources
+                    .expect_delete()
+                    .returning(|_| Box::pin(async { Ok(true) }));
+                resources
+            })(),
+            series,
+        );
+
+        // Act
+        let response = use_case(&harness, Some(provider))
+            .execute(command())
+            .await?;
+
+        // Assert
+        assert_eq!(
+            response.episode().air_date(),
+            None,
+            "an air date the provider does not report must be stored as none"
+        );
+        Ok(())
+    }
+
+    // proves: SCN-METADATA-ENRICHMENT-027-C — Error handling
     #[tokio::test]
     async fn apply_series_episode_rejects_another_position() -> Result<(), Box<dyn Error>> {
         // Arrange: the provider reports episode 2 while the command addresses 1.
@@ -556,7 +716,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-D
+    // proves: SCN-METADATA-ENRICHMENT-024-D — Negative
     #[tokio::test]
     async fn apply_series_episode_reports_an_unknown_reference() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -687,7 +847,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-C
+    // proves: SCN-METADATA-ENRICHMENT-024-C — Error handling
     #[tokio::test]
     async fn apply_series_episode_rejects_another_kind() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -826,7 +986,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-024-E
+    // proves: SCN-METADATA-ENRICHMENT-024-E — Error handling
     #[tokio::test]
     async fn apply_series_episode_reports_an_unconfigured_provider() -> Result<(), Box<dyn Error>> {
         // Arrange

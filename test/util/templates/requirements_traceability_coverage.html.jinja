@@ -1,0 +1,1629 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Requirements traceability coverage</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f8fa;
+        --surface: #ffffff;
+        --surface-strong: #ffffff;
+        --text: #1f2328;
+        --muted: #59636e;
+        --border: #d0d7de;
+        --track: #e7ebef;
+        --accent: #1565c0;
+        --accent-soft: #e8f0fe;
+        --green: #2e7d32;
+        --yellow: #f9a825;
+        --orange: #ef6c00;
+        --red: #c62828;
+        --blue: #1565c0;
+        --purple: #6a1b9a;
+        --teal: #00838f;
+        --tint-green: #e8f5e9;
+        --tint-yellow: #fff8e1;
+        --tint-orange: #fff3e0;
+        --tint-red: #ffebee;
+        --tint-blue: #e3f2fd;
+        --tint-teal: #e0f2f1;
+        --shadow: 0 1px 2px rgb(31 35 40 / 8%);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d1117;
+          --surface: #161b22;
+          --surface-strong: #1c2129;
+          --text: #e6edf3;
+          --muted: #9198a1;
+          --border: #30363d;
+          --track: #21262d;
+          --accent: #6cb6ff;
+          --accent-soft: #172a43;
+          --tint-green: #12261a;
+          --tint-yellow: #2a2312;
+          --tint-orange: #2b1c0e;
+          --tint-red: #2c1517;
+          --tint-blue: #12233a;
+          --tint-teal: #102a2b;
+          --shadow: none;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0 auto;
+        max-width: 1400px;
+        padding: 2rem 1.25rem 4rem;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          "Helvetica Neue",
+          Arial,
+          sans-serif;
+        line-height: 1.55;
+      }
+
+      h1,
+      h2,
+      h3 {
+        line-height: 1.2;
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(1.8rem, 4vw, 2.6rem);
+        letter-spacing: -0.02em;
+      }
+
+      h2 {
+        font-size: 1.25rem;
+      }
+
+      h3 {
+        font-size: 1rem;
+      }
+
+      a {
+        color: var(--accent);
+      }
+
+      code {
+        background: var(--track);
+        border-radius: 4px;
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 0.9em;
+        padding: 0.1em 0.3em;
+      }
+
+      .page-header {
+        margin-bottom: 2rem;
+      }
+
+      .eyebrow {
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        margin: 0 0 0.5rem;
+        text-transform: uppercase;
+      }
+
+      .lede {
+        color: var(--muted);
+        margin: 0.75rem 0 0;
+        max-width: 90ch;
+      }
+
+      .kpis {
+        display: grid;
+        gap: 0.75rem;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        margin-bottom: 2rem;
+      }
+
+      .kpi {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        padding: 1rem;
+      }
+
+      .kpi-label {
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .kpi-value {
+        font-size: 1.8rem;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.1;
+      }
+
+      .kpi-detail {
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .charts {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        margin-bottom: 2rem;
+      }
+
+      .chart {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        margin: 0;
+        padding: 1rem;
+      }
+
+      .chart.wide {
+        grid-column: 1 / -1;
+      }
+
+      .chart figcaption p {
+        color: var(--muted);
+        font-size: 0.86rem;
+        margin: 0.35rem 0 0.75rem;
+      }
+
+      .donut {
+        display: block;
+        height: auto;
+        margin: 0.5rem auto;
+        max-width: 180px;
+        width: 100%;
+      }
+
+      .donut-total {
+        fill: currentColor;
+        font-size: 2rem;
+        font-weight: 700;
+      }
+
+      .legend {
+        display: grid;
+        gap: 0.25rem;
+        font-size: 0.86rem;
+        list-style: none;
+        margin: 0.5rem 0 0;
+        padding: 0;
+      }
+
+      .legend li {
+        align-items: center;
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      .legend.inline {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem 1rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .legend.inline li {
+        gap: 0.3rem;
+      }
+
+      .legend strong {
+        font-variant-numeric: tabular-nums;
+        margin-left: auto;
+      }
+
+      .swatch {
+        border-radius: 3px;
+        flex: none;
+        height: 0.85rem;
+        width: 0.85rem;
+      }
+
+      .split-bar {
+        background: var(--track);
+        border-radius: 999px;
+        display: flex;
+        height: 1.25rem;
+        overflow: hidden;
+      }
+
+      .split-bar span {
+        display: block;
+        height: 100%;
+      }
+
+      .bar-row {
+        align-items: center;
+        display: grid;
+        gap: 0.6rem;
+        grid-template-columns: 14rem minmax(8rem, 1fr) 7.5rem;
+        margin: 0.3rem 0;
+      }
+
+      .bar-label {
+        font-size: 0.86rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .bar-track {
+        background: var(--track);
+        border-radius: 999px;
+        display: flex;
+        height: 0.8rem;
+        overflow: hidden;
+      }
+
+      .bar-track.small {
+        height: 0.55rem;
+      }
+
+      .bar-seg {
+        display: block;
+        height: 100%;
+      }
+
+      .bar-seg.tested {
+        background: var(--green);
+      }
+
+      .bar-seg.skip {
+        background: var(--yellow);
+      }
+
+      .bar-seg.untested {
+        background: var(--red);
+        opacity: 0.35;
+      }
+
+      .bar-seg.none,
+      .split-bar .none {
+        opacity: 0.4;
+      }
+
+      .bar-seg.types {
+        background: var(--blue);
+      }
+
+      .bar-value {
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      details.data {
+        border-top: 1px solid var(--border);
+        font-size: 0.82rem;
+        margin-top: 0.75rem;
+        padding-top: 0.5rem;
+      }
+
+      details.data summary,
+      details.requirement > summary {
+        cursor: pointer;
+      }
+
+      .warnings {
+        background: var(--tint-yellow);
+        border: 1px solid var(--yellow);
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        padding: 1rem 1.25rem;
+      }
+
+      .warnings h3 {
+        margin-top: 0.75rem;
+      }
+
+      .warnings ul {
+        margin: 0.4rem 0 0;
+        padding-left: 1.25rem;
+      }
+
+      .warnings li p {
+        margin: 0.2rem 0;
+      }
+
+      .controls {
+        align-items: end;
+        background: var(--bg);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin: 0 0 1rem;
+        padding: 0.75rem 0;
+        position: sticky;
+        top: 0;
+        z-index: 3;
+      }
+
+      .controls label {
+        display: flex;
+        flex-direction: column;
+        font-size: 0.72rem;
+        font-weight: 600;
+        gap: 0.2rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .controls input,
+      .controls select,
+      .controls button {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        font: inherit;
+        font-size: 0.88rem;
+        padding: 0.4rem 0.55rem;
+      }
+
+      .controls input {
+        min-width: 16rem;
+        text-transform: none;
+      }
+
+      .controls button {
+        cursor: pointer;
+        font-weight: 600;
+        text-transform: none;
+      }
+
+      .controls button:hover {
+        border-color: var(--accent);
+      }
+
+      #count {
+        color: var(--muted);
+        font-size: 0.84rem;
+        margin: 0 0 0 auto;
+      }
+
+      .capability-index {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .capability-index a {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        font-size: 0.78rem;
+        padding: 0.25rem 0.65rem;
+        text-decoration: none;
+      }
+
+      .capability-index a span {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .capability {
+        margin-bottom: 2.5rem;
+      }
+
+      details.requirement,
+      tr.scenario,
+      section.capability {
+        scroll-margin-top: 11rem;
+      }
+
+      .capability-header {
+        border-bottom: 2px solid var(--border);
+        margin-bottom: 0.9rem;
+        padding-bottom: 0.6rem;
+      }
+
+      .capability-header p {
+        color: var(--muted);
+        font-size: 0.88rem;
+        margin: 0.35rem 0 0;
+      }
+
+      details.requirement {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        margin-bottom: 0.75rem;
+      }
+
+      details.requirement > summary {
+        align-items: center;
+        display: grid;
+        gap: 0.5rem 0.75rem;
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+        list-style: none;
+        padding: 0.75rem 1rem 0.75rem 2.2rem;
+        position: relative;
+      }
+
+      details.requirement > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      details.requirement > summary::before {
+        color: var(--muted);
+        content: "▸";
+        left: 0.8rem;
+        position: absolute;
+        top: 0.7rem;
+      }
+
+      details.requirement[open] > summary::before {
+        content: "▾";
+      }
+
+      .req-id {
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 0.82rem;
+        white-space: nowrap;
+      }
+
+      .req-title {
+        font-weight: 600;
+      }
+
+      .req-count {
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      .badge {
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        padding: 0.15rem 0.55rem;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .status-tested {
+        background: var(--tint-green);
+        color: var(--green);
+      }
+
+      .status-partial {
+        background: var(--tint-orange);
+        color: var(--orange);
+      }
+
+      .status-not-tested {
+        background: var(--tint-red);
+        color: var(--red);
+      }
+
+      .requirement-body {
+        border-top: 1px solid var(--border);
+        padding: 0.9rem 1rem 1.1rem;
+      }
+
+      .description > :first-child {
+        margin-top: 0;
+      }
+
+      .description > :last-child {
+        margin-bottom: 0;
+      }
+
+      .description {
+        max-width: 100ch;
+      }
+
+      .source {
+        margin: 0.9rem 0;
+        max-width: 48rem;
+      }
+
+      .source-head {
+        align-items: baseline;
+        display: flex;
+        font-size: 0.8rem;
+        gap: 0.5rem;
+        justify-content: space-between;
+      }
+
+      .source-head span {
+        color: var(--muted);
+      }
+
+      .source-head strong {
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+      }
+
+      .source-track {
+        height: 0.8rem;
+        margin: 0.35rem 0 0.4rem;
+      }
+
+      .source-legend {
+        color: var(--muted);
+        display: flex;
+        flex-wrap: wrap;
+        font-size: 0.76rem;
+        gap: 0.35rem 0.9rem;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .source-legend li {
+        align-items: center;
+        display: flex;
+        gap: 0.3rem;
+      }
+
+      .source-legend strong {
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .type-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        list-style: none;
+        margin: 0.6rem 0 0.9rem;
+        padding: 0;
+      }
+
+      .chip {
+        align-items: baseline;
+        background: var(--surface-strong);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        display: flex;
+        font-size: 0.75rem;
+        gap: 0.35rem;
+        padding: 0.15rem 0.55rem;
+      }
+
+      .chip span {
+        color: var(--muted);
+      }
+
+      .chip strong {
+        font-variant-numeric: tabular-nums;
+      }
+
+      .chip.na {
+        border-style: dashed;
+      }
+
+      .chip.na strong {
+        color: var(--muted);
+      }
+
+      .chip.unspecified {
+        border-color: var(--yellow);
+      }
+
+      .table-scroll {
+        overflow-x: auto;
+      }
+
+      table {
+        border-collapse: collapse;
+        font-size: 0.82rem;
+        width: 100%;
+      }
+
+      th,
+      td {
+        border-top: 1px solid var(--border);
+        padding: 0.45rem 0.55rem;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 0.72rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .scenarios {
+        min-width: 48rem;
+        table-layout: fixed;
+      }
+
+      .scenarios > thead > tr > th:nth-child(1) {
+        width: 18rem;
+      }
+
+      .scenarios > thead > tr > th:nth-child(3) {
+        width: 8rem;
+      }
+
+      .scenarios > thead > tr > th:nth-child(4) {
+        width: 8rem;
+      }
+
+      .annotation-cell {
+        border-top: 0;
+        padding-bottom: 0.7rem;
+        padding-top: 0;
+      }
+
+      .scenarios > thead > tr > th:first-child,
+      .scenarios > tbody > tr > td.scenario-id {
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        white-space: nowrap;
+      }
+
+      .scenario-title {
+        font-weight: 600;
+      }
+
+      .steps {
+        color: var(--muted);
+        margin-top: 0.2rem;
+        overflow-x: auto;
+      }
+
+      .steps ul {
+        margin: 0.2rem 0 0;
+        padding-left: 1.1rem;
+      }
+
+      .steps p {
+        margin: 0.25rem 0;
+      }
+
+      .steps table {
+        font-size: 0.78rem;
+        margin-top: 0.4rem;
+        min-width: 36rem;
+      }
+
+      .tag {
+        background: var(--track);
+        border-radius: 5px;
+        display: inline-block;
+        font-size: 0.72rem;
+        margin: 0.1rem 0.15rem 0.1rem 0;
+        padding: 0.08rem 0.4rem;
+        white-space: nowrap;
+      }
+
+      .tag.evidence {
+        background: var(--tint-blue);
+        color: var(--blue);
+      }
+
+      .tag.none {
+        background: var(--tint-red);
+        color: var(--red);
+      }
+
+      .tag.unspecified,
+      .tag.skip {
+        background: var(--tint-yellow);
+        color: #8a5a00;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .tag.unspecified,
+        .tag.skip {
+          color: var(--yellow);
+        }
+      }
+
+      .annotation {
+        border-left: 3px solid var(--border);
+        font-size: 0.8rem;
+        margin: 0.15rem 0;
+        padding: 0.15rem 0.5rem;
+      }
+
+      .annotation p {
+        margin: 0.15rem 0;
+      }
+
+      .annotation.cause {
+        background: var(--tint-red);
+        border-color: var(--red);
+      }
+
+      .annotation.note {
+        background: var(--tint-blue);
+        border-color: var(--blue);
+      }
+
+      .annotation.not-black-box {
+        background: var(--tint-teal);
+        border-color: var(--teal);
+      }
+
+      .annotation-label {
+        color: var(--muted);
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        margin-right: 0.4rem;
+        text-transform: uppercase;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      footer {
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 0.86rem;
+        margin-top: 3rem;
+        padding-top: 1rem;
+      }
+
+      footer dl {
+        display: grid;
+        gap: 0.35rem 1rem;
+        grid-template-columns: max-content 1fr;
+      }
+
+      footer dt {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      footer dd {
+        margin: 0;
+      }
+
+      .top {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        bottom: 1rem;
+        box-shadow: var(--shadow);
+        font-size: 0.8rem;
+        padding: 0.4rem 0.8rem;
+        position: fixed;
+        right: 1rem;
+        text-decoration: none;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      @media (max-width: 900px) {
+        .table-scroll {
+          overflow-x: visible;
+        }
+
+        .scenarios {
+          min-width: 0;
+          table-layout: auto;
+        }
+
+        .scenarios > thead {
+          display: none;
+        }
+
+        .scenarios > tbody > tr {
+          border-top: 1px solid var(--border);
+          display: block;
+          padding: 0.5rem 0;
+        }
+
+        .scenarios > tbody > tr.annotation-row {
+          border-top: 0;
+          padding-top: 0;
+        }
+
+        .scenarios > tbody > tr > td {
+          border: 0;
+          display: block;
+          padding: 0.1rem 0;
+        }
+
+        .scenarios > tbody > tr > td::before {
+          color: var(--muted);
+          content: attr(data-label);
+          display: inline-block;
+          font-size: 0.68rem;
+          font-weight: 700;
+          letter-spacing: 0.05em;
+          margin-right: 0.5rem;
+          text-transform: uppercase;
+        }
+
+        .scenarios > tbody > tr > td.scenario-title-cell::before,
+        .scenarios > tbody > tr > td.annotation-cell::before {
+          display: none;
+        }
+
+      }
+
+      @media (max-width: 760px) {
+        body {
+          padding: 1rem 0.75rem 4rem;
+        }
+
+        details.requirement > summary {
+          grid-template-columns: auto minmax(0, 1fr);
+        }
+
+        .badge,
+        .req-count {
+          grid-column: 2;
+        }
+
+        .controls input {
+          min-width: 100%;
+        }
+
+        #count {
+          margin-left: 0;
+        }
+
+        .bar-row {
+          grid-template-columns: 8.5rem minmax(4rem, 1fr) 6rem;
+        }
+
+        details.requirement,
+        tr.scenario,
+        section.capability {
+          scroll-margin-top: 14rem;
+        }
+      }
+
+      @media print {
+        body {
+          max-width: none;
+          padding: 0;
+        }
+
+        .controls,
+        .capability-index,
+        .top {
+          display: none !important;
+        }
+
+        details.requirement,
+        .chart {
+          break-inside: avoid;
+          box-shadow: none;
+        }
+
+        .requirement-body {
+          display: block !important;
+        }
+
+        a {
+          color: inherit;
+          text-decoration: none;
+        }
+      }
+    </style>
+  </head>
+  <body id="top">
+    <header class="page-header">
+      <p class="eyebrow">Mnemorium · development artifact</p>
+      <h1>Requirements traceability coverage</h1>
+      <p class="lede">A summary of requirement and scenario coverage across the specification tree.</p>
+    </header>
+
+    <section class="kpis" aria-label="Coverage at a glance">
+      {% for kpi in report.kpis %}
+      <article class="kpi">
+        <span class="kpi-label">{{ kpi.label }}</span>
+        <strong class="kpi-value">{{ kpi.value }}</strong>
+        <span class="kpi-detail">{{ kpi.detail }}</span>
+      </article>
+      {% endfor %}
+    </section>
+
+    <section class="charts" aria-label="Coverage charts">
+      <figure class="chart">
+        <figcaption>
+          <h2>{{ report.scenario_pie.title }}</h2>
+          <p>{{ report.scenario_pie.description }}</p>
+        </figcaption>
+        {{ report.scenario_pie.svg }}
+        <ul class="legend">
+          {% for segment in report.scenario_pie.segments %}
+          <li>
+            <span class="swatch" style="background: {{ segment.color }}"></span>
+            {{ segment.label }} <strong>{{ segment.value }}</strong>
+            <span class="muted">{{ segment.percent }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        <details class="data">
+          <summary>Data</summary>
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Scenarios</th>
+                <th>Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for segment in report.scenario_pie.segments %}
+              <tr>
+                <td>{{ segment.label }}</td>
+                <td>{{ segment.value }}</td>
+                <td>{{ segment.percent }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+      </figure>
+
+      <figure class="chart">
+        <figcaption>
+          <h2>Proof source</h2>
+          <p>
+            Every scenario counted once by its strongest evidence: a system case, then an API-suite entry, then a Rust
+            proof, then a Cause (Skipped). A scenario with none is Uncovered.
+          </p>
+        </figcaption>
+        <div class="split-bar" role="img" aria-label="System, API, Rust, skipped and uncovered scenarios">
+          {% for segment in report.source_split %}
+          <span
+            class="{{ segment.key }}"
+            style="width: {{ segment.width|round(2) }}%; background: {{ segment.color }}"
+            title="{{ segment.label }}: {{ segment.value }}"
+          ></span>
+          {% endfor %}
+        </div>
+        <ul class="legend">
+          {% for segment in report.source_split %}
+          <li>
+            <span class="swatch" style="background: {{ segment.color }}"></span>
+            {{ segment.label }} <strong>{{ segment.value }}</strong>
+            <span class="muted">{{ segment.percent }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        <details class="data">
+          <summary>Data</summary>
+          <table>
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Scenarios</th>
+                <th>Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for segment in report.source_split %}
+              <tr>
+                <td>{{ segment.label }}</td>
+                <td>{{ segment.value }}</td>
+                <td>{{ segment.percent }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+      </figure>
+
+      <figure class="chart">
+        <figcaption>
+          <h2>{{ report.requirement_pie.title }}</h2>
+          <p>{{ report.requirement_pie.description }}</p>
+        </figcaption>
+        {{ report.requirement_pie.svg }}
+        <ul class="legend">
+          {% for segment in report.requirement_pie.segments %}
+          <li>
+            <span class="swatch" style="background: {{ segment.color }}"></span>
+            {{ segment.label }} <strong>{{ segment.value }}</strong>
+            <span class="muted">{{ segment.percent }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </figure>
+
+      <figure class="chart">
+        <figcaption>
+          <h2>{{ report.evidence_pie.title }}</h2>
+          <p>{{ report.evidence_pie.description }}</p>
+        </figcaption>
+        {{ report.evidence_pie.svg }}
+        <ul class="legend">
+          {% for segment in report.evidence_pie.segments %}
+          <li>
+            <span class="swatch" style="background: {{ segment.color }}"></span>
+            {{ segment.label }} <strong>{{ segment.value }}</strong>
+            <span class="muted">{{ segment.percent }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </figure>
+
+      <figure class="chart wide">
+        <figcaption>
+          <h2>Coverage by capability</h2>
+          <p>Worst first. Green is covered, yellow is skipped, and the pale red segment is uncovered.</p>
+        </figcaption>
+        <ul class="legend inline">
+          <li><span class="swatch" style="background: var(--green)"></span>Covered</li>
+          <li><span class="swatch" style="background: var(--yellow)"></span>Skipped</li>
+          <li><span class="swatch" style="background: var(--red); opacity: 0.35"></span>Uncovered</li>
+        </ul>
+        {% for row in report.capability_bars %}
+        <div class="bar-row">
+          <a class="bar-label" href="#{{ row.anchor }}" title="{{ row.display }}">{{ row.display }}</a>
+          <span class="bar-track"
+            ><span class="bar-seg tested" style="width: {{ row.covered_pct }}%"></span
+            ><span class="bar-seg skip" style="width: {{ row.skipped_pct }}%"></span
+            ><span class="bar-seg untested" style="width: {{ row.uncovered_pct }}%"></span
+          ></span>
+          <span class="bar-value">{{ row.covered }}/{{ row.scenario_count }} · {{ row.covered_pct }}%</span>
+        </div>
+        {% endfor %}
+        <details class="data">
+          <summary>Data</summary>
+          <table>
+            <thead>
+              <tr>
+                <th>Capability</th>
+                <th>Requirements</th>
+                <th>Scenarios</th>
+                <th>Covered</th>
+                <th>Skipped</th>
+                <th>Uncovered</th>
+                <th>System/API</th>
+                <th>Rust-only</th>
+                <th>Untyped</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in report.capability_bars %}
+              <tr>
+                <td>{{ row.display }}</td>
+                <td>{{ row.requirement_count }}</td>
+                <td>{{ row.scenario_count }}</td>
+                <td>{{ row.covered }} ({{ row.covered_pct }}%)</td>
+                <td>{{ row.skipped }}</td>
+                <td>{{ row.uncovered }}</td>
+                <td>{{ row.system_api }}</td>
+                <td>{{ row.rust_only }}</td>
+                <td>{{ row.unspecified }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+      </figure>
+
+      <figure class="chart wide">
+        <figcaption>
+          <h2>Proof types</h2>
+          <p>
+            Scenarios carrying each of the eight types, from any proof. A scenario may carry more than one, so the
+            counts do not sum to the scenario total.
+          </p>
+        </figcaption>
+        {% for row in report.type_bars %}
+        <div class="bar-row">
+          <span class="bar-label">{{ row.label }}</span>
+          <span class="bar-track"><span class="bar-seg types" style="width: {{ row.pct }}%"></span></span>
+          <span class="bar-value">{{ row.count }}</span>
+        </div>
+        {% endfor %}
+      </figure>
+    </section>
+
+    {% if report.uncovered or report.contradictions or report.stale %}
+    <section class="warnings" aria-labelledby="warnings-title">
+      <h2 id="warnings-title">Warnings</h2>
+      {% if report.uncovered %}
+      <p>
+        <strong>{{ report.uncovered }}</strong> uncovered scenario{% if report.uncovered != 1 %}s{% endif %}: no proof,
+        no Cause and no Rust proof. They are the worklist.
+      </p>
+      {% endif %} {% if report.contradictions %}
+      <h3>Contradictions</h3>
+      <ul>
+        {% for item in report.contradictions %}
+        <li>{{ item|markdown }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %} {% if report.stale %}
+      <h3>Stale authored notes</h3>
+      <ul>
+        {% for item in report.stale %}
+        <li>{{ item|markdown }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    <section class="controls" aria-label="Filter the report">
+      <label>
+        <span>Search</span>
+        <input id="search" type="search" placeholder="ID, title, text, Cause, Note…" autocomplete="off" />
+      </label>
+      <label>
+        <span>Capability</span>
+        <select id="filter-capability">
+          <option value="">All</option>
+          {% for capability in report.capabilities %}
+          <option value="{{ capability.name }}">{{ capability.display }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>Requirement status</span>
+        <select id="filter-status">
+          <option value="">All</option>
+          <option value="Tested">Tested</option>
+          <option value="Partial">Partial</option>
+          <option value="Not tested">Not tested</option>
+        </select>
+      </label>
+      <label>
+        <span>Evidence</span>
+        <select id="filter-evidence">
+          <option value="">All</option>
+          <option value="system">System suite</option>
+          <option value="api">API suite</option>
+          <option value="rust">Proven in Rust</option>
+          <option value="multiple">Multiple evidence</option>
+          <option value="none">No evidence</option>
+        </select>
+      </label>
+      <label>
+        <span>Type</span>
+        <select id="filter-type">
+          <option value="">All</option>
+          {% for label in ["Positive", "Negative", "Boundary", "Security", "Error handling", "Recovery", "Alternate flow", "Business rule"] %}
+          <option value="{{ label }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>Cause</span>
+        <select id="filter-cause">
+          <option value="">All</option>
+          <option value="yes">Has a Cause</option>
+          <option value="no">No Cause</option>
+        </select>
+      </label>
+      <label>
+        <span>Proof</span>
+        <select id="filter-proof">
+          <option value="">All</option>
+          <option value="yes">Has a proof</option>
+          <option value="no">No proof</option>
+        </select>
+      </label>
+      <button type="button" id="expand-all">Expand all</button>
+      <button type="button" id="collapse-all">Collapse all</button>
+      <p id="count" aria-live="polite"></p>
+    </section>
+
+    <nav class="capability-index" aria-label="Capabilities">
+      {% for capability in report.capabilities %}
+      <a href="#{{ capability.anchor }}">
+        {{ capability.display }} <span>{{ capability.covered_pct }}%</span>
+      </a>
+      {% endfor %}
+    </nav>
+
+    <main>
+      {% for capability in report.capabilities %}
+      <section class="capability" id="{{ capability.anchor }}" data-capability="{{ capability.name }}">
+        <header class="capability-header">
+          <h2>{{ capability.display }}</h2>
+          <p>
+            {{ capability.requirement_count }} requirements · {{ capability.scenario_count }} scenarios · {{
+            capability.covered }} covered ({{ capability.covered_pct }}%) {% if capability.skipped %}· {{
+            capability.skipped }} skipped{% endif %} {% if capability.uncovered %}· {{ capability.uncovered }}
+            uncovered{% endif %} {% if capability.rust_only %}· {{ capability.rust_only }} Rust-only{% endif %} {% if
+            capability.unspecified %}· {{ capability.unspecified }} untyped{% endif %}
+          </p>
+        </header>
+
+        {% for requirement in capability.requirements %}
+        <details
+          class="requirement"
+          id="{{ requirement.identifier }}"
+          data-search="{{ requirement.search }}"
+          data-status="{{ requirement.status }}"
+          data-capability="{{ capability.name }}" {% if requirement.open %}open{% endif %}
+        >
+          <summary>
+            <span class="req-id">{{ requirement.identifier }}</span>
+            <span class="req-title">{{ requirement.title }}</span>
+            <span class="badge status-{{ requirement.status|lower|replace(' ', '-') }}">{{ requirement.status }}</span>
+            <span class="req-count">{{ requirement.covered }}/{{ requirement.scenario_count }} covered</span>
+          </summary>
+          <div class="requirement-body">
+            <div class="description">{{ requirement.description }}</div>
+
+            <div class="source">
+              <div class="source-head">
+                <span>Proof source</span>
+                <strong>{{ requirement.covered }}/{{ requirement.scenario_count }} covered</strong>
+              </div>
+              <div class="bar-track source-track" role="img" aria-label="Proof source distribution">
+                {% for segment in requirement.sources %}
+                <span
+                  class="bar-seg {{ segment.key }}"
+                  style="width: {{ segment.width|round(2) }}%; background: {{ segment.color }}"
+                  title="{{ segment.label }}: {{ segment.value }}"
+                ></span>
+                {% endfor %}
+              </div>
+              <ul class="source-legend">
+                {% for segment in requirement.sources %}
+                <li>
+                  <span class="swatch" style="background: {{ segment.color }}"></span>
+                  {{ segment.label }} <strong>{{ segment.value }}</strong>
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+
+            <ul class="type-chips" aria-label="Proof types">
+              {% for cell in requirement.types %}
+              <li class="chip{% if cell.na %} na{% endif %}">
+                <span>{{ cell.label }}</span>
+                <strong>{{ cell.value }}</strong>
+              </li>
+              {% endfor %} {% if requirement.unspecified %}
+              <li class="chip unspecified"><span>Unspecified</span><strong>{{ requirement.unspecified }}</strong></li>
+              {% endif %}
+            </ul>
+
+            <div class="table-scroll">
+              <table class="scenarios">
+                <thead>
+                  <tr>
+                    <th>Scenario</th>
+                    <th>Title and steps</th>
+                    <th>Type</th>
+                    <th>Evidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for scenario in requirement.scenarios %}
+                  <tr
+                    id="{{ scenario.identifier }}"
+                    class="scenario"
+                    data-search="{{ scenario.search }}"
+                    data-status="{{ scenario.status }}"
+                    data-system="{{ scenario.has_system|lower }}"
+                    data-api="{{ scenario.has_api|lower }}"
+                    data-rust="{{ scenario.has_rust|lower }}"
+                    data-proof="{{ scenario.proof|lower }}"
+                    data-cause="{{ scenario.has_cause|lower }}"
+                    data-types="{{ scenario.kinds|join(' ') }}"
+                  >
+                    <td class="scenario-id" data-label="Scenario">{{ scenario.identifier }}</td>
+                    <td class="scenario-title-cell">
+                      <span class="scenario-title">{{ scenario.title }}</span>
+                      <div class="steps">{{ scenario.steps }}</div>
+                    </td>
+                    <td data-label="Type">
+                      {% if scenario.kinds %} {% for kind in scenario.kinds %}
+                      <span class="tag">{{ kind }}</span>
+                      {% endfor %} {% elif scenario.suite_claimed %}
+                      <span class="tag unspecified">Unspecified</span>
+                      {% else %}
+                      <span class="muted">—</span>
+                      {% endif %}
+                    </td>
+                    <td data-label="Evidence">
+                      {% if scenario.status == "skipped" %}
+                      <span class="tag skip">Skipped</span>
+                      {% elif scenario.evidence %}
+                      {% for item in scenario.evidence %}
+                      <span class="tag evidence">{{ item }}</span>
+                      {% endfor %}
+                      {% else %}
+                      <span class="tag none">none</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% if scenario.has_cause or scenario.has_not_black_box or scenario.has_note %}
+                  <tr class="annotation-row" data-annotation-for="{{ scenario.identifier }}">
+                    <td colspan="4" class="annotation-cell">
+                      {% if scenario.has_cause %}
+                      <div class="annotation cause">
+                        <span class="annotation-label">Cause</span>{{ scenario.cause }}
+                      </div>
+                      {% endif %} {% if scenario.has_not_black_box %}
+                      <div class="annotation not-black-box">
+                        <span class="annotation-label">Why not black box</span>{{ scenario.not_black_box }}
+                      </div>
+                      {% endif %} {% if scenario.has_note %}
+                      <div class="annotation note">
+                        <span class="annotation-label">Note</span>{{ scenario.note }}
+                      </div>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endif %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+        {% endfor %}
+      </section>
+      {% endfor %}
+    </main>
+
+    <footer>
+      <h2>Definitions</h2>
+      <dl>
+        <dt>Covered</dt>
+        <dd>A committed system case, an API-suite entry or a Rust <code>// proves:</code> claim.</dd>
+        <dt>Proof source</dt>
+        <dd>
+          Each scenario counts once by its strongest evidence: system suite, then API suite, then Rust, then a Cause
+          (Skipped). A scenario with none is Uncovered. A scenario with several proofs shows only its strongest source in
+          the bar.
+        </dd>
+        <dt>Why not black box</dt>
+        <dd>
+          An authored memo explaining why a Rust proof stands in for a black-box case. It does not affect coverage.
+        </dd>
+        <dt>Covered / Skipped / Uncovered</dt>
+        <dd>
+          Covered: a system, API or Rust proof. Skipped: no proof but a non-empty Cause. Uncovered: no proof and no
+          Cause.
+        </dd>
+        <dt>Cause</dt>
+        <dd>
+          An authored reason a scenario is skipped. A Cause marks a scenario with no proof as Skipped; it does not add a
+          proof.
+        </dd>
+        <dt>Note</dt>
+        <dd>Free-form authored commentary. It never affects coverage or the Skipped mark.</dd>
+        <dt>Requirement status</dt>
+        <dd>Tested: every declared scenario is covered. Partial: some are. Not tested: none is.</dd>
+        <dt>N/A</dt>
+        <dd>
+          Authored in the JSON, marking a type the requirement does not exercise. A proof behind an N/A cell is a
+          contradiction and is reported above.
+        </dd>
+      </dl>
+      <p>
+        Generated by <code>script/investigation.sh</code>. Authored annotations:
+        <a href="{{ report.authored_href }}">{{ report.authored_href }}</a>. A regeneration with nothing changed
+        produces no diff.
+      </p>
+    </footer>
+
+    <a class="top" href="#top">Back to top</a>
+
+    <script>
+      (() => {
+        const state = {
+          q: "",
+          capability: "",
+          status: "",
+          evidence: "",
+          type: "",
+          cause: "",
+          proof: "",
+        };
+
+        const search = document.getElementById("search");
+        const selects = {
+          capability: document.getElementById("filter-capability"),
+          status: document.getElementById("filter-status"),
+          evidence: document.getElementById("filter-evidence"),
+          type: document.getElementById("filter-type"),
+          cause: document.getElementById("filter-cause"),
+          proof: document.getElementById("filter-proof"),
+        };
+        const count = document.getElementById("count");
+        const cards = Array.from(document.querySelectorAll("details.requirement"));
+        const rows = Array.from(document.querySelectorAll("tr.scenario"));
+        const sections = Array.from(document.querySelectorAll("section.capability"));
+
+        function apply() {
+          const query = state.q.trim().toLowerCase();
+          let visibleCards = 0;
+          let visibleRows = 0;
+          const rowFilters = Boolean(state.evidence || state.type || state.cause || state.proof);
+
+          for (const section of sections) {
+            const sectionVisible = !state.capability || section.dataset.capability === state.capability;
+            let sectionCards = 0;
+            for (const card of section.querySelectorAll("details.requirement")) {
+              const cardMatches = !query || card.dataset.search.includes(query);
+              const statusMatches = !state.status || card.dataset.status === state.status;
+              let cardRows = 0;
+              let anyRows = false;
+
+              for (const row of card.querySelectorAll("tr.scenario")) {
+                anyRows = true;
+                const queryMatches = cardMatches || !query || row.dataset.search.includes(query);
+                const filterMatches = rowMatchesFilters(row);
+                const visible = queryMatches && filterMatches;
+                row.hidden = !visible;
+                const annotation = row.nextElementSibling;
+                if (annotation && annotation.classList.contains("annotation-row")) {
+                  annotation.hidden = !visible;
+                }
+                if (visible) cardRows += 1;
+              }
+
+              let cardVisible;
+              if (query) {
+                cardVisible = statusMatches && (cardRows > 0 || (cardMatches && !rowFilters));
+              } else {
+                cardVisible = statusMatches && (!rowFilters || cardRows > 0 || !anyRows);
+              }
+              card.hidden = !cardVisible || !sectionVisible;
+              if (!card.hidden) {
+                sectionCards += 1;
+                visibleCards += 1;
+                visibleRows += cardRows;
+              }
+            }
+            section.hidden = !sectionVisible || sectionCards === 0;
+          }
+
+          count.textContent = `Showing ${visibleCards} of ${cards.length} requirements and ${visibleRows} of ${rows.length} scenarios.`;
+        }
+
+        function rowMatchesFilters(row) {
+          if (state.evidence) {
+            if (state.evidence === "none" && row.dataset.proof === "true") return false;
+            if (state.evidence === "system" && row.dataset.system !== "true") return false;
+            if (state.evidence === "api" && row.dataset.api !== "true") return false;
+            if (state.evidence === "rust" && row.dataset.rust !== "true") return false;
+            if (state.evidence === "multiple") {
+              const sources = [row.dataset.system, row.dataset.api, row.dataset.rust].filter(
+                (value) => value === "true"
+              ).length;
+              if (sources < 2) return false;
+            }
+          }
+          if (state.type && !row.dataset.types.split(" ").includes(state.type)) return false;
+          if (state.cause === "yes" && row.dataset.cause !== "true") return false;
+          if (state.cause === "no" && row.dataset.cause === "true") return false;
+          if (state.proof === "yes" && row.dataset.proof !== "true") return false;
+          if (state.proof === "no" && row.dataset.proof === "true") return false;
+          return true;
+        }
+
+        function syncUrl() {
+          const parameters = new URLSearchParams();
+          for (const [key, value] of Object.entries(state)) {
+            if (value) parameters.set(key, value);
+          }
+          const query = parameters.toString();
+          history.replaceState(null, "", location.pathname + (query ? `?${query}` : "") + location.hash);
+        }
+
+        function readUrl() {
+          const parameters = new URLSearchParams(location.search);
+          state.q = parameters.get("q") || "";
+          search.value = state.q;
+          for (const key of Object.keys(selects)) {
+            const value = parameters.get(key) || "";
+            state[key] = value;
+            selects[key].value = value;
+          }
+        }
+
+        function revealHash() {
+          if (!location.hash) return;
+          const target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+          if (!target) return;
+          const card = target.closest("details.requirement");
+          if (card) {
+            card.open = true;
+            card.hidden = false;
+            const section = card.closest("section.capability");
+            if (section) section.hidden = false;
+          }
+          target.scrollIntoView({ block: "start" });
+        }
+
+        search.addEventListener("input", () => {
+          state.q = search.value.trim().toLowerCase();
+          apply();
+          syncUrl();
+        });
+
+        for (const [key, select] of Object.entries(selects)) {
+          select.addEventListener("change", () => {
+            state[key] = select.value;
+            apply();
+            syncUrl();
+          });
+        }
+
+        document.getElementById("expand-all").addEventListener("click", () => {
+          for (const card of cards) card.open = true;
+        });
+        document.getElementById("collapse-all").addEventListener("click", () => {
+          for (const card of cards) card.open = false;
+        });
+
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "/" && !isTyping(event.target)) {
+            event.preventDefault();
+            search.focus();
+          }
+          if (event.key === "Escape" && event.target === search) {
+            search.value = "";
+            state.q = "";
+            apply();
+            syncUrl();
+            search.blur();
+          }
+        });
+
+        function isTyping(target) {
+          return (
+            target instanceof HTMLInputElement ||
+            target instanceof HTMLSelectElement ||
+            target instanceof HTMLTextAreaElement
+          );
+        }
+
+        window.addEventListener("beforeprint", () => {
+          for (const card of cards) {
+            card.dataset.wasOpen = card.open ? "true" : "false";
+            card.open = true;
+          }
+        });
+        window.addEventListener("afterprint", () => {
+          for (const card of cards) card.open = card.dataset.wasOpen === "true";
+        });
+        window.addEventListener("hashchange", revealHash);
+
+        readUrl();
+        apply();
+        revealHash();
+      })();
+    </script>
+  </body>
+</html>

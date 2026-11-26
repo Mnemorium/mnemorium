@@ -124,7 +124,7 @@ mod tests {
         MediaQuery::try_new(VideoKind::Movie, "Inception".to_owned(), Some(2010), None)
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-013-A
+    // proves: SCN-METADATA-ENRICHMENT-013-A — Business rule
     #[tokio::test]
     async fn failover_returns_a_real_adapter_hit() -> Result<(), Box<dyn Error>> {
         // Arrange: the chain's link is the production adapter, stubbed by
@@ -151,7 +151,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-013-A
+    // proves: SCN-METADATA-ENRICHMENT-013-A — Business rule
     #[tokio::test]
     async fn failover_returns_the_first_hit_without_asking_the_next() -> Result<(), Box<dyn Error>>
     {
@@ -182,7 +182,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-013-B
+    // proves: SCN-METADATA-ENRICHMENT-013-B — Alternate flow
     #[tokio::test]
     async fn failover_advances_past_an_empty_result() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -221,7 +221,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-013-C
+    // proves: SCN-METADATA-ENRICHMENT-013-C — Alternate flow
     #[tokio::test]
     async fn failover_reports_no_candidate_when_every_link_is_empty() -> Result<(), Box<dyn Error>>
     {
@@ -261,7 +261,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-013-D
+    // proves: SCN-METADATA-ENRICHMENT-013-D — Error handling
     #[tokio::test]
     async fn failover_reports_the_failure_when_no_result_arrives() -> Result<(), Box<dyn Error>> {
         // Arrange: the first link is empty, the second fails.
@@ -319,7 +319,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-013-D
+    // proves: SCN-METADATA-ENRICHMENT-013-D — Error handling
     #[tokio::test]
     async fn failover_returns_the_first_failure_when_every_link_fails() -> Result<(), Box<dyn Error>>
     {
@@ -393,7 +393,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-013-B
+    // proves: SCN-METADATA-ENRICHMENT-013-B — Alternate flow
     #[rstest]
     #[case::communication("communication_failure")]
     #[case::dependency("dependency_failure")]
@@ -405,6 +405,7 @@ mod tests {
     #[case::unauthorized("unauthorized")]
     #[case::unavailable("unavailable")]
     #[case::unknown("unknown")]
+    // proves: SCN-METADATA-ENRICHMENT-013-E — Business rule
     #[tokio::test]
     async fn failover_advances_on_a_classified_failure(
         #[case] classification: &'static str,
@@ -460,7 +461,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-013-F
+    // proves: SCN-METADATA-ENRICHMENT-013-F — Error handling
     #[rstest]
     #[case::invalid_request("invalid_request")]
     #[case::serialization("serialization_failure")]
@@ -515,7 +516,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-013-B
+    // proves: SCN-METADATA-ENRICHMENT-013-B — Alternate flow
     #[tokio::test]
     #[traced_test]
     async fn failover_records_the_fallback_provider_and_classification()
@@ -573,7 +574,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-008-A
+    // proves: SCN-METADATA-ENRICHMENT-008-A — Business rule
     #[tokio::test]
     async fn lookup_routes_to_the_reference_provider() -> Result<(), Box<dyn Error>> {
         // Arrange: only the OMDb link is allowed to resolve the reference.
@@ -598,7 +599,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-008-A
+    // proves: SCN-METADATA-ENRICHMENT-008-A — Business rule
     #[tokio::test]
     #[traced_test]
     async fn lookup_reports_an_unconfigured_provider_as_absent() -> Result<(), Box<dyn Error>> {
@@ -620,7 +621,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-008-B
+    // proves: SCN-METADATA-ENRICHMENT-008-B — Error handling
     #[tokio::test]
     async fn lookup_returns_the_routed_failure() -> Result<(), Box<dyn Error>> {
         // Arrange: the routed link fails and no other link may be asked.

@@ -7315,7 +7315,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-UPLOAD-008-B
+    // proves: SCN-UPLOAD-008-B — Recovery
     #[tokio::test]
     async fn complete_upload_failure_after_sealing_unseals_for_retry() -> Result<(), Box<dyn Error>>
     {
@@ -7444,7 +7444,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-UPLOAD-008-C
+    // proves: SCN-UPLOAD-008-C — Recovery
     #[tokio::test]
     async fn complete_upload_concurrent_completion_returns_completion_in_progress()
     -> Result<(), Box<dyn Error>> {

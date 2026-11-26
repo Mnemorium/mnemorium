@@ -1872,7 +1872,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-UPLOAD-003-A
+    // proves: SCN-UPLOAD-003-A — Business rule
     #[tokio::test]
     async fn begin_upload_keeps_the_chunk_size_it_was_built_with() -> Result<(), Box<dyn Error>> {
         // Arrange: the use case holds the chunk size it was built with and reads

@@ -141,7 +141,7 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = ListSeries<TestFactory>;
 
-    // proves: SCN-SERIES-001-D
+    // proves: SCN-SERIES-001-D — Business rule
     #[tokio::test]
     async fn list_series_projects_only_the_identifier_and_name() -> Result<(), Box<dyn Error>> {
         // Arrange: the aggregate carries a season, an episode, a genre and
@@ -207,7 +207,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-001-D
+    // proves: SCN-SERIES-001-D — Business rule
     #[tokio::test]
     async fn list_series_carries_the_cover_of_a_show_with_artwork() -> Result<(), Box<dyn Error>> {
         // Arrange: one covered show beside one without artwork.
@@ -290,7 +290,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-001-B
+    // proves: SCN-SERIES-001-B — Business rule
     #[tokio::test]
     async fn list_series_forwards_the_filter_and_paginates() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -353,7 +353,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-001-A
+    // proves: SCN-SERIES-001-A — Business rule
     #[tokio::test]
     async fn list_series_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -391,7 +391,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-001-A
+    // proves: SCN-SERIES-001-A — Business rule
     #[tokio::test]
     async fn list_series_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -447,7 +447,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-SERIES-001-A
+    // proves: SCN-SERIES-001-A — Business rule
     #[tokio::test]
     async fn list_series_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange

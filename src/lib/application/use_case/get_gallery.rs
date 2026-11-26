@@ -175,7 +175,7 @@ mod tests {
         ))
     }
 
-    // proves: SCN-GALLERY-005-A
+    // proves: SCN-GALLERY-005-A — Business rule
     #[tokio::test]
     async fn get_gallery_owner_reads_private_gallery_with_items() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -243,7 +243,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-005-A
+    // proves: SCN-GALLERY-005-A — Business rule
     #[tokio::test]
     async fn get_gallery_root_admin_reads_private_gallery() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -293,7 +293,7 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-    // proves: SCN-GALLERY-005-B
+    // proves: SCN-GALLERY-005-B — Security
     #[tokio::test]
     async fn get_gallery_unknown_gallery_returns_no_such_gallery() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -336,7 +336,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-005-A
+    // proves: SCN-GALLERY-005-A — Business rule
     #[tokio::test]
     async fn get_gallery_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -366,7 +366,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-005-A
+    // proves: SCN-GALLERY-005-A — Business rule
     #[tokio::test]
     async fn get_gallery_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -409,7 +409,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-GALLERY-005-A
+    // proves: SCN-GALLERY-005-A — Business rule
     #[tokio::test]
     async fn get_gallery_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange

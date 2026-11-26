@@ -106,6 +106,26 @@ def test_the_environment_overrides_the_file(sut: Sut) -> None:
     assert _login(server, server.root_password()) == 13
 
 
+@business_rule
+@scenario("SCN-CONFIGURATION-002-C")
+@scenario("SCN-CONFIGURATION-005-B")
+def test_a_variable_naming_no_setting_is_discarded(sut: Sut) -> None:
+    """A variable that appears to move `config.yaml` names no setting while a real override still applies."""
+    elsewhere = sut.dir / "elsewhere.yaml"
+
+    server = sut.start(
+        env={
+            "MNEMORIUM_CONFIG_PATH": str(elsewhere),
+            "MNEMORIUM_CONFIG_FILE": str(elsewhere),
+            "MNEMORIUM_SECURITY_JWT_TTL": "17",
+        }
+    )
+
+    assert server.exists(CONFIG_PATH), "the fixed-location file must still be written"
+    assert not elsewhere.exists(), "a discarded variable must not move the file"
+    assert _login(server, server.root_password()) == 17, "a real override must still apply"
+
+
 @alternate_flow
 @scenario("SCN-CONFIGURATION-001-D")
 @scenario("SCN-CONFIGURATION-002-A", TestType.BUSINESS_RULE)
@@ -282,6 +302,7 @@ def test_an_unwritable_configuration_location_refuses_startup(sut: Sut) -> None:
 @error_handling
 @scenario("SCN-CONFIGURATION-006-A")
 @scenario("SCN-CONFIGURATION-006-C", TestType.SECURITY)
+@scenario("SCN-LOGGING-003-C")
 def test_a_rejected_file_value_names_the_setting_not_the_value(sut: Sut) -> None:
     """A value the setting does not accept stops startup, naming the setting and never its value."""
     sentinel = "sentinel-level"

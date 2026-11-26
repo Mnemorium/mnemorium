@@ -529,7 +529,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-CONFIGURATION-004-D
+    // proves: SCN-CONFIGURATION-004-D — Error handling
     #[test]
     fn configuration_source_unreadable_path_is_rejected() -> Result<(), Box<dyn Error>> {
         // Arrange: a directory stands in for `config.yaml`, so the path exists but holds no readable document.

@@ -1853,7 +1853,7 @@ mod tests {
         .await;
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-B
+    // proves: SCN-METADATA-ENRICHMENT-015-B — Alternate flow
     #[tokio::test]
     async fn load_configuration_defaults_have_no_video_provider() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1895,7 +1895,8 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-A, SCN-METADATA-ENRICHMENT-016-A
+    // proves: SCN-METADATA-ENRICHMENT-015-A — Business rule
+    // proves: SCN-METADATA-ENRICHMENT-016-A — Security
     #[tokio::test]
     async fn load_configuration_accepts_a_two_provider_list() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -1962,7 +1963,7 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-A
+    // proves: SCN-METADATA-ENRICHMENT-015-A — Business rule
     #[tokio::test]
     async fn load_configuration_orders_providers_by_their_index() -> Result<(), Box<dyn Error>> {
         // Arrange: the file lists the entries in the reverse of their index order.
@@ -2012,7 +2013,8 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
+    // proves: SCN-METADATA-ENRICHMENT-015-C — Error handling
+    // proves: SCN-METADATA-ENRICHMENT-016-B — Security
     #[tokio::test]
     async fn load_configuration_unknown_provider_names_the_setting() {
         // Arrange: the list names a provider the system does not support.
@@ -2073,7 +2075,8 @@ mod tests {
         .await;
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
+    // proves: SCN-METADATA-ENRICHMENT-015-C — Error handling
+    // proves: SCN-METADATA-ENRICHMENT-016-B — Security
     #[tokio::test]
     async fn load_configuration_duplicate_provider_names_the_setting() {
         // Arrange
@@ -2137,7 +2140,8 @@ mod tests {
         .await;
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
+    // proves: SCN-METADATA-ENRICHMENT-015-C — Error handling
+    // proves: SCN-METADATA-ENRICHMENT-016-B — Security
     #[tokio::test]
     async fn load_configuration_duplicate_index_names_the_setting() {
         // Arrange
@@ -2201,7 +2205,8 @@ mod tests {
         .await;
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
+    // proves: SCN-METADATA-ENRICHMENT-015-C — Error handling
+    // proves: SCN-METADATA-ENRICHMENT-016-B — Security
     #[tokio::test]
     async fn load_configuration_zero_index_names_the_setting() {
         // Arrange
@@ -2262,7 +2267,8 @@ mod tests {
         .await;
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
+    // proves: SCN-METADATA-ENRICHMENT-015-C — Error handling
+    // proves: SCN-METADATA-ENRICHMENT-016-B — Security
     #[tokio::test]
     async fn load_configuration_missing_key_names_the_setting() {
         // Arrange: the entry names the provider and the index but no key.
@@ -2327,7 +2333,7 @@ mod tests {
         .await;
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-E
+    // proves: SCN-METADATA-ENRICHMENT-015-E — Positive
     #[tokio::test]
     async fn load_configuration_accepts_a_music_provider() -> Result<(), Box<dyn Error>> {
         // Arrange: a music provider needs no credential.
@@ -2382,7 +2388,8 @@ mod tests {
         Ok(())
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-D, SCN-METADATA-ENRICHMENT-016-B
+    // proves: SCN-METADATA-ENRICHMENT-015-D — Error handling
+    // proves: SCN-METADATA-ENRICHMENT-016-B — Security
     #[tokio::test]
     async fn load_configuration_rejects_a_video_provider_in_the_music_section() {
         // Arrange: TMDB serves video, not music.
@@ -2443,7 +2450,8 @@ mod tests {
         .await;
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-D, SCN-METADATA-ENRICHMENT-016-B
+    // proves: SCN-METADATA-ENRICHMENT-015-D — Error handling
+    // proves: SCN-METADATA-ENRICHMENT-016-B — Security
     #[tokio::test]
     async fn load_configuration_rejects_a_music_provider_in_the_video_section() {
         // Arrange: MusicBrainz needs no key and serves no video.
@@ -2504,7 +2512,8 @@ mod tests {
         .await;
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
+    // proves: SCN-METADATA-ENRICHMENT-015-C — Error handling
+    // proves: SCN-METADATA-ENRICHMENT-016-B — Security
     #[tokio::test]
     async fn load_configuration_rejects_an_unknown_music_provider() {
         // Arrange
@@ -2565,7 +2574,8 @@ mod tests {
         .await;
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
+    // proves: SCN-METADATA-ENRICHMENT-015-C — Error handling
+    // proves: SCN-METADATA-ENRICHMENT-016-B — Security
     #[tokio::test]
     async fn load_configuration_rejects_a_duplicate_music_provider() {
         // Arrange
@@ -2629,7 +2639,8 @@ mod tests {
         .await;
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-C, SCN-METADATA-ENRICHMENT-016-B
+    // proves: SCN-METADATA-ENRICHMENT-015-C — Error handling
+    // proves: SCN-METADATA-ENRICHMENT-016-B — Security
     #[tokio::test]
     async fn load_configuration_rejects_a_zero_music_index() {
         // Arrange
@@ -2837,7 +2848,7 @@ mod tests {
         .await;
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-015-B
+    // proves: SCN-METADATA-ENRICHMENT-015-B — Alternate flow
     #[tokio::test]
     async fn load_configuration_defaults_have_no_music_provider() -> Result<(), Box<dyn Error>> {
         // Arrange

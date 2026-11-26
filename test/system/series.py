@@ -24,6 +24,7 @@ import pytest
 from conftest import (
     FIXTURE_DIRECTORY,
     add_to_gallery,
+    auth_path,
     create_gallery,
     login,
     provision,
@@ -37,6 +38,7 @@ from harness import (
     link_of,
 )
 from labels import TestType, alternate_flow, boundary, business_rule, negative, positive, scenario, security
+from mnemorium_client.models import GetPermissionSummaryResourceKind
 
 # The show resource kind the resource-policy route addresses.
 SERIES = "SERIES"
@@ -65,6 +67,9 @@ SUMMARY_FIELDS = {"id", "file_id", "codec", "duration_ms", "width", "height", "s
 
 # Each generated video carries a per-call trailing `free` box, so two uploads never share a file through deduplication.
 _VIDEO_NONCE = count(datetime.now(UTC).toordinal())
+
+# Each provisioned account takes a distinct name on the worker's shared instance.
+_ACCOUNTS = count()
 
 
 def video_bytes(fixture: str = VIDEO_FIXTURE) -> bytes:
@@ -402,6 +407,7 @@ def test_a_cover_that_is_not_library_artwork_is_refused(sut: Sut) -> None:
 
 @security
 @scenario("SCN-SERIES-008-F")
+@scenario("SCN-SERIES-015-A")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_standard_user_cannot_create_a_show(sut: Sut) -> None:
     """A Standard user's creation answers 403 and stores nothing."""
@@ -957,6 +963,8 @@ def test_null_clears_a_show_optional_value(server: Sut, root_token: str) -> None
 
 @security
 @scenario("SCN-SERIES-009-D")
+@scenario("SCN-SERIES-014-A")
+@scenario("SCN-SERIES-014-B")
 @pytest.mark.own_instance(reason="exact_collection")
 def test_a_standard_user_may_read_but_not_edit_a_show(sut: Sut) -> None:
     """A Standard user reads the show but its patch answers 403 and stores nothing."""
@@ -1458,3 +1466,91 @@ def test_a_malformed_index_cannot_be_patched(server: Sut, root_token: str) -> No
         f"malformed episode answered {malformed_episode.status_code}: {malformed_episode.text}"
     )
     assert read_episode(server, root_token, show["id"], 1, 1).json()["name"] == "Pilot"
+
+
+@security
+@scenario("SCN-SERIES-014-C")
+def test_an_admin_edits_a_season(server: Sut, root_token: str) -> None:
+    """An Admin with the seeded role edits a season and the write applies."""
+    _, admin = provision(server, root_token, f"seriesadmin{next(_ACCOUNTS)}", role="ADMIN")
+    show = create_show(server, root_token)
+    create_season(server, root_token, show["id"], 1, name="Season One")
+
+    edited = patch_season(server, admin, show["id"], 1, {"name": "Admin Season"})
+    stored = read_season(server, root_token, show["id"], 1)
+
+    assert edited.status_code == 200, f"admin edit refused: {edited.status_code} {edited.text}"
+    assert stored.status_code == 200, f"season read failed: {stored.status_code} {stored.text}"
+    assert stored.json()["name"] == "Admin Season"
+
+
+@security
+@scenario("SCN-SERIES-015-B")
+def test_an_admin_creates_a_show(server: Sut, root_token: str) -> None:
+    """An Admin creates a show under the catalogue and it is listed."""
+    _, admin = provision(server, root_token, f"seriesadmin{next(_ACCOUNTS)}", role="ADMIN")
+
+    response = post_show(server, admin, show_body(name="Admin Show"))
+    listed = list_shows(server, root_token, "?name=Admin Show")
+
+    assert response.status_code == 201, f"admin creation failed: {response.status_code} {response.text}"
+    show = response.json()
+    assert show["name"] == "Admin Show"
+    assert collection_ids(listed) == [show["id"]]
+
+
+@security
+@scenario("SCN-SERIES-015-C")
+def test_a_denied_catalogue_refuses_show_creation(server: Sut, root_token: str) -> None:
+    """A denied CreateChild on the catalogue refuses creation and the restored role admits it."""
+    admin_id, admin = provision(server, root_token, f"seriesadmin{next(_ACCOUNTS)}", role="ADMIN")
+    href = f"{server.href('permission')}/resource/CATALOGUE/0"
+    current = server.request("GET", href, token=root_token)
+    assert current.status_code == 200, f"permission read failed: {current.status_code} {current.text}"
+    visibility = current.json()["visibility"]
+
+    denied = server.request(
+        "PUT",
+        href,
+        token=root_token,
+        json={
+            "visibility": visibility,
+            "grants": [
+                {
+                    "principal": {"kind": "USER", "id": admin_id},
+                    "role": "CONTRIBUTOR",
+                    "effect": "DENY",
+                    "child_kind": "SERIES",
+                }
+            ],
+        },
+    )
+    refused = post_show(server, admin, show_body(name="Denied Show"))
+    restored = server.request(
+        "PUT",
+        href,
+        token=root_token,
+        json={"visibility": visibility, "grants": []},
+    )
+    allowed = post_show(server, admin, show_body(name="Restored Show"))
+    denied_listing = list_shows(server, root_token, "?name=Denied Show")
+
+    assert denied.status_code == 200
+    assert refused.status_code == 403, f"denied creation admitted: {refused.status_code} {refused.text}"
+    assert restored.status_code == 200
+    assert allowed.status_code == 201, f"restored creation refused: {allowed.status_code} {allowed.text}"
+    assert collection_ids(denied_listing) == []
+
+
+@business_rule
+@scenario("SCN-AUTHORIZATION-002-F")
+def test_a_show_follows_the_catalogue(server: Sut, root_token: str) -> None:
+    """A created show's authorization parent is the catalogue."""
+    show = create_show(server, root_token)
+
+    assert auth_path(server, root_token, GetPermissionSummaryResourceKind.SERIES, show["id"]) == [
+        "SERIES",
+        "CATALOGUE",
+        "LIBRARY",
+        "INSTANCE",
+    ]

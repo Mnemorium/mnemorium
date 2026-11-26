@@ -688,7 +688,7 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    // proves: SCN-METADATA-ENRICHMENT-009-A, SCN-METADATA-ENRICHMENT-009-B, SCN-METADATA-ENRICHMENT-009-C, SCN-METADATA-ENRICHMENT-010-A, SCN-METADATA-ENRICHMENT-010-B
+    // proves: SCN-METADATA-ENRICHMENT-009-A, SCN-METADATA-ENRICHMENT-009-B, SCN-METADATA-ENRICHMENT-009-C, SCN-METADATA-ENRICHMENT-010-A, SCN-METADATA-ENRICHMENT-010-B — Business rule
     #[rstest]
     #[case::folder_year(
         "Movies/Inception (2010)/Inception.2010.1080p.BluRay.mkv",
@@ -792,7 +792,7 @@ mod tests {
         );
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-009-A, SCN-METADATA-ENRICHMENT-011-B
+    // proves: SCN-METADATA-ENRICHMENT-009-A, SCN-METADATA-ENRICHMENT-011-B — Business rule
     #[rstest]
     #[case("Movies/Inception (2010)/Inception.2010.1080p.BluRay.mkv")]
     #[case("The.Matrix.1999.1080p.mkv")]
@@ -850,7 +850,7 @@ mod tests {
         })(name);
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-009-D
+    // proves: SCN-METADATA-ENRICHMENT-009-D — Business rule
     #[rstest]
     #[case::sample("sample.mkv")]
     #[case::extras_folder("Movie/Extras/featurette.mkv")]
@@ -866,7 +866,7 @@ mod tests {
         );
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-011-A, SCN-METADATA-ENRICHMENT-011-B
+    // proves: SCN-METADATA-ENRICHMENT-011-A, SCN-METADATA-ENRICHMENT-011-B — Business rule
     #[test]
     fn media_name_interpreter_interpret_orders_the_folder_year_before_the_file_year() {
         // Arrange: the folder names 2010 and the file names 2011.
@@ -895,7 +895,7 @@ mod tests {
         );
     }
 
-    // proves: SCN-METADATA-ENRICHMENT-009-C, SCN-METADATA-ENRICHMENT-011-B
+    // proves: SCN-METADATA-ENRICHMENT-009-C, SCN-METADATA-ENRICHMENT-011-B — Business rule
     #[test]
     fn media_name_interpreter_interpret_returns_a_numeric_title_once() {
         // Arrange: the folder and the file name the same work.
