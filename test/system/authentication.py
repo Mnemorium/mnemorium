@@ -1,6 +1,7 @@
 """Black-box proof of the `authentication` capability."""
 
 import json
+import re
 import time
 from itertools import count
 
@@ -17,10 +18,11 @@ from conftest import (
 )
 from harness import (
     API_PREFIX,
-    MSG_PASSWORD_HIDDEN,
-    MSG_PASSWORD_LOGGED,
+    MSG_SETUP_TOKEN,
+    QR_BLOCK,
     ROOT_ADMIN_USERNAME,
     SECRET_PASSWORD,
+    SEED_PROFILE_ENV,
     WRONG_PASSWORD,
     Sut,
     register,
@@ -30,7 +32,11 @@ from mnemorium_client.api.identity import patch_credential, post_login, post_reg
 from mnemorium_client.api.user import get_me
 from mnemorium_client.models import LoginRequest, PatchCredentialRequest, RegisterRequest, Role
 
-PASSWORD_SYMBOLS = frozenset("!@#$%^&*()-_=+")
+# The Crockford base32 alphabet the setup token declares.
+SETUP_TOKEN_ALPHABET = frozenset("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
+SETUP_TOKEN_PATTERN = re.compile(r"[0-9A-Z]{4}-[0-9A-Z]{4}")
+# The reveal-disabled configuration every reveal case shares.
+SETUP_REVEAL_DISABLED = {"security": {"root_admin_setup": {"reveal": False}}}
 
 # A credential identifier no suite run can mint.
 UNKNOWN_CREDENTIAL = 999_999_999
@@ -38,11 +44,47 @@ UNKNOWN_CREDENTIAL = 999_999_999
 _ACCOUNTS = count()
 
 
+def setup_attempt(
+    server: Sut,
+    token: str,
+    *,
+    password: str = SECRET_PASSWORD,
+    email: str | None = None,
+    address: str | None = None,
+):
+    """Submit one setup exchange, optionally from a declared client address."""
+    body = {"token": token, "password": password}
+    if email is not None:
+        body["email"] = email
+    headers = {"x-real-ip": address} if address is not None else None
+    return server.request(
+        "POST",
+        f"{API_PREFIX}/identity/setup",
+        json=body,
+        headers=headers,
+    )
+
+
 @positive
 @scenario("SCN-AUTHENTICATION-001-A")
-def test_first_start_creates_the_root_admin(server: Sut, root_token: str) -> None:
-    """The instance's Root Admin is user 0, `root`, Admin and no email."""
-    response = get_me.sync_detailed(client=server.client(root_token))
+@pytest.mark.own_instance(reason="first_boot")
+def test_first_start_creates_the_root_admin(sut: Sut) -> None:
+    """A fresh start prints a setup token, refuses login until setup, then reports user 0 as `root`."""
+    server = start_instance(sut)
+    token = server.root_setup_token()
+
+    assert token
+    assert (
+        post_login.sync_detailed(
+            client=server.client(),
+            body=LoginRequest(password=SECRET_PASSWORD, identifier=ROOT_ADMIN_USERNAME),
+        ).status_code
+        == 401
+    )
+
+    server.root_setup()
+    access_token = login(server, ROOT_ADMIN_USERNAME, SECRET_PASSWORD)
+    response = get_me.sync_detailed(client=server.client(access_token))
 
     assert response.status_code == 200
     body = json.loads(response.content)
@@ -58,40 +100,51 @@ def test_first_start_creates_the_root_admin(server: Sut, root_token: str) -> Non
 def test_restart_does_not_recreate_or_reveal_the_root_admin(sut: Sut) -> None:
     """An initialized directory restarts healthy, creates no second account, and reveals nothing."""
     server = start_instance(sut)
+    server.root_setup()
     password = server.root_password()
 
     server.restart(env=INSTANCE_ENV)
     token = login(server, ROOT_ADMIN_USERNAME, password)
 
     assert server.request("GET", server.href("health"), token=token).status_code == 200
-    assert MSG_PASSWORD_LOGGED.search(server.logs()) is None
+    assert MSG_SETUP_TOKEN.search(server.logs()) is None
+    listed = server.request("GET", server.href("user"), token=token)
+    assert listed.status_code == 200
+    assert [item["id"] for item in json.loads(listed.content)["items"]] == [0]
 
 
 @business_rule
 @scenario("SCN-AUTHENTICATION-002-A")
-def test_generated_password_follows_the_declared_shape(server: Sut) -> None:
-    """The revealed default password is 20 characters: 19 alphanumeric and one declared symbol."""
-    password = server.root_password()
+@pytest.mark.own_instance(reason="first_boot")
+def test_setup_token_follows_the_declared_shape(sut: Sut) -> None:
+    """The issued token is eight Crockford base32 characters displayed as XXXX-XXXX."""
+    server = start_instance(sut)
+    token = server.root_setup_token()
 
-    assert len(password) == 20
-    assert sum(character.isascii() and character.isalnum() for character in password) == 19
-    assert sum(character in PASSWORD_SYMBOLS for character in password) == 1
+    assert SETUP_TOKEN_PATTERN.fullmatch(token), f"{token!r} is not displayed as XXXX-XXXX"
+    compact = token.replace("-", "")
+    assert len(compact) == 8
+    assert SETUP_TOKEN_ALPHABET.issuperset(compact), f"{token!r} uses a character outside the alphabet"
+    server.root_setup()
 
 
 @security
 @scenario("SCN-AUTHENTICATION-003-A")
+@scenario("SCN-LOGGING-008-E", TestType.SECURITY)
 @pytest.mark.own_instance(reason="log_sink")
-def test_the_password_is_printed_once_and_never_logged(sut: Sut) -> None:
-    """The reveal prints the password once to standard output and no log file holds it."""
+def test_the_setup_token_and_qr_are_printed_once_and_never_logged(sut: Sut) -> None:
+    """The reveal prints the token and a QR block once to standard output and no log file holds them."""
     server = start_instance(sut)
-    password = server.root_password()
+    token = server.root_setup_token()
     stdout = server.logs()
 
-    assert login(server, ROOT_ADMIN_USERNAME, password)
+    assert stdout.count(token) == 1
+    assert QR_BLOCK in stdout, "the reveal printed no QR block"
+    server.root_setup()
+    assert login(server, ROOT_ADMIN_USERNAME, server.root_password())
 
     server.stop()
-    assert stdout.count(password) == 1
-    assert password not in server.log_text()
+    assert token not in server.log_text()
 
 
 @negative
@@ -99,38 +152,217 @@ def test_the_password_is_printed_once_and_never_logged(sut: Sut) -> None:
 @pytest.mark.own_instance(reason="first_boot")
 def test_a_first_start_without_the_reveal_is_refused(sut: Sut) -> None:
     """A first start with the reveal disabled fails, names the setting, and creates no account."""
-    failure = sut.start_expecting_failure(
-        env=INSTANCE_ENV,
-        config={"security": {"log_root_admin_password": False}},
-    )
+    failure = sut.start_expecting_failure(env=INSTANCE_ENV, config=SETUP_REVEAL_DISABLED)
 
-    assert "security.log_root_admin_password" in failure.output
-    assert MSG_PASSWORD_LOGGED.search(failure.output) is None
+    assert "security.root_admin_setup.reveal" in failure.output
+    assert MSG_SETUP_TOKEN.search(failure.output) is None
 
     sut.stop()
-    server = start_instance(sut, config={"security": {"log_root_admin_password": True}})
+    server = start_instance(sut, config={"security": {"root_admin_setup": {"reveal": True}}})
 
+    assert server.root_setup_token()
+    server.root_setup()
     assert login(server, ROOT_ADMIN_USERNAME, server.root_password())
+
+
+@negative
+@scenario("SCN-AUTHENTICATION-003-D")
+@pytest.mark.own_instance(reason="restart")
+def test_a_pending_instance_restarts_without_the_reveal_is_refused(sut: Sut) -> None:
+    """A pending instance restarted with the reveal disabled fails, leaves the grant usable, and names the setting."""
+    server = start_instance(sut)
+    server.root_setup_token()
+    server.stop()
+
+    failure = sut.start_expecting_failure(env=INSTANCE_ENV, config=SETUP_REVEAL_DISABLED)
+
+    assert "security.root_admin_setup.reveal" in failure.output
+    assert MSG_SETUP_TOKEN.search(failure.output) is None
+
+    sut.stop()
+    resumed = start_instance(sut, config={"security": {"root_admin_setup": {"reveal": True}}})
+
+    assert resumed.root_setup_token(), "the refused start must have left the grant pending"
+    resumed.root_setup()
+    assert login(resumed, ROOT_ADMIN_USERNAME, resumed.root_password())
 
 
 @positive
 @scenario("SCN-AUTHENTICATION-003-C")
 @pytest.mark.own_instance(reason="restart")
 def test_disabling_the_reveal_after_initialization_still_starts(sut: Sut) -> None:
-    """An initialized directory starts with the reveal disabled, prints the notice, and reveals nothing."""
+    """An initialized directory starts with the reveal disabled and reveals nothing."""
     server = start_instance(sut)
+    server.root_setup()
     password = server.root_password()
 
-    server.restart(
-        env=INSTANCE_ENV,
-        config={"security": {"log_root_admin_password": False}},
-    )
+    server.restart(env=INSTANCE_ENV, config=SETUP_REVEAL_DISABLED)
     token = login(server, ROOT_ADMIN_USERNAME, password)
 
     assert server.request("GET", server.href("health"), token=token).status_code == 200
-    stdout = server.logs()
-    assert MSG_PASSWORD_HIDDEN in stdout
-    assert MSG_PASSWORD_LOGGED.search(stdout) is None
+    assert MSG_SETUP_TOKEN.search(server.logs()) is None
+
+
+@alternate_flow
+@scenario("SCN-AUTHENTICATION-002-B")
+@pytest.mark.own_instance(reason="first_boot")
+def test_a_submitted_token_is_normalized(sut: Sut) -> None:
+    """A token submitted lowercased, without its dash and with O/I confusables names the same grant."""
+    server = start_instance(sut)
+    token = server.root_setup_token().replace("-", "")
+    folded = token.lower().replace("0", "o").replace("1", "i")
+
+    response = setup_attempt(server, folded)
+
+    assert response.status_code == 204, f"normalized token refused: {response.status_code} {response.text}"
+    assert login(server, ROOT_ADMIN_USERNAME, SECRET_PASSWORD)
+
+
+@security
+@scenario("SCN-AUTHENTICATION-020-A")
+@scenario("SCN-AUTHENTICATION-020-C")
+@pytest.mark.own_instance(reason="first_boot")
+def test_a_used_or_unknown_token_is_refused_identically(sut: Sut) -> None:
+    """A consumed token and a token that was never issued answer the same 401 and apply nothing."""
+    server = start_instance(sut)
+    token = server.root_setup_token()
+    assert setup_attempt(server, token).status_code == 204
+
+    reused = setup_attempt(server, token)
+    unknown = setup_attempt(server, "0000-0000")
+
+    assert reused.status_code == unknown.status_code == 401
+    assert json.loads(reused.content) == json.loads(unknown.content)
+    assert login(server, ROOT_ADMIN_USERNAME, SECRET_PASSWORD)
+
+
+@negative
+@scenario("SCN-AUTHENTICATION-020-B")
+@pytest.mark.own_instance(reason="first_boot")
+def test_an_expired_token_is_refused(sut: Sut) -> None:
+    """A token submitted after the configured lifetime answers 401 and applies nothing."""
+    server = start_instance(
+        sut,
+        config={"security": {"root_admin_setup": {"ttl_seconds": 1}}},
+    )
+    token = server.root_setup_token()
+
+    time.sleep(2)
+
+    response = setup_attempt(server, token)
+
+    assert response.status_code == 401
+    assert (
+        post_login.sync_detailed(
+            client=server.client(),
+            body=LoginRequest(password=SECRET_PASSWORD, identifier=ROOT_ADMIN_USERNAME),
+        ).status_code
+        == 401
+    )
+
+
+@business_rule
+@scenario("SCN-AUTHENTICATION-020-D")
+@pytest.mark.own_instance(reason="restart")
+def test_a_restart_replaces_the_pending_token(sut: Sut) -> None:
+    """Restarting while setup is pending invalidates the old token and issues a working one."""
+    server = start_instance(sut)
+    old = server.root_setup_token()
+
+    server.restart(env=INSTANCE_ENV)
+    new = server.root_setup_token()
+
+    assert new != old
+    assert setup_attempt(server, old).status_code == 401
+    assert setup_attempt(server, new).status_code == 204
+
+
+@negative
+@scenario("SCN-AUTHENTICATION-020-E")
+@pytest.mark.own_instance(reason="process_state")
+def test_setup_attempts_are_rate_limited(sut: Sut) -> None:
+    """One address's burst and then the process-wide budget each answer 429 with Retry-After."""
+    server = start_instance(sut)
+    peer = server.peer_address()
+    server.restart(env=INSTANCE_ENV, config=limiter_config(trusted=peer))
+
+    first = setup_attempt(server, "0000-0000", address="203.0.113.1")
+    same_address = setup_attempt(server, "0000-0000", address="203.0.113.1")
+    other_address = setup_attempt(server, "0000-0000", address="203.0.113.2")
+
+    assert first.status_code == 401
+    assert same_address.status_code == 429
+    assert other_address.status_code == 429
+    assert "Retry-After" in same_address.headers
+    assert "Retry-After" in other_address.headers
+
+
+@security
+@scenario("SCN-AUTHENTICATION-020-F")
+@pytest.mark.own_instance(reason="first_boot")
+def test_the_setup_token_is_not_a_session(sut: Sut) -> None:
+    """Presenting the setup token as a bearer token answers 401."""
+    server = start_instance(sut)
+    token = server.root_setup_token()
+
+    response = get_me.sync_detailed(client=server.client(token))
+
+    assert response.status_code == 401
+
+
+@positive
+@scenario("SCN-AUTHENTICATION-021-A")
+@pytest.mark.own_instance(reason="first_boot")
+def test_a_complete_setup_applies(sut: Sut) -> None:
+    """A setup answers 204 with no body, the chosen password authenticates, and the email is stored."""
+    server = start_instance(sut)
+    token = server.root_setup_token()
+
+    response = setup_attempt(server, token, email="root@example.com")
+
+    assert response.status_code == 204
+    assert response.content == b""
+    access_token = login(server, ROOT_ADMIN_USERNAME, SECRET_PASSWORD)
+    profile = get_me.sync_detailed(client=server.client(access_token))
+    assert profile.status_code == 200
+    assert json.loads(profile.content)["email"] == "root@example.com"
+    assert setup_attempt(server, token).status_code == 401
+
+
+@alternate_flow
+@scenario("SCN-AUTHENTICATION-021-B")
+@pytest.mark.own_instance(reason="first_boot")
+def test_the_setup_email_is_optional(sut: Sut) -> None:
+    """A setup with no email answers 204 and leaves the Root Admin without one."""
+    server = start_instance(sut)
+    token = server.root_setup_token()
+
+    response = setup_attempt(server, token)
+
+    assert response.status_code == 204
+    access_token = login(server, ROOT_ADMIN_USERNAME, SECRET_PASSWORD)
+    profile = get_me.sync_detailed(client=server.client(access_token))
+    assert profile.status_code == 200
+    assert json.loads(profile.content)["email"] is None
+
+
+@negative
+@scenario("SCN-AUTHENTICATION-021-C")
+@scenario("SCN-AUTHENTICATION-021-D")
+@pytest.mark.own_instance(reason="first_boot")
+def test_a_refused_setup_leaves_the_grant_usable(sut: Sut) -> None:
+    """A weak password answers 422 and a taken email 409; the same token then completes setup."""
+    server = start_instance(sut, env={SEED_PROFILE_ENV: "system"})
+    token = server.root_setup_token()
+
+    weak = setup_attempt(server, token, password="short1!")
+    taken = setup_attempt(server, token, email="coverart@example.com")
+    accepted = setup_attempt(server, token)
+
+    assert weak.status_code == 422, f"weak password answered {weak.status_code}: {weak.text}"
+    assert taken.status_code == 409, f"taken email answered {taken.status_code}: {taken.text}"
+    assert accepted.status_code == 204
+    assert login(server, ROOT_ADMIN_USERNAME, SECRET_PASSWORD)
 
 
 @scenario("SCN-AUTHENTICATION-004-A", TestType.POSITIVE)
@@ -489,7 +721,11 @@ def test_an_unknown_credential_is_not_rotated(server: Sut, root_token: str) -> N
 @pytest.mark.own_instance(reason="process_state")
 def test_a_non_root_caller_cannot_rotate_a_credential(sut: Sut) -> None:
     """An Admin and a Standard User are refused with 403 and their passwords stay unchanged."""
-    server = start_instance(sut)
+    # The setup exchange and the loop's logins share one bucket, so the burst is raised.
+    server = start_instance(
+        sut,
+        config={"security": {"rate_limit": {"burst_size": 20, "period_seconds": 1}}},
+    )
     root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
     standard_name = f"alice{next(_ACCOUNTS)}"
     admin_name = f"bobby{next(_ACCOUNTS)}"

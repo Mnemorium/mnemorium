@@ -78,8 +78,13 @@ where
                     .next()
                     .ok_or(UpdateUserError::NoSuchUser)?;
 
+                // The root maintains its own email; its username and role stay
+                // fixed, and no other caller may touch it (`REQ-USER-021`).
                 if user.id() == 0 {
-                    return Err(UpdateUserError::TargetNotModifiable);
+                    let changes_identity = command.role().is_some() || command.username().is_some();
+                    if caller.id() != 0 || changes_identity {
+                        return Err(UpdateUserError::TargetNotModifiable);
+                    }
                 }
                 // Only the root administers Admin accounts; a non-root Admin
                 // may still update its own profile (`REQ-USER-021`).
@@ -1491,6 +1496,212 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(UpdateUserError::UserAlreadyExists)));
+        assert!(rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    // proves: SCN-USER-021-I — Business rule
+    #[tokio::test]
+    async fn update_user_root_updates_its_own_email() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(0, "root", None, Role::Admin)?;
+        let target = user(0, "root", Some("old@example.com"), Role::Admin)?;
+        let mut user_repository = MockUserRepository::new();
+        let mut queued = vec![caller, target];
+        user_repository
+            .expect_search()
+            .times(2)
+            .returning(move |_| {
+                let next = if queued.is_empty() {
+                    None
+                } else {
+                    Some(queued.remove(0))
+                };
+                Box::pin(async move { Ok(next.into_iter().collect()) })
+            });
+        user_repository
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.email.as_deref() == Some("new@example.com"))
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        user_repository
+            .expect_save()
+            .times(1)
+            .withf(|root| root.email() == Some("new@example.com"))
+            .returning(|root| Box::pin(async { Ok(root) }));
+        let unit_of_work = TestUnitOfWork {
+            users: user_repository,
+            ..TestUnitOfWork::default()
+        };
+        let committed = Arc::clone(&unit_of_work.committed);
+        let factory = TestFactory::new(unit_of_work);
+        let use_case: UseCase = UpdateUser::new(Arc::new(factory));
+
+        // Act
+        let response = use_case
+            .execute(command(0, 0, None, Some("new@example.com"), None))
+            .await?;
+
+        // Assert
+        assert_eq!(response.email(), Some("new@example.com"));
+        assert!(committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_user_root_username_change_is_refused() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(0, "root", None, Role::Admin)?;
+        let target = user(0, "root", None, Role::Admin)?;
+        let mut user_repository = MockUserRepository::new();
+        let mut queued = vec![caller, target];
+        user_repository
+            .expect_search()
+            .times(2)
+            .returning(move |_| {
+                let next = if queued.is_empty() {
+                    None
+                } else {
+                    Some(queued.remove(0))
+                };
+                Box::pin(async move { Ok(next.into_iter().collect()) })
+            });
+        let unit_of_work = TestUnitOfWork {
+            users: user_repository,
+            ..TestUnitOfWork::default()
+        };
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
+        let use_case: UseCase = UpdateUser::new(Arc::new(factory));
+
+        // Act
+        let result = use_case
+            .execute(command(0, 0, Some("renamed-root"), None, None))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdateUserError::TargetNotModifiable)));
+        assert!(rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_user_root_role_change_is_refused() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(0, "root", None, Role::Admin)?;
+        let target = user(0, "root", None, Role::Admin)?;
+        let mut user_repository = MockUserRepository::new();
+        let mut queued = vec![caller, target];
+        user_repository
+            .expect_search()
+            .times(2)
+            .returning(move |_| {
+                let next = if queued.is_empty() {
+                    None
+                } else {
+                    Some(queued.remove(0))
+                };
+                Box::pin(async move { Ok(next.into_iter().collect()) })
+            });
+        let unit_of_work = TestUnitOfWork {
+            users: user_repository,
+            ..TestUnitOfWork::default()
+        };
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
+        let use_case: UseCase = UpdateUser::new(Arc::new(factory));
+
+        // Act
+        let result = use_case
+            .execute(command(0, 0, None, None, Some(Role::Standard)))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdateUserError::TargetNotModifiable)));
+        assert!(rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_user_another_caller_cannot_change_the_root_email() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let caller = user(7, "admin", None, Role::Admin)?;
+        let target = user(0, "root", None, Role::Admin)?;
+        let mut user_repository = MockUserRepository::new();
+        let mut queued = vec![caller, target];
+        user_repository
+            .expect_search()
+            .times(2)
+            .returning(move |_| {
+                let next = if queued.is_empty() {
+                    None
+                } else {
+                    Some(queued.remove(0))
+                };
+                Box::pin(async move { Ok(next.into_iter().collect()) })
+            });
+        let unit_of_work = TestUnitOfWork {
+            users: user_repository,
+            ..TestUnitOfWork::default()
+        };
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
+        let use_case: UseCase = UpdateUser::new(Arc::new(factory));
+
+        // Act
+        let result = use_case
+            .execute(command(7, 0, None, Some("new@example.com"), None))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdateUserError::TargetNotModifiable)));
+        assert!(rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_user_root_email_taken_is_refused() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(0, "root", None, Role::Admin)?;
+        let target = user(0, "root", Some("old@example.com"), Role::Admin)?;
+        let mut user_repository = MockUserRepository::new();
+        let mut queued = vec![caller, target];
+        user_repository
+            .expect_search()
+            .times(2)
+            .returning(move |_| {
+                let next = if queued.is_empty() {
+                    None
+                } else {
+                    Some(queued.remove(0))
+                };
+                Box::pin(async move { Ok(next.into_iter().collect()) })
+            });
+        let holder = user(1, "holder", Some("taken@example.com"), Role::Standard)?;
+        user_repository
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.email.as_deref() == Some("taken@example.com"))
+            .returning(move |_| {
+                let found = holder.clone();
+                Box::pin(async move { Ok(vec![found]) })
+            });
+        let unit_of_work = TestUnitOfWork {
+            users: user_repository,
+            ..TestUnitOfWork::default()
+        };
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
+        let use_case: UseCase = UpdateUser::new(Arc::new(factory));
+
+        // Act
+        let result = use_case
+            .execute(command(0, 0, None, Some("taken@example.com"), None))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdateUserError::EmailAlreadyExists)));
         assert!(rolled_back.load(Ordering::SeqCst));
         Ok(())
     }

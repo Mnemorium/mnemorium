@@ -157,6 +157,8 @@ mod resolve_music_metadata;
 mod resolve_video_metadata;
 /// The revoke share use-case port.
 mod revoke_share;
+/// The Root Admin setup use-case port.
+mod setup_root_admin;
 /// The share resource use-case port.
 mod share_resource;
 /// The update movie use-case port.
@@ -426,6 +428,9 @@ pub(crate) use self::resolve_video_metadata::{
     ResolveVideoMetadataUseCase,
 };
 pub(crate) use self::revoke_share::{RevokeShareCommand, RevokeShareUseCase};
+pub(crate) use self::setup_root_admin::{
+    SetupRootAdminCommand, SetupRootAdminError, SetupRootAdminUseCase,
+};
 pub(crate) use self::share_resource::{ShareResourceCommand, ShareResourceUseCase};
 pub(crate) use self::update_movie::{
     UpdateMovieCommand, UpdateMovieError, UpdateMovieResponse, UpdateMovieUseCase,

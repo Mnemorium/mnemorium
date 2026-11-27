@@ -5,21 +5,32 @@ use std::pin::Pin;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub(crate) struct InitializeRootAdminCommand {
-    /// Whether the generated password may be revealed to standard output.
-    reveal_password: bool,
+    /// Whether the setup token may be revealed to standard output.
+    reveal: bool,
+    /// Lifetime of an issued setup token, in seconds.
+    ttl_seconds: u64,
 }
 
 impl InitializeRootAdminCommand {
-    /// Create a new command deciding whether the generated password may be revealed.
+    /// Create a new command deciding whether the setup token may be revealed.
     #[must_use]
-    pub(crate) fn new(reveal_password: bool) -> Self {
-        Self { reveal_password }
+    pub(crate) fn new(reveal: bool, ttl_seconds: u64) -> Self {
+        Self {
+            reveal,
+            ttl_seconds,
+        }
     }
 
-    /// Return whether the generated password may be revealed.
+    /// Return whether the setup token may be revealed.
     #[must_use]
-    pub(crate) fn reveal_password(self) -> bool {
-        self.reveal_password
+    pub(crate) fn reveal(self) -> bool {
+        self.reveal
+    }
+
+    /// Return the lifetime of an issued setup token, in seconds.
+    #[must_use]
+    pub(crate) fn ttl_seconds(self) -> u64 {
+        self.ttl_seconds
     }
 }
 
@@ -27,21 +38,22 @@ impl InitializeRootAdminCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub(crate) struct InitializeRootAdminResponse {
-    /// Default password generated for the root admin.
-    default_password: String,
+    /// Setup token the operator exchanges for the Root Admin credential.
+    setup_token: String,
 }
 
 impl InitializeRootAdminResponse {
-    /// Return the default password generated for the root admin.
-    #[must_use]
-    pub(crate) fn default_password(&self) -> &str {
-        &self.default_password
-    }
-
     /// Create a new initialization response.
     #[must_use]
-    pub(crate) fn new(default_password: String) -> Self {
-        Self { default_password }
+    pub(crate) fn new(setup_token: String) -> Self {
+        Self { setup_token }
+    }
+
+    /// Return the setup token the operator exchanges for the Root Admin
+    /// credential.
+    #[must_use]
+    pub(crate) fn setup_token(&self) -> &str {
+        &self.setup_token
     }
 }
 
@@ -49,9 +61,9 @@ impl InitializeRootAdminResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum InitializeRootAdminError {
-    /// The configuration would create the Root Admin while its only password may not be revealed.
+    /// The configuration would issue the setup token while its reveal is disabled.
     #[error(
-        "cannot create the Root Admin because security.log_root_admin_password is false; enable it for the first start"
+        "cannot create or resume the Root Admin because security.root_admin_setup.reveal is false; enable it to reveal the setup token"
     )]
     RevealDisabled,
     /// An unexpected or unmapped error occurred.

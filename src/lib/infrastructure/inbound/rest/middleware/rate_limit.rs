@@ -14,7 +14,7 @@ use utoipa_axum::router::OpenApiRouter;
 
 use crate::domain::model::{ClientIpHeader, RateLimit};
 use crate::infrastructure::inbound::rest::{ApiError, AppState};
-use crate::infrastructure::rate_limit::RateLimitCleanup;
+use crate::infrastructure::outbound::RateLimitCleanup;
 
 /// A [`KeyExtractor`] that trusts one declared client-address header from the
 /// configured proxy addresses.

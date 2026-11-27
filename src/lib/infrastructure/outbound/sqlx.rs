@@ -29,6 +29,8 @@ mod query_filter;
 mod resource_repository;
 /// The series repository adapter.
 mod series_repository;
+/// The Root Admin setup-grant repository adapter.
+mod setup_grant_repository;
 /// The `SQLite` unit of work and its factory.
 mod unit_of_work;
 /// The upload repository adapter.
@@ -51,6 +53,7 @@ pub(crate) use self::music_group_repository::SqlxMusicGroupRepository;
 pub(crate) use self::music_playlist_repository::SqlxMusicPlaylistRepository;
 pub(crate) use self::resource_repository::SqlxResourceRepository;
 pub(crate) use self::series_repository::SqlxSeriesRepository;
+pub(crate) use self::setup_grant_repository::SqlxSetupGrantRepository;
 pub(crate) use self::unit_of_work::SqlxUnitOfWorkFactory;
 pub(crate) use self::upload_repository::SqlxUploadRepository;
 pub(crate) use self::user_repository::SqlxUserRepository;
@@ -132,7 +135,7 @@ mod test_helpers {
     };
     use crate::infrastructure::outbound::sqlx::{SqlxUnitOfWorkFactory, init_db};
     use crate::test_helpers::DIGEST;
-    use chrono::Utc;
+    use chrono::{NaiveDateTime, Utc};
     use rstest::fixture;
     use sqlx::sqlite::SqlitePoolOptions;
     use sqlx::{Sqlite, SqlitePool, Transaction};
@@ -939,6 +942,24 @@ mod test_helpers {
             .bind(season_index)
             .execute(pool)
             .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn seed_setup_grant(
+        transaction: &mut Transaction<'static, Sqlite>,
+        nonce: &str,
+        expires_at: NaiveDateTime,
+        consumed_at: Option<NaiveDateTime>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO root_admin_setup (nonce, expires_at, consumed_at)
+             VALUES (?1, ?2, ?3)",
+        )
+        .bind(nonce)
+        .bind(expires_at)
+        .bind(consumed_at)
+        .execute(&mut **transaction)
+        .await?;
         Ok(())
     }
 

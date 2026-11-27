@@ -47,6 +47,15 @@ const MAX_MEDIA_ROOT_WAIT_SECONDS: u64 = 86_400;
 /// Default value for [`Jwt::ttl`], in seconds.
 const DEFAULT_JWT_TTL_SECONDS: u64 = 3600;
 
+/// Default lifetime of a Root Admin setup token, in seconds.
+const DEFAULT_ROOT_ADMIN_SETUP_TTL_SECONDS: u64 = 1800;
+
+/// Smallest accepted lifetime of a Root Admin setup token, in seconds.
+const MIN_ROOT_ADMIN_SETUP_TTL_SECONDS: u64 = 1;
+
+/// Largest accepted lifetime of a Root Admin setup token, in seconds (one day).
+const MAX_ROOT_ADMIN_SETUP_TTL_SECONDS: u64 = 86_400;
+
 /// Default value for [`Sqlite3::max_connections`].
 ///
 /// Fixed rather than derived from the host: the value must be deterministic so
@@ -739,32 +748,88 @@ impl RateLimit {
     }
 }
 
+/// Error returned when initialising or updating a [`RootAdminSetup`] value object.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub(crate) enum RootAdminSetupError {
+    /// The token lifetime is outside the accepted range.
+    #[error(
+        "security.root_admin_setup.ttl_seconds must be between {MIN_ROOT_ADMIN_SETUP_TTL_SECONDS} and {MAX_ROOT_ADMIN_SETUP_TTL_SECONDS}"
+    )]
+    InvalidTtlSeconds,
+}
+
+/// Root Admin setup-token settings.
+///
+/// Constructed through [`RootAdminSetup::try_new`], which validates the token
+/// lifetime; the configuration adapters merge their layer into the resolved
+/// value and rebuild it, so no layer can bypass the validation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[non_exhaustive]
+pub(crate) struct RootAdminSetup {
+    /// Whether a setup token a start would issue may be revealed to standard
+    /// output.
+    reveal: bool,
+    /// Lifetime of a setup token, in seconds.
+    ttl_seconds: u64,
+}
+
+impl Default for RootAdminSetup {
+    fn default() -> Self {
+        Self {
+            reveal: true,
+            ttl_seconds: DEFAULT_ROOT_ADMIN_SETUP_TTL_SECONDS,
+        }
+    }
+}
+
+impl RootAdminSetup {
+    /// Return whether a setup token a start would issue may be revealed.
+    #[must_use]
+    pub(crate) fn reveal(&self) -> bool {
+        self.reveal
+    }
+
+    /// Initialise a new `RootAdminSetup`, validating `ttl_seconds`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RootAdminSetupError::InvalidTtlSeconds`] when `ttl_seconds` is
+    /// outside `1..=86400`.
+    pub(crate) fn try_new(reveal: bool, ttl_seconds: u64) -> Result<Self, RootAdminSetupError> {
+        if !(MIN_ROOT_ADMIN_SETUP_TTL_SECONDS..=MAX_ROOT_ADMIN_SETUP_TTL_SECONDS)
+            .contains(&ttl_seconds)
+        {
+            return Err(RootAdminSetupError::InvalidTtlSeconds);
+        }
+        Ok(Self {
+            reveal,
+            ttl_seconds,
+        })
+    }
+
+    /// Return the lifetime of a setup token, in seconds.
+    #[must_use]
+    pub(crate) fn ttl_seconds(&self) -> u64 {
+        self.ttl_seconds
+    }
+}
+
 /// Security-related settings.
 ///
-/// Constructed through [`Security::new`] from a [`Jwt`] that
-/// [`Jwt::try_new`] has already validated; the configuration adapters merge
-/// their layer into the resolved value and rebuild it, so no layer can bypass
-/// that validation.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+/// Constructed through [`Security::new`] from a [`Jwt`] and a
+/// [`RootAdminSetup`] that their constructors have already validated; the
+/// configuration adapters merge their layer into the resolved value and rebuild
+/// it, so no layer can bypass that validation.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub(crate) struct Security {
     /// `JWT` settings.
     jwt: Jwt,
-    /// Whether the Root Admin default password is still logged to standard
-    /// output on runtime start.
-    log_root_admin_password: bool,
     /// Login rate-limiting settings.
     rate_limit: RateLimit,
-}
-
-impl Default for Security {
-    fn default() -> Self {
-        Self {
-            jwt: Jwt::default(),
-            log_root_admin_password: true,
-            rate_limit: RateLimit::default(),
-        }
-    }
+    /// Root Admin setup-token settings.
+    root_admin_setup: RootAdminSetup,
 }
 
 impl Security {
@@ -774,20 +839,13 @@ impl Security {
         &self.jwt
     }
 
-    /// Return whether the Root Admin default password is still logged to
-    /// standard output on runtime start.
-    #[must_use]
-    pub(crate) fn log_root_admin_password(&self) -> bool {
-        self.log_root_admin_password
-    }
-
     /// Initialise a new `Security`.
     #[must_use]
-    pub(crate) fn new(jwt: Jwt, log_root_admin_password: bool, rate_limit: RateLimit) -> Self {
+    pub(crate) fn new(jwt: Jwt, rate_limit: RateLimit, root_admin_setup: RootAdminSetup) -> Self {
         Self {
             jwt,
-            log_root_admin_password,
             rate_limit,
+            root_admin_setup,
         }
     }
 
@@ -795,6 +853,12 @@ impl Security {
     #[must_use]
     pub(crate) fn rate_limit(&self) -> &RateLimit {
         &self.rate_limit
+    }
+
+    /// Return the Root Admin setup-token settings.
+    #[must_use]
+    pub(crate) fn root_admin_setup(&self) -> &RootAdminSetup {
+        &self.root_admin_setup
     }
 }
 

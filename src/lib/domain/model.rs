@@ -67,6 +67,8 @@ mod role;
 mod season;
 /// The series domain model.
 mod series;
+/// The Root Admin setup-grant domain model.
+mod setup_grant;
 /// The upload domain model.
 mod upload;
 /// The user domain model.
@@ -86,7 +88,7 @@ pub(crate) use self::audio::{Audio, ProbedAudio};
 pub(crate) use self::configuration::{
     Asset, AssetUpload, ClientIpHeader, Configuration, Jwt, Library, LibraryMetadata,
     LibraryStartup, Logging, MusicProvider, MusicProviders, Persistence, ProviderId, RateLimit,
-    RateLimitError, Rotation, Security, Sqlite3, VideoProvider, VideoProviders,
+    RateLimitError, RootAdminSetup, Rotation, Security, Sqlite3, VideoProvider, VideoProviders,
     parse_trusted_proxies,
 };
 #[cfg(feature = "test-seed")]
@@ -130,7 +132,8 @@ pub(crate) use self::music_recording::{MusicRecording, MusicRecordingError, Trac
 pub(crate) use self::partial_configuration::PartialSeed;
 pub(crate) use self::partial_configuration::{
     PartialAsset, PartialAssetUpload, PartialConfiguration, PartialJwt, PartialLibrary,
-    PartialLogging, PartialPersistence, PartialRateLimit, PartialSecurity, PartialSqlite3,
+    PartialLogging, PartialPersistence, PartialRateLimit, PartialRootAdminSetup, PartialSecurity,
+    PartialSqlite3,
 };
 #[cfg(test)]
 pub(crate) use self::partial_configuration::{
@@ -145,6 +148,7 @@ pub(crate) use self::resource::{
 pub(crate) use self::role::ResourceRole;
 pub(crate) use self::season::{Season, SeasonIndex};
 pub(crate) use self::series::Series;
+pub(crate) use self::setup_grant::{SETUP_GRANT_ID, SetupGrant};
 pub(crate) use self::upload::{ChunkBitmap, MAX_TOTAL_CHUNKS, Upload, UploadError};
 pub(crate) use self::user::{Role, User, UserError};
 pub(crate) use self::video::{ProbedVideo, ScanType, Video};

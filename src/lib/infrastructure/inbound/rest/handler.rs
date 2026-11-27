@@ -91,6 +91,8 @@ pub(crate) struct ApiIndexLinks {
     pub self_link: Link,
     /// Link to the show collection.
     pub series: Link,
+    /// Link to the Root Admin setup operation.
+    pub setup: Link,
     /// Link to the token-regeneration operation.
     pub token: Link,
     /// Link to the upload operation.
@@ -202,6 +204,7 @@ pub(crate) async fn get_api_index(_query: Query<NoParametersQuery>) -> Response 
         links: ApiIndexLinks {
             login: Link::new("/api/v1/identity/login"),
             register: Link::new("/api/v1/identity/register"),
+            setup: Link::new("/api/v1/identity/setup"),
             token: Link::new("/api/v1/identity/token"),
             credential: Link::templated("/api/v1/identity/credential/{id}"),
             user: Link::new("/api/v1/user"),

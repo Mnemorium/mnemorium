@@ -55,6 +55,10 @@ mod resource_repository;
 mod secret_generator;
 /// The series repository port.
 mod series_repository;
+/// The Root Admin setup-attempt limiter port.
+mod setup_attempt_limiter;
+/// The Root Admin setup-grant repository port.
+mod setup_grant_repository;
 /// The token provider port.
 mod token_provider;
 /// The unit of work port.
@@ -165,6 +169,12 @@ pub(crate) use self::secret_generator::SecretGenerator;
 #[cfg(test)]
 pub(crate) use self::series_repository::MockSeriesRepository;
 pub(crate) use self::series_repository::{EpisodeFilter, SeriesFilter, SeriesRepository};
+#[cfg(test)]
+pub(crate) use self::setup_attempt_limiter::MockSetupAttemptLimiter;
+pub(crate) use self::setup_attempt_limiter::SetupAttemptLimiter;
+#[cfg(test)]
+pub(crate) use self::setup_grant_repository::MockSetupGrantRepository;
+pub(crate) use self::setup_grant_repository::SetupGrantRepository;
 #[cfg(test)]
 pub(crate) use self::token_provider::MockTokenProvider;
 pub(crate) use self::token_provider::{IssuedToken, TokenProvider};

@@ -21,7 +21,6 @@ use crate::application::use_case::media_root;
 use crate::application::use_case::{
     EnsureStorageDirectories, InitializeRootAdmin, LoadConfiguration, LoadState, MEDIA_ROOT,
 };
-use crate::infrastructure::LoginAttemptLimit;
 #[cfg(feature = "test-seed")]
 use crate::infrastructure::apply;
 use crate::infrastructure::inbound::rest::middleware::LoginRateLimiter;
@@ -33,6 +32,7 @@ use crate::infrastructure::outbound::envy::{EnvConfigurationSource, EnvStateSeed
 use crate::infrastructure::outbound::file_system::{
     FileConfigurationSource, FileDatastorePresence, FileInstanceStateStore, FileSystemStorage,
 };
+use crate::infrastructure::outbound::qr::QrRenderer;
 use crate::infrastructure::outbound::random::{ChaChaSecretGenerator, RandomPasswordGenerator};
 use crate::infrastructure::outbound::sqlx::{SqlxUnitOfWorkFactory, init_db};
 use crate::infrastructure::setup;
@@ -40,6 +40,7 @@ use crate::infrastructure::use_case_factory::{
     RuntimeAssetUseCaseFactory, RuntimeIdentityUseCaseFactory, RuntimeLibraryUseCaseFactory,
     RuntimeUserUseCaseFactory,
 };
+use crate::infrastructure::{LoginAttemptLimit, SetupAttemptLimit};
 
 /// Run the Mnemorium server until a shutdown signal arrives.
 ///
@@ -133,29 +134,33 @@ pub async fn run() -> anyhow::Result<()> {
         Arc::clone(&unit_of_work_factory),
         password_hasher,
         Arc::new(RandomPasswordGenerator::new()),
+        Arc::new(ChaChaSecretGenerator::new()),
+        instance_state.pepper().to_owned(),
     ));
 
-    let reveal_password = configuration.security().log_root_admin_password();
+    let setup = configuration.security().root_admin_setup();
+    let reveal_setup_token = setup.reveal();
+    let setup_ttl_seconds = setup.ttl_seconds();
 
     #[expect(
         clippy::print_stdout,
-        reason = "the root admin default password is a sensitive one-time credential; it must be printed to stdout only and never written to the file-based logs"
+        reason = "the Root Admin setup token is a sensitive one-time credential; it and its QR code must be printed to stdout only and never written to the file-based logs"
     )]
     match initialize_root_admin
-        .execute(InitializeRootAdminCommand::new(reveal_password))
+        .execute(InitializeRootAdminCommand::new(
+            reveal_setup_token,
+            setup_ttl_seconds,
+        ))
         .await
     {
-        Ok(Some(response)) => println!(
-            "Root admin initialized; use the default password to authenticate and change it: '{}'",
-            response.default_password()
-        ),
-        Ok(None) => {
-            if reveal_password {
-                info!("Root admin already initialized");
-            } else {
-                info!("Root admin initialized; the default password logging is disabled");
-            }
+        Ok(Some(response)) => {
+            let token = response.setup_token();
+            println!(
+                "Root admin setup required; use this one-time setup token to set the root password: '{token}'"
+            );
+            println!("{}", QrRenderer::render(token)?);
         }
+        Ok(None) => info!("Root admin already initialized"),
         Err(error) => return Err(error.into()),
     }
 
@@ -163,12 +168,15 @@ pub async fn run() -> anyhow::Result<()> {
     let (rate_limiter, mut rate_limit_cleanup) = LoginRateLimiter::new(rate_limit);
     let login_attempt_limit = Arc::new(LoginAttemptLimit::new(rate_limit));
     rate_limit_cleanup.merge(login_attempt_limit.cleanup());
+    let setup_attempt_limit = Arc::new(SetupAttemptLimit::new(rate_limit));
+    rate_limit_cleanup.merge(setup_attempt_limit.cleanup());
     let login_rate_limiter = Arc::new(rate_limiter);
 
     let identity_use_case_factory = Arc::new(RuntimeIdentityUseCaseFactory::new(
         Arc::clone(&configuration),
         Arc::clone(&instance_state),
         login_attempt_limit,
+        setup_attempt_limit,
         Arc::clone(&unit_of_work_factory),
     ));
     let user_use_case_factory = Arc::new(RuntimeUserUseCaseFactory::new(Arc::clone(

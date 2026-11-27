@@ -165,6 +165,8 @@ notify = "8.2.1"
 utoipa-axum = "0.3.0"
 utoipa-scalar = { version = "0.4", features = ["axum"], optional = true }
 tokio-util = { version = "0.7.20", features = ["io"] }
+hmac = "0.13.0"
+fast_qr = "0.14.0"
 
 [dev-dependencies]
 mockall = "0.15.0"

@@ -28,7 +28,9 @@ Source: `Cargo.toml`.
 | [chrono](https://crates.io/crates/chrono)                         | Date and time library for Rust.                                                 | 0.4.45  | MIT OR Apache-2.0 |
 | [email_address](https://crates.io/crates/email_address)           | RFC-compliant `EmailAddress` newtype.                                           | 0.2.9   | MIT               |
 | [envy](https://crates.io/crates/envy)                             | Deserializes a struct from prefixed environment variables.                      | 0.4.2   | MIT               |
+| [fast_qr](https://crates.io/crates/fast_qr)                       | QR code encoder whose terminal renderer prints the setup token.                 | 0.14.0  | MIT               |
 | [governor](https://crates.io/crates/governor)                     | Rate-limiting quotas and keyed state behind the login limiters.                 | 0.10.4  | MIT               |
+| [hmac](https://crates.io/crates/hmac)                             | Keyed-hash message authentication over SHA-256 for the setup-token derivation.  | 0.13.0  | MIT OR Apache-2.0 |
 | [image](https://crates.io/crates/image)                           | Image decoding and metadata: dimensions and EXIF orientation.                   | 0.25.10 | MIT OR Apache-2.0 |
 | [infer](https://crates.io/crates/infer)                           | Infers a file type from its magic number signature.                             | 0.22.0  | MIT               |
 | [jsonwebtoken](https://crates.io/crates/jsonwebtoken)             | Creates and decodes JWTs in a strongly typed way.                               | 11.0.0  | MIT               |

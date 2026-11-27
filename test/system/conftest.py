@@ -85,7 +85,7 @@ SHARED_CONFIG = {
     }
 }
 
-# The Root Admin's one-time password, its access token and the seeded identity's access token, cached per instance for
+# The Root Admin's chosen password, its access token and the seeded identity's access token, cached per instance for
 # the worker's life.
 _ROOT_PASSWORDS: dict[int, str] = {}
 _ROOT_TOKENS: dict[int, str] = {}

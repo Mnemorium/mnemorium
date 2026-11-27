@@ -322,7 +322,7 @@ apply only to the resource that carries it and SHALL NOT be inherited.
 ### Requirement: REQ-AUTHORIZATION-017 — The root is implicit owner and never denied
 
 The root SHALL hold the implicit `Owner` role on every resource, SHALL bypass every `Deny`, and SHALL have no stored
-grant. The root's own account SHALL remain immutable as a state rule outside the decision.
+grant.
 
 #### Scenario: SCN-AUTHORIZATION-017-A — The root reads any resource
 

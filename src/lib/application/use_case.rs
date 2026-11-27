@@ -138,6 +138,8 @@ mod reorder_playlist_tracks;
 mod resolve_music_metadata;
 /// The resolve video metadata use case implementation.
 mod resolve_video_metadata;
+/// The Root Admin setup use case implementation.
+mod setup_root_admin;
 /// The update movie use case implementation.
 mod update_movie;
 /// The update music album use case implementation.
@@ -231,6 +233,7 @@ pub(crate) use self::remove_playlist_track::RemovePlaylistTrack;
 pub(crate) use self::reorder_playlist_tracks::ReorderPlaylistTracks;
 pub(crate) use self::resolve_music_metadata::ResolveMusicMetadata;
 pub(crate) use self::resolve_video_metadata::ResolveVideoMetadata;
+pub(crate) use self::setup_root_admin::SetupRootAdmin;
 pub(crate) use self::update_movie::UpdateMovie;
 pub(crate) use self::update_music_album::UpdateMusicAlbum;
 pub(crate) use self::update_music_group::UpdateMusicGroup;
