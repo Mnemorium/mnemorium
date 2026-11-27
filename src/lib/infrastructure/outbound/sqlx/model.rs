@@ -29,6 +29,8 @@ mod music_playlist;
 mod resource;
 /// The series SQL model.
 mod series;
+/// The Root Admin setup-grant SQL model.
+mod setup_grant;
 /// The upload SQL model.
 mod upload;
 /// The user SQL model.
@@ -49,6 +51,7 @@ pub(crate) use self::music_group::MusicGroupRow;
 pub(crate) use self::music_playlist::MusicPlaylistRow;
 pub(crate) use self::resource::{GrantRow, RelationEdgeRow, RelationRow, ResourceRow};
 pub(crate) use self::series::SeriesRow;
+pub(crate) use self::setup_grant::SetupGrant;
 pub(crate) use self::upload::Upload;
 pub(crate) use self::user::{Role, User};
 pub(crate) use self::video::{ScanType, Video, parse_scan_type};

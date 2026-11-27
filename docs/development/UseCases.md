@@ -111,9 +111,10 @@ features and resources.
 
 #### Description
 
-On the first runtime the system creates the Root Admin account, issues and reveals a default password to the operator,
-and lets the Root Admin replace it with a personal password. The default password stops being revealed once it has been
-changed.
+On the first runtime the system creates the Root Admin account with a credential that authenticates nothing, then issues
+and reveals a one-time Root Admin setup token. The operator exchanges that token for a personal password and an optional
+email. Every start while setup is pending issues a fresh token and invalidates the previous one; once setup completes, a
+start issues and reveals nothing.
 
 #### Primary actor
 
@@ -121,44 +122,48 @@ changed.
 
 #### Parameters
 
-- default password — the generated password the operator was shown; required.
+- setup token — the one-time, expiring code the first start reveals; required.
 - new password — the personal password the Root Admin chooses; required.
+- email — the contact address the Root Admin chooses; optional.
 
 #### Pre condition(s)
 
-- The caller is the Root Admin.
-- First-Time Admin Authentication is enabled in configuration.
-- The default password corresponding to the Root Admin account has not been replaced yet.
+- The Root Admin's credential has not been set up yet.
+- The reveal of a setup token is enabled while the system would issue one.
 
 #### Trigger
 
-- The Root Admin starts the service with First-Time Admin Authentication enabled.
+- The operator starts the service with no Root Admin, or with a Root Admin whose setup grant is still unclaimed.
 
 #### Happy path
 
-1. The Root Admin starts the service.
-2. The system checks whether a Root Admin account exists; none does, so the system creates the account with a generated
-   default password.
-3. The system shows the default password to the operator.
-4. The Root Admin submits an authentication request.
-5. The system verifies the default password against the password the account holds.
-6. The system validates the new password.
-7. The system secures the new password, replaces the credential, and the default password stops being shown.
-8. The system returns the updated account.
+1. The operator starts the service.
+2. The system checks whether a Root Admin account exists; none does, so it creates the account, its unusable credential
+   and one unclaimed setup grant together.
+3. The system derives the setup token from the stored nonce and the site pepper, and prints the token and its QR code.
+4. The operator submits the token, a new password and an optional email.
+5. The system validates the token, the password and the email, replaces the Root Admin credential, stores the email and
+   consumes the grant.
+6. The system confirms that setup completed.
 
 #### Alternative flow
 
-- 2a. A Root Admin already exists: the system stops at step 1 and the functionality stays inactive — no new account and
-  no revealed password.
-- 5a. Bad password: the default password does not match the password the account holds; the system rejects the request.
-- 6a. The new password cannot be used; the system rejects the request.
+- 2a. A Root Admin already exists and its setup grant is unclaimed: the system replaces the grant's nonce and expiry and
+  reveals a new token, invalidating the old one.
+- 2b. A Root Admin already exists and its setup grant is consumed or absent: the system starts normally and reveals
+  nothing.
+- 2c. The reveal is disabled while a token would be issued: startup fails, naming the setting and leaving the grant
+  unchanged.
+- 4a. The token is unknown, expired or already used: the system rejects the attempt and changes nothing.
+- 4b. The password fails the credential policy: the system rejects the attempt and leaves the grant usable.
+- 4c. Another account already holds the email: the system rejects the attempt and leaves the grant usable.
+- 4d. The address or the process has spent its setup budget: the system refuses the attempt.
 
 #### Post condition(s)
 
 - A Root Admin account exists in the system.
-- The Root Admin holds a personal credential.
-- The default password is no longer valid and is no longer shown to the operator while the configuration has First-Time
-  Admin Authentication enabled.
+- The Root Admin holds a personal credential and the optional email.
+- The setup grant is consumed, and the setup token no longer authorizes anything.
 
 ---
 

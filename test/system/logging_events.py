@@ -603,8 +603,10 @@ def test_token_rejections_name_their_reason(sut: Sut) -> None:
 @pytest.mark.own_instance(reason="log_sink")
 def test_a_throttled_request_names_its_route(sut: Sut) -> None:
     """A rate-limited login records one `rate_limit_exceeded` with its route and reason."""
-    server = start_instance(sut, config=limiter_config())
+    server = start_instance(sut)
     server.root_password()
+    # The setup exchange is itself rate limited, so the burst is applied after it.
+    server.restart(env=INSTANCE_ENV, config=limiter_config())
 
     assert attempt(server, "ghost-a").status_code == 401
     assert attempt(server, "ghost-b").status_code == 429
@@ -622,6 +624,7 @@ def test_a_credential_rotation_names_the_actor(sut: Sut) -> None:
     """A credential rotation records one event naming the actor."""
     server = start_instance(sut)
     token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
+    before = len(server.events("credential_rotated"))
 
     rotated = patch_credential.sync_detailed(
         1,
@@ -630,9 +633,57 @@ def test_a_credential_rotation_names_the_actor(sut: Sut) -> None:
     )
 
     assert rotated.status_code == 204
+    server.wait_until(
+        lambda: len(server.events("credential_rotated")) > before,
+        "the sink recorded a credential_rotated event",
+    )
+    emitted = server.events("credential_rotated")[before:]
+    assert len(emitted) == 1
+    assert emitted[0]["actor"] == "0"
+
+
+@business_rule
+@scenario("SCN-LOGGING-012-E")
+@pytest.mark.own_instance(reason="first_boot")
+def test_the_setup_exchange_records_one_credential_rotated(sut: Sut) -> None:
+    """A successful setup records one `credential_rotated` naming actor 0 and never the token."""
+    server = start_instance(sut)
+    token = server.root_setup_token()
+
+    response = server.request(
+        "POST",
+        server.href("setup"),
+        json={"token": token, "password": SECRET_PASSWORD},
+    )
+
+    assert response.status_code == 204
     emitted = server.wait_for_events("credential_rotated")
     assert len(emitted) == 1
     assert emitted[0]["actor"] == "0"
+    lines = [line for line in server.logs().splitlines() if 'event="credential_rotated"' in line]
+    assert lines and all(token not in line for line in lines)
+    server.stop()
+    assert token not in server.log_text()
+
+
+@security
+@scenario("SCN-LOGGING-008-E")
+@pytest.mark.own_instance(reason="first_boot")
+def test_a_refused_setup_records_one_uniform_authn_failed(sut: Sut) -> None:
+    """A refused setup records one `authn_failed` with one reason and never the submitted value."""
+    server = start_instance(sut)
+
+    response = server.request(
+        "POST",
+        server.href("setup"),
+        json={"token": "0000-0000", "password": SECRET_PASSWORD},
+    )
+
+    assert response.status_code == 401
+    emitted = server.wait_for_events("authn_failed")
+    assert len(emitted) == 1
+    assert emitted[0]["reason"] == "invalid_setup_token"
+    assert "0000-0000" not in emitted[0].values()
 
 
 @business_rule

@@ -94,9 +94,9 @@ and what must never reach a log sink.
 
 ## Security
 
-See `docs/development/TechnicalDesign.md` § 8 (Security), `SEC-001` for how a
-struct carrying a secret (password, hash, key or token) crosses the HTTP
-boundary.
+See `docs/development/TechnicalDesign.md` § 8 (Security) for the definition of a
+secret-bearing struct, and `REQ-API-025` in `openspec/specs/api/spec.md` for the
+closed public surface that protects it.
 
 ## Special Rules
 

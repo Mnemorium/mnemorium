@@ -53,10 +53,10 @@ mod test_helpers {
         MockGalleryRepository, MockGrantRepository, MockImageRepository, MockMimeTypeRepository,
         MockMovieRepository, MockMusicAlbumRepository, MockMusicGroupRepository,
         MockMusicPlaylistRepository, MockResourceRepository, MockSeriesRepository,
-        MockUploadRepository, MockUserRepository, MockVideoRepository, MovieRepository,
-        MusicAlbumRepository, MusicGroupRepository, MusicPlaylistRepository, ResourceRepository,
-        SeriesRepository, UnitOfWork, UnitOfWorkError, UnitOfWorkFactory, UploadRepository,
-        UserRepository, UserUnitOfWork, VideoRepository,
+        MockSetupGrantRepository, MockUploadRepository, MockUserRepository, MockVideoRepository,
+        MovieRepository, MusicAlbumRepository, MusicGroupRepository, MusicPlaylistRepository,
+        ResourceRepository, SeriesRepository, SetupGrantRepository, UnitOfWork, UnitOfWorkError,
+        UnitOfWorkFactory, UploadRepository, UserRepository, UserUnitOfWork, VideoRepository,
     };
 
     use crate::infrastructure::inbound::rest::{ApiErrorMessage, AppState};
@@ -84,7 +84,8 @@ mod test_helpers {
         "0000000000000000000000000000000000000000000000000000000000000000";
 
     /// Site pepper the test `AppState` fixtures are built with.
-    const TEST_PEPPER: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+    pub(crate) const TEST_PEPPER: &str =
+        "1111111111111111111111111111111111111111111111111111111111111111";
 
     /// Fake unit of work wiring mocked repositories and recording its outcome.
     ///
@@ -130,6 +131,8 @@ mod test_helpers {
         pub rolled_back: Arc<AtomicBool>,
         /// Series repository.
         pub series: MockSeriesRepository,
+        /// Root Admin setup-grant repository.
+        pub setup_grants: MockSetupGrantRepository,
         /// Upload repository.
         pub uploads: MockUploadRepository,
         /// User repository.
@@ -291,6 +294,22 @@ mod test_helpers {
                 })(),
                 rolled_back: Arc::new(AtomicBool::new(false)),
                 series: MockSeriesRepository::new(),
+                setup_grants: (move || -> crate::domain::port::MockSetupGrantRepository {
+                    let mut grants = crate::domain::port::MockSetupGrantRepository::new();
+                    grants
+                        .expect_consume()
+                        .returning(|_| Box::pin(async { Ok(true) }));
+                    grants
+                        .expect_create()
+                        .returning(|grant| Box::pin(async move { Ok(grant) }));
+                    grants
+                        .expect_find()
+                        .returning(|| Box::pin(async { Ok(None) }));
+                    grants
+                        .expect_save()
+                        .returning(|grant| Box::pin(async move { Ok(grant) }));
+                    grants
+                })(),
                 uploads: MockUploadRepository::new(),
                 users: MockUserRepository::new(),
                 videos: MockVideoRepository::new(),
@@ -341,6 +360,10 @@ mod test_helpers {
 
         fn resources(&mut self) -> impl ResourceRepository + '_ {
             &mut self.resources
+        }
+
+        fn setup_grants(&mut self) -> impl SetupGrantRepository + '_ {
+            &mut self.setup_grants
         }
     }
 

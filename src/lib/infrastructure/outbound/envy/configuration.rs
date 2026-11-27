@@ -3,8 +3,8 @@ use std::future::{Future, ready};
 
 use crate::domain::model::{
     PartialAsset, PartialAssetUpload, PartialConfiguration, PartialJwt, PartialLibrary,
-    PartialLogging, PartialPersistence, PartialRateLimit, PartialSecurity, PartialSqlite3,
-    Rotation,
+    PartialLogging, PartialPersistence, PartialRateLimit, PartialRootAdminSetup, PartialSecurity,
+    PartialSqlite3, Rotation,
 };
 #[cfg(feature = "test-seed")]
 use crate::domain::model::{PartialSeed, SeedProfile};
@@ -46,8 +46,6 @@ struct EnvConfiguration {
     persistence_sqlite3_max_connections: Option<u32>,
     /// `security.jwt.ttl`.
     security_jwt_ttl: Option<u64>,
-    /// `security.log_root_admin_password`.
-    security_log_root_admin_password: Option<bool>,
     /// `security.rate_limit.burst_size`.
     security_rate_limit_burst_size: Option<u32>,
     /// `security.rate_limit.client_ip_header`.
@@ -56,6 +54,10 @@ struct EnvConfiguration {
     security_rate_limit_period_seconds: Option<u64>,
     /// `security.rate_limit.trusted_proxies`.
     security_rate_limit_trusted_proxies: Option<String>,
+    /// `security.root_admin_setup.reveal`.
+    security_root_admin_setup_reveal: Option<bool>,
+    /// `security.root_admin_setup.ttl_seconds`.
+    security_root_admin_setup_ttl_seconds: Option<u64>,
     /// `seed.profile`.
     #[cfg(feature = "test-seed")]
     seed_profile: Option<SeedProfile>,
@@ -92,12 +94,15 @@ impl From<EnvConfiguration> for PartialConfiguration {
                 jwt: PartialJwt {
                     ttl: env.security_jwt_ttl,
                 },
-                log_root_admin_password: env.security_log_root_admin_password,
                 rate_limit: PartialRateLimit {
                     burst_size: env.security_rate_limit_burst_size,
                     client_ip_header: env.security_rate_limit_client_ip_header,
                     period_seconds: env.security_rate_limit_period_seconds,
                     trusted_proxies: env.security_rate_limit_trusted_proxies,
+                },
+                root_admin_setup: PartialRootAdminSetup {
+                    reveal: env.security_root_admin_setup_reveal,
+                    ttl_seconds: env.security_root_admin_setup_ttl_seconds,
                 },
             },
             // The seed profile names a fixture a `test-seed` build carries; a
@@ -217,7 +222,6 @@ mod tests {
             variable("MNEMORIUM_LOGGING_ROTATION", "HOURLY"),
             variable("MNEMORIUM_PERSISTENCE_SQLITE3_MAX_CONNECTIONS", "2"),
             variable("MNEMORIUM_SECURITY_JWT_TTL", "120"),
-            variable("MNEMORIUM_SECURITY_LOG_ROOT_ADMIN_PASSWORD", "false"),
             variable("MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE", "9"),
             variable(
                 "MNEMORIUM_SECURITY_RATE_LIMIT_CLIENT_IP_HEADER",
@@ -225,6 +229,8 @@ mod tests {
             ),
             variable("MNEMORIUM_SECURITY_RATE_LIMIT_PERIOD_SECONDS", "30"),
             variable("MNEMORIUM_SECURITY_RATE_LIMIT_TRUSTED_PROXIES", "10.0.0.1"),
+            variable("MNEMORIUM_SECURITY_ROOT_ADMIN_SETUP_REVEAL", "false"),
+            variable("MNEMORIUM_SECURITY_ROOT_ADMIN_SETUP_TTL_SECONDS", "900"),
         ];
 
         // Act
@@ -242,7 +248,6 @@ mod tests {
         assert_eq!(partial.logging.rotation, Some(Rotation::Hourly));
         assert_eq!(partial.persistence.sqlite3.max_connections, Some(2));
         assert_eq!(partial.security.jwt.ttl, Some(120));
-        assert_eq!(partial.security.log_root_admin_password, Some(false));
         assert_eq!(partial.security.rate_limit.burst_size, Some(9));
         assert_eq!(
             partial.security.rate_limit.client_ip_header.as_deref(),
@@ -253,6 +258,8 @@ mod tests {
             partial.security.rate_limit.trusted_proxies.as_deref(),
             Some("10.0.0.1")
         );
+        assert_eq!(partial.security.root_admin_setup.reveal, Some(false));
+        assert_eq!(partial.security.root_admin_setup.ttl_seconds, Some(900));
         Ok(())
     }
 

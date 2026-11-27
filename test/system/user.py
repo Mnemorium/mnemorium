@@ -11,6 +11,7 @@ from conftest import (
     create_gallery,
     login,
     provision,
+    start_instance,
     upload,
 )
 from harness import (
@@ -1012,20 +1013,59 @@ def test_the_root_admin_deletes_an_admin(server: Sut, root_token: str) -> None:
 @security
 @scenario("SCN-USER-021-E")
 def test_the_root_account_is_untouchable(server: Sut, root_token: str) -> None:
-    """Deleting or updating account 0 answers 403 and applies nothing."""
+    """Deleting, renaming or re-roling account 0, or another caller changing its email, answers 403."""
+    _, standard = provision(server, root_token, f"rootprobe{next(_ACCOUNTS)}")
+
     deleted = server.request("DELETE", f"{server.href('user')}/0", token=root_token)
-    updated = server.request(
+    renamed = server.request(
         "PATCH",
         f"{server.href('user')}/0",
         token=root_token,
         json={"username": "notroot"},
     )
+    re_roled = server.request(
+        "PATCH",
+        f"{server.href('user')}/0",
+        token=root_token,
+        json={"role": "STANDARD"},
+    )
+    foreign_email = server.request(
+        "PATCH",
+        f"{server.href('user')}/0",
+        token=standard,
+        json={"email": "intruder@example.com"},
+    )
 
     assert deleted.status_code == 403
-    assert updated.status_code == 403
+    assert renamed.status_code == 403
+    assert re_roled.status_code == 403
+    assert foreign_email.status_code == 403
     stored = server.request("GET", f"{server.href('user')}/0", token=root_token)
     assert stored.status_code == 200
-    assert json.loads(stored.content)["username"] == ROOT_ADMIN_USERNAME
+    body = json.loads(stored.content)
+    assert body["username"] == ROOT_ADMIN_USERNAME
+    assert body["role"] == "ADMIN"
+
+
+@positive
+@scenario("SCN-USER-021-I")
+@pytest.mark.own_instance(reason="process_state")
+def test_the_root_maintains_its_own_email(sut: Sut) -> None:
+    """The root updates account 0 with an email only and reads it back through `/me`."""
+    server = start_instance(sut)
+    root_token = login(server, ROOT_ADMIN_USERNAME, server.root_password())
+
+    updated = server.request(
+        "PATCH",
+        f"{server.href('user')}/0",
+        token=root_token,
+        json={"email": "root@example.com"},
+    )
+    current = server.request("GET", server.href("current_user"), token=root_token)
+
+    assert updated.status_code == 200, f"root email update failed: {updated.status_code} {updated.content!r}"
+    assert current.status_code == 200
+    assert json.loads(current.content)["email"] == "root@example.com"
 
 
 @security

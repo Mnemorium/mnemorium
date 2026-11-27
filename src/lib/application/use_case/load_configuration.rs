@@ -10,7 +10,7 @@ use crate::domain::model::Seed;
 use crate::domain::model::{
     Asset, AssetUpload, ClientIpHeader, Configuration, Jwt, Library, LibraryMetadata,
     LibraryStartup, Logging, MusicProvider, MusicProviders, PartialConfiguration, Persistence,
-    RateLimit, RateLimitError, Security, Sqlite3, VideoProvider, VideoProviders,
+    RateLimit, RateLimitError, RootAdminSetup, Security, Sqlite3, VideoProvider, VideoProviders,
     parse_trusted_proxies,
 };
 use crate::domain::port::{
@@ -286,16 +286,23 @@ fn merge(
         invalid(setting, error)
     })?;
 
-    let security = Security::new(
-        jwt,
+    let root_admin_setup = RootAdminSetup::try_new(
         resolve(
-            partial.security.log_root_admin_password,
-            || base.security().log_root_admin_password(),
-            "security.log_root_admin_password",
+            partial.security.root_admin_setup.reveal,
+            || base.security().root_admin_setup().reveal(),
+            "security.root_admin_setup.reveal",
             &mut applied,
         ),
-        rate_limit,
-    );
+        resolve(
+            partial.security.root_admin_setup.ttl_seconds,
+            || base.security().root_admin_setup().ttl_seconds(),
+            "security.root_admin_setup.ttl_seconds",
+            &mut applied,
+        ),
+    )
+    .map_err(|error| invalid("security.root_admin_setup.ttl_seconds", error))?;
+
+    let security = Security::new(jwt, rate_limit, root_admin_setup);
 
     let resolved = Configuration::new(persistence, security, logging, asset, library);
 

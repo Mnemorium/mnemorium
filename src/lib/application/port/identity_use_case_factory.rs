@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::application::port::{
     GetPermissionSummaryUseCase, GetResourcePermissionUseCase, LoginUserUseCase,
     PatchCredentialUseCase, PutResourcePermissionUseCase, RegenerateTokenUseCase,
-    RegisterUserUseCase, RevokeShareUseCase, ShareResourceUseCase,
+    RegisterUserUseCase, RevokeShareUseCase, SetupRootAdminUseCase, ShareResourceUseCase,
 };
 
 /// Builds the use cases of the Identity bounded context on demand.
@@ -35,6 +35,9 @@ pub(crate) trait IdentityUseCaseFactory: Send + Sync {
 
     /// Build the use case revoking one grant.
     fn revoke_share(&self) -> Arc<dyn RevokeShareUseCase>;
+
+    /// Build the use case exchanging the Root Admin setup token.
+    fn setup_root_admin(&self) -> Arc<dyn SetupRootAdminUseCase>;
 
     /// Build the use case sharing one resource.
     fn share_resource(&self) -> Arc<dyn ShareResourceUseCase>;

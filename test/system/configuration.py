@@ -56,6 +56,7 @@ def test_nothing_supplied_uses_the_defaults_and_writes_the_file(sut: Sut) -> Non
     generated = yaml.safe_load(server.read(CONFIG_PATH))
     assert isinstance(generated, dict), "the generated file must be a complete document"
     assert generated["security"]["jwt"]["ttl"] == _DEFAULT_TTL_S
+    assert generated["security"]["root_admin_setup"] == {"reveal": True, "ttl_seconds": 1800}
     assert _login(server, server.root_password()) == _DEFAULT_TTL_S
 
 
@@ -88,8 +89,8 @@ def test_the_file_overrides_the_defaults(sut: Sut) -> None:
     """A `config.yaml` value replaces the built-in default, and a sibling of the section keeps its own."""
     server = sut.start(config={"security": {"jwt": {"ttl": 11}}})
 
-    # Reading the logged password also proves `security.log_root_admin_password`,
-    # the named section's sibling, kept its default of `true`.
+    # Performing the setup also proves `security.root_admin_setup.reveal`, the
+    # named section's sibling, kept its default of `true`.
     assert _login(server, server.root_password()) == 11
 
 
@@ -237,6 +238,16 @@ def test_an_unknown_key_refuses_startup(sut: Sut) -> None:
     failure = _refused(sut, config_yaml=unknown)
 
     assert "lifetime" in failure.output, f"the refusal does not name the key:\n{failure.output}"
+    assert not sut.exists(DATABASE_PATH), "a refused startup created the datastore"
+
+
+@error_handling
+@scenario("SCN-CONFIGURATION-004-A")
+def test_the_removed_root_admin_password_key_refuses_startup(sut: Sut) -> None:
+    """The removed `security.log_root_admin_password` key stops startup and names the key."""
+    failure = _refused(sut, config_yaml="security:\n  log_root_admin_password: false\n")
+
+    assert "log_root_admin_password" in failure.output, f"the refusal does not name the key:\n{failure.output}"
     assert not sut.exists(DATABASE_PATH), "a refused startup created the datastore"
 
 

@@ -1,4 +1,6 @@
-use crate::domain::port::{CredentialRepository, GrantRepository, ResourceRepository, UnitOfWork};
+use crate::domain::port::{
+    CredentialRepository, GrantRepository, ResourceRepository, SetupGrantRepository, UnitOfWork,
+};
 
 /// Identity bounded-context view over a [`UnitOfWork`].
 pub(crate) trait IdentityUnitOfWork: UnitOfWork {
@@ -10,4 +12,7 @@ pub(crate) trait IdentityUnitOfWork: UnitOfWork {
 
     /// Repository reading the resource graph and writing its resources.
     fn resources(&mut self) -> impl ResourceRepository + '_;
+
+    /// Repository reading and consuming the Root Admin setup grant.
+    fn setup_grants(&mut self) -> impl SetupGrantRepository + '_;
 }

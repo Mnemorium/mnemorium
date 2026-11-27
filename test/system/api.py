@@ -381,6 +381,7 @@ def test_every_index_link_resolves_to_a_served_route(server: Sut, root_token: st
     index = server.index()
     credential = link_of(index, "credential", templated=True)
     assert credential.endswith("/credential/{id}")
+    assert link_of(index, "setup") == f"{API_PREFIX}/identity/setup"
 
     for rel, link in index["_links"].items():
         href = expand_template(link["href"], id=1) if link.get("templated") else link["href"]
@@ -404,6 +405,44 @@ def test_the_index_is_identical_for_two_callers(sut: Sut) -> None:
 
     assert root_index.status_code == alice_index.status_code == 200
     assert root_index.parsed.to_dict() == alice_index.parsed.to_dict()
+
+
+@security
+@scenario("SCN-API-025-A")
+@scenario("SCN-API-025-B")
+def test_the_public_surface_is_closed(server: Sut) -> None:
+    """The published public operations are exactly four, and none of their responses carries a secret."""
+    document = openapi(server)
+    public = sorted(
+        (method.upper(), path)
+        for path, item in document["paths"].items()
+        for method, operation in item.items()
+        if method in HTTP_METHODS
+        and operation.get("security") is not None
+        and all(not requirement for requirement in operation["security"])
+    )
+
+    assert public == sorted(
+        [
+            ("GET", "/health"),
+            ("GET", "/"),
+            ("POST", "/identity/login"),
+            ("POST", "/identity/setup"),
+        ]
+    )
+
+    for representation in (
+        server.index(),
+        server.request("GET", "/health").json(),
+        server.request(
+            "POST",
+            f"{API_PREFIX}/identity/setup",
+            json={"token": "0000-0000", "password": SECRET_PASSWORD},
+        ).json(),
+    ):
+        serialized = json.dumps(representation).lower()
+        for forbidden in ("password", "pepper", "signing_secret", "jwt_secret"):
+            assert forbidden not in serialized, f"a public response carries {forbidden!r}: {representation!r}"
 
 
 @alternate_flow

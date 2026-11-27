@@ -196,10 +196,21 @@ pub(crate) struct PartialSqlite3 {
 pub(crate) struct PartialSecurity {
     /// `JWT` settings named by the layer.
     pub jwt: PartialJwt,
-    /// Whether the Root Admin default password is logged on runtime start.
-    pub log_root_admin_password: Option<bool>,
     /// Login rate-limiting settings named by the layer.
     pub rate_limit: PartialRateLimit,
+    /// Root Admin setup-token settings named by the layer.
+    pub root_admin_setup: PartialRootAdminSetup,
+}
+
+/// Root Admin setup-token settings named by the layer.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+#[non_exhaustive]
+pub(crate) struct PartialRootAdminSetup {
+    /// Whether a setup token may be revealed, when the layer names it.
+    pub reveal: Option<bool>,
+    /// Lifetime of a setup token, in seconds.
+    pub ttl_seconds: Option<u64>,
 }
 
 /// `JWT` settings named by the layer.

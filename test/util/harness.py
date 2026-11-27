@@ -67,10 +67,11 @@ SYSTEM_SEED = "system"
 # Operator prose: the one home for messages asserted by the suite (TEST-057).
 MSG_CONFIG_GENERATED = "the configuration file did not exist; wrote the built-in defaults"
 MSG_ENV_OVERRIDES = "the environment overrode these configuration settings"
-MSG_PASSWORD_LOGGED = re.compile(
-    r"Root admin initialized; use the default password to authenticate and change it: '([^']+)'"
+MSG_SETUP_TOKEN = re.compile(
+    r"Root admin setup required; use this one-time setup token to set the root password: '([^']+)'"
 )
-MSG_PASSWORD_HIDDEN = "the default password logging is disabled"
+# The terminal QR uses Unicode block characters; the marker identifies its block.
+QR_BLOCK = "█"
 MSG_MEDIA_ROOT_ABSENT = f"the library root '{MEDIA_DIRECTORY}' is absent"
 MSG_STATE_OVERSIZED = "the instance identity exceeds 4096 bytes"
 MSG_STATE_UNSUPPORTED_VERSION = "declares unsupported format version"
@@ -122,6 +123,8 @@ class Sut:
         self.base_url = ""
         self._created = False
         self._clients: dict[tuple[str | None, tuple[tuple[str, str], ...]], Any] = {}
+        # The password chosen at setup, kept across a restart of the same instance.
+        self._root_password: str | None = None
 
     # lifecycle
 
@@ -154,6 +157,10 @@ class Sut:
                     self._exit_code(), self.logs(), f"server entered state {status!r} before it became healthy"
                 )
             if self._healthy():
+                # A start that issues a setup token leaves setup pending, so a
+                # password cached from a previous datastore no longer applies.
+                if MSG_SETUP_TOKEN.search(self.logs()) is not None:
+                    self._root_password = None
                 return self
             time.sleep(POLL_INTERVAL_S)
         raise StartupFailed(
@@ -351,12 +358,29 @@ class Sut:
         """GET the named link of `representation`."""
         return self.request("GET", link_of(representation, rel), token=token)
 
-    def root_password(self) -> str:
-        """The one-time Root Admin password the server prints to stdout on first boot."""
-        match = MSG_PASSWORD_LOGGED.search(self.logs())
+    def root_setup_token(self) -> str:
+        """The one-time Root Admin setup token the server prints to stdout on first boot."""
+        match = MSG_SETUP_TOKEN.search(self.logs())
         if match is None:
-            raise AssertionError(f"root admin default password not found in the logs of {self.name}")
+            raise AssertionError(f"root admin setup token not found in the logs of {self.name}")
         return match.group(1)
+
+    def root_setup(self) -> str:
+        """Exchange the printed setup token for SECRET_PASSWORD and return that password."""
+        if self._root_password is None:
+            token = self.root_setup_token()
+            response = self.request(
+                "POST",
+                f"{API_PREFIX}/identity/setup",
+                json={"token": token, "password": SECRET_PASSWORD},
+            )
+            assert response.status_code == 204, f"root setup failed: {response.status_code} {response.text}"
+            self._root_password = SECRET_PASSWORD
+        return self._root_password
+
+    def root_password(self) -> str:
+        """The Root Admin password chosen at setup, performing the setup once per instance."""
+        return self.root_setup()
 
     def peer_address(self) -> str:
         """The address the server sees a request from: the container's gateway on the host."""

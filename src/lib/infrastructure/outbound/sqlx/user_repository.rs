@@ -559,7 +559,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_root_admin_returns_conflict() -> Result<(), Box<dyn Error>> {
+    async fn update_root_admin_identity_field_returns_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_credential_v2(&mut transaction, 1).await?;
+        let mut repository = SqlxUserRepository::new(&mut transaction);
+        repository
+            .save(user(0, "rootadmin", None, 1, Role::Admin)?)
+            .await?;
+
+        // Act
+        let result = repository
+            .save(user(
+                0,
+                "renamed-root",
+                Some("root@example.com"),
+                1,
+                Role::Admin,
+            )?)
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::Conflict)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_root_admin_email_succeeds() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_credential_v2(&mut transaction, 1).await?;
@@ -577,10 +603,11 @@ mod tests {
                 1,
                 Role::Admin,
             )?)
-            .await;
+            .await?;
 
         // Assert
-        assert!(matches!(result, Err(RepositoryError::Conflict)));
+        assert_eq!(result.email(), Some("root@example.com"));
+        assert_eq!(result.username(), "rootadmin");
         Ok(())
     }
 

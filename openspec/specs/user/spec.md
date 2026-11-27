@@ -398,8 +398,8 @@ unique across accounts, compared exactly.
 ### Requirement: REQ-USER-021 — Account administration is root and admin
 
 Only the root SHALL create an Admin account. An Admin SHALL create, update, delete and read Standard accounts. A
-non-root caller SHALL NOT update, delete or change the role of an Admin account, and no caller SHALL modify or delete
-the root account.
+non-root caller SHALL NOT update, delete or change the role of an Admin account. The root SHALL be permitted to update
+its own email; no caller SHALL change the root's username or role, and no caller SHALL delete the root account.
 
 #### Scenario: SCN-USER-021-A — An admin creates a standard account
 
@@ -423,7 +423,8 @@ the root account.
 
 #### Scenario: SCN-USER-021-E — The root account is untouchable
 
-- **WHEN** any caller updates or deletes the root account
+- **WHEN** a caller other than the root changes the root's email, or any caller changes its username or role or deletes
+  the root account
 - **THEN** the system answers `403 Forbidden` and applies nothing
 
 #### Scenario: SCN-USER-021-F — A standard user cannot create an account
@@ -440,6 +441,11 @@ the root account.
 
 - **WHEN** an Admin updates a Standard account
 - **THEN** the update applies
+
+#### Scenario: SCN-USER-021-I — The root maintains its own email
+
+- **WHEN** the root updates account 0 with a new valid email and no other field
+- **THEN** the system answers `200 OK` and the stored email changes
 
 ### Requirement: REQ-USER-022 — An Admin administers a non-root user's grants
 

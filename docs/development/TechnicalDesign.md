@@ -1090,19 +1090,20 @@ A few settings are read once while the process starts — because the component 
 change to their value has no effect until the server restarts. They are the **startup-only settings**; this table is
 their registry.
 
-| Setting                                   | Consumed at startup by                                                                                                                                                                                                | Restart feedback                     |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `persistence.sqlite3.max_connections`     | The pool sizing in `init_db`, called from the composition root.                                                                                                                                                       | None.                                |
-| `asset.upload.chunk_size_bytes`           | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`), and the value the Asset use-case factory snapshots (`src/lib/infrastructure/use_case_factory/asset.rs`). | A new value applies after a restart. |
-| `asset.upload.reap_interval_seconds`      | The upload reaper's tick interval, fixed when the runner is built in the composition root (`src/lib/app.rs`).                                                                                                         | A new value applies after a restart. |
-| `library.startup.media_root_wait_seconds` | The bounded wait for an absent library root in the composition root (`src/lib/app.rs`) and the ingest runner.                                                                                                         | A new value applies after a restart. |
-| `library.startup.fail_without_media_root` | The startup decision in the composition root (`src/lib/app.rs`): refuse startup, or start and reconcile the library as empty.                                                                                         | A new value applies after a restart. |
-| `logging.level`                           | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                                                                                    | None.                                |
-| `security.log_root_admin_password`        | The Root Admin bootstrap in the composition root (`src/lib/app.rs`): the guard refusing a first start that could not reveal the only password, and the one-time reveal itself.                                        | A new value applies after a restart. |
-| `security.rate_limit.trusted_proxies`     | The per-client login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                               | None.                                |
-| `security.rate_limit.client_ip_header`    | The per-client login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                               | None.                                |
-| `security.rate_limit.burst_size`          | The two login limiters — per client and per account — built in the composition root (`src/lib/app.rs`).                                                                                                               | None.                                |
-| `security.rate_limit.period_seconds`      | The two login limiters — per client and per account — built in the composition root (`src/lib/app.rs`).                                                                                                               | None.                                |
+| Setting                                   | Consumed at startup by                                                                                                                                                                                                | Restart feedback                                |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `persistence.sqlite3.max_connections`     | The pool sizing in `init_db`, called from the composition root.                                                                                                                                                       | None.                                           |
+| `asset.upload.chunk_size_bytes`           | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`), and the value the Asset use-case factory snapshots (`src/lib/infrastructure/use_case_factory/asset.rs`). | A new value applies after a restart.            |
+| `asset.upload.reap_interval_seconds`      | The upload reaper's tick interval, fixed when the runner is built in the composition root (`src/lib/app.rs`).                                                                                                         | A new value applies after a restart.            |
+| `library.startup.media_root_wait_seconds` | The bounded wait for an absent library root in the composition root (`src/lib/app.rs`) and the ingest runner.                                                                                                         | A new value applies after a restart.            |
+| `library.startup.fail_without_media_root` | The startup decision in the composition root (`src/lib/app.rs`): refuse startup, or start and reconcile the library as empty.                                                                                         | A new value applies after a restart.            |
+| `logging.level`                           | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                                                                                    | None.                                           |
+| `security.root_admin_setup.reveal`        | The Root Admin bootstrap in the composition root (`src/lib/app.rs`): the guard refusing a start that would issue a token it may not reveal, and the one-time reveal itself.                                           | A new value applies after a restart.            |
+| `security.root_admin_setup.ttl_seconds`   | **Live, not startup-only:** read whenever the bootstrap issues a token, so the registry names it beside its startup-only sibling.                                                                                     | None; the next issued token uses the new value. |
+| `security.rate_limit.trusted_proxies`     | The per-client login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                               | None.                                           |
+| `security.rate_limit.client_ip_header`    | The per-client login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                               | None.                                           |
+| `security.rate_limit.burst_size`          | The two login limiters — per client and per account — built in the composition root (`src/lib/app.rs`).                                                                                                               | None.                                           |
+| `security.rate_limit.period_seconds`      | The two login limiters — per client and per account — built in the composition root (`src/lib/app.rs`).                                                                                                               | None.                                           |
 
 The registry is **extensible**: a setting becomes startup-only by being added here. Adding one records, in the same
 change, how a change to its value is surfaced to the operator (a startup warning, or an explicit `None`).
@@ -1608,6 +1609,10 @@ pub async fn create_note() -> axum::response::Json<CreateNoteResponse> {
     unimplemented!()
 }
 ```
+
+A raw secret supplied _in_ a request body — a login password, a Root Admin setup token — is an input, not a
+secret-bearing struct. It is governed by the endpoint's own authentication requirement and by the log-content rules
+(`OBS-003`, `OBS-004`), and its debug representation still redacts the value.
 
 ---
 
@@ -2961,37 +2966,16 @@ filtered to the events this server can emit.
 
 ## Security
 
-This section governs how a type that carries a secret crosses the HTTP boundary: which types are secret-bearing, and the
-access control every endpoint that exposes or mutates one must satisfy. Keeping secrets out of log sinks is a separate
-concern, governed by [§ 7 (Logging & Observability)](#logging--observability); this section cites an `OBS-*` rule for it
+This section defines the **secret-bearing struct** the logging rules cite. The access control that protects a secret at
+the HTTP boundary is stated by the capability requirements — `REQ-API-025` closes the public surface, and
+`REQ-AUTHENTICATION-020`/`-021` guard the setup exchange — rather than by a prose rule here. Keeping secrets out of log
+sinks is governed by [§ 7 (Logging & Observability)](#logging--observability); this section cites an `OBS-*` rule for it
 and never restates one.
-
-Seed data is test data, not a secret: the fixture trees live under `test/` and never ship in the image, their fixed demo
-password is printed only on an explicitly seeded run, and a seeded boot's pepper and signing secret come from the
-instance state exactly as an unseeded boot's do.
-
-| ID        | Section | Rule                                                                                                                                                                                                                                                                                                                                                                                   | More info                        | Enforced by |
-| --------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | ----------- |
-| `SEC-001` | Secrets | A struct that carries a secret — a password or password hash, a signing or encryption key, or an access token — is reachable only through a protected endpoint: every endpoint that returns or mutates one declares `("bearer_auth" = [])` and is guarded by the authentication middleware (`STY-RUST-100`), the sole exception being token issuance at `POST /api/v1/identity/login`. | [§ 1](#1-secret-bearing-structs) |             |
-
----
-
-### 1. Secret-bearing structs
 
 A **secret-bearing struct** is a type that declares a field holding a password or password hash, a signing or encryption
 key, or an access token. The canonical set is the one `OBS-004` names — `InstanceState` and `Credential`, both in
 `src/lib/domain/model/` — and every new type that adds such a field joins it.
 
-`SEC-001` binds the HTTP boundary in three ways:
-
-- **Outbound.** A secret-bearing struct is never part of a response payload a public endpoint returns. The server's only
-  unauthenticated operations are `GET /health` and `POST /api/v1/identity/login`.
-- **Mutation.** An endpoint that creates or changes a secret is protected: `POST /api/v1/identity/register` (initial
-  credential), `PATCH /api/v1/identity/credential/{id}` (password change) and `PATCH /api/v1/user/{id}` (role change)
-  each declare `("bearer_auth" = [])` and sit in the route group wrapped by `authenticate` (`STY-RUST-100`).
-- **Token issuance is the single exception.** `POST /api/v1/identity/login` returns the caller's own freshly minted
-  access token — a secret the caller is entitled to — because issuing it is that operation's purpose. It is the sole
-  secret that crosses a public boundary, and it is still withheld from every log sink (`OBS-004`).
-
-A raw secret supplied _in_ a request body — a login password — is an input, not a secret-bearing struct. It is governed
-by the endpoint's own authentication requirement and by the log-content rules (`OBS-003`, `OBS-004`), not by `SEC-001`.
+Seed data is test data, not a secret: the fixture trees live under `test/` and never ship in the image, their fixed demo
+password is printed only on an explicitly seeded run, and a seeded boot's pepper and signing secret come from the
+instance state exactly as an unseeded boot's do.

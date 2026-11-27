@@ -3,18 +3,19 @@ use std::sync::Arc;
 use crate::application::port::{
     GetPermissionSummaryUseCase, GetResourcePermissionUseCase, IdentityUseCaseFactory,
     LoginUserUseCase, PatchCredentialUseCase, PutResourcePermissionUseCase, RegenerateTokenUseCase,
-    RegisterUserUseCase, RevokeShareUseCase, ShareResourceUseCase,
+    RegisterUserUseCase, RevokeShareUseCase, SetupRootAdminUseCase, ShareResourceUseCase,
 };
 use crate::application::use_case::{
     GetPermissionSummary, GetResourcePermission, LoginUser, PatchCredential, PutResourcePermission,
-    RegenerateToken, RegisterUser, RevokeShare, ShareResource,
+    RegenerateToken, RegisterUser, RevokeShare, SetupRootAdmin, ShareResource,
 };
 use crate::domain::model::{Configuration, InstanceState};
-use crate::infrastructure::outbound::KeyedLoginAttemptLimiter;
 use crate::infrastructure::outbound::argon2::Argon2PasswordHasher;
 use crate::infrastructure::outbound::jwt::JwtTokenProvider;
 use crate::infrastructure::outbound::sqlx::SqlxUnitOfWorkFactory;
-use crate::infrastructure::rate_limit::LoginAttemptLimit;
+use crate::infrastructure::outbound::{
+    KeyedLoginAttemptLimiter, LoginAttemptLimit, SetupAttemptLimit,
+};
 
 /// Builds the Identity use cases from the immutable configuration and identity.
 ///
@@ -30,6 +31,8 @@ pub(crate) struct RuntimeIdentityUseCaseFactory {
     instance_state: Arc<InstanceState>,
     /// Process-lifetime limiter counting login attempts per account.
     login_attempt_limit: Arc<LoginAttemptLimit>,
+    /// Process-lifetime limiter counting setup attempts.
+    setup_attempt_limit: Arc<SetupAttemptLimit>,
     /// Factory opening the unit of work wrapping the Identity use cases.
     unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
 }
@@ -41,12 +44,14 @@ impl RuntimeIdentityUseCaseFactory {
         configuration: Arc<Configuration>,
         instance_state: Arc<InstanceState>,
         login_attempt_limit: Arc<LoginAttemptLimit>,
+        setup_attempt_limit: Arc<SetupAttemptLimit>,
         unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
     ) -> Self {
         Self {
             configuration,
             instance_state,
             login_attempt_limit,
+            setup_attempt_limit,
             unit_of_work_factory,
         }
     }
@@ -120,6 +125,15 @@ impl IdentityUseCaseFactory for RuntimeIdentityUseCaseFactory {
 
     fn revoke_share(&self) -> Arc<dyn RevokeShareUseCase> {
         Arc::new(RevokeShare::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn setup_root_admin(&self) -> Arc<dyn SetupRootAdminUseCase> {
+        Arc::new(SetupRootAdmin::new(
+            Arc::clone(&self.unit_of_work_factory),
+            self.password_hasher(),
+            Arc::clone(&self.setup_attempt_limit),
+            self.instance_state.pepper().to_owned(),
+        ))
     }
 
     fn share_resource(&self) -> Arc<dyn ShareResourceUseCase> {

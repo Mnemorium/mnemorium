@@ -173,7 +173,7 @@ impl User {
     ///
     /// Returns [`UserError::InvalidEmail`] when `email` is not a valid email
     /// address.
-    fn validate_email(email: Option<String>) -> Result<Option<String>, UserError> {
+    pub(crate) fn validate_email(email: Option<String>) -> Result<Option<String>, UserError> {
         match email {
             None => Ok(None),
             Some(raw) => {

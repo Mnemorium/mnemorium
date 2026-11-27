@@ -12,6 +12,8 @@ mod post_login;
 mod post_permission_share;
 /// The identity context endpoints.
 mod post_register;
+/// The Root Admin setup endpoint.
+mod post_setup;
 /// The identity context endpoints.
 mod post_token;
 /// The resource permission replacement endpoint.
@@ -614,16 +616,18 @@ pub(crate) fn identity_protected_router() -> OpenApiRouter<AppState> {
 
 /// Register the public routes of the identity bounded context.
 ///
-/// The handlers carry their own paths, so this only groups them; the login rate
-/// limit is applied by [`identity_routes`].
+/// The handlers carry their own paths, so this only groups them; the per-client
+/// rate limit is applied by [`identity_routes`].
 pub(crate) fn identity_public_router() -> OpenApiRouter<AppState> {
-    OpenApiRouter::new().routes(routes!(post_login::post_login))
+    OpenApiRouter::new()
+        .routes(routes!(post_login::post_login))
+        .routes(routes!(post_setup::post_setup))
 }
 
 /// Routes of the identity bounded context.
 ///
-/// `login` is public; `register`, the credential password change and token
-/// regeneration require an authenticated caller. The public `login` route is
+/// `login` and `setup` are public; `register`, the credential password change
+/// and token regeneration require an authenticated caller. The public routes are
 /// rate limited per client address by the `limiter` the composition root built;
 /// the other routes are not.
 pub(crate) fn identity_routes(state: &AppState, limiter: &LoginRateLimiter) -> OpenApiRouter<()> {

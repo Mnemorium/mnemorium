@@ -148,9 +148,10 @@ raw client-supplied query string, file name or request-body value.
 
 ### Requirement: REQ-LOGGING-008 — No secret or personal value reaches a sink
 
-No secret or personal value SHALL reach a sink: application source, session identifiers, access tokens, passwords or
-password material, database connection strings, the pepper, the signing secret, and personal data. A type that holds one
-SHALL NOT render it in its debug representation.
+No secret or personal value SHALL be recorded as an event or written to the file log: application source, session
+identifiers, access tokens, passwords or password material, the setup token, database connection strings, the pepper,
+the signing secret, and personal data. The one-time standard-output reveal of the setup token is the sole exception. A
+type that holds one SHALL NOT render it in its debug representation.
 
 #### Scenario: SCN-LOGGING-008-A — Login secrets stay out
 
@@ -171,6 +172,11 @@ SHALL NOT render it in its debug representation.
 
 - **WHEN** an event names a user
 - **THEN** it carries the user identifier and no username or email address
+
+#### Scenario: SCN-LOGGING-008-E — The setup token stays out of the events
+
+- **WHEN** the first start issues the setup token
+- **THEN** it appears on standard output and in no event or file log
 
 ### Requirement: REQ-LOGGING-009 — Five severities carry declared meanings
 

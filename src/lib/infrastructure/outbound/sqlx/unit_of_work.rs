@@ -4,15 +4,15 @@ use crate::domain::port::{
     AssetUnitOfWork, AudioRepository, CredentialRepository, FileRepository, GalleryRepository,
     GrantRepository, IdentityUnitOfWork, ImageRepository, LibraryUnitOfWork, MimeTypeRepository,
     MovieRepository, MusicAlbumRepository, MusicGroupRepository, MusicPlaylistRepository,
-    ResourceRepository, SeriesRepository, UnitOfWork, UnitOfWorkError, UnitOfWorkFactory,
-    UploadRepository, UserRepository, UserUnitOfWork, VideoRepository,
+    ResourceRepository, SeriesRepository, SetupGrantRepository, UnitOfWork, UnitOfWorkError,
+    UnitOfWorkFactory, UploadRepository, UserRepository, UserUnitOfWork, VideoRepository,
 };
 use crate::infrastructure::outbound::sqlx::{
     SqlxAudioRepository, SqlxCredentialRepository, SqlxFileRepository, SqlxGalleryRepository,
     SqlxGrantRepository, SqlxImageRepository, SqlxMimeTypeRepository, SqlxMovieRepository,
     SqlxMusicAlbumRepository, SqlxMusicGroupRepository, SqlxMusicPlaylistRepository,
-    SqlxResourceRepository, SqlxSeriesRepository, SqlxUploadRepository, SqlxUserRepository,
-    SqlxVideoRepository,
+    SqlxResourceRepository, SqlxSeriesRepository, SqlxSetupGrantRepository, SqlxUploadRepository,
+    SqlxUserRepository, SqlxVideoRepository,
 };
 
 /// Statement opening a write-intent transaction.
@@ -59,6 +59,10 @@ impl IdentityUnitOfWork for SqlxUnitOfWork {
 
     fn resources(&mut self) -> impl ResourceRepository + '_ {
         SqlxResourceRepository::new(self.transaction())
+    }
+
+    fn setup_grants(&mut self) -> impl SetupGrantRepository + '_ {
+        SqlxSetupGrantRepository::new(self.transaction())
     }
 }
 

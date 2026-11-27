@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Launch a disposable, seeded Mnemorium server, capture the one-time Root Admin
-# password printed on first start, and run Schemathesis against it.
+# Launch a disposable, seeded Mnemorium server, exchange the one-time Root Admin
+# setup token printed on first start for a chosen password, and run Schemathesis
+# against it.
 #
 # The server runs in a temporary working directory, so it owns a fresh
 # mnemorium.db, state.yaml and config.yaml: every run initializes the Root
@@ -28,8 +29,8 @@
 # Env toggles (no argument parsing):
 #   NO_BUILD=1       reuse the existing target/debug/server binary; it must have
 #                    been built with `--features "api-docs test-seed"`
-#   KEEP=1           keep the temporary server directory (contains the password)
-#   SHOW_PASSWORD=1  print the captured password instead of only using it
+#   KEEP=1           keep the temporary server directory (contains the setup token and chosen password)
+#   SHOW_PASSWORD=1  print the chosen password instead of only using it
 #   REPORT=1         write a self-contained HTML report under .artifacts/
 #   REPORT_DIR=DIR   directory for that report (default .artifacts/schemathesis)
 #
@@ -68,6 +69,9 @@ readonly REPO_ROOT
 readonly BASE_URL="http://127.0.0.1:4080"
 readonly SCHEMA_URL="${BASE_URL}/doc/openapi.json"
 readonly ROOT_ADMIN_USERNAME="root"
+# The password this disposable instance chooses at setup; it is the fixture's
+# credential for the whole run, like the seeded demo accounts' fixed password.
+readonly ROOT_ADMIN_PASSWORD="C0rrect!Horse"
 readonly STARTUP_TIMEOUT_S=60
 readonly HEALTH_TIMEOUT_S=60
 
@@ -142,10 +146,15 @@ if [[ ${MODE} == stop ]]; then
 	exit 0
 fi
 
-# Build the login payload with Python so the generated password never needs
-# shell or JSON escaping.
+# Build the login payload with Python so the password never needs shell or JSON
+# escaping.
 login_payload() {
 	python3 -c 'import json, sys; print(json.dumps({"identifier": sys.argv[1], "password": sys.argv[2]}))' "$1" "$2"
+}
+
+# Build the setup payload with Python so the token and password need no escaping.
+setup_payload() {
+	python3 -c 'import json, sys; print(json.dumps({"token": sys.argv[1], "password": sys.argv[2]}))' "$1" "$2"
 }
 
 # Authenticate as the Root Admin and print the bearer token.
@@ -236,28 +245,27 @@ ln -sfn "${REPO_ROOT}/test" "${DATA_DIR}/test"
 	cd "${DATA_DIR}"
 	exec setsid env \
 		MNEMORIUM_SEED_PROFILE=api \
-		MNEMORIUM_SECURITY_LOG_ROOT_ADMIN_PASSWORD=true \
 		MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE=10000 \
 		"${BINARY}"
 ) >"${SERVER_LOG}" 2>&1 &
 SERVER_PID=$!
 
-echo "==> Waiting for the Root Admin default password"
-PASSWORD=""
+echo "==> Waiting for the Root Admin setup token"
+SETUP_TOKEN=""
 for _ in $(seq 1 $((STARTUP_TIMEOUT_S * 5))); do
-	PASSWORD="$(sed -n "s/.*Root admin initialized; use the default password to authenticate and change it: '\([^']*\)'.*/\1/p" "${SERVER_LOG}" | head -n 1)"
-	if [[ -n ${PASSWORD} ]]; then
+	SETUP_TOKEN="$(sed -n "s/.*Root admin setup required; use this one-time setup token to set the root password: '\([^']*\)'.*/\1/p" "${SERVER_LOG}" | head -n 1)"
+	if [[ -n ${SETUP_TOKEN} ]]; then
 		break
 	fi
 	if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
-		echo "error: the server exited before printing the default password" >&2
-		sed '/Root admin initialized; use the default password/d' "${SERVER_LOG}" | tail -n 40 >&2
+		echo "error: the server exited before printing the setup token" >&2
+		sed '/Root admin setup required/d' "${SERVER_LOG}" | tail -n 40 >&2
 		exit 1
 	fi
 	sleep 0.2
 done
-if [[ -z ${PASSWORD} ]]; then
-	echo "error: the Root Admin password was not printed within ${STARTUP_TIMEOUT_S}s" >&2
+if [[ -z ${SETUP_TOKEN} ]]; then
+	echo "error: the Root Admin setup token was not printed within ${STARTUP_TIMEOUT_S}s" >&2
 	echo "hint: set KEEP=1 to inspect ${SERVER_LOG}" >&2
 	exit 1
 fi
@@ -271,7 +279,7 @@ for _ in $(seq 1 $((HEALTH_TIMEOUT_S * 2))); do
 	fi
 	if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
 		echo "error: the server exited before becoming healthy" >&2
-		sed '/Root admin initialized; use the default password/d' "${SERVER_LOG}" | tail -n 40 >&2
+		sed '/Root admin setup required/d' "${SERVER_LOG}" | tail -n 40 >&2
 		exit 1
 	fi
 	sleep 0.5
@@ -280,6 +288,12 @@ if [[ ${healthy} -ne 1 ]]; then
 	echo "error: the server was not healthy within ${HEALTH_TIMEOUT_S}s" >&2
 	exit 1
 fi
+
+echo "==> Exchanging the setup token for the fixture's Root Admin password"
+curl -fsS -o /dev/null -X POST "${BASE_URL}/api/v1/identity/setup" \
+	-H 'Content-Type: application/json' \
+	--data "$(setup_payload "${SETUP_TOKEN}" "${ROOT_ADMIN_PASSWORD}")"
+PASSWORD="${ROOT_ADMIN_PASSWORD}"
 
 echo "==> Preparing the fixture upload"
 TOKEN="$(login)"

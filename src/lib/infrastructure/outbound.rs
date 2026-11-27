@@ -13,6 +13,8 @@ mod media_probe;
 pub(crate) mod metadata;
 /// The file-system media-change observer.
 pub(crate) mod notify;
+/// The terminal QR renderer.
+pub(crate) mod qr;
 /// The password and secret generators.
 pub(crate) mod random;
 pub(crate) mod reqwest;
@@ -21,5 +23,7 @@ pub(crate) mod sha2;
 /// The `SQLite` datastore adapters.
 pub(crate) mod sqlx;
 
-pub(crate) use self::governor::KeyedLoginAttemptLimiter;
+pub(crate) use self::governor::{
+    KeyedLoginAttemptLimiter, LoginAttemptLimit, RateLimitCleanup, SetupAttemptLimit,
+};
 pub(crate) use self::media_probe::LocalMediaProbe;

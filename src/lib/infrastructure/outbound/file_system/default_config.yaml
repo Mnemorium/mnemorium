@@ -59,9 +59,15 @@ persistence:
 security:
   jwt:
     ttl: 3600
-  log_root_admin_password: true
   rate_limit:
     burst_size: 5
     client_ip_header: x-forwarded-for
     period_seconds: 12
     trusted_proxies: ""
+  root_admin_setup:
+    # Whether a start that would issue a setup token may reveal it on standard
+    # output. This is a startup-only setting.
+    reveal: true
+    # Lifetime of a setup token, in seconds, between 1 and 86400. Read when a
+    # token is issued.
+    ttl_seconds: 1800
