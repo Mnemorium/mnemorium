@@ -74,10 +74,22 @@ impl From<SetupRootAdminError> for ApiError {
             description = "The Root Admin credential was replaced",
         ),
         (
+            status = BAD_REQUEST,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Malformed request body"
+        ),
+        (
             status = UNAUTHORIZED,
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "The setup token is unknown, expired or already used"
+        ),
+        (
+            status = UNSUPPORTED_MEDIA_TYPE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body is not application/json"
         ),
         (
             status = CONFLICT,
@@ -90,6 +102,12 @@ impl From<SetupRootAdminError> for ApiError {
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "The password or the email fails its validation"
+        ),
+        (
+            status = PAYLOAD_TOO_LARGE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body exceeds the maximum allowed size"
         ),
         (
             status = TOO_MANY_REQUESTS,
