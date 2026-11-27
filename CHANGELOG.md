@@ -1,3 +1,9 @@
+## [0.40.0](https://github.com/Mnemorium/mnemorium/compare/v0.39.3...v0.40.0) (2026-11-27)
+
+### Features
+
+* **application:** bootstrap the Root Admin with a one-time setup token ([#428](https://github.com/Mnemorium/mnemorium/issues/428)) ([191241b](https://github.com/Mnemorium/mnemorium/commit/191241bde514a3ce85be5e32ded518a4e33f0d2b))
+
 ## [0.39.3](https://github.com/Mnemorium/mnemorium/compare/v0.39.2...v0.39.3) (2026-11-25)
 
 ### Bug Fixes
