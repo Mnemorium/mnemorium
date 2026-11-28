@@ -1,3 +1,9 @@
+## [0.40.2](https://github.com/Mnemorium/mnemorium/compare/v0.40.1...v0.40.2) (2026-11-28)
+
+### Bug Fixes
+
+* **performance:** log in with the identifier field ([ff29b05](https://github.com/Mnemorium/mnemorium/commit/ff29b0529fddf51801c97e7bc2f560b71675eabb))
+
 ## [0.40.1](https://github.com/Mnemorium/mnemorium/compare/v0.40.0...v0.40.1) (2026-11-28)
 
 ### Bug Fixes
