@@ -94,9 +94,9 @@ and what must never reach a log sink.
 
 ## Security
 
-See `docs/development/TechnicalDesign.md` § 8 (Security) for the definition of a
-secret-bearing struct, and `REQ-API-025` in `openspec/specs/api/spec.md` for the
-closed public surface that protects it.
+See `docs/development/TechnicalDesign.md` § 7 (Logging & Observability), `OBS-004`
+for the secret-bearing types, and `REQ-API-025` in `openspec/specs/api/spec.md` for
+the closed public surface that protects them.
 
 ## Special Rules
 

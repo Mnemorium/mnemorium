@@ -3048,21 +3048,3 @@ The media probe is the current instance: it runs `ffprobe` on the staged file wi
 
 **Reference** — [OWASP Logging Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html),
 filtered to the events this server can emit.
-
----
-
-## Security
-
-This section defines the **secret-bearing struct** the logging rules cite. The access control that protects a secret at
-the HTTP boundary is stated by the capability requirements — `REQ-API-025` closes the public surface, and
-`REQ-AUTHENTICATION-020`/`-021` guard the setup exchange — rather than by a prose rule here. Keeping secrets out of log
-sinks is governed by [§ 7 (Logging & Observability)](#logging--observability); this section cites an `OBS-*` rule for it
-and never restates one.
-
-A **secret-bearing struct** is a type that declares a field holding a password or password hash, a signing or encryption
-key, or an access token. The canonical set is the one `OBS-004` names — `InstanceState` and `Credential`, both in
-`src/lib/domain/model/` — and every new type that adds such a field joins it.
-
-Seed data is test data, not a secret: the fixture trees live under `test/` and never ship in the image, their fixed demo
-password is printed only on an explicitly seeded run, and a seeded boot's pepper and signing secret come from the
-instance state exactly as an unseeded boot's do.
