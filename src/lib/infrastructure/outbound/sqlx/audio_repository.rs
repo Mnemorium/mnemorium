@@ -310,6 +310,14 @@ mod tests {
         "INSERT INTO audio (audio_id, name, duration_ms, codec, sample_rate_hz, block_size, file_id)
          VALUES (1, 'a', 1.0, 'mp3', 44100.0, 0, 10)"
     )]
+    #[case::duration_ms_not_finite(
+        "INSERT INTO audio (audio_id, name, duration_ms, codec, sample_rate_hz, bit_depth, file_id)
+         VALUES (1, 'a', 9e999, 'mp3', 44100.0, 16, 10)"
+    )]
+    #[case::sample_rate_hz_not_finite(
+        "INSERT INTO audio (audio_id, name, duration_ms, codec, sample_rate_hz, bit_depth, file_id)
+         VALUES (1, 'a', 1.0, 'mp3', 9e999, 16, 10)"
+    )]
     #[tokio::test]
     async fn raw_insert_violating_a_check_returns_data_integrity_violation(
         #[case] statement: &'static str,

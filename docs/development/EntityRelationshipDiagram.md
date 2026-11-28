@@ -72,9 +72,9 @@ entity audio {
    * audio_id: INTEGER <<PK>>
    --
    * name: TEXT <<NN>>
-   * duration_ms: REAL <<NN, CC(duration_ms >= 0)>>
+   duration_ms: REAL <<CC(duration_ms IS NULL OR (duration_ms >= 0 AND duration_ms <= 1.7976931348623157e308))>>
    * codec: TEXT <<NN>>
-   * sample_rate_hz: REAL <<NN, CC(sample_rate_hz >= 0)>>
+   sample_rate_hz: REAL <<CC(sample_rate_hz IS NULL OR (sample_rate_hz >= 0 AND sample_rate_hz <= 1.7976931348623157e308))>>
    bit_depth: INTEGER <<CC(bit_depth IS NULL OR bit_depth > 0)>>
    block_size: INTEGER <<CC(block_size IS NULL OR block_size > 0)>>
    * file_id: INTEGER <<FK, NN, UN>>
@@ -169,7 +169,7 @@ entity mime_type {
 entity video {
    * video_id: INTEGER <<PK>>
    --
-   * duration_ms: REAL <<NN, CC(duration_ms >= 0)>>
+   * duration_ms: REAL <<NN, CC(duration_ms >= 0 AND duration_ms <= 1.7976931348623157e308)>>
    * codec: VARCHAR(20) <<NN>>
    * frame_count: INTEGER <<NN, CC(frame_count > 0)>>
    * width: INTEGER <<NN, CC(width > 0)>>
