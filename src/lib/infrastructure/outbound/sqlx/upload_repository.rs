@@ -81,7 +81,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
         let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM upload");
         let mut first = true;
 
-        if let Some(id) = filter.upload_id {
+        if let Some(id) = filter.id {
             push_filter(&mut first, &mut builder, "upload_id = ", id);
         }
         if let Some(user_id) = filter.user_id {
@@ -167,7 +167,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
 
     async fn save(&mut self, upload: Upload) -> Result<Upload, RepositoryError> {
         let exists = sqlx::query_scalar::<_, i64>("SELECT 1 FROM upload WHERE upload_id = ?")
-            .bind(upload.upload_id())
+            .bind(upload.id())
             .fetch_optional(&mut **self.transaction)
             .await?
             .is_some();
@@ -216,7 +216,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
                 sealed_at,
                 created_at",
         )
-        .bind(upload.upload_id())
+        .bind(upload.id())
         .bind(upload.user_id())
         .bind(upload.file_name())
         .bind(to_i64(
@@ -258,7 +258,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
             }
         }
         if !upload.is_finished() && !upload.is_verifying() {
-            self.delete_chunks(upload.upload_id()).await?;
+            self.delete_chunks(upload.id()).await?;
             for &chunk_number in &chunk_numbers {
                 let persisted_chunk_number = to_i64(
                     u64::try_from(chunk_number).unwrap_or(u64::MAX),
@@ -269,7 +269,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
                     VALUES (?1, ?2)
                     ON CONFLICT (upload_id, chunk_number) DO NOTHING",
                 )
-                .bind(upload.upload_id())
+                .bind(upload.id())
                 .bind(persisted_chunk_number)
                 .execute(&mut **self.transaction)
                 .await?;
@@ -297,7 +297,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
         );
         let mut first = true;
 
-        if let Some(id) = filter.upload_id {
+        if let Some(id) = filter.id {
             push_filter(&mut first, &mut builder, "upload_id = ", id);
         }
         if let Some(user_id) = filter.user_id {
@@ -337,7 +337,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
         );
         let mut first_chunk = true;
 
-        if let Some(id) = filter.upload_id {
+        if let Some(id) = filter.id {
             push_filter(
                 &mut first_chunk,
                 &mut chunk_builder,
@@ -542,14 +542,14 @@ mod tests {
         let persisted = repository.create(pending).await?;
         let found = repository
             .search(&UploadFilter {
-                upload_id: Some(persisted.upload_id()),
+                id: Some(persisted.id()),
                 ..UploadFilter::default()
             })
             .await?;
 
         // Assert
         assert_ne!(
-            persisted.upload_id(),
+            persisted.id(),
             0,
             "a new upload must receive a real identifier"
         );
@@ -576,7 +576,7 @@ mod tests {
         // Act
         let mut aggregate = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -589,7 +589,7 @@ mod tests {
         repository.save(aggregate).await?;
         let found = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?;
@@ -618,7 +618,7 @@ mod tests {
         // Act: recording the same chunk twice is a no-op.
         let mut aggregate = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -629,7 +629,7 @@ mod tests {
         repository.save(aggregate).await?;
         let mut again = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -640,7 +640,7 @@ mod tests {
         repository.save(again).await?;
         let found = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?;
@@ -662,10 +662,10 @@ mod tests {
         let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
 
         // Act: finishing an incomplete, unsealed upload matches no row.
-        let incomplete = repository.finish(created.upload_id()).await;
+        let incomplete = repository.finish(created.id()).await;
         let mut aggregate = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -677,7 +677,7 @@ mod tests {
         repository.save(aggregate).await?;
         let mut sealed = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -687,12 +687,12 @@ mod tests {
         sealed.seal(chrono::Utc::now().naive_utc());
         repository.save(sealed).await?;
         let finished = repository
-            .finish(created.upload_id())
+            .finish(created.id())
             .await?
             .ok_or("the upload must still exist")?;
         let found = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?;
@@ -708,7 +708,7 @@ mod tests {
         // The finished session's chunk rows are removed in the same transaction.
         let chunks: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM upload_chunk WHERE upload_id = ?")
-                .bind(created.upload_id())
+                .bind(created.id())
                 .fetch_one(&mut *transaction)
                 .await?;
         assert_eq!(chunks, 0);
@@ -760,7 +760,7 @@ mod tests {
         let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
         let mut aggregate = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -772,7 +772,7 @@ mod tests {
         repository.save(aggregate).await?;
         let mut sealed = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -781,10 +781,10 @@ mod tests {
             .ok_or("the upload must still exist")?;
         sealed.seal(chrono::Utc::now().naive_utc());
         repository.save(sealed).await?;
-        repository.finish(created.upload_id()).await?;
+        repository.finish(created.id()).await?;
 
         // Act: the second writer loses the once-only transition.
-        let result = repository.finish(created.upload_id()).await;
+        let result = repository.finish(created.id()).await;
 
         // Assert
         assert!(matches!(result, Err(RepositoryError::ConcurrencyConflict)));
@@ -835,7 +835,7 @@ mod tests {
         let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
         let mut aggregate = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -847,7 +847,7 @@ mod tests {
         repository.save(aggregate).await?;
         let mut sealed = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -856,12 +856,12 @@ mod tests {
             .ok_or("the upload must still exist")?;
         sealed.seal(chrono::Utc::now().naive_utc());
         repository.save(sealed).await?;
-        repository.finish(created.upload_id()).await?;
+        repository.finish(created.id()).await?;
 
         // Act: the finished-guard trigger rejects a late chunk.
         let result =
             sqlx::query("INSERT INTO upload_chunk (upload_id, chunk_number) VALUES (?1, 0)")
-                .bind(created.upload_id())
+                .bind(created.id())
                 .execute(&mut *transaction)
                 .await
                 .map_err(RepositoryError::from);
@@ -990,7 +990,7 @@ mod tests {
         let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
         let mut aggregate = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -1003,7 +1003,7 @@ mod tests {
         // Act
         let deleted = repository
             .delete(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?;
@@ -1022,7 +1022,7 @@ mod tests {
         let mut repository = SqlxUploadRepository::new(&mut transaction);
         let deleted = repository
             .delete(&UploadFilter {
-                upload_id: Some(404),
+                id: Some(404),
                 ..UploadFilter::default()
             })
             .await?;
@@ -1070,7 +1070,7 @@ mod tests {
         // Act
         let mut aggregate = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -1081,7 +1081,7 @@ mod tests {
         let sealed = repository.save(aggregate).await?;
         let found = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?;
@@ -1104,7 +1104,7 @@ mod tests {
         let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
         let mut aggregate = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -1117,7 +1117,7 @@ mod tests {
         // Act
         let mut unsealed = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -1128,7 +1128,7 @@ mod tests {
         repository.save(unsealed).await?;
         let mut again = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -1139,7 +1139,7 @@ mod tests {
         repository.save(again).await?;
         let found = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?;
@@ -1160,7 +1160,7 @@ mod tests {
         let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
         let mut aggregate = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -1171,7 +1171,7 @@ mod tests {
         repository.save(aggregate).await?;
         let mut sealed = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -1184,7 +1184,7 @@ mod tests {
         // Act: the not-writable trigger rejects a chunk during verification.
         let result =
             sqlx::query("INSERT INTO upload_chunk (upload_id, chunk_number) VALUES (?1, 1)")
-                .bind(created.upload_id())
+                .bind(created.id())
                 .execute(&mut *transaction)
                 .await
                 .map_err(RepositoryError::from);
@@ -1203,7 +1203,7 @@ mod tests {
         let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
         let mut aggregate = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -1215,10 +1215,10 @@ mod tests {
         repository.save(aggregate).await?;
 
         // Act
-        let removed = repository.delete_chunks(created.upload_id()).await?;
+        let removed = repository.delete_chunks(created.id()).await?;
         let found = repository
             .search(&UploadFilter {
-                upload_id: Some(created.upload_id()),
+                id: Some(created.id()),
                 ..UploadFilter::default()
             })
             .await?;
@@ -1241,7 +1241,7 @@ mod tests {
             let mut repository = SqlxUploadRepository::new(&mut transaction);
             let expired = repository.create(upload(0, 1, 8, &[], false)?).await?;
             let pending = repository.create(upload(0, 1, 8, &[], false)?).await?;
-            (expired.upload_id(), pending.upload_id())
+            (expired.id(), pending.id())
         };
         let old = chrono::Utc::now().naive_utc() - chrono::Duration::hours(2);
         sqlx::query("UPDATE upload SET created_at = ?1 WHERE upload_id = ?2")
@@ -1252,7 +1252,7 @@ mod tests {
         let mut repository = SqlxUploadRepository::new(&mut transaction);
         let mut pending = repository
             .search(&UploadFilter {
-                upload_id: Some(pending_id),
+                id: Some(pending_id),
                 ..UploadFilter::default()
             })
             .await?
@@ -1274,7 +1274,7 @@ mod tests {
 
         // Assert: only the pending, unsealed upload is past its expiry.
         assert_eq!(found.len(), 1);
-        assert_eq!(found.first().map(Upload::upload_id), Some(expired_id));
+        assert_eq!(found.first().map(Upload::id), Some(expired_id));
         Ok(())
     }
 
@@ -1289,7 +1289,7 @@ mod tests {
         let old = chrono::Utc::now().naive_utc() - chrono::Duration::hours(1);
         let mut stale_aggregate = repository
             .search(&UploadFilter {
-                upload_id: Some(stale.upload_id()),
+                id: Some(stale.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -1300,7 +1300,7 @@ mod tests {
         repository.save(stale_aggregate).await?;
         let mut fresh_aggregate = repository
             .search(&UploadFilter {
-                upload_id: Some(fresh.upload_id()),
+                id: Some(fresh.id()),
                 ..UploadFilter::default()
             })
             .await?
@@ -1321,10 +1321,7 @@ mod tests {
 
         // Assert
         assert_eq!(found.len(), 1);
-        assert_eq!(
-            found.first().map(Upload::upload_id),
-            Some(stale.upload_id())
-        );
+        assert_eq!(found.first().map(Upload::id), Some(stale.id()));
         Ok(())
     }
 }

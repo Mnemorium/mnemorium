@@ -150,6 +150,8 @@ pub(crate) use self::season::{Season, SeasonIndex};
 pub(crate) use self::series::Series;
 pub(crate) use self::setup_grant::{SETUP_GRANT_ID, SetupGrant};
 pub(crate) use self::upload::{ChunkBitmap, MAX_TOTAL_CHUNKS, Upload, UploadError};
-pub(crate) use self::user::{Role, User, UserError};
+#[cfg(test)]
+pub(crate) use self::user::UserError;
+pub(crate) use self::user::{Role, User};
 pub(crate) use self::video::{ProbedVideo, ScanType, Video};
 pub(crate) use self::video_candidate::{Candidate, Target};

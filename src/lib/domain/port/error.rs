@@ -36,14 +36,6 @@ pub(crate) enum RepositoryError {
     /// An unexpected or unmapped error occurred.
     #[error("an unexpected or unmapped error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
-    /// The provided data does not satisfy validation rules required by the
-    /// repository.
-    #[expect(
-        dead_code,
-        reason = "the port error keeps the variant the port-error contract table declares; no repository constructs it yet"
-    )]
-    #[error("the provided data does not satisfy validation rules required by the repository")]
-    ValidationFailed,
 }
 
 /// Error returned when an external service operation fails.
@@ -77,27 +69,6 @@ pub(crate) enum ExternalServiceError {
     /// exceeded.
     #[error("the external service rejected the request because a usage limit was exceeded")]
     RateLimited,
-    /// A transient error occurred and the operation may succeed if retried.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the port error keeps the variant the port-error contract table declares; only the failover tests construct it"
-        )
-    )]
-    #[error("a transient error occurred and the operation may succeed if retried")]
-    RetryableFailure,
-    /// The request could not be properly serialized before being sent to the
-    /// service.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the port error keeps the variant the port-error contract table declares; only the failover tests construct it"
-        )
-    )]
-    #[error("the request could not be properly serialized before being sent to the service")]
-    SerializationFailure,
     /// The external service did not respond within the expected time.
     #[error("the external service did not respond within the expected time")]
     Timeout,
@@ -127,8 +98,6 @@ impl ExternalServiceError {
             Self::Forbidden => "forbidden",
             Self::InvalidRequest => "invalid_request",
             Self::RateLimited => "rate_limited",
-            Self::RetryableFailure => "retryable_failure",
-            Self::SerializationFailure => "serialization_failure",
             Self::Timeout => "timeout",
             Self::Unauthorized => "unauthorized",
             Self::Unavailable => "unavailable",
@@ -141,16 +110,6 @@ impl ExternalServiceError {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum ContentHasherError {
-    /// The content hashing could not complete for a non-specific reason.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the port error keeps the variant its family declares; only the write-chunk tests construct it"
-        )
-    )]
-    #[error("the content hashing operation could not complete for a non-specific reason")]
-    OperationFailed,
     /// An unexpected or unmapped error occurred.
     #[error("an unexpected or unmapped error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
@@ -159,25 +118,7 @@ pub(crate) enum ContentHasherError {
 /// Error returned when a pepper generation operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub(crate) enum SecretGeneratorError {
-    /// The pepper generation could not complete for a non-specific reason.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the port error keeps the variant its family declares; only the load-state tests construct it"
-        )
-    )]
-    #[error("the pepper generation operation could not complete for a non-specific reason")]
-    OperationFailed,
-    /// An unexpected or unmapped error occurred.
-    #[expect(
-        dead_code,
-        reason = "the port error keeps the `Unknown` variant every port error declares; no caller constructs it yet"
-    )]
-    #[error("an unexpected or unmapped error occurred: {0}")]
-    Unknown(#[source] anyhow::Error),
-}
+pub(crate) enum SecretGeneratorError {}
 
 /// Error returned when a password hashing operation fails.
 #[derive(Debug, thiserror::Error)]
@@ -199,13 +140,6 @@ pub(crate) enum PasswordGeneratorError {
     /// The password generation could not complete for a non-specific reason.
     #[error("the password generation operation could not complete for a non-specific reason")]
     OperationFailed,
-    /// An unexpected or unmapped error occurred.
-    #[expect(
-        dead_code,
-        reason = "the port error keeps the `Unknown` variant every port error declares; no caller constructs it yet"
-    )]
-    #[error("an unexpected or unmapped error occurred: {0}")]
-    Unknown(#[source] anyhow::Error),
 }
 
 /// Error returned when a token provider operation fails.
@@ -227,16 +161,6 @@ pub(crate) enum TokenProviderError {
     /// The token has expired.
     #[error("the token has expired")]
     TokenExpired,
-    /// An unexpected or unmapped error occurred.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the port error keeps the `Unknown` variant every port error declares; only the auth middleware tests construct it"
-        )
-    )]
-    #[error("an unexpected or unmapped error occurred: {0}")]
-    Unknown(#[source] anyhow::Error),
 }
 
 /// Error returned when a unit of work operation fails.
@@ -264,16 +188,6 @@ pub(crate) enum ConfigurationSourceError {
     /// The layered settings do not form a valid configuration.
     #[error("the configuration is invalid: {0}")]
     InvalidConfiguration(#[source] anyhow::Error),
-    /// The configuration source could not be read for a non-specific reason.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the port error keeps the variant the port-error contract table declares; only the configuration tests construct it"
-        )
-    )]
-    #[error("the configuration source could not be read for a non-specific reason")]
-    OperationFailed,
     /// An unexpected or unmapped error occurred.
     #[error("an unexpected or unmapped error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
@@ -299,13 +213,6 @@ pub(crate) enum InstanceStateStoreError {
     /// The identity file could not be read or written.
     #[error("the instance identity store failed: {0}")]
     OperationFailed(#[source] anyhow::Error),
-    /// An unexpected or unmapped error occurred.
-    #[expect(
-        dead_code,
-        reason = "the port error keeps the `Unknown` variant every port error declares; the load-state mapping matches it but no caller constructs it"
-    )]
-    #[error("an unexpected or unmapped error occurred: {0}")]
-    Unknown(#[source] anyhow::Error),
     /// The persisted identity declares a format version this build does not
     /// support.
     #[error("the persisted instance identity declares unsupported format version {0}")]
@@ -357,16 +264,6 @@ pub(crate) enum MediaProbeError {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum ContentTypeSnifferError {
-    /// The content could not be read for a non-specific reason.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the port error keeps the variant its family declares; only the scan tests construct it"
-        )
-    )]
-    #[error("the content type could not be read for a non-specific reason")]
-    OperationFailed,
     /// An unexpected or unmapped error occurred.
     #[error("an unexpected or unmapped error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
@@ -376,13 +273,6 @@ pub(crate) enum ContentTypeSnifferError {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum MediaSourceError {
-    /// The library root could not be walked for a non-specific reason.
-    #[expect(
-        dead_code,
-        reason = "the port error keeps the variant its contract declares; a walk failure surfaces as `Unknown` today"
-    )]
-    #[error("the library root could not be walked for a non-specific reason")]
-    OperationFailed,
     /// An unexpected or unmapped error occurred.
     #[error("an unexpected or unmapped error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
@@ -392,15 +282,6 @@ pub(crate) enum MediaSourceError {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum StorageError {
-    /// The requested operation conflicts with the current state of the stored
-    /// file, for example when a target that must not exist already does. A
-    /// missing file is not a conflict: operations report absence as a value.
-    #[expect(
-        dead_code,
-        reason = "the port error keeps the variant the port-error contract table declares; no storage operation constructs it yet"
-    )]
-    #[error("the file storage is in a state that conflicts with the requested operation")]
-    Conflict,
     /// The storage backend could not complete the requested operation for a
     /// non-specific reason.
     #[error(

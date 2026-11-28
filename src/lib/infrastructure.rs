@@ -2,6 +2,8 @@
 pub(crate) mod inbound;
 /// The tracing subscriber and its configuration.
 mod logging;
+/// Checked conversions between the numeric types the adapters share.
+mod number;
 /// The outbound adapters: datastore, file system, providers and generators.
 pub(crate) mod outbound;
 /// The test-only seed data; its contents are gated on the `test-seed` feature.
@@ -10,6 +12,7 @@ mod seed;
 pub(crate) mod use_case_factory;
 
 pub(crate) use self::logging::setup;
+pub(crate) use self::number::{integral_i64, integral_u64};
 pub(crate) use self::outbound::{LoginAttemptLimit, SetupAttemptLimit};
 #[cfg(feature = "test-seed")]
 pub(crate) use self::seed::apply;

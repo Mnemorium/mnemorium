@@ -17,17 +17,6 @@ pub(crate) enum ChunkBitmapError {
     /// The chunk number is outside the bitmap range.
     #[error("chunk number must be lower than the total number of chunks")]
     ChunkNumberOutOfRange,
-    /// The byte representation is not long enough for the total number of
-    /// chunks.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the error belongs to the bitmap rebuild that only tests perform"
-        )
-    )]
-    #[error("the byte representation is too short for the total number of chunks")]
-    InvalidLength,
     /// The total number of chunks is zero.
     #[error("the total number of chunks must be greater than zero")]
     TotalChunksZero,
@@ -70,36 +59,6 @@ impl ChunkBitmap {
             .checked_shl(u32::try_from(bit_index).unwrap_or(0))
             .unwrap_or(0);
         Ok((byte_index, mask))
-    }
-
-    /// Initialise a bitmap from its raw byte representation.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ChunkBitmapError::InvalidLength`] when `bytes` is shorter than
-    /// the representation of `total_chunks` chunks, and
-    /// [`ChunkBitmapError::TotalChunksZero`] when `total_chunks` is zero.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the persisted bitmap is rebuilt from its bytes in tests only"
-        )
-    )]
-    pub(crate) fn from_bytes(
-        bytes: Vec<u8>,
-        total_chunks: usize,
-    ) -> Result<Self, ChunkBitmapError> {
-        if total_chunks == 0 {
-            return Err(ChunkBitmapError::TotalChunksZero);
-        }
-        if bytes.len() < byte_count(total_chunks) {
-            return Err(ChunkBitmapError::InvalidLength);
-        }
-        Ok(Self {
-            bytes,
-            total_chunks,
-        })
     }
 
     /// Return whether chunk `chunk_number` has been received.
@@ -191,21 +150,10 @@ pub(crate) enum UploadError {
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
-    /// The upload is not complete and cannot be finished.
-    #[expect(
-        dead_code,
-        reason = "the domain error keeps the variant its completion contract declares; no constructor raises it yet"
-    )]
-    #[error("the upload is not complete and cannot be finished")]
-    UploadIncomplete,
 }
 
 /// An in-progress or finished chunked upload session.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[expect(
-    clippy::struct_field_names,
-    reason = "`upload_id` is the primary key name mandated by the SQL section and the domain field naming"
-)]
 pub(crate) struct Upload {
     /// Bitmap of the chunks received so far.
     chunk_bitmap: ChunkBitmap,
@@ -217,6 +165,8 @@ pub(crate) struct Upload {
     file_name: String,
     /// Total size of the file being uploaded, in bytes.
     file_size: u64,
+    /// Unique identifier of the upload.
+    id: NumericID,
     /// Integrity hash of the complete file, supplied by the client.
     integrity_hash: IntegrityHash<DIGEST_HEX_LENGTH>,
     /// Whether the upload has been finished.
@@ -227,8 +177,6 @@ pub(crate) struct Upload {
     mime_type_id: String,
     /// Instant at which the current verification sealed the session, if any.
     sealed_at: Option<NaiveDateTime>,
-    /// Unique identifier of the upload.
-    upload_id: NumericID,
     /// Identifier of the user owning the upload.
     user_id: NumericID,
 }
@@ -272,6 +220,12 @@ impl Upload {
         self.file_size
     }
 
+    /// Return the unique identifier of the upload.
+    #[must_use]
+    pub(crate) fn id(&self) -> NumericID {
+        self.id
+    }
+
     /// Return the integrity hash of the complete file.
     #[must_use]
     pub(crate) fn integrity_hash(&self) -> &IntegrityHash<DIGEST_HEX_LENGTH> {
@@ -307,7 +261,7 @@ impl Upload {
             .mark_received(chunk_number)
             .map_err(|error| match error {
                 ChunkBitmapError::ChunkNumberOutOfRange => UploadError::ChunkNumberOutOfRange,
-                other @ (ChunkBitmapError::InvalidLength | ChunkBitmapError::TotalChunksZero) => {
+                other @ ChunkBitmapError::TotalChunksZero => {
                     UploadError::Unknown(anyhow::Error::new(other))
                 }
             })
@@ -381,7 +335,7 @@ impl Upload {
             is_verifying,
             mime_type_id,
             sealed_at,
-            upload_id,
+            id: upload_id,
             user_id,
         })
     }
@@ -390,12 +344,6 @@ impl Upload {
     pub(crate) fn unseal(&mut self) {
         self.is_verifying = false;
         self.sealed_at = None;
-    }
-
-    /// Return the unique identifier of the upload.
-    #[must_use]
-    pub(crate) fn upload_id(&self) -> NumericID {
-        self.upload_id
     }
 
     /// Return the identifier of the user owning the upload.

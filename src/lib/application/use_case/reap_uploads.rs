@@ -105,11 +105,11 @@ where
                 .await
                 .map_err(|error| ReapUploadsError::Unknown(error.into()))?;
             for session in sessions.iter().take(batch_size) {
-                discard_staged(&file_storage, session.upload_id()).await;
+                discard_staged(&file_storage, session.id()).await;
                 let deleted = expired_unit_of_work
                     .uploads()
                     .delete(&UploadFilter {
-                        upload_id: Some(session.upload_id()),
+                        id: Some(session.id()),
                         ..UploadFilter::default()
                     })
                     .await
@@ -117,7 +117,7 @@ where
                 if deleted {
                     expired_unit_of_work
                         .resources()
-                        .delete(ResourceRef::new(ResourceKind::Upload, session.upload_id()))
+                        .delete(ResourceRef::new(ResourceKind::Upload, session.id()))
                         .await
                         .map_err(|error| ReapUploadsError::Unknown(error.into()))?;
                     expired = expired.saturating_add(1);
@@ -185,7 +185,7 @@ where
                     Some(upload_id) => !staging_unit_of_work
                         .uploads()
                         .search(&UploadFilter {
-                            upload_id: Some(upload_id),
+                            id: Some(upload_id),
                             ..UploadFilter::default()
                         })
                         .await
@@ -318,7 +318,7 @@ mod tests {
         phase_one_uploads
             .expect_delete()
             .times(1)
-            .withf(|filter| filter.upload_id == Some(7))
+            .withf(|filter| filter.id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut phase_one_resources = (move || -> crate::domain::port::MockResourceRepository {
             let mut resources = crate::domain::port::MockResourceRepository::new();

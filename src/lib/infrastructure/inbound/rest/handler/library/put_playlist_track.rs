@@ -95,7 +95,7 @@ pub(crate) async fn put_playlist_track(
     payload: JsonObject<ReorderPlaylistTracksRequest>,
 ) -> Result<Response, ApiError> {
     let playlist_id = parse_playlist_id(&playlist_id_value)?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let response = state
         .library_use_case_factory()
         .reorder_playlist_tracks()

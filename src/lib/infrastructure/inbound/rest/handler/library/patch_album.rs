@@ -143,7 +143,7 @@ pub(crate) async fn patch_album(
     payload: JsonObject<PatchAlbumRequest>,
 ) -> Result<Response, ApiError> {
     let album_id = parse_album_id(&album_id_value)?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let production_type = match request.production_type {
         FieldUpdate::Absent => FieldUpdate::Absent,
         FieldUpdate::Clear => FieldUpdate::Clear,

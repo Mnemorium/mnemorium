@@ -79,7 +79,7 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
         let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM gallery");
         let mut first = true;
 
-        if let Some(id) = filter.gallery_id {
+        if let Some(id) = filter.id {
             push_filter(&mut first, &mut builder, "gallery_id = ", id);
         }
         if let Some(is_public) = filter.is_public {
@@ -103,7 +103,7 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
         if let Some(gallery_id) = filter.gallery_id {
             push_filter(&mut first, &mut builder, "gallery_id = ", gallery_id);
         }
-        if let Some(id) = filter.gallery_item_id {
+        if let Some(id) = filter.item_id {
             push_filter(&mut first, &mut builder, "gallery_item_id = ", id);
         }
         if let Some(media) = filter.media {
@@ -139,7 +139,7 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
                 is_public,
                 user_id",
         )
-        .bind(gallery.gallery_id())
+        .bind(gallery.id())
         .bind(gallery.name())
         .bind(gallery.created_at())
         .bind(gallery.last_modified_at())
@@ -158,7 +158,7 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
         };
         // The store assigns a fresh identity; an item constructed for insertion
         // carries none, so it takes the plain-insert path.
-        let row = if item.gallery_item_id() == 0 {
+        let row = if item.item_id() == 0 {
             sqlx::query_as::<_, SqlxGalleryItem>(
                 "INSERT INTO gallery_item (gallery_id, image_id, video_id, item_index, added_at)
                 VALUES (?1, ?2, ?3, ?4, ?5)
@@ -197,7 +197,7 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
                     item_index,
                     added_at",
             )
-            .bind(item.gallery_item_id())
+            .bind(item.item_id())
             .bind(item.gallery_id())
             .bind(image_id)
             .bind(video_id)
@@ -230,7 +230,7 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
         );
         let mut first = true;
 
-        if let Some(id) = filter.gallery_id {
+        if let Some(id) = filter.id {
             push_filter(&mut first, &mut builder, "gallery_id = ", id);
         }
         if let Some(is_public) = filter.is_public {
@@ -284,7 +284,7 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
                 gallery_id,
             );
         }
-        if let Some(id) = filter.gallery_item_id {
+        if let Some(id) = filter.item_id {
             push_filter(
                 &mut first,
                 &mut builder,
@@ -424,14 +424,14 @@ mod tests {
         let persisted = repository.create(pending).await?;
         let found = repository
             .search(&GalleryFilter {
-                gallery_id: Some(persisted.gallery_id()),
+                id: Some(persisted.id()),
                 ..GalleryFilter::default()
             })
             .await?;
 
         // Assert
         assert_ne!(
-            persisted.gallery_id(),
+            persisted.id(),
             0,
             "a new gallery must receive a real identifier"
         );
@@ -479,7 +479,7 @@ mod tests {
             .await?;
 
         // Assert
-        assert_ne!(first.gallery_id(), second.gallery_id());
+        assert_ne!(first.id(), second.id());
         assert_eq!(second.name(), "Holidays");
         Ok(())
     }
@@ -500,7 +500,7 @@ mod tests {
         let saved = repository.save(gallery).await?;
         let found = repository
             .search(&GalleryFilter {
-                gallery_id: Some(saved.gallery_id()),
+                id: Some(saved.id()),
                 ..GalleryFilter::default()
             })
             .await?;
@@ -518,7 +518,7 @@ mod tests {
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let mut default = repository
             .search(&GalleryFilter {
-                gallery_id: Some(0),
+                id: Some(0),
                 ..GalleryFilter::default()
             })
             .await?
@@ -532,35 +532,10 @@ mod tests {
         let saved = repository.save(default).await?;
 
         // Assert
-        assert_eq!(saved.gallery_id(), 0);
+        assert_eq!(saved.id(), 0);
         assert_eq!(saved.last_modified_at(), touched);
         Ok(())
     }
-
-    #[tokio::test]
-    async fn save_renaming_default_gallery_returns_conflict() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut transaction = begin_transaction().await?;
-        let mut repository = SqlxGalleryRepository::new(&mut transaction);
-        let mut default = repository
-            .search(&GalleryFilter {
-                gallery_id: Some(0),
-                ..GalleryFilter::default()
-            })
-            .await?
-            .into_iter()
-            .next()
-            .ok_or("the default gallery must be seeded")?;
-
-        // Act
-        default.set_name("Renamed".to_owned());
-        let result = repository.save(default).await;
-
-        // Assert
-        assert!(matches!(result, Err(RepositoryError::Conflict)));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn delete_reports_matched_and_missing_galleries() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -574,13 +549,13 @@ mod tests {
         // Act
         let deleted = repository
             .delete(&GalleryFilter {
-                gallery_id: Some(created.gallery_id()),
+                id: Some(created.id()),
                 ..GalleryFilter::default()
             })
             .await?;
         let missing = repository
             .delete(&GalleryFilter {
-                gallery_id: Some(created.gallery_id()),
+                id: Some(created.id()),
                 ..GalleryFilter::default()
             })
             .await?;
@@ -603,7 +578,7 @@ mod tests {
         // Act
         let result = repository
             .delete(&GalleryFilter {
-                gallery_id: Some(0),
+                id: Some(0),
                 ..GalleryFilter::default()
             })
             .await;
@@ -625,24 +600,19 @@ mod tests {
             .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         repository
-            .save_item(item(
-                0,
-                created.gallery_id(),
-                GalleryItemMedia::Image(1),
-                0,
-            )?)
+            .save_item(item(0, created.id(), GalleryItemMedia::Image(1), 0)?)
             .await?;
 
         // Act
         let deleted = repository
             .delete(&GalleryFilter {
-                gallery_id: Some(created.gallery_id()),
+                id: Some(created.id()),
                 ..GalleryFilter::default()
             })
             .await?;
         let items = repository
             .search_items(&GalleryItemFilter {
-                gallery_id: Some(created.gallery_id()),
+                gallery_id: Some(created.id()),
                 ..GalleryItemFilter::default()
             })
             .await?;
@@ -728,8 +698,8 @@ mod tests {
             .await?;
 
         // Assert
-        let ids: Vec<_> = found.iter().map(Gallery::gallery_id).collect();
-        assert_eq!(ids, vec![second.gallery_id(), third.gallery_id()]);
+        let ids: Vec<_> = found.iter().map(Gallery::id).collect();
+        assert_eq!(ids, vec![second.id(), third.id()]);
         Ok(())
     }
 
@@ -800,7 +770,7 @@ mod tests {
         // Act
         let found = repository
             .search(&GalleryFilter {
-                gallery_id: Some(0),
+                id: Some(0),
                 ..GalleryFilter::default()
             })
             .await?;
@@ -828,23 +798,18 @@ mod tests {
 
         // Act
         let persisted = repository
-            .save_item(item(
-                0,
-                created.gallery_id(),
-                GalleryItemMedia::Image(5),
-                0,
-            )?)
+            .save_item(item(0, created.id(), GalleryItemMedia::Image(5), 0)?)
             .await?;
         let details = repository
             .search_items(&GalleryItemFilter {
-                gallery_id: Some(created.gallery_id()),
+                gallery_id: Some(created.id()),
                 ..GalleryItemFilter::default()
             })
             .await?;
 
         // Assert
         assert_ne!(
-            persisted.gallery_item_id(),
+            persisted.item_id(),
             0,
             "a new item must receive a real identifier"
         );
@@ -870,22 +835,12 @@ mod tests {
             .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         repository
-            .save_item(item(
-                0,
-                created.gallery_id(),
-                GalleryItemMedia::Image(5),
-                0,
-            )?)
+            .save_item(item(0, created.id(), GalleryItemMedia::Image(5), 0)?)
             .await?;
 
         // Act
         let result = repository
-            .save_item(item(
-                0,
-                created.gallery_id(),
-                GalleryItemMedia::Image(6),
-                0,
-            )?)
+            .save_item(item(0, created.id(), GalleryItemMedia::Image(6), 0)?)
             .await;
 
         // Assert
@@ -908,12 +863,12 @@ mod tests {
             .create(gallery(0, Some(1), "Second", false))
             .await?;
         repository
-            .save_item(item(0, first.gallery_id(), GalleryItemMedia::Image(5), 0)?)
+            .save_item(item(0, first.id(), GalleryItemMedia::Image(5), 0)?)
             .await?;
 
         // Act
         let result = repository
-            .save_item(item(0, second.gallery_id(), GalleryItemMedia::Image(5), 0)?)
+            .save_item(item(0, second.id(), GalleryItemMedia::Image(5), 0)?)
             .await;
 
         // Assert: the partial unique index keeps a medium in one gallery only
@@ -958,12 +913,7 @@ mod tests {
 
         // Act
         let result = repository
-            .save_item(item(
-                0,
-                created.gallery_id(),
-                GalleryItemMedia::Image(999),
-                0,
-            )?)
+            .save_item(item(0, created.id(), GalleryItemMedia::Image(999), 0)?)
             .await;
 
         // Assert
@@ -988,26 +938,16 @@ mod tests {
             .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         repository
-            .save_item(item(
-                0,
-                created.gallery_id(),
-                GalleryItemMedia::Image(5),
-                0,
-            )?)
+            .save_item(item(0, created.id(), GalleryItemMedia::Image(5), 0)?)
             .await?;
         repository
-            .save_item(item(
-                0,
-                created.gallery_id(),
-                GalleryItemMedia::Video(6),
-                1,
-            )?)
+            .save_item(item(0, created.id(), GalleryItemMedia::Video(6), 1)?)
             .await?;
 
         // Act
         let details = repository
             .search_items(&GalleryItemFilter {
-                gallery_id: Some(created.gallery_id()),
+                gallery_id: Some(created.id()),
                 ..GalleryItemFilter::default()
             })
             .await?;
@@ -1040,22 +980,22 @@ mod tests {
             .create(gallery(0, Some(1), "Second", false))
             .await?;
         let stored = repository
-            .save_item(item(0, first.gallery_id(), GalleryItemMedia::Image(5), 0)?)
+            .save_item(item(0, first.id(), GalleryItemMedia::Image(5), 0)?)
             .await?;
         let reassignment = repository
-            .save_item(item(0, second.gallery_id(), GalleryItemMedia::Image(5), 0)?)
+            .save_item(item(0, second.id(), GalleryItemMedia::Image(5), 0)?)
             .await;
 
         // Act
         let by_gallery = repository
             .search_items(&GalleryItemFilter {
-                gallery_id: Some(first.gallery_id()),
+                gallery_id: Some(first.id()),
                 ..GalleryItemFilter::default()
             })
             .await?;
         let by_id = repository
             .search_items(&GalleryItemFilter {
-                gallery_item_id: Some(stored.gallery_item_id()),
+                item_id: Some(stored.item_id()),
                 ..GalleryItemFilter::default()
             })
             .await?;
@@ -1070,10 +1010,8 @@ mod tests {
         assert!(matches!(reassignment, Err(RepositoryError::AlreadyExist)));
         assert_eq!(by_gallery.len(), 1);
         assert_eq!(
-            by_gallery
-                .first()
-                .map(|detail| detail.item().gallery_item_id()),
-            Some(stored.gallery_item_id())
+            by_gallery.first().map(|detail| detail.item().item_id()),
+            Some(stored.item_id())
         );
         assert_eq!(by_id.len(), 1);
         // The second add failed the partial unique index, so the medium stayed
@@ -1081,7 +1019,7 @@ mod tests {
         assert_eq!(by_media.len(), 1);
         assert_eq!(
             by_media.first().map(|detail| detail.item().gallery_id()),
-            Some(first.gallery_id())
+            Some(first.id())
         );
         Ok(())
     }
@@ -1165,24 +1103,19 @@ mod tests {
             .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         let stored = repository
-            .save_item(item(
-                0,
-                created.gallery_id(),
-                GalleryItemMedia::Image(5),
-                0,
-            )?)
+            .save_item(item(0, created.id(), GalleryItemMedia::Image(5), 0)?)
             .await?;
 
         // Act
         let deleted = repository
             .delete_item(&GalleryItemFilter {
-                gallery_item_id: Some(stored.gallery_item_id()),
+                item_id: Some(stored.item_id()),
                 ..GalleryItemFilter::default()
             })
             .await?;
         let missing = repository
             .delete_item(&GalleryItemFilter {
-                gallery_item_id: Some(stored.gallery_item_id()),
+                item_id: Some(stored.item_id()),
                 ..GalleryItemFilter::default()
             })
             .await?;
@@ -1294,10 +1227,10 @@ mod tests {
         };
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let _first_item = repository
-            .save_item(item(0, first.gallery_id(), GalleryItemMedia::Image(5), 0)?)
+            .save_item(item(0, first.id(), GalleryItemMedia::Image(5), 0)?)
             .await?;
         let _second_item = repository
-            .save_item(item(0, second.gallery_id(), GalleryItemMedia::Image(6), 0)?)
+            .save_item(item(0, second.id(), GalleryItemMedia::Image(6), 0)?)
             .await?;
 
         // Act

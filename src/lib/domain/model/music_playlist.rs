@@ -16,13 +16,6 @@ pub(crate) enum MusicPlaylistError {
     /// The recording is already present in the playlist.
     #[error("the recording is already present in the playlist")]
     RecordingAlreadyPresent,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
 }
 
 /// A music playlist.
@@ -131,16 +124,6 @@ impl MusicPlaylist {
     #[must_use]
     pub(crate) fn id(&self) -> NumericID {
         self.id
-    }
-
-    /// Return whether `user_id` owns the playlist.
-    #[must_use]
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
-    pub(crate) fn is_owned_by(&self, user_id: NumericID) -> bool {
-        self.user_id == user_id
     }
 
     /// Return whether the playlist is visible to every user.

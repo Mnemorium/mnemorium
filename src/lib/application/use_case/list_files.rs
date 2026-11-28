@@ -144,7 +144,7 @@ where
                         file.origin(),
                         file.is_public(),
                         file.user_id(),
-                        image.map(|stored| stored.image_id()),
+                        image.map(|stored| stored.id()),
                         audio.map(|stored| stored.id()),
                         video.map(|stored| stored.id()),
                     ));

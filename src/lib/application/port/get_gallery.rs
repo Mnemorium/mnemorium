@@ -84,16 +84,6 @@ impl GalleryItemSummary {
         self.gallery_item_id
     }
 
-    /// Return the position of the item within its gallery.
-    #[must_use]
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
-    pub(crate) fn item_index(&self) -> i64 {
-        self.item_index
-    }
-
     /// Return the medium the item references.
     #[must_use]
     pub(crate) fn media(&self) -> GalleryItemMedia {

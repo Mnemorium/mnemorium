@@ -179,46 +179,6 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
         .next()
         .ok_or(RepositoryError::OperationFailed)
     }
-
-    async fn delete(&mut self, filter: &MusicAlbumFilter) -> Result<bool, RepositoryError> {
-        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM music_album");
-        let mut first = true;
-
-        if let Some(id) = filter.id {
-            push_filter(&mut first, &mut builder, "music_album_id = ", id);
-        }
-        if let Some(music_group_id) = filter.music_group_id {
-            push_filter(
-                &mut first,
-                &mut builder,
-                "music_group_id = ",
-                music_group_id,
-            );
-        }
-        if let Some(name) = filter.name.as_deref() {
-            push_filter(&mut first, &mut builder, "name = ", name);
-        }
-        if let Some(audio_id) = filter.audio_id {
-            builder.push(
-                " AND music_album_id IN (
-                    SELECT music_album.music_album_id
-                    FROM music_album
-                    INNER JOIN music_medium
-                        ON music_medium.music_album_id = music_album.music_album_id
-                    INNER JOIN music_track
-                        ON music_track.music_medium_id = music_medium.music_medium_id
-                    INNER JOIN music_recording
-                        ON music_recording.music_recording_id = music_track.music_recording_id
-                    WHERE music_recording.audio_id = ",
-            );
-            builder.push_bind(audio_id);
-            builder.push(")");
-        }
-
-        let result = builder.build().execute(&mut **self.transaction).await?;
-        Ok(result.rows_affected() > 0)
-    }
-
     async fn delete_recording(
         &mut self,
         filter: &MusicRecordingFilter,

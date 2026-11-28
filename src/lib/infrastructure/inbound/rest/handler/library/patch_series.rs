@@ -142,7 +142,7 @@ pub(crate) async fn patch_series(
     payload: JsonObject<PatchSeriesRequest>,
 ) -> Result<Response, ApiError> {
     let series_id = parse_series_id(&series_id_value)?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let first_air_date = request.first_air_date.try_map(|value| {
         parse_wire_date(&value).map_err(|()| {
             warn!(

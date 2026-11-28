@@ -34,7 +34,7 @@ where
     let found = match unit_of_work
         .images()
         .search(&ImageFilter {
-            image_id: Some(identifier),
+            id: Some(identifier),
             ..ImageFilter::default()
         })
         .await

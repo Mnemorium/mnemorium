@@ -140,7 +140,7 @@ pub(crate) async fn post_album_apply(
     payload: JsonObject<ApplyAlbumRequest>,
 ) -> Result<Response, ApiError> {
     let album_id = parse_album_id(&album_id_value)?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let provider = ProviderId::parse(&request.reference.provider)
         .filter(|provider| provider.serves_music())
         .ok_or_else(|| ApiError::reject_enum("provider"))?;

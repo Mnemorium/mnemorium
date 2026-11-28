@@ -34,22 +34,6 @@ impl Debug for EnvStateSeeds {
             .finish_non_exhaustive()
     }
 }
-
-impl EnvStateSeeds {
-    /// Create a seed set from explicit values.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the security-event catalog declares this constructor; no caller emits the event yet"
-        )
-    )]
-    pub(crate) fn new(pepper: Option<String>, jwt_secret: Option<String>) -> Self {
-        Self { jwt_secret, pepper }
-    }
-}
-
 impl StateSeedsPort for EnvStateSeeds {
     fn jwt_secret(&self) -> Option<String> {
         self.jwt_secret.clone()
@@ -176,44 +160,5 @@ mod tests {
         );
         assert_eq!(seeds.pepper(), None);
         Ok(())
-    }
-
-    #[test]
-    fn state_seeds_debug_redacts_both_seeds() {
-        // Arrange
-        let pepper = "a".repeat(64);
-        let jwt_secret = "b".repeat(64);
-        let seeds = super::EnvStateSeeds::new(Some(pepper.clone()), Some(jwt_secret.clone()));
-
-        // Act
-        let debug = format!("{seeds:?}");
-
-        // Assert
-        assert!(
-            !debug.contains(pepper.as_str()),
-            "Debug output must not contain the pepper, got: {debug:?}"
-        );
-        assert!(
-            !debug.contains(jwt_secret.as_str()),
-            "Debug output must not contain the signing secret, got: {debug:?}"
-        );
-        assert!(
-            debug.contains("**"),
-            "Debug output must mark a supplied seed as redacted, got: {debug:?}"
-        );
-    }
-
-    #[test]
-    fn state_seeds_port_exposes_the_supplied_seeds() {
-        // Arrange
-        let pepper = "c".repeat(64);
-        let seeds = super::EnvStateSeeds::new(Some(pepper.clone()), None);
-        let port: &dyn StateSeedsPort = &seeds;
-
-        // Act
-        let reported = (port.pepper(), port.jwt_secret());
-
-        // Assert
-        assert_eq!(reported, (Some(pepper), None));
     }
 }

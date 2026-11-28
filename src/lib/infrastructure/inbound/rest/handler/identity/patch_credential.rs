@@ -119,7 +119,7 @@ pub(crate) async fn patch_credential(
     payload: JsonObject<PatchCredentialRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let Path(credential_id) = credential_path.map_err(ApiError::from)?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     state
         .identity_use_case_factory()
         .patch_credential()

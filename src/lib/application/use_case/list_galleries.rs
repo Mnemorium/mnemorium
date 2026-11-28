@@ -79,7 +79,7 @@ where
                 // row at a time made the decision cost scale with the library.
                 let addresses: Vec<ResourceRef> = galleries
                     .iter()
-                    .map(|gallery| ResourceRef::new(ResourceKind::Gallery, gallery.gallery_id()))
+                    .map(|gallery| ResourceRef::new(ResourceKind::Gallery, gallery.id()))
                     .collect();
                 let discoverable = allows_many(
                     &mut unit_of_work.resources(),
@@ -107,8 +107,7 @@ where
                 // Count items for the page only: loading every gallery's items
                 // to count them is what made a 20-row page cost a join over the
                 // whole library.
-                let page_ids: Vec<NumericID> =
-                    visible_page.iter().map(Gallery::gallery_id).collect();
+                let page_ids: Vec<NumericID> = visible_page.iter().map(Gallery::id).collect();
                 let item_counts: HashMap<NumericID, usize> = unit_of_work
                     .galleries()
                     .count_items_by_gallery(&page_ids)
@@ -123,13 +122,13 @@ where
                     .into_iter()
                     .map(|gallery| {
                         ListGalleriesItem::new(
-                            gallery.gallery_id(),
+                            gallery.id(),
                             gallery.user_id(),
                             gallery.name().to_owned(),
                             gallery.is_public(),
                             gallery.created_at(),
                             gallery.last_modified_at(),
-                            item_counts.get(&gallery.gallery_id()).copied().unwrap_or(0),
+                            item_counts.get(&gallery.id()).copied().unwrap_or(0),
                         )
                     })
                     .collect();

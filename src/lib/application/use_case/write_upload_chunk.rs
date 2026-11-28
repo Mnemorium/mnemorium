@@ -96,7 +96,7 @@ where
                 let mut upload = unit_of_work
                     .uploads()
                     .search(&UploadFilter {
-                        upload_id: Some(command.upload_id()),
+                        id: Some(command.upload_id()),
                         ..UploadFilter::default()
                     })
                     .await
@@ -114,7 +114,7 @@ where
                 authorize(
                     &mut unit_of_work.resources(),
                     &caller,
-                    ResourceRef::new(ResourceKind::Upload, upload.upload_id()),
+                    ResourceRef::new(ResourceKind::Upload, upload.id()),
                     Action::ReplaceMedia,
                     None,
                 )
@@ -130,7 +130,7 @@ where
                     // access. The adapters own the failure logs (`OBS-002`), so a failed
                     // cleanup is swallowed here.
                     if file_storage
-                        .delete_upload_file(&staged_path(upload.upload_id()))
+                        .delete_upload_file(&staged_path(upload.id()))
                         .await
                         .is_err()
                     {
@@ -139,7 +139,7 @@ where
                     if unit_of_work
                         .uploads()
                         .delete(&UploadFilter {
-                            upload_id: Some(upload.upload_id()),
+                            id: Some(upload.id()),
                             ..UploadFilter::default()
                         })
                         .await
@@ -149,7 +149,7 @@ where
                     }
                     unit_of_work
                         .resources()
-                        .delete(ResourceRef::new(ResourceKind::Upload, upload.upload_id()))
+                        .delete(ResourceRef::new(ResourceKind::Upload, upload.id()))
                         .await
                         .map_err(|error| {
                             AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
@@ -250,11 +250,7 @@ where
                 }
 
                 match file_storage
-                    .add_chunk(
-                        &staged_path(upload.upload_id()),
-                        offset,
-                        command.chunk().to_vec(),
-                    )
+                    .add_chunk(&staged_path(upload.id()), offset, command.chunk().to_vec())
                     .await
                 {
                     // The staged file vanished between reading the upload row and
@@ -388,8 +384,8 @@ mod tests {
     use rstest::fixture;
 
     use crate::domain::port::{
-        ContentHasherError, MockContentHasher, MockContentHasherSession, MockFileRepository,
-        MockFileStorage, MockUploadRepository, RepositoryError, StorageError,
+        MockContentHasher, MockContentHasherSession, MockFileRepository, MockFileStorage,
+        MockUploadRepository, RepositoryError, StorageError,
     };
 
     use crate::test_helpers::*;
@@ -667,7 +663,7 @@ mod tests {
         uploads
             .expect_delete()
             .times(1)
-            .withf(|filter| filter.upload_id == Some(5))
+            .withf(|filter| filter.id == Some(5))
             .returning(|_| Box::pin(async { Ok(true) }));
         let unit_of_work = TestUnitOfWork {
             uploads,
@@ -740,7 +736,7 @@ mod tests {
         uploads
             .expect_delete()
             .times(1)
-            .withf(|filter| filter.upload_id == Some(5))
+            .withf(|filter| filter.id == Some(5))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut file_storage = MockFileStorage::new();
         file_storage
@@ -1212,55 +1208,6 @@ mod tests {
             result,
             Err(WriteUploadChunkError::AlreadyFinished)
         ));
-        assert!(rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn write_upload_chunk_hasher_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut uploads = MockUploadRepository::new();
-        (move |uploads: &mut MockUploadRepository, upload: Upload| {
-            uploads.expect_search().times(1).returning(move |_| {
-                let stored = upload.clone();
-                Box::pin(async move { Ok(vec![stored]) })
-            });
-        })(&mut uploads, upload(5, 3, 8, &[], false)?);
-        let unit_of_work = TestUnitOfWork {
-            uploads,
-            ..TestUnitOfWork::with_any_caller()
-        };
-        let _committed = Arc::clone(&unit_of_work.committed);
-        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
-        let factory = TestFactory::new(unit_of_work);
-        let mut hasher = MockContentHasher::new();
-        hasher.expect_hasher().times(1).returning(|| {
-            let mut session = MockContentHasherSession::new();
-            session
-                .expect_update()
-                .times(1)
-                .withf(|bytes: &[u8]| bytes == b"1234")
-                .return_const(());
-            session
-                .expect_finalize()
-                .times(1)
-                .returning(|| Err(ContentHasherError::OperationFailed));
-            Box::new(session)
-        });
-        let use_case = WriteUploadChunk::new(
-            Arc::new(factory),
-            Arc::new(MockFileStorage::new()),
-            hasher,
-            TTL_SECONDS,
-        );
-        let command =
-            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
-
-        // Act
-        let result = use_case.execute(command).await;
-
-        // Assert
-        assert!(matches!(result, Err(WriteUploadChunkError::Unknown(_))));
         assert!(rolled_back.load(Ordering::SeqCst));
         Ok(())
     }

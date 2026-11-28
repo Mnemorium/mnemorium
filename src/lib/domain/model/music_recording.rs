@@ -4,22 +4,15 @@ use crate::domain::NumericID;
 const ISRC_CODE_LENGTH: usize = 12;
 
 /// Error returned when initialising or updating a `MusicRecording`.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, Copy, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum MusicRecordingError {
     /// The `isrc_code` is not exactly [`ISRC_CODE_LENGTH`] characters long.
     #[error("isrc_code must be exactly {ISRC_CODE_LENGTH} characters long")]
-    InvalidIsrcCode,
+    IsrcCodeWrongLength,
     /// The `name` is empty.
     #[error("name must not be empty")]
-    InvalidName,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
+    NameEmpty,
 }
 
 /// Placement of a recording within the container that sequences it.
@@ -124,7 +117,7 @@ impl MusicRecording {
     ///
     /// # Errors
     ///
-    /// Returns [`MusicRecordingError::InvalidIsrcCode`] when `isrc_code` is
+    /// Returns [`MusicRecordingError::IsrcCodeWrongLength`] when `isrc_code` is
     /// not exactly [`ISRC_CODE_LENGTH`] characters long.
     pub(crate) fn set_isrc_code(
         &mut self,
@@ -138,7 +131,7 @@ impl MusicRecording {
     ///
     /// # Errors
     ///
-    /// Returns [`MusicRecordingError::InvalidName`] when `name` is empty.
+    /// Returns [`MusicRecordingError::NameEmpty`] when `name` is empty.
     pub(crate) fn set_name(&mut self, name: Option<String>) -> Result<(), MusicRecordingError> {
         self.name = Self::validate_name(name)?;
         Ok(())
@@ -148,8 +141,8 @@ impl MusicRecording {
     ///
     /// # Errors
     ///
-    /// Returns [`MusicRecordingError::InvalidName`] when `name` is empty, and
-    /// [`MusicRecordingError::InvalidIsrcCode`] when `isrc_code` is not exactly
+    /// Returns [`MusicRecordingError::NameEmpty`] when `name` is empty, and
+    /// [`MusicRecordingError::IsrcCodeWrongLength`] when `isrc_code` is not exactly
     /// [`ISRC_CODE_LENGTH`] characters long.
     pub(crate) fn try_new(
         id: NumericID,
@@ -181,7 +174,7 @@ impl MusicRecording {
     ///
     /// # Errors
     ///
-    /// Returns [`MusicRecordingError::InvalidIsrcCode`] when `isrc_code` is
+    /// Returns [`MusicRecordingError::IsrcCodeWrongLength`] when `isrc_code` is
     /// not exactly [`ISRC_CODE_LENGTH`] characters long.
     fn validate_isrc_code(
         isrc_code: Option<String>,
@@ -192,7 +185,7 @@ impl MusicRecording {
                 if raw.chars().count() == ISRC_CODE_LENGTH {
                     Ok(Some(raw))
                 } else {
-                    Err(MusicRecordingError::InvalidIsrcCode)
+                    Err(MusicRecordingError::IsrcCodeWrongLength)
                 }
             }
         }
@@ -202,13 +195,13 @@ impl MusicRecording {
     ///
     /// # Errors
     ///
-    /// Returns [`MusicRecordingError::InvalidName`] when `name` is empty.
+    /// Returns [`MusicRecordingError::NameEmpty`] when `name` is empty.
     fn validate_name(name: Option<String>) -> Result<Option<String>, MusicRecordingError> {
         match name {
             None => Ok(None),
             Some(raw) => {
                 if raw.is_empty() {
-                    Err(MusicRecordingError::InvalidName)
+                    Err(MusicRecordingError::NameEmpty)
                 } else {
                     Ok(Some(raw))
                 }

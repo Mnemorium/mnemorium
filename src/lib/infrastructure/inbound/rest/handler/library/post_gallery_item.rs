@@ -153,7 +153,7 @@ pub(crate) async fn post_gallery_item(
     payload: JsonObject<PostGalleryItemRequest>,
 ) -> Result<Response, ApiError> {
     let gallery_id = parse_gallery_id(&id)?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let media_type = GalleryItemType::from_wire(&request.media_type)
         .ok_or_else(|| ApiError::reject_enum("type"))?;
     let media = media_type.media(request.media_id);

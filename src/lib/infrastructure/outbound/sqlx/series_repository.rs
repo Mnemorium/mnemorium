@@ -175,22 +175,6 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
         .next()
         .ok_or(RepositoryError::OperationFailed)
     }
-
-    async fn delete(&mut self, filter: &SeriesFilter) -> Result<bool, RepositoryError> {
-        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM series");
-        let mut first = true;
-
-        if let Some(id) = filter.id {
-            push_filter(&mut first, &mut builder, "series_id = ", id);
-        }
-        if let Some(name) = filter.name.as_deref() {
-            push_filter(&mut first, &mut builder, "name = ", name);
-        }
-
-        let result = builder.build().execute(&mut **self.transaction).await?;
-        Ok(result.rows_affected() > 0)
-    }
-
     async fn delete_episode(&mut self, filter: &EpisodeFilter) -> Result<bool, RepositoryError> {
         let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM episode");
         let mut first = true;

@@ -102,7 +102,7 @@ pub(crate) async fn post_series_apply(
     payload: JsonObject<VideoApplyRequest>,
 ) -> Result<Response, ApiError> {
     let series_id = parse_series_id(&series_id_value)?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let provider = ProviderId::parse(&request.reference.provider)
         .filter(|provider| provider.serves_video())
         .ok_or_else(|| ApiError::reject_enum("provider"))?;

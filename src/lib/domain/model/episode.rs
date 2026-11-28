@@ -31,13 +31,6 @@ pub(crate) enum EpisodeError {
     /// The `name` is empty.
     #[error("name must not be empty")]
     InvalidName,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
 }
 
 /// An episode of a season.

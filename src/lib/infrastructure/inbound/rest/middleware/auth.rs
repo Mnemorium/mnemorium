@@ -97,7 +97,6 @@ where
                 TokenProviderError::InvalidToken => "invalid_token",
                 TokenProviderError::OperationFailed => "operation_failed",
                 TokenProviderError::TokenExpired => "token_expired",
-                TokenProviderError::Unknown(_) => "unknown",
             };
             error!(
                 target: "security",
@@ -340,7 +339,6 @@ mod tests {
 
     #[rstest]
     #[case::operation_failed(TokenProviderError::OperationFailed)]
-    #[case::unknown(TokenProviderError::Unknown(anyhow::anyhow!("boom")))]
     #[tokio::test]
     async fn authenticate_provider_failure_returns_internal_server_error(
         #[case] error: TokenProviderError,

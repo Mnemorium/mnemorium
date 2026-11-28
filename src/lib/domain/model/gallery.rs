@@ -7,15 +7,11 @@ const DEFAULT_GALLERY_ID: NumericID = 0;
 
 /// A gallery: an ordered collection of media items.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[expect(
-    clippy::struct_field_names,
-    reason = "`gallery_id` is the primary key name mandated by the SQL section and the domain field naming"
-)]
 pub(crate) struct Gallery {
     /// Date and time at which the gallery was created.
     created_at: NaiveDateTime,
     /// Unique identifier of the gallery.
-    gallery_id: NumericID,
+    id: NumericID,
     /// Whether any authenticated user may read the gallery.
     is_public: bool,
     /// Date and time of the last modification of the gallery.
@@ -35,18 +31,8 @@ impl Gallery {
 
     /// Return the unique identifier of the gallery.
     #[must_use]
-    pub(crate) fn gallery_id(&self) -> NumericID {
-        self.gallery_id
-    }
-
-    /// Return whether `user_id` owns the gallery.
-    #[must_use]
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
-    pub(crate) fn is_owned_by(&self, user_id: NumericID) -> bool {
-        self.user_id == Some(user_id)
+    pub(crate) fn id(&self) -> NumericID {
+        self.id
     }
 
     /// Return whether any authenticated user may read the gallery.
@@ -58,7 +44,7 @@ impl Gallery {
     /// Return whether the gallery is the seeded default gallery.
     #[must_use]
     pub(crate) fn is_system(&self) -> bool {
-        self.gallery_id == DEFAULT_GALLERY_ID
+        self.id == DEFAULT_GALLERY_ID
     }
 
     /// Return the date and time of the last modification of the gallery.
@@ -88,27 +74,12 @@ impl Gallery {
     ) -> Self {
         Self {
             created_at,
-            gallery_id,
+            id: gallery_id,
             is_public,
             last_modified_at,
             name,
             user_id,
         }
-    }
-
-    /// Update the name of the gallery.
-    ///
-    /// The caller validates the name with the domain name policy before
-    /// invoking this method (`ARCH-005`).
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "part of the type's declared contract; no caller exercises it yet"
-        )
-    )]
-    pub(crate) fn set_name(&mut self, name: String) {
-        self.name = name;
     }
 
     /// Record a modification of the gallery at `last_modified_at`.

@@ -135,7 +135,7 @@ pub(crate) async fn post_movie(
     caller: AuthenticatedUser,
     payload: JsonObject<PostMovieRequest>,
 ) -> Result<Response, ApiError> {
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let release_date = match request.release_date.as_deref() {
         Some(value) => Some(parse_wire_date(value).map_err(|()| {
             warn!(

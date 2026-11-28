@@ -183,7 +183,7 @@ pub(crate) async fn post_register(
     caller: AuthenticatedUser,
     payload: JsonObject<RegisterRequest>,
 ) -> Result<Response, ApiError> {
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let role = Role::from_wire(&request.role).ok_or_else(|| ApiError::reject_enum("role"))?;
     let response = state
         .identity_use_case_factory()

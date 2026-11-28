@@ -128,7 +128,7 @@ pub(crate) async fn post_gallery(
     caller: AuthenticatedUser,
     payload: JsonObject<PostGalleryRequest>,
 ) -> Result<Response, ApiError> {
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let response = state
         .library_use_case_factory()
         .create_gallery()

@@ -28,21 +28,6 @@ pub(crate) trait MusicGroupRepository: Send + Sync {
         group: MusicGroup,
     ) -> impl Future<Output = Result<MusicGroup, RepositoryError>> + Send;
 
-    /// Delete every group matching `filter`.
-    ///
-    /// Returns `Ok(true)` when at least one group was deleted, and `Ok(false)`
-    /// when none matched. An all-`None` filter deletes every group; the
-    /// default group is never deleted and is reported as
-    /// [`RepositoryError::Conflict`].
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
-    fn delete(
-        &mut self,
-        filter: &MusicGroupFilter,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
-
     /// Persist `group` over the stored group carrying its identifier and return
     /// the stored value. The group is inserted when no row carries its
     /// identifier.
@@ -68,14 +53,6 @@ impl<T: MusicGroupRepository + ?Sized> MusicGroupRepository for &mut T {
     ) -> impl Future<Output = Result<MusicGroup, RepositoryError>> + Send {
         (**self).create(group)
     }
-
-    fn delete(
-        &mut self,
-        filter: &MusicGroupFilter,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete(filter)
-    }
-
     fn save(
         &mut self,
         group: MusicGroup,

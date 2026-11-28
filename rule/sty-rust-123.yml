@@ -1,0 +1,12 @@
+---
+id: sty-rust-123
+language: Rust
+severity: hint
+message: >-
+  extract every expectation attribute — outer, inner, or nested in `cfg_attr` —
+  for STY-RUST-123
+rule:
+  any:
+    - kind: attribute_item
+    - kind: inner_attribute_item
+  regex: 'expect\s*\('

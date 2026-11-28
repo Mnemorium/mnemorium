@@ -179,7 +179,7 @@ mod test_helpers {
                     // the test replaces this mock: a case whose subject is not
                     // the cover rule must not stub the lookup to reach its own.
                     images.expect_search().returning(|filter| {
-                        let id = filter.image_id.unwrap_or_default();
+                        let id = filter.id.unwrap_or_default();
                         Box::pin(async move {
                             match crate::domain::model::Image::try_new(
                                 id,
@@ -778,32 +778,29 @@ mod test_helpers {
 
     /// Build a positive [`PositiveI64`] from a literal.
     #[must_use]
-    #[expect(
-        clippy::expect_used,
-        reason = "the fixtures pass only values that satisfy the scalar's invariant"
-    )]
     pub(crate) fn positive_i64(value: i64) -> PositiveI64 {
-        PositiveI64::try_new(value).expect("the fixture scalar is positive")
+        let Ok(scalar) = PositiveI64::try_new(value) else {
+            unreachable!("the fixtures pass only values that satisfy the scalar's invariant");
+        };
+        scalar
     }
 
     /// Build a non-negative [`NonNegativeF64`] from a literal.
     #[must_use]
-    #[expect(
-        clippy::expect_used,
-        reason = "the fixtures pass only values that satisfy the scalar's invariant"
-    )]
     pub(crate) fn non_negative_f64(value: f64) -> NonNegativeF64 {
-        NonNegativeF64::try_new(value).expect("the fixture scalar is non-negative")
+        let Ok(scalar) = NonNegativeF64::try_new(value) else {
+            unreachable!("the fixtures pass only values that satisfy the scalar's invariant");
+        };
+        scalar
     }
 
     /// Build an [`IntegrityHash`] from a literal digest.
     #[must_use]
-    #[expect(
-        clippy::expect_used,
-        reason = "the fixtures pass only valid 64-character hexadecimal digests"
-    )]
     pub(crate) fn hash(digest: &str) -> IntegrityHash<DIGEST_HEX_LENGTH> {
-        IntegrityHash::try_new(digest.to_owned()).expect("the fixture digest is valid")
+        let Ok(hash) = IntegrityHash::try_new(digest.to_owned()) else {
+            unreachable!("the fixtures pass only valid 64-character hexadecimal digests");
+        };
+        hash
     }
 
     /// Build the image the probe tests compare against.

@@ -110,7 +110,7 @@ pub(crate) async fn post_music_group(
     caller: AuthenticatedUser,
     payload: JsonObject<PostMusicGroupRequest>,
 ) -> Result<Response, ApiError> {
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let response = state
         .library_use_case_factory()
         .create_music_group()

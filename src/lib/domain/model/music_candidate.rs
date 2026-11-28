@@ -52,114 +52,6 @@ pub(crate) enum MusicCandidate {
     },
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the music candidate carries provider detail the identification path does not read yet"
-    )
-)]
-impl MusicCandidate {
-    /// Return the reference to the album the release belongs to, when the
-    /// candidate is a release that names one.
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms read fields out of a non-Copy enum matched by reference"
-    )]
-    pub(crate) fn album(&self) -> Option<&ExternalRef> {
-        match self {
-            Self::Album { .. } | Self::Recording { .. } => None,
-            Self::Release { album, .. } => album.as_ref(),
-        }
-    }
-
-    /// Return the group the provider reports, when it reports one.
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms read fields out of a non-Copy enum matched by reference"
-    )]
-    pub(crate) fn group(&self) -> Option<&str> {
-        match self {
-            Self::Album { group, .. }
-            | Self::Recording { group, .. }
-            | Self::Release { group, .. } => group.as_deref(),
-        }
-    }
-
-    /// Return the kind of work the candidate denotes.
-    #[must_use]
-    pub(crate) fn kind(&self) -> MusicKind {
-        match *self {
-            Self::Album { .. } => MusicKind::Album,
-            Self::Recording { .. } => MusicKind::Recording,
-            Self::Release { .. } => MusicKind::Release,
-        }
-    }
-
-    /// Return the mediums of the release, when the candidate is one.
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms read fields out of a non-Copy enum matched by reference"
-    )]
-    pub(crate) fn mediums(&self) -> &[MediumSummary] {
-        match self {
-            Self::Album { .. } | Self::Recording { .. } => &[],
-            Self::Release { mediums, .. } => mediums,
-        }
-    }
-
-    /// Return the opaque reference the provider issued.
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms read fields out of a non-Copy enum matched by reference"
-    )]
-    pub(crate) fn reference(&self) -> &ExternalRef {
-        match self {
-            Self::Album { reference, .. }
-            | Self::Recording { reference, .. }
-            | Self::Release { reference, .. } => reference,
-        }
-    }
-
-    /// Return the release status, when the candidate is a release and the
-    /// provider reports a mappable one.
-    #[must_use]
-    pub(crate) fn status(&self) -> Option<ReleaseStatus> {
-        match *self {
-            Self::Album { .. } | Self::Recording { .. } => None,
-            Self::Release { status, .. } => status,
-        }
-    }
-
-    /// Return the title the provider reports.
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms read fields out of a non-Copy enum matched by reference"
-    )]
-    pub(crate) fn title(&self) -> &str {
-        match self {
-            Self::Album { title, .. }
-            | Self::Recording { title, .. }
-            | Self::Release { title, .. } => title,
-        }
-    }
-
-    /// Return the release or first-release year, when the provider reports one.
-    #[must_use]
-    pub(crate) fn year(&self) -> Option<u32> {
-        match *self {
-            Self::Album { year, .. }
-            | Self::Recording { year, .. }
-            | Self::Release { year, .. } => year,
-        }
-    }
-}
-
 /// Item whose rich metadata is resolved through the reference's provider.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -185,10 +77,6 @@ impl MusicTarget {
 
     /// Return the reference the target resolves through.
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms read fields out of a non-Copy enum matched by reference"
-    )]
     pub(crate) fn reference(&self) -> &ExternalRef {
         match self {
             Self::Album(reference) | Self::Recording(reference) | Self::Release(reference) => {

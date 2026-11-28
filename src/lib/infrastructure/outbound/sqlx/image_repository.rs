@@ -59,7 +59,7 @@ impl ImageRepository for SqlxImageRepository<'_> {
         if let Some(file_id) = filter.file_id {
             push_filter(&mut first, &mut builder, "file_id = ", file_id);
         }
-        if let Some(id) = filter.image_id {
+        if let Some(id) = filter.id {
             push_filter(&mut first, &mut builder, "image_id = ", id);
         }
         if let Some(name) = filter.name.as_deref() {
@@ -96,7 +96,7 @@ impl ImageRepository for SqlxImageRepository<'_> {
         if let Some(file_id) = filter.file_id {
             push_filter(&mut first, &mut builder, "file_id = ", file_id);
         }
-        if let Some(id) = filter.image_id {
+        if let Some(id) = filter.id {
             push_filter(&mut first, &mut builder, "image_id = ", id);
         }
         if let Some(name) = filter.name.as_deref() {
@@ -198,7 +198,7 @@ mod tests {
         let persisted = repository.create(pending).await?;
         let found = repository
             .search(&ImageFilter {
-                image_id: Some(persisted.image_id()),
+                id: Some(persisted.id()),
                 ..ImageFilter::default()
             })
             .await?
@@ -207,7 +207,7 @@ mod tests {
 
         // Assert
         assert_ne!(
-            persisted.image_id(),
+            persisted.id(),
             0,
             "a new image must receive a real identifier"
         );
@@ -240,7 +240,7 @@ mod tests {
         let persisted = repository.create(pending).await?;
         let found = repository
             .search(&ImageFilter {
-                image_id: Some(persisted.image_id()),
+                id: Some(persisted.id()),
                 ..ImageFilter::default()
             })
             .await?
@@ -265,7 +265,7 @@ mod tests {
         let mut repository = SqlxImageRepository::new(&mut transaction);
         let missing = repository
             .search(&ImageFilter {
-                image_id: Some(999),
+                id: Some(999),
                 ..ImageFilter::default()
             })
             .await?
@@ -332,13 +332,13 @@ mod tests {
         // Act
         let deleted = repository
             .delete(&ImageFilter {
-                image_id: Some(stored.image_id()),
+                id: Some(stored.id()),
                 ..ImageFilter::default()
             })
             .await?;
         let missing = repository
             .delete(&ImageFilter {
-                image_id: Some(stored.image_id()),
+                id: Some(stored.id()),
                 ..ImageFilter::default()
             })
             .await?;
@@ -410,7 +410,7 @@ mod tests {
             "INSERT INTO music_group (music_group_id, stage_name, cover_image_id)
              VALUES (1, 'Band', ?)",
         )
-        .bind(stored.image_id())
+        .bind(stored.id())
         .execute(&mut *transaction)
         .await?;
 
@@ -419,7 +419,7 @@ mod tests {
             let mut repository = SqlxImageRepository::new(&mut transaction);
             repository
                 .delete(&ImageFilter {
-                    image_id: Some(stored.image_id()),
+                    id: Some(stored.id()),
                     ..ImageFilter::default()
                 })
                 .await?;

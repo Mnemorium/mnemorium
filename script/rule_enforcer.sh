@@ -203,6 +203,7 @@ RULES=(
 	"STY-RUST-120:check_sty_rust_120"
 	"STY-RUST-121:check_sty_rust_121"
 	"STY-RUST-122:check_sty_rust_122"
+	"STY-RUST-123:check_sty_rust_123"
 )
 
 # --- Rulebook ---------------------------------------------------------------
@@ -5331,6 +5332,61 @@ check_sty_rust_122() {
 	need_file "STY-RUST-122" "${handler_dir}.rs" || return 1
 	scan_short STY-RUST-122 "$handler_dir" "${handler_dir}.rs"
 }
+
+# check_sty_rust_123 — the only lint an expectation may name is `clippy::print_stdout`, and only the
+# two files whose operator must read a credential the file sinks may not carry may expect it
+# (TechnicalDesign.md § 21, STY-RUST-123). sty-rust-123 extracts every expectation attribute — the
+# outer `#[expect(...)]`, the inner `#![expect(...)]` and one nested in `cfg_attr(...)` — and the lint
+# list and the file exemption are decided here, because an ast-grep rule cannot compare a lint list to
+# a literal or read the file path; matching the attribute node, never the code, keeps a `.expect(...)`
+# call out of the report.
+check_sty_rust_123() {
+	local id="STY-RUST-123"
+	local app="src/lib/app.rs"
+	local seed="src/lib/infrastructure/seed.rs"
+	local matches file line text calls args lint result=0
+	local -a lints=()
+
+	need_dir "$id" src || return 1
+
+	matches="$(scan_json "$id" src)" || return 1
+
+	while IFS=$'\t' read -r file line text; do
+		[ -n "$file" ] || continue
+		# The reason may quote code; drop the string literals before reading the lint list.
+		text="$(printf '%s' "$text" | sed -E 's/"([^"\\]|\\.)*"//g')"
+		calls="$(printf '%s' "$text" | grep -oE 'expect[[:space:]]*\([^)]*\)' || true)"
+		[ -n "$calls" ] || continue
+		lints=()
+		while IFS= read -r args; do
+			[ -n "$args" ] || continue
+			args="${args#*\(}"
+			args="${args%\)}"
+			while IFS= read -r lint; do
+				lint="${lint//[[:space:]]/}"
+				[ -n "$lint" ] || continue
+				case "$lint" in
+				reason=*) continue ;;
+				esac
+				lints+=("$lint")
+			done < <(printf '%s\n' "$args" | tr ',' '\n')
+		done <<<"$calls"
+		if [ "${#lints[@]}" -ne 1 ] || [ "${lints[0]}" != "clippy::print_stdout" ]; then
+			printf 'error: %s: %s:%s: expectation names %s; only clippy::print_stdout may be expected\n' \
+				"$id" "$file" "$line" "${lints[*]:-no lint}" >&2
+			result=1
+		elif [ "$file" != "$app" ] && [ "$file" != "$seed" ]; then
+			printf 'error: %s: %s:%s: clippy::print_stdout may be expected only in %s or %s\n' \
+				"$id" "$file" "$line" "$app" "$seed" >&2
+			result=1
+		fi
+	done < <(printf '%s\n' "$matches" |
+		jq -r '[.file, ((.range.start.line + 1) | tostring),
+			(.text | gsub("\\s+"; " "))] | @tsv')
+
+	return "$result"
+}
+
 # check_arch_001 — the hexagonal dependency direction: dependencies point inward only, `domain` ← `application` ← `infrastructure` (ARCH-001).
 check_arch_001() {
 	local id="ARCH-001"

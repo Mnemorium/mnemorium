@@ -179,7 +179,7 @@ where
                         } else {
                             None
                         };
-                        let upload_id = upload.upload_id();
+                        let upload_id = upload.id();
                         let staged_media = media_kind.map(|kind| (kind, staged_path(upload_id)));
                         let sealed = seal(&mut unit_of_work, (*upload).clone()).await;
                         match sealed {
@@ -269,17 +269,17 @@ where
 
                 let probed = match sealed_media {
                     Some((kind, path)) => Some(match kind {
-                        MediaKind::Audio => match media_probe.probe_audio(&path).await {
+                        MediaKind::Audio => match media_probe.audio(&path).await {
                             Ok(Some(audio)) => Probed::Audio(audio),
                             Ok(None) => return Err(CompleteUploadError::NoSuchUpload),
                             Err(error) => return Err(probe_fault(error)),
                         },
-                        MediaKind::Image => match media_probe.probe_image(&path).await {
+                        MediaKind::Image => match media_probe.image(&path).await {
                             Ok(Some(image)) => Probed::Image(image),
                             Ok(None) => return Err(CompleteUploadError::NoSuchUpload),
                             Err(error) => return Err(probe_fault(error)),
                         },
-                        MediaKind::Video => match media_probe.probe_video(&path).await {
+                        MediaKind::Video => match media_probe.video(&path).await {
                             Ok(Some(video)) => Probed::Video(video),
                             Ok(None) => return Err(CompleteUploadError::NoSuchUpload),
                             Err(error) => return Err(probe_fault(error)),
@@ -367,8 +367,8 @@ where
                         "the upload file name is not a safe path segment"
                     )));
                 }
-                let staged = staged_path(upload.upload_id());
-                let relative_path = format!("{}_{}", upload.upload_id(), file_name);
+                let staged = staged_path(upload.id());
+                let relative_path = format!("{}_{}", upload.id(), file_name);
                 let final_file = media_path(&relative_path);
                 let promoted_file = match file_storage.promote(&staged, &final_file).await {
                     // The staged file vanished after it was hashed: the upload
@@ -475,7 +475,7 @@ where
                                 None,
                             );
                             match unit_of_work.images().create(pending_image).await {
-                                Ok(stored) => Ok(Some((ResourceKind::Image, stored.image_id()))),
+                                Ok(stored) => Ok(Some((ResourceKind::Image, stored.id()))),
                                 Err(RepositoryError::AlreadyExist) => Ok(None),
                                 Err(error) => Err(CompleteUploadError::Unknown(error.into())),
                             }
@@ -539,7 +539,7 @@ where
                     }
                 }
 
-                match unit_of_work.uploads().finish(upload.upload_id()).await {
+                match unit_of_work.uploads().finish(upload.id()).await {
                     Ok(Some(_)) => Flow::Succeeded(CompleteUploadResponse::new(file.id(), true)),
                     Ok(None) => Flow::Failed(CompleteUploadError::NoSuchUpload),
                     Err(RepositoryError::ConcurrencyConflict) => {
@@ -625,7 +625,7 @@ where
     let found = unit_of_work
         .uploads()
         .search(&UploadFilter {
-            upload_id: Some(command.upload_id()),
+            id: Some(command.upload_id()),
             ..UploadFilter::default()
         })
         .await
@@ -687,7 +687,7 @@ where
     let released = unit_of_work
         .uploads()
         .search(&UploadFilter {
-            upload_id: Some(upload_id),
+            id: Some(upload_id),
             ..UploadFilter::default()
         })
         .await;
@@ -747,7 +747,7 @@ where
     let found = match unit_of_work
         .uploads()
         .search(&UploadFilter {
-            upload_id: Some(command.upload_id()),
+            id: Some(command.upload_id()),
             ..UploadFilter::default()
         })
         .await
@@ -766,7 +766,7 @@ where
     if authorize(
         &mut unit_of_work.resources(),
         &caller,
-        ResourceRef::new(ResourceKind::Upload, upload.upload_id()),
+        ResourceRef::new(ResourceKind::Upload, upload.id()),
         Action::ReplaceMedia,
         None,
     )
@@ -795,7 +795,7 @@ where
         if unit_of_work
             .uploads()
             .delete(&UploadFilter {
-                upload_id: Some(command.upload_id()),
+                id: Some(command.upload_id()),
                 ..UploadFilter::default()
             })
             .await
@@ -1104,10 +1104,7 @@ mod tests {
                     && file.size_bytes() == promoted_file().size_bytes
                     && file.modified_at() == promoted_file().modified_at
             })
-            .returning(|mut file| {
-                file.set_is_public(false);
-                Box::pin(async move { Ok(file) })
-            });
+            .returning(|file| Box::pin(async move { Ok(file) }));
         phase_two_uploads
             .expect_finish()
             .times(1)
@@ -1650,7 +1647,7 @@ mod tests {
         phase_one_uploads
             .expect_delete()
             .times(1)
-            .withf(|filter| filter.upload_id == Some(5))
+            .withf(|filter| filter.id == Some(5))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut file_storage = MockFileStorage::new();
         file_storage
@@ -1770,7 +1767,7 @@ mod tests {
         phase_one_uploads
             .expect_delete()
             .times(1)
-            .withf(|filter| filter.upload_id == Some(5))
+            .withf(|filter| filter.id == Some(5))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut file_storage = MockFileStorage::new();
         file_storage
@@ -3711,7 +3708,7 @@ mod tests {
         phase_two_uploads
             .expect_delete()
             .times(1)
-            .withf(|filter| filter.upload_id == Some(5))
+            .withf(|filter| filter.id == Some(5))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut file_storage = MockFileStorage::new();
         (move |file_storage: &mut MockFileStorage, digest: &'static str| {
@@ -4275,7 +4272,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_image()
+            .expect_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -4489,7 +4486,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_video()
+            .expect_video()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_video())) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -4701,7 +4698,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_video()
+            .expect_video()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_video())) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -4909,7 +4906,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok(()) }));
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_video()
+            .expect_video()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_video())) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -5092,7 +5089,7 @@ mod tests {
         })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_video()
+            .expect_video()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::UnsupportedMedia) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -5276,7 +5273,7 @@ mod tests {
         // and the probe.
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_video()
+            .expect_video()
             .times(1)
             .returning(|_| Box::pin(async { Ok(None) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -5457,7 +5454,7 @@ mod tests {
         })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_video()
+            .expect_video()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::Timeout) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -5640,7 +5637,7 @@ mod tests {
         })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_image()
+            .expect_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(None) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -5821,7 +5818,7 @@ mod tests {
         })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_image()
+            .expect_image()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::Timeout) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -6003,7 +6000,7 @@ mod tests {
         })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_image()
+            .expect_image()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::UnsupportedMedia) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -6219,7 +6216,7 @@ mod tests {
         })(&mut file_storage);
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_image()
+            .expect_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -6433,7 +6430,7 @@ mod tests {
         })(&mut file_storage);
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_image()
+            .expect_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -6652,7 +6649,7 @@ mod tests {
             .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_audio()
+            .expect_audio()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_audio())) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -6826,7 +6823,7 @@ mod tests {
         })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_audio()
+            .expect_audio()
             .times(1)
             .returning(|_| Box::pin(async { Ok(None) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -7000,7 +6997,7 @@ mod tests {
         })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_audio()
+            .expect_audio()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::UnsupportedMedia) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,
@@ -7173,7 +7170,7 @@ mod tests {
         })(&mut file_storage, DIGEST);
         let mut media_probe = MockMediaProbe::new();
         media_probe
-            .expect_probe_audio()
+            .expect_audio()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::Timeout) }));
         let harness = (move |mut phase_one_uploads: MockUploadRepository,

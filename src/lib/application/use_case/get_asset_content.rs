@@ -355,7 +355,7 @@ where
         AssetTarget::Image(image_id) => unit_of_work
             .images()
             .search(&ImageFilter {
-                image_id: Some(image_id),
+                id: Some(image_id),
                 ..ImageFilter::default()
             })
             .await

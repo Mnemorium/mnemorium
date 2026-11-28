@@ -9,20 +9,13 @@ use crate::domain::{NumericID, PositiveI64};
 pub(crate) enum ImageError {
     /// The height is not positive.
     #[error("image height must be greater than zero")]
-    InvalidHeightPx,
+    HeightPxNotPositive,
     /// The name is empty.
     #[error("image name must not be empty")]
-    InvalidName,
+    NameEmpty,
     /// The width is not positive.
     #[error("image width must be greater than zero")]
-    InvalidWidthPx,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
+    WidthPxNotPositive,
 }
 
 /// Orientation of an image.
@@ -42,10 +35,6 @@ pub(crate) enum Orientation {
 
 /// An image stored on the server.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[expect(
-    clippy::struct_field_names,
-    reason = "`image_id` is the primary key name mandated by the SQL section and the domain field naming"
-)]
 pub(crate) struct Image {
     /// Date at which the image was created.
     created_at: NaiveDate,
@@ -54,7 +43,7 @@ pub(crate) struct Image {
     /// Height of the image, in pixels.
     height_px: i64,
     /// Unique identifier of the image.
-    image_id: NumericID,
+    id: NumericID,
     /// Name of the image.
     name: String,
     /// Orientation of the image.
@@ -95,7 +84,7 @@ impl Image {
             created_at,
             file_id,
             height_px: probed.height_px.value(),
-            image_id,
+            id: image_id,
             name,
             orientation: probed.orientation,
             scope,
@@ -111,8 +100,8 @@ impl Image {
 
     /// Return the unique identifier of the image.
     #[must_use]
-    pub(crate) fn image_id(&self) -> NumericID {
-        self.image_id
+    pub(crate) fn id(&self) -> NumericID {
+        self.id
     }
 
     /// Return the name of the image.
@@ -137,9 +126,9 @@ impl Image {
     ///
     /// # Errors
     ///
-    /// Returns [`ImageError::InvalidName`] when `name` is empty,
-    /// [`ImageError::InvalidWidthPx`] when `width_px` is not positive, and
-    /// [`ImageError::InvalidHeightPx`] when `height_px` is not positive.
+    /// Returns [`ImageError::NameEmpty`] when `name` is empty,
+    /// [`ImageError::WidthPxNotPositive`] when `width_px` is not positive, and
+    /// [`ImageError::HeightPxNotPositive`] when `height_px` is not positive.
     pub(crate) fn try_new(
         image_id: NumericID,
         name: String,
@@ -151,19 +140,19 @@ impl Image {
         scope: Option<AssetScope>,
     ) -> Result<Self, ImageError> {
         if name.is_empty() {
-            return Err(ImageError::InvalidName);
+            return Err(ImageError::NameEmpty);
         }
         if width_px <= 0 {
-            return Err(ImageError::InvalidWidthPx);
+            return Err(ImageError::WidthPxNotPositive);
         }
         if height_px <= 0 {
-            return Err(ImageError::InvalidHeightPx);
+            return Err(ImageError::HeightPxNotPositive);
         }
         Ok(Self {
             created_at,
             file_id,
             height_px,
-            image_id,
+            id: image_id,
             name,
             orientation,
             scope,

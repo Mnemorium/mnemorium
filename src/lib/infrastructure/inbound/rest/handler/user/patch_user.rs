@@ -172,7 +172,7 @@ pub(crate) async fn patch_user(
     payload: JsonObject<PatchUserRequest>,
 ) -> Result<Response, ApiError> {
     let user_id = parse_user_id(&id)?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let role = request
         .role
         .as_deref()

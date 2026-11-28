@@ -165,19 +165,6 @@ impl ReleaseStatus {
             _ => None,
         }
     }
-
-    /// Return whether the status is the official one.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the official-release predicate is read by the release-order service, which only tests exercise"
-        )
-    )]
-    pub(crate) fn is_official(self) -> bool {
-        matches!(self, Self::Official)
-    }
 }
 
 /// One edition of an album.

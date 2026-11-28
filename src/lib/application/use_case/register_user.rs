@@ -12,7 +12,7 @@ use crate::application::port::{
 };
 use crate::domain::model::{
     Action, ChildKind, Credential, Grant, GrantEffect, Principal, ResourceKind, ResourceRef,
-    ResourceRole, Role, User, UserError, Visibility,
+    ResourceRole, Role, User, Visibility,
 };
 use crate::domain::port::{
     CredentialRepository as _, GrantRepository as _, IdentityUnitOfWork, NewResource,
@@ -48,10 +48,6 @@ where
     F::Uow: IdentityUnitOfWork + UserUnitOfWork,
     P: PasswordHasher,
 {
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "RepositoryError is non_exhaustive, so a catch-all arm is required"
-    )]
     fn execute<'future>(
         &'future self,
         command: RegisterUserCommand,
@@ -73,12 +69,8 @@ where
                 | UsernamePolicyError::ContainsWhitespace => RegisterUserError::InvalidUsername,
             })?;
 
-            User::try_new(0, username.clone(), email.clone(), 0, command.role()).map_err(
-                |error| match error {
-                    UserError::InvalidEmail(_) => RegisterUserError::InvalidEmail,
-                    UserError::Unknown(source) => RegisterUserError::Unknown(source),
-                },
-            )?;
+            User::try_new(0, username.clone(), email.clone(), 0, command.role())
+                .map_err(|_| RegisterUserError::InvalidEmail)?;
 
             password_policy
                 .validate(command.password())
@@ -92,138 +84,148 @@ where
                 .await
                 .map_err(|error| RegisterUserError::Unknown(error.into()))?;
 
-            let result =
-                async {
-                    let caller = unit_of_work
-                        .users()
-                        .search(&UserFilter {
-                            id: Some(command.caller_id()),
-                            ..UserFilter::default()
-                        })
-                        .await
-                        .map_err(|error| RegisterUserError::Unknown(error.into()))?
-                        .into_iter()
-                        .next()
-                        .ok_or(RegisterUserError::NoSuchCaller)?;
-                    let child_kind = match command.role() {
-                        Role::Admin => ChildKind::Admin,
-                        Role::Standard => ChildKind::User,
-                    };
-                    authorize(
-                        &mut unit_of_work.resources(),
-                        &caller,
-                        ResourceRef::new(ResourceKind::UserCollection, 0),
-                        Action::CreateChild,
-                        Some(child_kind),
-                    )
+            let result = async {
+                let caller = unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.caller_id()),
+                        ..UserFilter::default()
+                    })
                     .await
-                    .map_err(|_| RegisterUserError::Forbidden)?;
+                    .map_err(|error| RegisterUserError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(RegisterUserError::NoSuchCaller)?;
+                let child_kind = match command.role() {
+                    Role::Admin => ChildKind::Admin,
+                    Role::Standard => ChildKind::User,
+                };
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::UserCollection, 0),
+                    Action::CreateChild,
+                    Some(child_kind),
+                )
+                .await
+                .map_err(|_| RegisterUserError::Forbidden)?;
 
-                    let username_taken = !unit_of_work
+                let username_taken = !unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        username: Some(username.clone()),
+                        ..UserFilter::default()
+                    })
+                    .await
+                    .map_err(|error| RegisterUserError::Unknown(error.into()))?
+                    .is_empty();
+                if username_taken {
+                    return Err(RegisterUserError::UsernameAlreadyExists);
+                }
+                if let Some(email_address) = email.as_deref() {
+                    let email_taken = !unit_of_work
                         .users()
                         .search(&UserFilter {
-                            username: Some(username.clone()),
+                            email: Some(email_address.to_owned()),
                             ..UserFilter::default()
                         })
                         .await
                         .map_err(|error| RegisterUserError::Unknown(error.into()))?
                         .is_empty();
-                    if username_taken {
-                        return Err(RegisterUserError::UsernameAlreadyExists);
+                    if email_taken {
+                        return Err(RegisterUserError::EmailAlreadyExists);
                     }
-                    if let Some(email_address) = email.as_deref() {
-                        let email_taken = !unit_of_work
-                            .users()
-                            .search(&UserFilter {
-                                email: Some(email_address.to_owned()),
-                                ..UserFilter::default()
-                            })
-                            .await
-                            .map_err(|error| RegisterUserError::Unknown(error.into()))?
-                            .is_empty();
-                        if email_taken {
-                            return Err(RegisterUserError::EmailAlreadyExists);
-                        }
-                    }
+                }
 
-                    // The Argon2 hash is computed while the unit of work holds one pooled
-                    // connection, blocking that connection for its duration. The pool defaults
-                    // above one connection and SQLite runs in write-ahead logging mode, so
-                    // other requests keep being served; do not move the hash off the
-                    // transaction without authorizing the caller first.
-                    let password_hash = password_hasher
-                        .hash_password(command.password())
-                        .await
-                        .map_err(|error| RegisterUserError::Unknown(error.into()))?;
-                    let pending_credential =
-                        Credential::try_new(0, password_hash, Utc::now().naive_utc()).map_err(
-                            |error| {
-                                error!(
-                                    target: "security",
-                                    event = "application_error",
-                                    operation = %"register_user",
-                                    "a use case originated an internal error"
-                                );
-                                RegisterUserError::Unknown(error.into())
-                            },
-                        )?;
-                    let credential = unit_of_work
-                        .credentials()
-                        .create(pending_credential)
-                        .await
-                        .map_err(|error| RegisterUserError::Unknown(error.into()))?;
-
-                    let pending_user =
-                        User::try_new(0, username, email, credential.id(), command.role())
-                            .map_err(|error| {
-                                error!(
-                                    target: "security",
-                                    event = "application_error",
-                                    operation = %"register_user",
-                                    "a use case originated an internal error"
-                                );
-                                RegisterUserError::Unknown(error.into())
-                            })?;
-                    let user = unit_of_work.users().create(pending_user).await.map_err(
-                        |error| match error {
-                            RepositoryError::AlreadyExist => RegisterUserError::UserAlreadyExists,
-                            other => RegisterUserError::Unknown(other.into()),
+                // The Argon2 hash is computed while the unit of work holds one pooled
+                // connection, blocking that connection for its duration. The pool defaults
+                // above one connection and SQLite runs in write-ahead logging mode, so
+                // other requests keep being served; do not move the hash off the
+                // transaction without authorizing the caller first.
+                let password_hash = password_hasher
+                    .hash_password(command.password())
+                    .await
+                    .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+                let pending_credential =
+                    Credential::try_new(0, password_hash, Utc::now().naive_utc()).map_err(
+                        |error| {
+                            error!(
+                                target: "security",
+                                event = "application_error",
+                                operation = %"register_user",
+                                "a use case originated an internal error"
+                            );
+                            RegisterUserError::Unknown(error.into())
                         },
                     )?;
-
-                    let user_resource = unit_of_work
-                        .resources()
-                        .create(NewResource {
-                            kind: ResourceKind::User,
-                            entity_id: user.id(),
-                            owner_id: None,
-                            auth_parent: Some(ResourceRef::new(ResourceKind::Instance, 0)),
-                            visibility: Visibility::Private,
-                        })
-                        .await
-                        .map_err(|error| RegisterUserError::Unknown(error.into()))?;
-                    let admin_owner = Grant::try_new(
-                        Principal::Role(Role::Admin),
-                        user_resource.resource_id(),
-                        ResourceRole::Owner,
-                        ChildKind::All,
-                        GrantEffect::Allow,
-                    )
+                let credential = unit_of_work
+                    .credentials()
+                    .create(pending_credential)
+                    .await
                     .map_err(|error| RegisterUserError::Unknown(error.into()))?;
-                    unit_of_work
-                        .grants()
-                        .save_grant(admin_owner)
-                        .await
-                        .map_err(|error| RegisterUserError::Unknown(error.into()))?;
 
-                    Ok(RegisterUserResponse::new(
-                        user.id(),
-                        user.username().to_owned(),
-                        user.email().map(str::to_owned),
-                        user.role(),
-                    ))
-                }
-                .await;
+                let pending_user =
+                    User::try_new(0, username, email, credential.id(), command.role()).map_err(
+                        |error| {
+                            error!(
+                                target: "security",
+                                event = "application_error",
+                                operation = %"register_user",
+                                "a use case originated an internal error"
+                            );
+                            RegisterUserError::Unknown(error.into())
+                        },
+                    )?;
+                let user = unit_of_work
+                    .users()
+                    .create(pending_user)
+                    .await
+                    .map_err(|error| match error {
+                        RepositoryError::AlreadyExist => RegisterUserError::UserAlreadyExists,
+                        // Every other variant maps to `Unknown`; naming them
+                        // keeps a new port variant a compile error here.
+                        RepositoryError::Conflict
+                        | RepositoryError::DataIntegrityViolation
+                        | RepositoryError::ConcurrencyConflict
+                        | RepositoryError::OperationFailed
+                        | RepositoryError::Timeout
+                        | RepositoryError::Unavailable
+                        | RepositoryError::Unknown(_) => RegisterUserError::Unknown(error.into()),
+                    })?;
+
+                let user_resource = unit_of_work
+                    .resources()
+                    .create(NewResource {
+                        kind: ResourceKind::User,
+                        entity_id: user.id(),
+                        owner_id: None,
+                        auth_parent: Some(ResourceRef::new(ResourceKind::Instance, 0)),
+                        visibility: Visibility::Private,
+                    })
+                    .await
+                    .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+                let admin_owner = Grant::try_new(
+                    Principal::Role(Role::Admin),
+                    user_resource.resource_id(),
+                    ResourceRole::Owner,
+                    ChildKind::All,
+                    GrantEffect::Allow,
+                )
+                .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+                unit_of_work
+                    .grants()
+                    .save_grant(admin_owner)
+                    .await
+                    .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+
+                Ok(RegisterUserResponse::new(
+                    user.id(),
+                    user.username().to_owned(),
+                    user.email().map(str::to_owned),
+                    user.role(),
+                ))
+            }
+            .await;
 
             match result {
                 Ok(value) => {
@@ -254,6 +256,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::domain::model::UserError;
 
     use crate::domain::port::{
         MockCredentialRepository, MockPasswordHasher, MockResourceRepository, MockUserRepository,

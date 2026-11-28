@@ -12,7 +12,7 @@ pub(crate) struct ImageFilter {
     /// Filter on the identifier of the backing file.
     pub file_id: Option<NumericID>,
     /// Filter on the image identifier.
-    pub image_id: Option<NumericID>,
+    pub id: Option<NumericID>,
     /// Filter on the image name.
     pub name: Option<String>,
     /// Filter on the image orientation.

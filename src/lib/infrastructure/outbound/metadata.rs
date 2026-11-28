@@ -26,10 +26,6 @@ pub(crate) enum ConfiguredProvider {
 }
 
 impl VideoMetadataProvider for ConfiguredProvider {
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms borrow the adapter out of a non-Copy enum matched by reference"
-    )]
     async fn lookup(&self, target: &Target) -> Result<Option<MediaMetadata>, ExternalServiceError> {
         match self {
             Self::Omdb(provider) => provider.lookup(target).await,
@@ -37,10 +33,6 @@ impl VideoMetadataProvider for ConfiguredProvider {
         }
     }
 
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms borrow the adapter out of a non-Copy enum matched by reference"
-    )]
     async fn search(&self, query: &MediaQuery) -> Result<Vec<Candidate>, ExternalServiceError> {
         match self {
             Self::Omdb(provider) => provider.search(query).await,

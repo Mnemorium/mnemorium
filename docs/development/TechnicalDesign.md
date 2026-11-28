@@ -201,6 +201,7 @@ Cite a rule as `TechnicalDesign.md § 1 (Code Style Guidelines), STY-RUST-001`, 
 | `STY-RUST-120` | HAL payload                  | A payload struct uses `_embedded` only at a recorded location. The four catalog list response structs are the recorded need: their partial page items spare one request per item. Every other `_embedded` is reported.                                                                                                                                                                                                                                                                                                                 | [§ 18](#18-hal-payload-structs)                                  | `check_sty_rust_120`                                                                                   |
 | `STY-RUST-121` | Error handling               | An `ApiError` message argument is a string literal, optionally wrapped by `.to_owned()`/`.to_string()`; never a rejection value, a field of one, or its `Display`/`Debug`.                                                                                                                                                                                                                                                                                                                                                             | [§ 19](#19-error-message-arguments)                              | `check_sty_rust_121`                                                                                   |
 | `STY-RUST-122` | Parameters                   | Every endpoint handler extracts the query: a handler that takes parameters declares its own `<Context>Query` deriving `Deserialize` and `IntoParams` with `serde(deny_unknown_fields)`, and a handler that takes none extracts `Query<NoParametersQuery>`. An undeclared query parameter answers `400` and applies nothing.                                                                                                                                                                                                            | [§ 20](#20-the-query-extractor)                                  | `check_sty_rust_122`                                                                                   |
+| `STY-RUST-123` | Lint policy                  | An `#[expect]`/`#![expect]` attribute, including one nested in `cfg_attr`, names only `clippy::print_stdout`, and only in `app.rs` and `seed.rs`, where the operator must read a credential the file sinks may not carry; every other lint finding is fixed in the code rather than expected, and `#[allow]` is not an alternative.                                                                                                                                                                                                    | [§ 21](#21-lint-expectations)                                    | `check_sty_rust_123`                                                                                   |
 
 ---
 
@@ -248,8 +249,6 @@ Drawn from `src/lib/domain/model/user.rs`:
 pub enum UserError {
     #[error("email has an invalid format")]
     InvalidEmail(#[from] email_address::Error),
-    #[error("an unknown error occurred: {0}")]
-    Unknown(#[source] anyhow::Error),
     // [...]
 }
 
@@ -333,7 +332,12 @@ exception being inbound middleware (see [Inbound middleware](#27-inbound-middlew
 Besides the two shared families below (Repository, External Service), a port may declare its **own** error family in
 `src/lib/domain/port/error.rs`. A port error type is not one-per-port: it can back several outbound ports of the same
 family, so every repository shares `RepositoryError` and a new port reuses its family's type rather than declaring a
-duplicate. Every port error exposes at least an `Unknown(anyhow::Error)` variant.
+duplicate. Only a port error family that can surface a failure it cannot classify declares an `Unknown(anyhow::Error)`
+variant; a family whose failures are all enumerable names each of them and declares no catch-all. The Repository,
+External Service, Unit of Work, Configuration Source, File Storage, Content Hasher, Password Hasher, Media Probe,
+Content Type Sniffer and Media Source families declare `Unknown`; `PasswordGeneratorError`, `TokenProviderError`,
+`InstanceStateStoreError`, `StateSeedSourceError` and `DatastorePresenceError` name every failure, and
+`SecretGeneratorError` names none because pepper generation has no failure the caller can act on.
 
 ###### 2.6.1 Repository
 
@@ -343,7 +347,6 @@ duplicate. Every port error exposes at least an `Unknown(anyhow::Error)` variant
 | Conflict               | The operation cannot be completed because the current state of the data conflicts with the requested action.              |
 | ConcurrencyConflict    | The operation failed due to a concurrent modification of the same entity (for example, optimistic locking failure).       |
 | DataIntegrityViolation | The operation would violate a data integrity rule or constraint.                                                          |
-| ValidationFailed       | The provided data does not satisfy validation rules required by the repository.                                           |
 | OperationFailed        | The repository could not complete the requested operation for a non-specific reason.                                      |
 | Timeout                | The operation exceeded the allowed execution time.                                                                        |
 | Unavailable            | The repository or underlying datastore is currently unavailable.                                                          |
@@ -359,11 +362,9 @@ duplicate. Every port error exposes at least an `Unknown(anyhow::Error)` variant
 | Timeout                | The external service did not respond within the expected time.                               |
 | Unavailable            | The external service is temporarily unavailable or unreachable.                              |
 | CommunicationFailure   | A network, protocol, or transport-level error occurred while communicating with the service. |
-| SerializationFailure   | The request could not be properly serialized before being sent to the service.               |
 | DeserializationFailure | The service response could not be parsed or converted into the expected format.              |
 | InvalidRequest         | The request was rejected because it contains invalid or missing information.                 |
 | DependencyFailure      | The service failed due to a problem with one of its own dependencies.                        |
-| RetryableFailure       | A transient error occurred and the operation may succeed if retried.                         |
 | Unknown                | An unexpected or unmapped error occurred.                                                    |
 
 ###### 2.6.3 Unit of Work
@@ -376,11 +377,11 @@ duplicate. Every port error exposes at least an `Unknown(anyhow::Error)` variant
 
 ###### 2.6.4 Configuration Source
 
-| Error                | Description                                                           |
-| -------------------- | --------------------------------------------------------------------- |
-| InvalidConfiguration | The layered settings do not form a valid configuration.               |
-| OperationFailed      | The configuration source could not be read for a non-specific reason. |
-| Unknown              | An unexpected or unmapped error occurred.                             |
+| Error                | Description                                                 |
+| -------------------- | ----------------------------------------------------------- |
+| FileWriteFailed      | The configuration file was absent and could not be written. |
+| InvalidConfiguration | The layered settings do not form a valid configuration.     |
+| Unknown              | An unexpected or unmapped error occurred.                   |
 
 ###### 2.6.5 File Storage
 
@@ -391,7 +392,6 @@ upload's staging file or a file promoted into the media library — treats a mis
 
 | Error           | Description                                                                  |
 | --------------- | ---------------------------------------------------------------------------- |
-| Conflict        | The requested operation conflicts with the current state of stored file.     |
 | OperationFailed | The file storage could not complete the operation for a non-specific reason. |
 | Unavailable     | The file storage is temporarily unavailable or unreachable.                  |
 | Unknown         | An unexpected or unmapped error occurred.                                    |
@@ -406,8 +406,8 @@ port's error:
 
 - **A client error only for an unauthenticated caller** (`STY-RUST-019`). Only the variants inbound middleware
   explicitly recognizes as an unauthenticated caller — for example `InvalidClaims`, `InvalidToken` and `TokenExpired` —
-  become a client error. Every other variant, including `OperationFailed` and `Unknown`, is an uncaught error: the
-  handler, or the project's equivalent path, serves `500`, never a `401`.
+  become a client error. Every other variant, including `OperationFailed`, is an uncaught error: the handler, or the
+  project's equivalent path, serves `500`, never a `401`.
 - **An exhaustive match that ends in a `500` catch-all** (`STY-RUST-020`). Port errors are `#[non_exhaustive]`, so the
   match ends with a catch-all arm that defaults to `500`; a wildcard arm must never collapse a server-side failure into
   a misleading `401`.
@@ -431,7 +431,6 @@ let user_id = match token_provider.validate(token).await {
             TokenProviderError::InvalidToken => "invalid_token",
             TokenProviderError::OperationFailed => "operation_failed",
             TokenProviderError::TokenExpired => "token_expired",
-            TokenProviderError::Unknown(_) => "unknown",
         };
         // [...]
         return ApiError::InternalServerError.into_response();
@@ -947,7 +946,7 @@ pub trait UserRepository: Send + Sync {
 `save` is the default mutation when an aggregate is stored as one row, and it persists the child collections the
 aggregate carries (a playlist's tracks, an album's mediums and placements, a show's seasons and episodes). An aggregate
 may instead expose narrowly-scoped child mutators named `<verb>_<child>` — for example `SeriesRepository::save_episode`,
-`MusicAlbumRepository::save_medium` and `MusicPlaylistRepository::delete_track` — when a whole-row write would be wrong.
+`MusicAlbumRepository::save_medium` and `GalleryRepository::delete_item` — when a whole-row write would be wrong.
 
 `delete` takes a filter rather than an identity: an all-`None` filter deletes every aggregate the repository owns, and a
 filter naming one or more fields deletes the matches. It returns `Ok(false)` when nothing matched (`STY-RUST-044`).
@@ -1209,22 +1208,17 @@ A `#[cfg_attr(test, mockall::automock)]` attribute generates a `pub` `Mock*` typ
 — the type comes from an external macro expansion — so no allow is needed; should a future generator emit a reachable
 `pub` item, the lint reports it like any other.
 
-**The lint set the narrow surface activates.** While every item was `pub`, three lints had nothing to say; a
-crate-private surface turns them on, and each finding is settled here rather than by widening a declaration back:
+**The lint set the narrow surface activates.** While every item was `pub`, two lints had nothing to say; a crate-private
+surface turns them on, and each finding is settled here rather than by widening a declaration back:
 
 - `clippy::single_call_fn` is not enabled. `STY-RUST-002` gives every endpoint its own file, so the router names it
   exactly once, and `STY-RUST-016`–`STY-RUST-018` mandate the constructors; the lint cannot separate those shapes from
   an accidental one. A single-use helper is a review matter, not a mechanical gate.
+- `clippy::pattern_type_mismatch` is not enabled. It rejects the match-ergonomics arms the crate uses
+  (`match &candidate { Candidate::Album(group) => … }`), and every rewrite that satisfies it trips `ref_patterns` or
+  `needless_borrowed_reference`; enabling it would trade one suppression for three.
 - `clippy::missing_docs_in_private_items` is satisfied, not allowed: every module declaration carries a `///` doc and
   every private field and variant carries one.
-- `dead_code` reports the contract the crate declares but no caller exercises yet — the port error variants and the
-  getters another rule mandates. There is no module-level allow: a `#![allow(dead_code, …)]` or
-  `#![expect(dead_code, …)]` would absolve dead code added to the module later, and the `allow` form never expires. The
-  exemption is item-scoped and self-expiring instead: a dead item that must stay carries
-  `#[expect(dead_code, reason = "…")]`, and an item only test code exercises carries
-  `#[cfg_attr(not(test), expect(dead_code, reason = "…"))]` (drawn from `src/lib/domain/model/artwork.rs` and
-  `src/lib/infrastructure/outbound/envy/state_seeds.rs`). An item with no contract behind it is deleted, not annotated.
-  The attribute is a record, not an exemption from this rule: the declaration still follows the ladder.
 
 **Before and after.** The `after` lines of both examples are the source today, drawn from
 `src/lib/domain/model/movie.rs` and `src/lib/infrastructure/inbound/rest/handler/library/get_movie.rs`:
@@ -1785,6 +1779,28 @@ pub(crate) struct NoParametersQuery {
     _private: (),
 }
 ```
+
+#### 21. Lint expectations
+
+`#[expect]` records that a lint is _expected_ to fire, and the compiler warns when the expectation goes unfulfilled, so
+the `-D warnings` gate already removes a stale suppression. What the compiler cannot judge is whether silencing was the
+right call. The crate-level lint set in `Cargo.toml` (`[lints.clippy]`, `[lints.rust]`) is the standard: a finding is
+fixed in the code, or the lint set itself changes after the trade-off is written down here.
+
+The one standing expectation is `clippy::print_stdout`, in the two files whose operator must read a credential the file
+sinks may not carry: the root-admin one-time password (`src/lib/app.rs`) and the seeded demo passwords
+(`src/lib/infrastructure/seed.rs`). Each carries the reason that makes it safe (reviewed, not checked:
+`check_sty_rust_123` reads the lint names and the declaring file, never the item or the `reason`). No other lint is
+expected anywhere, test code included: `pattern_type_mismatch`, `wildcard_enum_match_arm`, `cast_possible_truncation`,
+`expect_used`, `enum_variant_names`, `field_scoped_visibility_modifiers` and the rest each have an explicit fix in the
+codebase's own idiom, and the rulebook records the choice.
+
+The rule covers every spelling of an expectation — the outer `#[expect(...)]`, the inner `#![expect(...)]`, and an
+`expect(...)` nested in `#[cfg_attr(..., ...)]` — and only the lint name matters, never the item it sits on. `#[allow]`
+is not a way around it: `clippy::allow_attributes` turns an outer `allow` into the `expect` this rule governs.
+
+`check_sty_rust_123` fails on an expectation that names another lint, and on a `clippy::print_stdout` expectation
+outside the two files above. It reads parsed attributes, so a `.expect(...)`/`.unwrap()` call is never an expectation.
 
 ### SQL
 
@@ -2464,8 +2480,6 @@ For example, drawn from `src/lib/domain/model/user.rs`:
 pub enum UserError {
     #[error("email has an invalid format")]
     InvalidEmail(#[from] email_address::Error),
-    #[error("an unknown error occurred: {0}")]
-    Unknown(#[source] anyhow::Error),
     // [...]
 }
 ```

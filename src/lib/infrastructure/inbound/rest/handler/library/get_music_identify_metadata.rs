@@ -100,10 +100,6 @@ enum MusicMetadataResponse {
 }
 
 impl From<&MusicMetadata> for MusicMetadataResponse {
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms borrow the metadata out of a non-Copy enum matched by reference"
-    )]
     fn from(metadata: &MusicMetadata) -> Self {
         match metadata {
             MusicMetadata::Album {

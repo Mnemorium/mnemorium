@@ -8,17 +8,10 @@ use crate::domain::NumericID;
 pub(crate) enum GalleryItemError {
     /// The item index is negative.
     #[error("gallery item index must not be negative")]
-    InvalidIndex,
+    IndexNegative,
     /// The item does not reference exactly one medium.
     #[error("a gallery item must reference exactly one medium")]
-    InvalidMedia,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
+    MediumCountMismatch,
 }
 
 /// The single medium a `GalleryItem` references.
@@ -43,17 +36,13 @@ impl GalleryItemMedia {
 
 /// An ordered membership of one medium in a `Gallery`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[expect(
-    clippy::struct_field_names,
-    reason = "`gallery_item_id` is the primary key name mandated by the SQL section and the domain field naming"
-)]
 pub(crate) struct GalleryItem {
     /// Date and time at which the item was added.
     added_at: NaiveDateTime,
     /// Identifier of the gallery the item belongs to.
     gallery_id: NumericID,
     /// Unique identifier of the item.
-    gallery_item_id: NumericID,
+    item_id: NumericID,
     /// Position of the item within its gallery.
     item_index: i64,
     /// Medium the item references.
@@ -75,8 +64,8 @@ impl GalleryItem {
 
     /// Return the unique identifier of the item.
     #[must_use]
-    pub(crate) fn gallery_item_id(&self) -> NumericID {
-        self.gallery_item_id
+    pub(crate) fn item_id(&self) -> NumericID {
+        self.item_id
     }
 
     /// Return the position of the item within its gallery.
@@ -96,9 +85,9 @@ impl GalleryItem {
     ///
     /// # Errors
     ///
-    /// Returns [`GalleryItemError::InvalidMedia`] when both or neither of
+    /// Returns [`GalleryItemError::MediumCountMismatch`] when both or neither of
     /// `image_id` and `video_id` are set, and
-    /// [`GalleryItemError::InvalidIndex`] when `item_index` is negative.
+    /// [`GalleryItemError::IndexNegative`] when `item_index` is negative.
     pub(crate) fn try_new(
         gallery_item_id: NumericID,
         gallery_id: NumericID,
@@ -110,15 +99,15 @@ impl GalleryItem {
         let media = match (image_id, video_id) {
             (Some(image), None) => GalleryItemMedia::Image(image),
             (None, Some(video)) => GalleryItemMedia::Video(video),
-            (Some(_), Some(_)) | (None, None) => return Err(GalleryItemError::InvalidMedia),
+            (Some(_), Some(_)) | (None, None) => return Err(GalleryItemError::MediumCountMismatch),
         };
         if item_index < 0 {
-            return Err(GalleryItemError::InvalidIndex);
+            return Err(GalleryItemError::IndexNegative);
         }
         Ok(Self {
             added_at,
             gallery_id,
-            gallery_item_id,
+            item_id: gallery_item_id,
             item_index,
             media,
         })

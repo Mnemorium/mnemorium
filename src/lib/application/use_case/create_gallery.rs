@@ -39,10 +39,6 @@ where
     F: UnitOfWorkFactory,
     F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "RepositoryError is non_exhaustive, so a catch-all arm is required"
-    )]
     fn execute<'future>(
         &'future self,
         command: CreateGalleryCommand,
@@ -59,31 +55,31 @@ where
                 .await
                 .map_err(|error| CreateGalleryError::Unknown(error.into()))?;
 
-            let result =
-                async {
-                    let caller = unit_of_work
-                        .users()
-                        .search(&UserFilter {
-                            id: Some(command.caller_id()),
-                            ..UserFilter::default()
-                        })
-                        .await
-                        .map_err(|error| CreateGalleryError::Unknown(error.into()))?
-                        .into_iter()
-                        .next()
-                        .ok_or(CreateGalleryError::NoSuchCaller)?;
-
-                    authorize(
-                        &mut unit_of_work.resources(),
-                        &caller,
-                        ResourceRef::new(ResourceKind::GalleryCollection, 0),
-                        Action::CreateChild,
-                        Some(ChildKind::Gallery),
-                    )
+            let result = async {
+                let caller = unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.caller_id()),
+                        ..UserFilter::default()
+                    })
                     .await
-                    .map_err(|_| CreateGalleryError::Forbidden)?;
+                    .map_err(|error| CreateGalleryError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(CreateGalleryError::NoSuchCaller)?;
 
-                    let name = NamePolicy::validate(command.name().to_owned()).map_err(
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::GalleryCollection, 0),
+                    Action::CreateChild,
+                    Some(ChildKind::Gallery),
+                )
+                .await
+                .map_err(|_| CreateGalleryError::Forbidden)?;
+
+                let name =
+                    NamePolicy::validate(command.name().to_owned()).map_err(
                         |error| match error {
                             NamePolicyError::Empty => {
                                 warn!(
@@ -117,66 +113,76 @@ where
                             }
                         },
                     )?;
-                    let now = Utc::now().naive_utc();
-                    let gallery = Gallery::new(
-                        0,
-                        Some(command.caller_id()),
-                        name,
-                        command.is_public(),
-                        now,
-                        now,
-                    );
+                let now = Utc::now().naive_utc();
+                let gallery = Gallery::new(
+                    0,
+                    Some(command.caller_id()),
+                    name,
+                    command.is_public(),
+                    now,
+                    now,
+                );
 
-                    let existing = unit_of_work
-                        .galleries()
-                        .search(&GalleryFilter {
-                            name: Some(gallery.name().to_owned()),
-                            user_id: Some(command.caller_id()),
-                            ..GalleryFilter::default()
-                        })
-                        .await
-                        .map_err(|error| CreateGalleryError::Unknown(error.into()))?;
-                    if !existing.is_empty() {
-                        return Err(CreateGalleryError::NameAlreadyExists);
-                    }
-
-                    let created = unit_of_work.galleries().create(gallery).await.map_err(
-                        |error| match error {
-                            // A concurrent insert won the race for the per-owner
-                            // unique name; the use case translates the port's
-                            // `AlreadyExist` so the caller cannot own a second
-                            // gallery with the same name either way (`STY-RUST-014`).
-                            RepositoryError::AlreadyExist => CreateGalleryError::NameAlreadyExists,
-                            other => CreateGalleryError::Unknown(other.into()),
-                        },
-                    )?;
-
-                    unit_of_work
-                        .resources()
-                        .create(NewResource {
-                            kind: ResourceKind::Gallery,
-                            entity_id: created.gallery_id(),
-                            owner_id: Some(command.caller_id()),
-                            auth_parent: Some(ResourceRef::new(ResourceKind::Library, 0)),
-                            visibility: if created.is_public() {
-                                Visibility::Public
-                            } else {
-                                Visibility::Private
-                            },
-                        })
-                        .await
-                        .map_err(|error| CreateGalleryError::Unknown(error.into()))?;
-
-                    Ok(CreateGalleryResponse::new(
-                        created.gallery_id(),
-                        command.caller_id(),
-                        created.name().to_owned(),
-                        created.is_public(),
-                        created.created_at(),
-                        created.last_modified_at(),
-                    ))
+                let existing = unit_of_work
+                    .galleries()
+                    .search(&GalleryFilter {
+                        name: Some(gallery.name().to_owned()),
+                        user_id: Some(command.caller_id()),
+                        ..GalleryFilter::default()
+                    })
+                    .await
+                    .map_err(|error| CreateGalleryError::Unknown(error.into()))?;
+                if !existing.is_empty() {
+                    return Err(CreateGalleryError::NameAlreadyExists);
                 }
-                .await;
+
+                let created = unit_of_work
+                    .galleries()
+                    .create(gallery)
+                    .await
+                    .map_err(|error| match error {
+                        // A concurrent insert won the race for the per-owner
+                        // unique name; the use case translates the port's
+                        // `AlreadyExist` so the caller cannot own a second
+                        // gallery with the same name either way (`STY-RUST-014`).
+                        RepositoryError::AlreadyExist => CreateGalleryError::NameAlreadyExists,
+                        // Every other variant maps to `Unknown`; naming them
+                        // keeps a new port variant a compile error here.
+                        RepositoryError::Conflict
+                        | RepositoryError::DataIntegrityViolation
+                        | RepositoryError::ConcurrencyConflict
+                        | RepositoryError::OperationFailed
+                        | RepositoryError::Timeout
+                        | RepositoryError::Unavailable
+                        | RepositoryError::Unknown(_) => CreateGalleryError::Unknown(error.into()),
+                    })?;
+
+                unit_of_work
+                    .resources()
+                    .create(NewResource {
+                        kind: ResourceKind::Gallery,
+                        entity_id: created.id(),
+                        owner_id: Some(command.caller_id()),
+                        auth_parent: Some(ResourceRef::new(ResourceKind::Library, 0)),
+                        visibility: if created.is_public() {
+                            Visibility::Public
+                        } else {
+                            Visibility::Private
+                        },
+                    })
+                    .await
+                    .map_err(|error| CreateGalleryError::Unknown(error.into()))?;
+
+                Ok(CreateGalleryResponse::new(
+                    created.id(),
+                    command.caller_id(),
+                    created.name().to_owned(),
+                    created.is_public(),
+                    created.created_at(),
+                    created.last_modified_at(),
+                ))
+            }
+            .await;
 
             match result {
                 Ok(value) => {

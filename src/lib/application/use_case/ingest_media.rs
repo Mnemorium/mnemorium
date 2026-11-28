@@ -404,21 +404,21 @@ where
         match kind {
             MediaKind::Image => self
                 .media_probe
-                .probe_image(&path)
+                .image(&path)
                 .await
                 .ok()
                 .flatten()
                 .map(MediaRow::Image),
             MediaKind::Video => self
                 .media_probe
-                .probe_video(&path)
+                .video(&path)
                 .await
                 .ok()
                 .flatten()
                 .map(MediaRow::Video),
             MediaKind::Audio => self
                 .media_probe
-                .probe_audio(&path)
+                .audio(&path)
                 .await
                 .ok()
                 .flatten()
@@ -612,14 +612,14 @@ where
                 unit_of_work
                     .galleries()
                     .delete_item(&GalleryItemFilter {
-                        media: Some(GalleryItemMedia::Image(image.image_id())),
+                        media: Some(GalleryItemMedia::Image(image.id())),
                         ..GalleryItemFilter::default()
                     })
                     .await?;
                 let _deleted = unit_of_work
                     .images()
                     .delete(&ImageFilter {
-                        image_id: Some(image.image_id()),
+                        id: Some(image.id()),
                         ..ImageFilter::default()
                     })
                     .await?;
@@ -967,7 +967,9 @@ mod tests {
     /// Return the sniff outcome for the unreadable-file fixture.
     fn sniff_fixture(path: &Path) -> Result<Option<String>, ContentTypeSnifferError> {
         if path.to_string_lossy().ends_with("secret.png") {
-            return Err(ContentTypeSnifferError::OperationFailed);
+            return Err(ContentTypeSnifferError::Unknown(anyhow::anyhow!(
+                "the content could not be read"
+            )));
         }
         Ok(Some("image/png".to_owned()))
     }
@@ -1059,7 +1061,7 @@ mod tests {
         })(&mut sniffer, "image/png");
         let mut probe = MockMediaProbe::new();
         probe
-            .expect_probe_image()
+            .expect_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let use_case = use_case(
@@ -1183,7 +1185,7 @@ mod tests {
         })(&mut sniffer, "video/mp4");
         let mut probe = MockMediaProbe::new();
         probe
-            .expect_probe_video()
+            .expect_video()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_video())) }));
         let use_case = use_case(
@@ -1306,7 +1308,7 @@ mod tests {
         })(&mut sniffer, "audio/mpeg");
         let mut probe = MockMediaProbe::new();
         probe
-            .expect_probe_audio()
+            .expect_audio()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_audio_without_measurements())) }));
         let use_case = use_case(
@@ -1362,7 +1364,7 @@ mod tests {
                 .returning(move |_| Box::pin(async move { Ok(Some(mime_type_id.to_owned())) }));
         })(&mut sniffer, "text/plain");
         let mut probe = MockMediaProbe::new();
-        probe.expect_probe_image().times(0);
+        probe.expect_image().times(0);
         let use_case = use_case(
             factory(vec![(move |files: Vec<File>| -> TestUow {
                 let mut uow = (move |files: Vec<File>| -> TestUow {
@@ -1414,7 +1416,7 @@ mod tests {
         })(&mut sniffer, "image/png");
         let mut probe = MockMediaProbe::new();
         probe
-            .expect_probe_image()
+            .expect_image()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::UnsupportedMedia) }));
         let use_case = use_case(
@@ -1468,7 +1470,7 @@ mod tests {
         })(&mut sniffer, "video/mp4");
         let mut probe = MockMediaProbe::new();
         probe
-            .expect_probe_video()
+            .expect_video()
             .times(1)
             .returning(|_| Box::pin(async { Err(MediaProbeError::Timeout) }));
         let use_case = use_case(
@@ -1587,9 +1589,9 @@ mod tests {
             Box::pin(async move { Ok(Some(mime_type.to_owned())) })
         });
         let mut probe = MockMediaProbe::new();
-        probe.expect_probe_audio().times(0);
+        probe.expect_audio().times(0);
         probe
-            .expect_probe_image()
+            .expect_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let use_case = use_case(
@@ -1714,7 +1716,7 @@ mod tests {
         });
         let mut probe = MockMediaProbe::new();
         probe
-            .expect_probe_image()
+            .expect_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let use_case = use_case(
@@ -1850,7 +1852,7 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(Some("image/png".to_owned())) }));
         let mut probe = MockMediaProbe::new();
         probe
-            .expect_probe_image()
+            .expect_image()
             .times(2)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let use_case = use_case(
@@ -2048,7 +2050,7 @@ mod tests {
         })(&mut sniffer, "image/png");
         let mut probe = MockMediaProbe::new();
         probe
-            .expect_probe_image()
+            .expect_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let use_case = use_case(
@@ -2228,7 +2230,7 @@ mod tests {
         })(&mut source, vec![entry("track.mp3", 5)]);
         let mut probe = MockMediaProbe::new();
         probe
-            .expect_probe_audio()
+            .expect_audio()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_audio_without_measurements())) }));
         let use_case = use_case(
@@ -2350,7 +2352,7 @@ mod tests {
         })(&mut sniffer, "image/png");
         let mut probe = MockMediaProbe::new();
         probe
-            .expect_probe_image()
+            .expect_image()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
         let use_case = use_case(
@@ -2670,9 +2672,9 @@ mod tests {
         );
 
         // Assert
-        assert!(matches!(duration, Err(AudioError::InvalidDurationMs)));
-        assert!(matches!(sample_rate, Err(AudioError::InvalidSampleRateHz)));
-        assert!(matches!(depth, Err(AudioError::InvalidBitDepth)));
-        assert!(matches!(block, Err(AudioError::InvalidBlockSize)));
+        assert!(matches!(duration, Err(AudioError::DurationMsNegative)));
+        assert!(matches!(sample_rate, Err(AudioError::SampleRateHzNegative)));
+        assert!(matches!(depth, Err(AudioError::BitDepthNotPositive)));
+        assert!(matches!(block, Err(AudioError::BlockSizeNotPositive)));
     }
 }

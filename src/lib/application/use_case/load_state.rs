@@ -186,9 +186,7 @@ where
 /// Map an adapter failure onto the use-case error.
 fn map_store_error(error: InstanceStateStoreError) -> LoadStateError {
     match error {
-        InstanceStateStoreError::Conflict
-        | InstanceStateStoreError::OperationFailed(_)
-        | InstanceStateStoreError::Unknown(_) => {
+        InstanceStateStoreError::Conflict | InstanceStateStoreError::OperationFailed(_) => {
             LoadStateError::StoreFailed(anyhow::Error::new(error))
         }
         InstanceStateStoreError::Corrupt(source) => LoadStateError::StateCorrupt(source),
@@ -227,7 +225,7 @@ mod tests {
 
     use crate::domain::port::{
         DatastorePresenceError, MockDatastorePresence, MockInstanceStateStore, MockSecretGenerator,
-        SecretGeneratorError, StateSeedSourceError,
+        StateSeedSourceError,
     };
 
     use std::error::Error;
@@ -905,43 +903,6 @@ mod tests {
             "an absent seed must be generated"
         );
         assert!(jwt_secret_generated);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn load_state_creation_generator_failure_is_unknown() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let use_case = {
-            let setup: Box<dyn FnOnce(&mut MockInstanceStateStore, &mut MockSecretGenerator)> =
-                Box::new(|store, generator| {
-                    generator.expect_generate().times(1).returning(|_| {
-                        Box::pin(async { Err(SecretGeneratorError::OperationFailed) })
-                    });
-                    store.expect_save().times(0);
-                });
-            (move |seeds: TestSeeds| -> UseCase {
-                let mut store = MockInstanceStateStore::new();
-                let mut generator = MockSecretGenerator::new();
-                setup(&mut store, &mut generator);
-                let mut presence = MockDatastorePresence::new();
-                presence.expect_exists().times(0..).returning(|| Ok(false));
-                LoadState::new(
-                    Arc::new(store),
-                    Arc::new(generator),
-                    Arc::new(TestSeedSource {
-                        failure: false,
-                        seeds,
-                    }),
-                    Arc::new(presence),
-                )
-            })(TestSeeds::default())
-        };
-
-        // Act
-        let result = use_case.create(None, None).await;
-
-        // Assert
-        assert!(matches!(result, Err(LoadStateError::Unknown(_))));
         Ok(())
     }
 }

@@ -698,25 +698,6 @@ mod test_helpers {
         .await?;
         Ok(())
     }
-
-    pub(crate) async fn seed_image_v5(
-        transaction: &mut Transaction<'static, Sqlite>,
-        image_id: i64,
-        file_id: i64,
-        scope: Option<&str>,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO image (image_id, name, width_px, height_px, orientation, created_at, scope, file_id)
-             VALUES (?1, 'art', 10, 10, 'SQUARE', '2026-09-26', ?2, ?3)",
-        )
-        .bind(image_id)
-        .bind(scope)
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
     pub(crate) async fn seed_media(pool: &SqlitePool) -> Result<(), Box<dyn Error>> {
         sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (1, 'hash')")
             .execute(pool)
@@ -1128,25 +1109,6 @@ mod test_helpers {
         .await?;
         Ok(())
     }
-
-    pub(crate) async fn seed_video_v2(
-        transaction: &mut Transaction<'static, Sqlite>,
-        video_id: i64,
-        file_id: i64,
-        scope: Option<&str>,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO video (video_id, duration_ms, codec, frame_count, width, height, color_id, scan_type, scope, file_id)
-             VALUES (?1, 1000, 'h264', 30, 640, 480, 'sRGB', 'PROGRESSIVE', ?2, ?3)",
-        )
-        .bind(video_id)
-        .bind(scope)
-        .bind(file_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
     pub(crate) async fn seed_video_v3(
         transaction: &mut Transaction<'static, Sqlite>,
         video_id: i64,

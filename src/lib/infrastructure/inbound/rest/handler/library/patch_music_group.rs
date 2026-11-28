@@ -125,7 +125,7 @@ pub(crate) async fn patch_music_group(
     payload: JsonObject<PatchMusicGroupRequest>,
 ) -> Result<Response, ApiError> {
     let group_id = parse_group_id(&group_id_value)?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let response = state
         .library_use_case_factory()
         .update_music_group()

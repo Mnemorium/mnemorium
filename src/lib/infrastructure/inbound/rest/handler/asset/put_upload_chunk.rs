@@ -6,8 +6,6 @@ use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse as _, Response};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use serde::Deserialize;
-use utoipa::ToSchema;
 
 use crate::application::port::{WriteUploadChunkCommand, WriteUploadChunkError};
 use crate::domain::NumericID;
@@ -16,29 +14,12 @@ use crate::infrastructure::inbound::rest::handler::NoParametersQuery;
 use crate::infrastructure::inbound::rest::handler::asset::UploadSessionResponse;
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{
-    AllowMethods, ApiError, AppState, ErrorBody, HAL_CONTENT_TYPE,
+    AllowMethods, ApiError, AppState, ChunkBody, ErrorBody, HAL_CONTENT_TYPE,
 };
 
 /// Number of raw bytes a content digest carries: two hexadecimal characters
 /// encode one byte.
 const DIGEST_BYTES: usize = DIGEST_HEX_LENGTH >> 1;
-
-/// Raw bytes of one chunk.
-///
-/// The handler extracts the body as raw bytes. It is declared as a binary
-/// `String` so the `OpenAPI` schema describes the raw `application/octet-stream`
-/// payload instead of the JSON array of integers a bare `Vec<u8>` would produce.
-#[derive(Debug, Deserialize, ToSchema)]
-#[schema(value_type = String, format = Binary)]
-#[non_exhaustive]
-struct PutUploadChunkRequest(
-    /// Raw bytes of the chunk.
-    #[expect(
-        dead_code,
-        reason = "the extractor carries the chunk bytes; the handler reads them through the body"
-    )]
-    pub Vec<u8>,
-);
 
 /// Map a write-upload-chunk error to its API error.
 impl From<WriteUploadChunkError> for ApiError {
@@ -76,7 +57,7 @@ impl From<WriteUploadChunkError> for ApiError {
     tag = "asset",
     request_body(
         content_type = "application/octet-stream",
-        content = PutUploadChunkRequest,
+        content = inline(ChunkBody),
     ),
     params(
         ("upload_id" = NumericID, Path, description = "Identifier of the upload session"),

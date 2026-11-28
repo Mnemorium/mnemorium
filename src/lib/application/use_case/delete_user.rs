@@ -121,7 +121,7 @@ where
                     unit_of_work
                         .galleries()
                         .delete(&GalleryFilter {
-                            gallery_id: Some(gallery.gallery_id()),
+                            id: Some(gallery.id()),
                             ..GalleryFilter::default()
                         })
                         .await
@@ -159,12 +159,12 @@ where
                     unit_of_work
                         .uploads()
                         .delete(&UploadFilter {
-                            upload_id: Some(upload.upload_id()),
+                            id: Some(upload.id()),
                             ..UploadFilter::default()
                         })
                         .await
                         .map_err(|error| DeleteUserError::Unknown(error.into()))?;
-                    removed_paths.push(staged_path(upload.upload_id()));
+                    removed_paths.push(staged_path(upload.id()));
                 }
 
                 let owned_files = unit_of_work
@@ -221,7 +221,7 @@ where
                                 let in_gallery = !unit_of_work
                                     .galleries()
                                     .search_items(&GalleryItemFilter {
-                                        media: Some(GalleryItemMedia::Image(image.image_id())),
+                                        media: Some(GalleryItemMedia::Image(image.id())),
                                         ..GalleryItemFilter::default()
                                     })
                                     .await
@@ -230,7 +230,7 @@ where
                                 let as_cover = !unit_of_work
                                     .music_playlists()
                                     .search(&MusicPlaylistFilter {
-                                        cover_image_id: Some(image.image_id()),
+                                        cover_image_id: Some(image.id()),
                                         ..MusicPlaylistFilter::default()
                                     })
                                     .await
@@ -350,7 +350,7 @@ where
                             unit_of_work
                                 .images()
                                 .delete(&ImageFilter {
-                                    image_id: Some(image.image_id()),
+                                    id: Some(image.id()),
                                     ..ImageFilter::default()
                                 })
                                 .await
@@ -524,7 +524,11 @@ mod tests {
             "audio/flac".to_owned(),
             4,
             IntegrityHash::try_new(DIGEST.to_owned())?,
-            ChunkBitmap::from_bytes(vec![0], 2)?,
+            {
+                let mut bitmap = ChunkBitmap::try_new(2)?;
+                bitmap.mark_received(0)?;
+                bitmap
+            },
             false,
             false,
             None,

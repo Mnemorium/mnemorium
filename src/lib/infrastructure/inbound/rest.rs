@@ -103,6 +103,33 @@ impl ToSchema for ContentLength {
     fn schemas(_schemas: &mut Vec<(String, RefOr<Schema>)>) {}
 }
 
+/// A raw `application/octet-stream` request body.
+///
+/// The handler extracts `Bytes`; this type publishes the payload as a binary
+/// `String`, so the document describes the raw bytes instead of the JSON integer
+/// array a bare `Vec<u8>` would.
+#[derive(Debug)]
+#[non_exhaustive]
+pub(crate) struct ChunkBody;
+
+impl PartialSchema for ChunkBody {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .schema_type(Type::String)
+            .format(Some(SchemaFormat::KnownFormat(KnownFormat::Binary)))
+            .description(Some("The raw bytes of the chunk.".to_owned()))
+            .into()
+    }
+}
+
+impl ToSchema for ChunkBody {
+    fn name() -> Cow<'static, str> {
+        Cow::Borrowed("ChunkBody")
+    }
+
+    fn schemas(_schemas: &mut Vec<(String, RefOr<Schema>)>) {}
+}
+
 /// An HTTP-date `Last-Modified` (`REQ-API-019`).
 ///
 /// The value is an IMF-fixdate, not an RFC 3339 timestamp: the header
