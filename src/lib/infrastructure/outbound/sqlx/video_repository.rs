@@ -352,6 +352,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_missing_file_returns_data_integrity_violation() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+
+        // Act
+        let mut repository = SqlxVideoRepository::new(&mut transaction);
+        let result = repository
+            .create(video(0, 999, ScanType::Progressive)?)
+            .await;
+
+        // Assert: fk_video_file.
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn delete_reports_matched_and_missing_rows() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
