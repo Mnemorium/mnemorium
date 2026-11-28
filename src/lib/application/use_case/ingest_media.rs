@@ -2670,11 +2670,92 @@ mod tests {
             Some(-1),
             5,
         );
+        let duration_positive_infinity = Audio::try_new(
+            5,
+            "track.mp3".to_owned(),
+            Some(f64::INFINITY),
+            "mp3".to_owned(),
+            Some(44_100.0f64),
+            None,
+            None,
+            6,
+        );
+        let duration_negative_infinity = Audio::try_new(
+            6,
+            "track.mp3".to_owned(),
+            Some(f64::NEG_INFINITY),
+            "mp3".to_owned(),
+            Some(44_100.0f64),
+            None,
+            None,
+            7,
+        );
+        let duration_nan = Audio::try_new(
+            7,
+            "track.mp3".to_owned(),
+            Some(f64::NAN),
+            "mp3".to_owned(),
+            Some(44_100.0f64),
+            None,
+            None,
+            8,
+        );
+        let sample_rate_positive_infinity = Audio::try_new(
+            8,
+            "track.mp3".to_owned(),
+            Some(1_000.0f64),
+            "mp3".to_owned(),
+            Some(f64::INFINITY),
+            None,
+            None,
+            9,
+        );
+        let sample_rate_negative_infinity = Audio::try_new(
+            9,
+            "track.mp3".to_owned(),
+            Some(1_000.0f64),
+            "mp3".to_owned(),
+            Some(f64::NEG_INFINITY),
+            None,
+            None,
+            10,
+        );
+        let sample_rate_nan = Audio::try_new(
+            10,
+            "track.mp3".to_owned(),
+            Some(1_000.0f64),
+            "mp3".to_owned(),
+            Some(f64::NAN),
+            None,
+            None,
+            11,
+        );
 
         // Assert
         assert!(matches!(duration, Err(AudioError::DurationMsNegative)));
         assert!(matches!(sample_rate, Err(AudioError::SampleRateHzNegative)));
         assert!(matches!(depth, Err(AudioError::BitDepthNotPositive)));
         assert!(matches!(block, Err(AudioError::BlockSizeNotPositive)));
+        assert!(matches!(
+            duration_positive_infinity,
+            Err(AudioError::DurationMsNotFinite)
+        ));
+        assert!(matches!(
+            duration_negative_infinity,
+            Err(AudioError::DurationMsNotFinite)
+        ));
+        assert!(matches!(duration_nan, Err(AudioError::DurationMsNotFinite)));
+        assert!(matches!(
+            sample_rate_positive_infinity,
+            Err(AudioError::SampleRateHzNotFinite)
+        ));
+        assert!(matches!(
+            sample_rate_negative_infinity,
+            Err(AudioError::SampleRateHzNotFinite)
+        ));
+        assert!(matches!(
+            sample_rate_nan,
+            Err(AudioError::SampleRateHzNotFinite)
+        ));
     }
 }

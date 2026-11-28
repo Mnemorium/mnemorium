@@ -1345,6 +1345,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn probe_duration_overflow_returns_unsupported_media() -> Result<(), Box<dyn Error>> {
+        // Arrange: `1e306` is finite and accepted by `parse_finite`, but scaling
+        // it to milliseconds overflows to `+Inf`, which the non-negative scalar
+        // rejects. The video stub carries `nb_frames` so the frame-count
+        // fallback cannot fail first.
+        let _gate = spawn_gate().acquire_owned().await?;
+        let tmp = tempdir()?;
+        let audio_program = stub(
+            tmp.path(),
+            "ffprobe-audio",
+            "cat <<'JSON'\n{\"streams\":[{\"codec_type\":\"audio\",\"codec_name\":\"mp3\"}],\"format\":{\"duration\":\"1e306\"}}\nJSON",
+        )?;
+        let video_program = stub(
+            tmp.path(),
+            "ffprobe-video",
+            "cat <<'JSON'\n{\"streams\":[{\"codec_type\":\"video\",\"codec_name\":\"h264\",\"width\":640,\"height\":480,\"nb_frames\":\"30\"}],\"format\":{\"duration\":\"1e306\"}}\nJSON",
+        )?;
+        let audio = tmp.path().join("track.mp3");
+        fs::write(&audio, b"stub")?;
+        let video = tmp.path().join("clip.mp4");
+        fs::write(&video, b"stub")?;
+        let audio_probe = LocalMediaProbe::with_program(audio_program, STUB_TIMEOUT);
+        let video_probe = LocalMediaProbe::with_program(video_program, STUB_TIMEOUT);
+
+        // Act
+        let audio_result = audio_probe.audio(&audio).await;
+        let video_result = video_probe.video(&video).await;
+
+        // Assert
+        assert!(
+            matches!(audio_result, Err(MediaProbeError::UnsupportedMedia)),
+            "unexpected audio probe result: {audio_result:?}"
+        );
+        assert!(
+            matches!(video_result, Err(MediaProbeError::UnsupportedMedia)),
+            "unexpected video probe result: {video_result:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn probe_audio_undecodable_file_returns_unsupported_media() -> Result<(), Box<dyn Error>>
     {
         // Arrange

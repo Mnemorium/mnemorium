@@ -11,10 +11,12 @@ CREATE TABLE audio (
     CONSTRAINT uq_audio_file_id UNIQUE (file_id),
     CONSTRAINT fk_audio_file FOREIGN KEY (file_id) REFERENCES file (file_id),
     CONSTRAINT chk_audio_duration_ms CHECK (
-        duration_ms IS NULL OR duration_ms >= 0
+        duration_ms IS NULL
+        OR (duration_ms >= 0 AND duration_ms <= 1.7976931348623157e308)
     ),
     CONSTRAINT chk_audio_sample_rate_hz CHECK (
-        sample_rate_hz IS NULL OR sample_rate_hz >= 0
+        sample_rate_hz IS NULL
+        OR (sample_rate_hz >= 0 AND sample_rate_hz <= 1.7976931348623157e308)
     ),
     CONSTRAINT chk_audio_bit_depth CHECK (bit_depth IS NULL OR bit_depth > 0),
     CONSTRAINT chk_audio_block_size CHECK (block_size IS NULL OR block_size > 0)

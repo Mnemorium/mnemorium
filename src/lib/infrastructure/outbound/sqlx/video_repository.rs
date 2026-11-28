@@ -454,6 +454,12 @@ mod tests {
          )
          VALUES (1, 1000.0, 'H264', 30, 10, 10, 'YCbCr', 'WEIRD', 11)"
     )]
+    #[case::duration_ms_not_finite(
+        "INSERT INTO video (
+            video_id, duration_ms, codec, frame_count, width, height, color_id, scan_type, file_id
+         )
+         VALUES (1, 9e999, 'H264', 30, 10, 10, 'YCbCr', 'PROGRESSIVE', 11)"
+    )]
     #[tokio::test]
     async fn raw_insert_violating_a_check_returns_data_integrity_violation(
         #[case] statement: &'static str,

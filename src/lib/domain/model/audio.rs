@@ -13,12 +13,18 @@ pub(crate) enum AudioError {
     /// The `duration_ms` is negative.
     #[error("duration_ms must not be negative")]
     DurationMsNegative,
+    /// The `duration_ms` is not finite.
+    #[error("duration_ms must be finite")]
+    DurationMsNotFinite,
     /// A required string value is empty.
     #[error("name must not be empty")]
     EmptyString,
     /// The `sample_rate_hz` is negative.
     #[error("sample_rate_hz must not be negative")]
     SampleRateHzNegative,
+    /// The `sample_rate_hz` is not finite.
+    #[error("sample_rate_hz must be finite")]
+    SampleRateHzNotFinite,
 }
 
 /// An audio file.
@@ -126,10 +132,13 @@ impl Audio {
     /// # Errors
     ///
     /// Returns [`AudioError::EmptyString`] when `name` is empty,
-    /// [`AudioError::DurationMsNegative`] when a present `duration_ms` is
-    /// negative, [`AudioError::SampleRateHzNegative`] when a present
-    /// `sample_rate_hz` is negative, and [`AudioError::BitDepthNotPositive`] or
-    /// [`AudioError::BlockSizeNotPositive`] when a present value is not positive.
+    /// [`AudioError::DurationMsNotFinite`] when a present `duration_ms` is not
+    /// finite, [`AudioError::DurationMsNegative`] when a present `duration_ms` is
+    /// negative, [`AudioError::SampleRateHzNotFinite`] when a present
+    /// `sample_rate_hz` is not finite, [`AudioError::SampleRateHzNegative`] when a
+    /// present `sample_rate_hz` is negative, and [`AudioError::BitDepthNotPositive`]
+    /// or [`AudioError::BlockSizeNotPositive`] when a present value is not
+    /// positive.
     pub(crate) fn try_new(
         id: NumericID,
         name: String,
@@ -142,8 +151,14 @@ impl Audio {
     ) -> Result<Self, AudioError> {
         let validated_name = Self::validate_non_empty(name)?;
         let validated_codec = Self::validate_non_empty(codec)?;
+        if duration_ms.is_some_and(|value| !value.is_finite()) {
+            return Err(AudioError::DurationMsNotFinite);
+        }
         if duration_ms.is_some_and(|value| value < 0.0f64) {
             return Err(AudioError::DurationMsNegative);
+        }
+        if sample_rate_hz.is_some_and(|value| !value.is_finite()) {
+            return Err(AudioError::SampleRateHzNotFinite);
         }
         if sample_rate_hz.is_some_and(|value| value < 0.0f64) {
             return Err(AudioError::SampleRateHzNegative);
