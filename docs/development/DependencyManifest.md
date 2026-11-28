@@ -1,9 +1,9 @@
 # Dependency manifest
 
-The direct dependencies of this project, grouped by source. The CI rules that keep them resolvable and trustworthy —
-`DEPS-001`–`DEPS-004` — are in [TechnicalDesign.md](TechnicalDesign.md) § 5 (Dependencies & Dev Environment). Update the
-tables when a dependency is added, removed or upgraded; transitive dependencies are out of scope (the lockfiles and
-`cargo audit` cover those).
+The direct dependencies of this project, grouped by source. The CI and pre-commit rules that keep them resolvable and
+trustworthy — `DEPS-001`–`DEPS-005` — are in [TechnicalDesign.md](TechnicalDesign.md) § 5 (Dependencies & Dev
+Environment). Update the tables when a dependency is added, removed or upgraded; transitive dependencies are out of
+scope (the lockfiles and `cargo audit` cover those).
 
 Versions are the resolved ones (lockfile or Nix store), not the declared constraints. When a tool is declared by more
 than one source it is listed once, under the source that pins it (normally `devenv.nix`). Cells marked `TODO` still need

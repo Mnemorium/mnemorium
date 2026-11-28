@@ -44,6 +44,7 @@ BATCH_FILTER=""
 # 	"DOC-001:check_doc_001"
 # )
 RULES=(
+	"DEPS-005:check_deps_005"
 	"ARCH-001:check_arch_001"
 	"ARCH-005:check_arch_005"
 	"STY-RUST-001:check_sty_rust_001"
@@ -2509,6 +2510,641 @@ check_doc_003() {
 		git ls-files -- 'src/**/*.rs' 'docs/**/*.md'
 		git ls-files -- '*.md' | grep -v /
 	} | sort -u)
+
+	return "$result"
+}
+
+# deps_005_hook_names — every hook declared under `git-hooks.hooks`, from the block form
+# (`foo = {`), a one-line or `lib.mkIf` binding, and the dotted form (`foo.enable = true;`),
+# at any indentation and in either the `git-hooks.hooks = { … };` or
+# `git-hooks = { hooks = { … }; };` spelling.
+deps_005_hook_names() {
+	local file="$1"
+	awk '
+		function indent(s, m) { m = match(s, /^[ \t]*/); return RLENGTH }
+		BEGIN { block_indent = -1; child_indent = -1; git_indent = -1 }
+		{
+			line = $0
+			stripped = line
+			sub(/^[ \t]+/, "", stripped)
+			if (stripped == "" || stripped ~ /^#/) next
+			ind = indent(line)
+			if (block_indent < 0) {
+				if (stripped ~ /^git-hooks\.hooks[ \t]*=[ \t]*\{[ \t]*$/) { block_indent = ind; child_indent = -1; next }
+				if (stripped ~ /^git-hooks[ \t]*=[ \t]*\{[ \t]*$/) { git_indent = ind; next }
+				if (git_indent >= 0 && ind > git_indent && stripped ~ /^hooks[ \t]*=[ \t]*\{[ \t]*$/) { block_indent = ind; child_indent = -1; next }
+				if (stripped ~ /^git-hooks\.hooks\.[A-Za-z0-9_-]+[ \t]*=/ || stripped ~ /^git-hooks\.hooks\.[A-Za-z0-9_-]+\./) {
+					name = stripped
+					sub(/^git-hooks\.hooks\./, "", name)
+					sub(/[^A-Za-z0-9_-].*$/, "", name)
+					print name
+				}
+				next
+			}
+			if (stripped ~ /^\};[ \t]*$/ && ind == block_indent) { block_indent = -1; child_indent = -1; next }
+			if (child_indent < 0) child_indent = ind
+			if (ind != child_indent) next
+			# Any child binding names a hook, whatever its right-hand form.
+			if (stripped ~ /^[A-Za-z0-9_-]+[ \t]*=/) {
+				name = stripped
+				sub(/[ \t]*=.*/, "", name)
+				print name
+				next
+			}
+			if (stripped ~ /^[A-Za-z0-9_-]+\./) {
+				name = stripped
+				sub(/\..*$/, "", name)
+				print name
+				next
+			}
+		}
+	' "$file" | sort -u
+}
+
+# deps_005_hook_lines — one hook's attribute lines as `START`/`LINE` records with absolute
+# line numbers. Block, one-line, `lib.mkIf` and dotted declarations are all unwrapped to the
+# attribute statements, so a reformat does not hide an assertion.
+deps_005_hook_lines() {
+	local file="$1" wanted="$2"
+	awk -v want="$wanted" '
+		function indent(s, m) { m = match(s, /^[ \t]*/); return RLENGTH }
+		function emit_inner(content, nr, n, parts, i, part) {
+			n = split(content, parts, ";")
+			for (i = 1; i <= n; i++) {
+				part = parts[i]
+				sub(/^[ \t]+/, "", part)
+				sub(/[ \t]+$/, "", part)
+				if (part != "") printf "LINE\t%d\t%s;\n", nr, part
+			}
+		}
+		BEGIN { block_indent = -1; child_indent = -1; git_indent = -1; in_hook = 0; hook_indent = -1; started = 0 }
+		{
+			line = $0
+			stripped = line
+			sub(/^[ \t]+/, "", stripped)
+			if (stripped == "" || stripped ~ /^#/) next
+			ind = indent(line)
+			if (in_hook) {
+				printf "LINE\t%d\t%s\n", NR, line
+				if (stripped ~ /^\};[ \t]*$/ && ind == hook_indent) in_hook = 0
+				next
+			}
+			if (block_indent < 0) {
+				if (stripped ~ /^git-hooks\.hooks[ \t]*=[ \t]*\{[ \t]*$/) { block_indent = ind; child_indent = -1; next }
+				if (stripped ~ /^git-hooks[ \t]*=[ \t]*\{[ \t]*$/) { git_indent = ind; next }
+				if (git_indent >= 0 && ind > git_indent && stripped ~ /^hooks[ \t]*=[ \t]*\{[ \t]*$/) { block_indent = ind; child_indent = -1; next }
+				if (stripped ~ ("^git-hooks\\.hooks\\." want "[ \t]*=[ \t]*\\{[ \t]*$")) {
+					if (!started) { printf "START\t%d\t\n", NR; started = 1 }
+					in_hook = 1
+					hook_indent = ind
+					next
+				}
+				if (stripped ~ ("^git-hooks\\.hooks\\." want "[ \t]*=[ \t]*[^\\{]+\\{")) {
+					if (!started) { printf "START\t%d\t\n", NR; started = 1 }
+					printf "UNRESOLVED\t%d\t\n", NR
+					if (stripped ~ /\};[ \t]*$/) next
+					in_hook = 1
+					hook_indent = ind
+					next
+				}
+				if (stripped ~ ("^git-hooks\\.hooks\\." want "\\.")) {
+					if (!started) { printf "START\t%d\t\n", NR; started = 1 }
+					sub("^git-hooks\\.hooks\\." want "\\.", "", stripped)
+					printf "LINE\t%d\t%s\n", NR, stripped
+				}
+				next
+			}
+			if (stripped ~ /^\};[ \t]*$/ && ind == block_indent) { block_indent = -1; child_indent = -1; next }
+			if (child_indent < 0) child_indent = ind
+			if (ind != child_indent) next
+			if (stripped ~ ("^" want "[ \t]*=[ \t]*\\{[ \t]*$")) {
+				if (!started) { printf "START\t%d\t\n", NR; started = 1 }
+				in_hook = 1
+				hook_indent = ind
+				next
+			}
+			# A conditional or priority wrapper on the hook declaration is not resolved.
+			if (stripped ~ ("^" want "[ \t]*=[ \t]*[^\\{]+\\{")) {
+				if (!started) { printf "START\t%d\t\n", NR; started = 1 }
+				printf "UNRESOLVED\t%d\t\n", NR
+				if (stripped ~ /\};[ \t]*$/) next
+				in_hook = 1
+				hook_indent = ind
+				next
+			}
+			# A one-line attrset: unwrap every `key = value;` inside it.
+			if (stripped ~ ("^" want "[ \t]*=.*\\{.*\\}[ \t]*;[ \t]*$")) {
+				if (!started) { printf "START\t%d\t\n", NR; started = 1 }
+				content = stripped
+				sub(/^[^{]*\{/, "", content)
+				sub(/\}[ \t]*;[ \t]*$/, "", content)
+				emit_inner(content, NR)
+				next
+			}
+			if (stripped ~ ("^" want "[ \t]*=.*\\{[ \t]*$")) {
+				if (!started) { printf "START\t%d\t\n", NR; started = 1 }
+				in_hook = 1
+				hook_indent = ind
+				next
+			}
+			if (stripped ~ ("^" want "\\.")) {
+				if (!started) { printf "START\t%d\t\n", NR; started = 1 }
+				sub("^" want "\\.", "", stripped)
+				printf "LINE\t%d\t%s\n", NR, stripped
+				next
+			}
+		}
+	' "$file"
+}
+
+# check_deps_005 — every hook under `git-hooks.hooks` is either inspected here or exempt
+# with a verified reason; the module is enabled and installed at the pre-commit stage; every
+# inspected hook selects every input that changes its verdict, keeps its filters open, and
+# runs without filenames where its entry scans a corpus (DEPS-005).
+check_deps_005() {
+	local id="DEPS-005"
+	local file="devenv.nix"
+	local result=0 hook start line text files_line selector input
+	local pass_filenames enabled declared types_declared types_value types_or_value exclude_types_value
+	local unresolved files_unresolved enable_unresolved
+	local excludes_value raw_open stages trim_value declared_hooks
+	local list_key list_text value reason files_value stages_value forbidden
+	local -a inspected=(
+		sql
+		cargo-deny
+		cargo-machete
+		documentation
+		prettier
+		yamllint
+		ruff
+		ruff-format
+		clippy
+		clippy-default-features
+		build
+		coverage
+		rustfmt
+		rule-enforcer
+		bundle-licenses
+		vulture
+		markdownlint
+		investigation
+	)
+	local -a inputs
+	# One real path per selector alternative, so narrowing any alternative fails. The
+	# configuration and manifest inputs are the rule; the linted paths guard the rest.
+	local -A inputs_for=(
+		["sql"]=".sqlfluff .sqlfluffignore requirements.txt migrations/20260904012828_create_credential.up.sql test/api/seed/sql/0001_reference.sql test/performance/seed/sql/0001_library_volume_galleries.sql test/system/seed/sql/0001_cover_art.sql"
+		["cargo-deny"]="Cargo.toml Cargo.lock deny.toml"
+		["cargo-machete"]="Cargo.toml Cargo.lock src/lib/lib.rs src/lib/app.rs"
+		["documentation"]="mkdocs.yml requirements.txt docs/stylesheets/sidebar-toggle.css docs/javascripts/sidebar-toggle.js docs/development/TechnicalDesign.md docs/development/artifacts/RequirementsTraceabilityCoverage.html docs/development/artifacts/RequirementsTraceabilityCoverage.json"
+		["prettier"]=".prettierrc .prettierignore test/performance/.prettierignore .editorconfig docs/development/TechnicalDesign.md AGENTS.md"
+		["yamllint"]=".yamllint .github/workflows/rust.yml devenv.yaml"
+		["ruff"]="pyproject.toml requirements.txt ruff.toml .ruff.toml test/api/checks.py test/util/harness.py"
+		["ruff-format"]="pyproject.toml requirements.txt ruff.toml .ruff.toml test/api/checks.py test/util/harness.py"
+		["clippy"]="Cargo.toml Cargo.lock clippy.toml src/lib/lib.rs src/lib/app.rs"
+		["clippy-default-features"]="Cargo.toml Cargo.lock clippy.toml src/lib/lib.rs src/lib/app.rs"
+		["build"]="Cargo.toml Cargo.lock src/lib/lib.rs src/lib/app.rs"
+		["coverage"]="Cargo.toml Cargo.lock src/lib/lib.rs src/lib/app.rs"
+		["rustfmt"]="Cargo.toml Cargo.lock rustfmt.toml .rustfmt.toml src/lib/lib.rs src/lib/app.rs"
+		["rule-enforcer"]="devenv.nix sgconfig.yaml script/rule_enforcer.sh script/system.sh rule_enforcer.yaml rule/arch-001.yml .github/workflows/rust.yml Cargo.toml Cargo.lock requirements.txt pyproject.toml test/api/checks.py test/performance/main.ts test/api/scenarios.toml test/system/api.py test/system/conftest.py test/util/harness.py test/util/investigation.py .opencode/plugins/devenv-shell.ts .opencode/agents/devops.md src/lib/lib.rs src/lib/app.rs src/lib/infrastructure/outbound/file_system/default_config.yaml docs/development/TechnicalDesign.md docs/stylesheets/sidebar-toggle.css migrations/20260904012828_create_credential.up.sql AGENTS.md openspec/specs/logging/spec.md build.rs"
+		["bundle-licenses"]="Cargo.toml Cargo.lock about.toml about.hbs script/generate_third_party_notices.sh"
+		["vulture"]="pyproject.toml requirements.txt test/api/checks.py test/util/harness.py"
+		["markdownlint"]=".markdownlint-cli2.jsonc docs/development/TechnicalDesign.md AGENTS.md"
+		["investigation"]="requirements.txt script/investigation.sh openspec/specs/api/spec.md openspec/specs/logging/spec.md test/system/api.py test/system/conftest.py test/api/scenarios.toml test/util/harness.py test/util/investigation.py src/lib/lib.rs src/lib/app.rs docs/development/artifacts/RequirementsTraceabilityCoverage.html docs/development/artifacts/RequirementsTraceabilityCoverage.json"
+	)
+	# Hooks whose entry scans a package or corpus rather than the staged filenames, so the
+	# selector must run them without passing filenames.
+	local -A trigger_only=(
+		["sql"]=1
+		["cargo-deny"]=1
+		["cargo-machete"]=1
+		["documentation"]=1
+		["prettier"]=1
+		["yamllint"]=1
+		["ruff"]=1
+		["ruff-format"]=1
+		["clippy"]=1
+		["clippy-default-features"]=1
+		["build"]=1
+		["coverage"]=1
+		["rustfmt"]=1
+		["rule-enforcer"]=1
+		["bundle-licenses"]=1
+		["vulture"]=1
+		["markdownlint"]=1
+		["investigation"]=1
+	)
+	# Hooks whose module default is not `[ "file" ]`, so they must narrow `types` themselves.
+	local -A need_file_types=(["prettier"]=1 ["ruff"]=1 ["ruff-format"]=1)
+	# Hooks the check does not inspect, each with the reason it has no selector to verify.
+	local -A exempt_for=(
+		["commitizen"]="commit-msg stage; no pre-commit tree input"
+		["shellcheck"]="no .shellcheckrc in the tree; the default shell type filter covers every .sh"
+		["shfmt"]="no .editorconfig in the tree; the default shell type filter covers every .sh"
+		["nixfmt"]="no configuration file; the default nix type filter covers every .nix"
+		["ls-lint"]="no files selector; the hook matches every path"
+		["taplo"]=".taplo.toml would match the default toml type"
+		["betterleaks"]="no files selector; the hook matches every path"
+		["hadolint"]="no .hadolint.yaml or .hadolint.yml in the tree; files covers Dockerfile*"
+	)
+	local -A inspected_set=()
+
+	need_file "$id" "$file" || return 1
+
+	for hook in "${inspected[@]}"; do
+		inspected_set["$hook"]=1
+	done
+
+	# The module-level switches decide whether any hook is installed and at which stage.
+	# Both the dotted spelling and a `git-hooks = { … };` attrset are read; a value the check
+	# cannot resolve (a conditional, a multi-line list) fails closed.
+	while IFS=$'\t' read -r line reason; do
+		printf "error: %s: %s:%s: %s\n" "$id" "$file" "$line" "$reason" >&2
+		result=1
+	done < <(awk '
+		function indent(s, m) { m = match(s, /^[ \t]*/); return RLENGTH }
+		BEGIN { git_indent = -1; child_indent = -1 }
+		{
+			line = $0
+			stripped = line
+			sub(/^[ \t]+/, "", stripped)
+			sub(/[ \t]+$/, "", stripped)
+			if (stripped == "" || stripped ~ /^#/) next
+			ind = indent(line)
+			if (git_indent < 0) {
+				if (stripped ~ /^git-hooks[ \t]*=[ \t]*\{[ \t]*$/) { git_indent = ind; child_indent = -1; next }
+				module_switch(stripped, NR, "")
+				next
+			}
+			if (stripped ~ /^\};[ \t]*$/ && ind == git_indent) { git_indent = -1; child_indent = -1; next }
+			if (child_indent < 0) child_indent = ind
+			if (ind != child_indent) next
+			if (stripped ~ /^install[ \t]*=[ \t]*\{/) {
+				printf "%d\tnested install attrset is unsupported; declare install.enable\n", NR
+				next
+			}
+			module_switch(stripped, NR, "")
+		}
+		function module_switch(s, nr, prefix,    pattern) {
+			if (s ~ /^enable[ \t]*=/) {
+				if (s !~ /^enable[ \t]*=[ \t]*(lib\.mk(Force|Default)[ \t]+)?true;[ \t]*(#.*)?$/) printf "%d\t%s enable must be true or absent\n", nr, prefix
+			}
+			if (s ~ /^install\.enable[ \t]*=/) {
+				if (s !~ /^install\.enable[ \t]*=[ \t]*(lib\.mk(Force|Default)[ \t]+)?true;[ \t]*(#.*)?$/) printf "%d\t%s install.enable must be true or absent\n", nr, prefix
+			}
+			if (s ~ /^default_stages[ \t]*=/) {
+				if (s !~ /^default_stages[ \t]*=[ \t]*(lib\.mk(Force|Default)[ \t]+)?\[[ \t]*"pre-commit"[ \t]*\];[ \t]*(#.*)?$/) printf "%d\t%s default_stages must be [ \"pre-commit\" ] or absent\n", nr, prefix
+			}
+			if (s ~ /^excludes[ \t]*=/) {
+				if (s !~ /^excludes[ \t]*=[ \t]*(lib\.mk(Force|Default)[ \t]+)?\[[ \t]*\];[ \t]*(#.*)?$/) printf "%d\t%s excludes must be empty or absent\n", nr, prefix
+			}
+			if (s ~ /^git-hooks\.enable[ \t]*=/) {
+				if (s !~ /^git-hooks\.enable[ \t]*=[ \t]*(lib\.mk(Force|Default)[ \t]+)?true;[ \t]*(#.*)?$/) printf "%d\t%s git-hooks.enable must be true or absent\n", nr, prefix
+			}
+			if (s ~ /^git-hooks\.install\.enable[ \t]*=/) {
+				if (s !~ /^git-hooks\.install\.enable[ \t]*=[ \t]*(lib\.mk(Force|Default)[ \t]+)?true;[ \t]*(#.*)?$/) printf "%d\t%s git-hooks.install.enable must be true or absent\n", nr, prefix
+			}
+			if (s ~ /^git-hooks\.default_stages[ \t]*=/) {
+				if (s !~ /^git-hooks\.default_stages[ \t]*=[ \t]*(lib\.mk(Force|Default)[ \t]+)?\[[ \t]*"pre-commit"[ \t]*\];[ \t]*(#.*)?$/) printf "%d\t%s git-hooks.default_stages must be [ \"pre-commit\" ] or absent\n", nr, prefix
+			}
+			if (s ~ /^git-hooks\.excludes[ \t]*=/) {
+				if (s !~ /^git-hooks\.excludes[ \t]*=[ \t]*(lib\.mk(Force|Default)[ \t]+)?\[[ \t]*\];[ \t]*(#.*)?$/) printf "%d\t%s git-hooks.excludes must be empty or absent\n", nr, prefix
+			}
+		}
+	' "$file")
+
+	# A parser that finds nothing must fail once, not turn every inspected hook into "not found".
+	declared_hooks="$(deps_005_hook_names "$file")"
+	if [ -z "$declared_hooks" ]; then
+		printf "error: %s: %s: no hooks found under \`git-hooks.hooks\`\n" "$id" "$file" >&2
+		return 1
+	fi
+
+	# Every declared hook must be classified, and every classified hook must be inspected.
+	while IFS= read -r hook; do
+		[ -n "$hook" ] || continue
+		[ -n "${inspected_set[$hook]+set}" ] && continue
+		[ -n "${exempt_for[$hook]+set}" ] && continue
+		printf "error: %s: %s: hook \`%s\` is neither inspected nor exempt; classify it in check_deps_005\n" \
+			"$id" "$file" "$hook" >&2
+		result=1
+	done <<<"$declared_hooks"
+
+	for hook in "${!inputs_for[@]}"; do
+		if [ -z "${inspected_set[$hook]+set}" ]; then
+			printf "error: %s: %s: hook \`%s\` has inputs but is not inspected\n" \
+				"$id" "$file" "$hook" >&2
+			result=1
+		fi
+	done
+
+	# The exemption reasons are only true while the cited files stay absent anywhere in the tree.
+	while IFS= read -r path; do
+		case "${path##*/}" in
+		.shellcheckrc)
+			printf "error: %s: %s exists; add it to the \`shellcheck\` selector and remove the exemption\n" "$id" "$path" >&2
+			result=1
+			;;
+		.editorconfig)
+			printf "error: %s: %s exists; add it to the \`shfmt\` and \`prettier\` selectors and remove the exemptions\n" "$id" "$path" >&2
+			result=1
+			;;
+		.hadolint.yaml | .hadolint.yml)
+			printf "error: %s: %s exists; add it to the \`hadolint\` selector and remove the exemption\n" "$id" "$path" >&2
+			result=1
+			;;
+		esac
+	done < <(git ls-files 2>/dev/null || true)
+
+	# An exempt hook must still be declared and enabled, and keep the shape its reason cites.
+	for hook in "${!exempt_for[@]}"; do
+		declared=0
+		enabled=0
+		unresolved=0
+		files_value=""
+		stages_value=""
+		forbidden=""
+		while IFS=$'\t' read -r kind line text; do
+			case "$kind" in
+			START | LINE) declared=1 ;;
+			UNRESOLVED) unresolved=1 ;;
+			esac
+			if [[ $text =~ ^[[:space:]]*enable[[:space:]]*=[[:space:]]*true\; ]] ||
+				[[ $text =~ \.enable[[:space:]]*=[[:space:]]*true\; ]]; then
+				enabled=1
+			fi
+			if [[ $text =~ ^[[:space:]]*files[[:space:]]*=[[:space:]]*\"(.*)\"\; ]]; then
+				files_value="${BASH_REMATCH[1]}"
+			fi
+			if [[ $text =~ ^[[:space:]]*stages[[:space:]]*=[[:space:]]*(.*)\; ]]; then
+				stages_value="${BASH_REMATCH[1]}"
+			fi
+			if [[ $text =~ ^[[:space:]]*(types|types_or|exclude_types|excludes)[[:space:]]*= ]]; then
+				forbidden="$text"
+			fi
+			if [[ $text =~ ^[[:space:]]*raw[[:space:]]*=[[:space:]]*\{[[:space:]]*\}[[:space:]]*\; ]]; then
+				:
+			elif [[ $text =~ ^[[:space:]]*raw[[:space:]]*= ]] || [[ $text =~ ^[[:space:]]*raw\. ]]; then
+				forbidden="$text"
+			fi
+		done < <(deps_005_hook_lines "$file" "$hook")
+
+		if [ "$declared" -ne 1 ]; then
+			printf "error: %s: %s: exempt hook \`%s\` is not declared\n" "$id" "$file" "$hook" >&2
+			result=1
+		elif [ "$enabled" -ne 1 ]; then
+			printf "error: %s: %s: exempt hook \`%s\` must set \`enable = true\`\n" "$id" "$file" "$hook" >&2
+			result=1
+		fi
+		if [ "$unresolved" -ne 0 ]; then
+			printf "error: %s: %s: exempt hook \`%s\` is declared with a conditional or priority wrapper the check cannot resolve\n" \
+				"$id" "$file" "$hook" >&2
+			result=1
+		fi
+		if [ -n "$forbidden" ]; then
+			printf "error: %s: %s: exempt hook \`%s\` must keep its default filters\n" \
+				"$id" "$file" "$hook" >&2
+			result=1
+		fi
+		case "$hook" in
+		hadolint)
+			if [ -n "$files_value" ]; then
+				files_value="${files_value//\\\\/\\}"
+				for input in Dockerfile Dockerfile.dev; do
+					if ! printf '%s\n' "$input" | grep -Eq -- "$files_value"; then
+						printf "error: %s: %s: exempt hook \`hadolint\` does not select \`%s\`\n" \
+							"$id" "$file" "$input" >&2
+						result=1
+					fi
+				done
+			fi
+			;;
+		commitizen)
+			if [ -n "$stages_value" ]; then
+				trim_value="${stages_value//[[:space:]]/}"
+				if [ "$trim_value" != '["commit-msg"]' ]; then
+					printf "error: %s: %s: exempt hook \`commitizen\` must stay on the commit-msg stage\n" \
+						"$id" "$file" >&2
+					result=1
+				fi
+			fi
+			;;
+		*)
+			if [ -n "$files_value" ]; then
+				printf "error: %s: %s: exempt hook \`%s\` must not declare \`files\`\n" \
+					"$id" "$file" "$hook" >&2
+				result=1
+			fi
+			if [ -n "$stages_value" ]; then
+				printf "error: %s: %s: exempt hook \`%s\` must not declare \`stages\`\n" \
+					"$id" "$file" "$hook" >&2
+				result=1
+			fi
+			;;
+		esac
+	done
+
+	for hook in "${inspected[@]}"; do
+		start=""
+		files_line=""
+		selector=""
+		pass_filenames=""
+		enabled=0
+		unresolved=0
+		files_unresolved=0
+		enable_unresolved=0
+		types_declared=0
+		types_value=""
+		types_or_value=""
+		exclude_types_value=""
+		excludes_value=""
+		raw_open=0
+		stages=""
+		list_key=""
+		list_text=""
+		# Slice this hook's declaration out of `git-hooks.hooks`, keeping absolute line numbers.
+		while IFS=$'\t' read -r kind line text; do
+			case "$kind" in
+			START) start="$line" ;;
+			UNRESOLVED) unresolved=1 ;;
+			LINE)
+				# Fold a list that opens on one line and closes on a later one.
+				if [ -n "$list_key" ]; then
+					list_text="$list_text $text"
+					if [[ $list_text =~ \[(.*)\][[:space:]]*\; ]]; then
+						value="${BASH_REMATCH[1]}"
+						case "$list_key" in
+						types) types_declared=1 && types_value="$value" ;;
+						types_or) types_or_value="$value" ;;
+						exclude_types) exclude_types_value="$value" ;;
+						excludes) excludes_value="$value" ;;
+						stages) stages="$value" ;;
+						esac
+						list_key=""
+					fi
+					continue
+				fi
+				if [[ $text =~ ^[[:space:]]*(types|types_or|exclude_types|excludes|stages)[[:space:]]*=[[:space:]]*\[(.*)\][[:space:]]*\; ]]; then
+					list_key="${BASH_REMATCH[1]}"
+					value="${BASH_REMATCH[2]}"
+					case "$list_key" in
+					types) types_declared=1 && types_value="$value" ;;
+					types_or) types_or_value="$value" ;;
+					exclude_types) exclude_types_value="$value" ;;
+					excludes) excludes_value="$value" ;;
+					stages) stages="$value" ;;
+					esac
+					list_key=""
+					continue
+				fi
+				if [[ $text =~ ^[[:space:]]*(types|types_or|exclude_types|excludes|stages)[[:space:]]*=[[:space:]]*\[ ]]; then
+					list_key="${BASH_REMATCH[1]}"
+					list_text="$text"
+					continue
+				fi
+				if [[ $text =~ ^[[:space:]]*(types|types_or|exclude_types|excludes|stages)[[:space:]]*= ]]; then
+					# A non-list expression cannot be proven open; treat it as narrowing.
+					case "${BASH_REMATCH[1]}" in
+					types) types_declared=1 && types_value="__EXPRESSION__" ;;
+					types_or) types_or_value="__EXPRESSION__" ;;
+					exclude_types) exclude_types_value="__EXPRESSION__" ;;
+					excludes) excludes_value="__EXPRESSION__" ;;
+					stages) stages="__EXPRESSION__" ;;
+					esac
+					continue
+				fi
+				if [[ $text =~ ^[[:space:]]*files[[:space:]]*=[[:space:]]*\"(.*)\"\;[[:space:]]*$ ]]; then
+					files_line="$line"
+					selector="${BASH_REMATCH[1]}"
+				elif [[ $text =~ ^[[:space:]]*files[[:space:]]*= ]]; then
+					files_line="$line"
+					files_unresolved=1
+				elif [[ $text =~ ^[[:space:]]*pass_filenames[[:space:]]*=[[:space:]]*(true|false)\; ]]; then
+					pass_filenames="${BASH_REMATCH[1]}"
+				elif [[ $text =~ ^[[:space:]]*pass_filenames[[:space:]]*= ]]; then
+					pass_filenames="__EXPRESSION__"
+				elif [[ $text =~ ^[[:space:]]*raw[[:space:]]*=[[:space:]]*\{[[:space:]]*\}[[:space:]]*\;[[:space:]]*$ ]]; then
+					:
+				elif [[ $text =~ ^[[:space:]]*raw[[:space:]]*= ]] || [[ $text =~ ^[[:space:]]*raw\. ]]; then
+					raw_open=1
+				elif [[ $text =~ ^[[:space:]]*enable[[:space:]]*=[[:space:]]*true\; ]]; then
+					enabled=1
+				elif [[ $text =~ ^[[:space:]]*enable[[:space:]]*=[[:space:]]*false\; ]]; then
+					enabled=0
+				elif [[ $text =~ ^[[:space:]]*enable[[:space:]]*= ]]; then
+					enable_unresolved=1
+				fi
+				;;
+			esac
+		done < <(deps_005_hook_lines "$file" "$hook")
+
+		if [ -n "$list_key" ]; then
+			printf "error: %s: %s:%s: hook \`%s\` opens a list that never closes\n" \
+				"$id" "$file" "$start" "$hook" >&2
+			result=1
+		fi
+
+		if [ "$unresolved" -ne 0 ] || [ "$enable_unresolved" -ne 0 ]; then
+			printf "error: %s: %s:%s: hook \`%s\` is declared with a conditional or priority wrapper the check cannot resolve\n" \
+				"$id" "$file" "$start" "$hook" >&2
+			result=1
+			continue
+		fi
+
+		if [ "$files_unresolved" -ne 0 ]; then
+			printf "error: %s: %s:%s: hook \`%s\` declares \`files\` in a shape the check cannot resolve\n" \
+				"$id" "$file" "$files_line" "$hook" >&2
+			result=1
+			continue
+		fi
+
+		if [ -z "$start" ]; then
+			printf "error: %s: %s: hook \`%s\` not found\n" "$id" "$file" "$hook" >&2
+			result=1
+			continue
+		fi
+
+		if [ "$enabled" -ne 1 ]; then
+			printf "error: %s: %s:%s: hook \`%s\` must set \`enable = true\`\n" \
+				"$id" "$file" "$start" "$hook" >&2
+			result=1
+		fi
+
+		trim_value="${excludes_value//[[:space:]]/}"
+		if [ -n "$trim_value" ]; then
+			printf "error: %s: %s:%s: hook \`%s\` must not set \`excludes\`\n" \
+				"$id" "$file" "$start" "$hook" >&2
+			result=1
+		fi
+
+		if [ "$raw_open" -ne 0 ]; then
+			printf "error: %s: %s:%s: hook \`%s\` must not set a non-empty \`raw\`\n" \
+				"$id" "$file" "$start" "$hook" >&2
+			result=1
+		fi
+
+		trim_value="${stages//[[:space:]]/}"
+		if [ -n "$trim_value" ] && [[ $trim_value != *'"pre-commit"'* ]]; then
+			printf "error: %s: %s:%s: hook \`%s\` must run at the \`pre-commit\` stage\n" \
+				"$id" "$file" "$start" "$hook" >&2
+			result=1
+		fi
+
+		if [ -z "$files_line" ]; then
+			printf "error: %s: %s:%s: hook \`%s\` declares no \`files\` selector\n" \
+				"$id" "$file" "$start" "$hook" >&2
+			result=1
+		else
+			# `files` is a regex; unescape the Nix string's doubled backslashes before matching.
+			selector="${selector//\\\\/\\}"
+			read -r -a inputs <<<"${inputs_for[$hook]:-}"
+			if [ "${#inputs[@]}" -eq 0 ]; then
+				printf "error: %s: %s:%s: hook \`%s\` declares no inputs to inspect\n" \
+					"$id" "$file" "$start" "$hook" >&2
+				result=1
+			fi
+			for input in "${inputs[@]}"; do
+				if ! printf '%s\n' "$input" | grep -Eq -- "$selector"; then
+					printf "error: %s: %s:%s: hook \`%s\` does not select \`%s\`\n" \
+						"$id" "$file" "$files_line" "$hook" "$input" >&2
+					result=1
+				fi
+			done
+		fi
+
+		trim_value="${types_or_value//[[:space:]]/}"
+		if [ -n "$trim_value" ]; then
+			printf "error: %s: %s:%s: hook \`%s\` must not set \`types_or\`\n" \
+				"$id" "$file" "$start" "$hook" >&2
+			result=1
+		fi
+
+		trim_value="${exclude_types_value//[[:space:]]/}"
+		if [ -n "$trim_value" ]; then
+			printf "error: %s: %s:%s: hook \`%s\` must not set \`exclude_types\`\n" \
+				"$id" "$file" "$start" "$hook" >&2
+			result=1
+		fi
+
+		trim_value="${types_value//[[:space:]]/}"
+		if [ -n "${need_file_types[$hook]+set}" ]; then
+			if [ "$types_declared" -ne 1 ] || [ "$trim_value" != '"file"' ]; then
+				printf "error: %s: %s:%s: hook \`%s\` must set \`types = [ \"file\" ]\`\n" \
+					"$id" "$file" "$start" "$hook" >&2
+				result=1
+			fi
+		elif [ "$types_declared" -eq 1 ] && [ "$trim_value" != '"file"' ]; then
+			printf "error: %s: %s:%s: hook \`%s\` must set \`types = [ \"file\" ]\` or omit it\n" \
+				"$id" "$file" "$start" "$hook" >&2
+			result=1
+		fi
+
+		if [ -n "${trigger_only[$hook]+set}" ] && [ "$pass_filenames" != "false" ]; then
+			printf "error: %s: %s:%s: hook \`%s\` must set \`pass_filenames = false\`\n" \
+				"$id" "$file" "$start" "$hook" >&2
+			result=1
+		fi
+	done
 
 	return "$result"
 }
