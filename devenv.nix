@@ -123,20 +123,24 @@ in
     shellcheck.enable = true;
     shfmt.enable = true;
     # === rust
-    rustfmt.enable = true;
+    rustfmt = {
+      enable = true;
+      pass_filenames = false;
+      files = "(\\.rs$|(^|/)Cargo\\.(toml|lock)$|^rustfmt\\.toml$|^\\.rustfmt\\.toml$)";
+    };
     clippy = {
       enable = true;
       name = "clippy";
       entry = "cargo clippy --all-targets --all-features -- -D warnings";
       pass_filenames = false; # It work on a package basis
-      files = "\\.rs$";
+      files = "(\\.rs$|(^|/)Cargo\\.(toml|lock)$|^clippy\\.toml$)";
     };
     clippy-default-features = {
       enable = true;
       name = "clippy (default features)";
       entry = "cargo clippy --all-targets -- -D warnings";
       pass_filenames = false; # It work on a package basis
-      files = "\\.rs$";
+      files = "(\\.rs$|(^|/)Cargo\\.(toml|lock)$|^clippy\\.toml$)";
     };
     rule-enforcer = {
       enable = true;
@@ -144,12 +148,22 @@ in
       entry = "script/rule_enforcer.sh check";
       language = "system";
       pass_filenames = false;
-      files = "(\\.rs$|\\.md$|^migrations/.*\\.sql$|^rule/.*|^rule_enforcer\\.yaml$|^script/rule_enforcer\\.sh$|^test/system/.*\\.py$)";
+      files = "(\\.rs$|\\.md$|^src/|^test/|^docs/|^migrations/.*\\.sql$|^rule/.*|^rule_enforcer\\.yaml$|^devenv\\.nix$|^sgconfig\\.yaml$|^Cargo\\.(toml|lock)$|^requirements\\.txt$|^pyproject\\.toml$|^\\.github/.*|^\\.opencode/.*|^script/.*)";
       fail_fast = true;
     };
     # === python
-    ruff.enable = true;
-    ruff-format.enable = true;
+    ruff = {
+      enable = true;
+      types = [ "file" ];
+      pass_filenames = false;
+      files = "(\\.py$|^pyproject\\.toml$|^requirements\\.txt$|^ruff\\.toml$|^\\.ruff\\.toml$)";
+    };
+    ruff-format = {
+      enable = true;
+      types = [ "file" ];
+      pass_filenames = false;
+      files = "(\\.py$|^pyproject\\.toml$|^requirements\\.txt$|^ruff\\.toml$|^\\.ruff\\.toml$)";
+    };
     vulture = {
       enable = true;
       name = "vulture";
@@ -184,7 +198,7 @@ in
       entry = "bash -c 'script/generate_third_party_notices.sh && git add -- THIRD_PARTY_NOTICES.txt'";
       language = "system";
       pass_filenames = false;
-      files = "(^|/)Cargo\\.(toml|lock)$|^about\\.(toml|hbs)$";
+      files = "(^|/)Cargo\\.(toml|lock)$|^about\\.(toml|hbs)$|^script/generate_third_party_notices\\.sh$";
     };
 
     # === test coverage
@@ -193,7 +207,7 @@ in
       name = "Coverage >= 80%";
       entry = "cargo llvm-cov --lib --features test-seed --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler|src/lib/infrastructure/seed.rs' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
       pass_filenames = false;
-      files = "\\.rs$";
+      files = "(\\.rs$|(^|/)Cargo\\.(toml|lock)$)";
       fail_fast = true;
     };
 
@@ -201,8 +215,9 @@ in
     sql = {
       enable = true;
       name = "sqlfluff";
-      entry = "sqlfluff lint --dialect sqlite";
-      files = "(migrations|test/(api|performance|system)/seed/sql)/.*\\.sql$";
+      entry = "sqlfluff lint --dialect sqlite migrations test/api/seed/sql test/performance/seed/sql test/system/seed/sql";
+      pass_filenames = false;
+      files = "(^migrations/.*\\.sql$|^test/(api|performance|system)/seed/sql/.*\\.sql$|^\\.sqlfluff$|^\\.sqlfluffignore$|^requirements\\.txt$)";
     };
 
     cargo-deny = {
@@ -210,7 +225,7 @@ in
       name = "cargo-deny";
       entry = "cargo deny check";
       pass_filenames = false;
-      files = "Cargo\\.toml$";
+      files = "(^|/)Cargo\\.(toml|lock)$|^deny\\.toml$";
     };
 
     cargo-machete = {
@@ -244,7 +259,7 @@ in
       name = "Verify Mkdocs documentation build";
       entry = "mkdocs build --strict";
       pass_filenames = false;
-      files = "docs/.*\\.(md|html|json)$";
+      files = "(^docs/.*\\.(md|html|json|css|js)$|^mkdocs\\.yml$|^requirements\\.txt$)";
     };
 
     markdownlint = {
@@ -258,9 +273,11 @@ in
     prettier = {
       enable = true;
       name = "prettier";
-      entry = "prettier --write";
+      entry = "prettier --write '**/*.md'";
       language = "system";
-      files = "\\.md$";
+      types = [ "file" ];
+      pass_filenames = false;
+      files = "(\\.md$|^\\.prettierrc$|(^|/)\\.prettierignore$|(^|/)\\.editorconfig$)";
       before = [ "markdownlint" ];
       fail_fast = true;
     };
@@ -269,7 +286,7 @@ in
       package = multiverse.yamllint."1.37.1";
       entry = "yamllint -c .yamllint .";
       pass_filenames = false;
-      files = "\\.(yaml|yml)$";
+      files = "(\\.(yaml|yml)$|^\\.yamllint$)";
       fail_fast = true;
     };
 
@@ -286,7 +303,7 @@ in
       enable = true;
       name = "Build rust code";
       entry = "cargo build";
-      files = "\\.rs$";
+      files = "(\\.rs$|(^|/)Cargo\\.(toml|lock)$)";
       pass_filenames = false;
       fail_fast = true;
     };
