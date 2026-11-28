@@ -1,3 +1,13 @@
+## [0.40.1](https://github.com/Mnemorium/mnemorium/compare/v0.40.0...v0.40.1) (2026-11-28)
+
+### Bug Fixes
+
+* **persistence:** reject non-finite media measurements ([#433](https://github.com/Mnemorium/mnemorium/issues/433)) ([6869d0a](https://github.com/Mnemorium/mnemorium/commit/6869d0a7d7a95c442725bfab85fcce1d8d0b5b89))
+
+### Reverts
+
+* **config:** restore the traceability template in language stats ([be14f50](https://github.com/Mnemorium/mnemorium/commit/be14f504efd7bbd534256693a49dec7e1ba75bf2))
+
 ## [0.40.0](https://github.com/Mnemorium/mnemorium/compare/v0.39.3...v0.40.0) (2026-11-27)
 
 ### Features
