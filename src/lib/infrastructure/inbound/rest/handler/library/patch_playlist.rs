@@ -142,7 +142,7 @@ pub(crate) async fn patch_playlist(
     payload: JsonObject<PatchPlaylistRequest>,
 ) -> Result<Response, ApiError> {
     let playlist_id = parse_playlist_id(&playlist_id_value)?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let response = state
         .library_use_case_factory()
         .update_playlist()

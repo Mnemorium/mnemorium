@@ -124,7 +124,7 @@ pub(crate) async fn put_series_season(
 ) -> Result<Response, ApiError> {
     let series_id = parse_series_id(&series_id_value)?;
     let season_index = parse_season_index(&season_index_value)?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let response = state
         .library_use_case_factory()
         .put_series_season()

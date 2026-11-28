@@ -36,22 +36,6 @@ impl MusicGroupRepository for SqlxMusicGroupRepository<'_> {
 
         domain_group(row)
     }
-
-    async fn delete(&mut self, filter: &MusicGroupFilter) -> Result<bool, RepositoryError> {
-        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM music_group");
-        let mut first = true;
-
-        if let Some(id) = filter.id {
-            push_filter(&mut first, &mut builder, "music_group_id = ", id);
-        }
-        if let Some(name) = filter.stage_name.as_deref() {
-            push_filter(&mut first, &mut builder, "stage_name = ", name);
-        }
-
-        let result = builder.build().execute(&mut **self.transaction).await?;
-        Ok(result.rows_affected() > 0)
-    }
-
     async fn save(&mut self, group: MusicGroup) -> Result<MusicGroup, RepositoryError> {
         let row = sqlx::query_as::<_, MusicGroupRow>(
             "INSERT INTO music_group (

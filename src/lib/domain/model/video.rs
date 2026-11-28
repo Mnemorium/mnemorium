@@ -7,23 +7,16 @@ use crate::domain::{NonNegativeF64, NumericID, PositiveI64};
 pub(crate) enum VideoError {
     /// The duration is not finite or is negative.
     #[error("video duration must be finite and non-negative")]
-    InvalidDurationMs,
+    DurationMsInvalid,
     /// The frame count is not positive.
     #[error("video frame count must be greater than zero")]
-    InvalidFrameCount,
+    FrameCountNotPositive,
     /// The height is not positive.
     #[error("video height must be greater than zero")]
-    InvalidHeight,
+    HeightNotPositive,
     /// The width is not positive.
     #[error("video width must be greater than zero")]
-    InvalidWidth,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
+    WidthNotPositive,
 }
 
 /// Scan type of a video stream.
@@ -153,10 +146,10 @@ impl Video {
     ///
     /// # Errors
     ///
-    /// Returns [`VideoError::InvalidDurationMs`] when `duration_ms` is not
-    /// finite or is negative, [`VideoError::InvalidFrameCount`] when
-    /// `frame_count` is not positive, [`VideoError::InvalidWidth`] when `width`
-    /// is not positive, and [`VideoError::InvalidHeight`] when `height` is not
+    /// Returns [`VideoError::DurationMsInvalid`] when `duration_ms` is not
+    /// finite or is negative, [`VideoError::FrameCountNotPositive`] when
+    /// `frame_count` is not positive, [`VideoError::WidthNotPositive`] when `width`
+    /// is not positive, and [`VideoError::HeightNotPositive`] when `height` is not
     /// positive.
     pub(crate) fn try_new(
         id: NumericID,
@@ -171,16 +164,16 @@ impl Video {
         scope: Option<AssetScope>,
     ) -> Result<Self, VideoError> {
         if !duration_ms.is_finite() || duration_ms < 0.0f64 {
-            return Err(VideoError::InvalidDurationMs);
+            return Err(VideoError::DurationMsInvalid);
         }
         if frame_count <= 0 {
-            return Err(VideoError::InvalidFrameCount);
+            return Err(VideoError::FrameCountNotPositive);
         }
         if width <= 0 {
-            return Err(VideoError::InvalidWidth);
+            return Err(VideoError::WidthNotPositive);
         }
         if height <= 0 {
-            return Err(VideoError::InvalidHeight);
+            return Err(VideoError::HeightNotPositive);
         }
         Ok(Self {
             codec,

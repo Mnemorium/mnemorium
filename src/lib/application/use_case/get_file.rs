@@ -122,7 +122,7 @@ where
                     file.origin(),
                     file.is_public(),
                     file.user_id(),
-                    image.as_ref().map(Image::image_id),
+                    image.as_ref().map(Image::id),
                     audio.as_ref().map(Audio::id),
                     video.as_ref().map(Video::id),
                 ))

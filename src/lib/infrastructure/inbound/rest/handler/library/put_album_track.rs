@@ -133,7 +133,7 @@ pub(crate) async fn put_album_track(
         "track_index",
         "invalid music track index",
     )?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let response = state
         .library_use_case_factory()
         .put_album_track()

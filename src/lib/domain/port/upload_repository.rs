@@ -17,14 +17,14 @@ use crate::domain::port::RepositoryError;
 pub(crate) struct UploadFilter {
     /// Filter on the creation instant.
     pub created_at: Option<NaiveDateTime>,
+    /// Filter on the upload identifier.
+    pub id: Option<NumericID>,
     /// Filter on whether the upload has finished.
     pub is_finished: Option<bool>,
     /// Filter on whether a completion is verifying the upload.
     pub is_verifying: Option<bool>,
     /// Filter on the verification seal instant.
     pub sealed_at: Option<NaiveDateTime>,
-    /// Filter on the upload identifier.
-    pub upload_id: Option<NumericID>,
     /// Filter on the owning user identifier.
     pub user_id: Option<NumericID>,
 }

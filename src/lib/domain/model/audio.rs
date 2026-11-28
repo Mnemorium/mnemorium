@@ -6,26 +6,19 @@ use crate::domain::{NonNegativeF64, NumericID};
 pub(crate) enum AudioError {
     /// The `bit_depth` is not positive.
     #[error("bit_depth must be positive")]
-    InvalidBitDepth,
+    BitDepthNotPositive,
     /// The `block_size` is not positive.
     #[error("block_size must be positive")]
-    InvalidBlockSize,
+    BlockSizeNotPositive,
     /// The `duration_ms` is negative.
     #[error("duration_ms must not be negative")]
-    InvalidDurationMs,
-    /// The `name` is empty.
+    DurationMsNegative,
+    /// A required string value is empty.
     #[error("name must not be empty")]
-    InvalidName,
+    EmptyString,
     /// The `sample_rate_hz` is negative.
     #[error("sample_rate_hz must not be negative")]
-    InvalidSampleRateHz,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
+    SampleRateHzNegative,
 }
 
 /// An audio file.
@@ -123,34 +116,6 @@ impl Audio {
         self.sample_rate_hz
     }
 
-    /// Update the codec.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AudioError::InvalidName`] when `codec` is empty.
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
-    fn set_codec(&mut self, codec: String) -> Result<(), AudioError> {
-        self.codec = Self::validate_non_empty(codec)?;
-        Ok(())
-    }
-
-    /// Update the name.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AudioError::InvalidName`] when `name` is empty.
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
-    pub(crate) fn set_name(&mut self, name: String) -> Result<(), AudioError> {
-        self.name = Self::validate_non_empty(name)?;
-        Ok(())
-    }
-
     /// Initialise a new `Audio`, validating `name`, `duration_ms`,
     /// `sample_rate_hz`, `bit_depth` and `block_size`.
     ///
@@ -160,11 +125,11 @@ impl Audio {
     ///
     /// # Errors
     ///
-    /// Returns [`AudioError::InvalidName`] when `name` is empty,
-    /// [`AudioError::InvalidDurationMs`] when a present `duration_ms` is
-    /// negative, [`AudioError::InvalidSampleRateHz`] when a present
-    /// `sample_rate_hz` is negative, and [`AudioError::InvalidBitDepth`] or
-    /// [`AudioError::InvalidBlockSize`] when a present value is not positive.
+    /// Returns [`AudioError::EmptyString`] when `name` is empty,
+    /// [`AudioError::DurationMsNegative`] when a present `duration_ms` is
+    /// negative, [`AudioError::SampleRateHzNegative`] when a present
+    /// `sample_rate_hz` is negative, and [`AudioError::BitDepthNotPositive`] or
+    /// [`AudioError::BlockSizeNotPositive`] when a present value is not positive.
     pub(crate) fn try_new(
         id: NumericID,
         name: String,
@@ -178,16 +143,16 @@ impl Audio {
         let validated_name = Self::validate_non_empty(name)?;
         let validated_codec = Self::validate_non_empty(codec)?;
         if duration_ms.is_some_and(|value| value < 0.0f64) {
-            return Err(AudioError::InvalidDurationMs);
+            return Err(AudioError::DurationMsNegative);
         }
         if sample_rate_hz.is_some_and(|value| value < 0.0f64) {
-            return Err(AudioError::InvalidSampleRateHz);
+            return Err(AudioError::SampleRateHzNegative);
         }
         if let Some(value) = bit_depth {
-            Self::validate_positive(value, AudioError::InvalidBitDepth)?;
+            Self::validate_positive(value, AudioError::BitDepthNotPositive)?;
         }
         if let Some(value) = block_size {
-            Self::validate_positive(value, AudioError::InvalidBlockSize)?;
+            Self::validate_positive(value, AudioError::BlockSizeNotPositive)?;
         }
         Ok(Self {
             bit_depth,
@@ -208,7 +173,7 @@ impl Audio {
     /// Returns `err` when `value` is empty.
     fn validate_non_empty(value: String) -> Result<String, AudioError> {
         if value.is_empty() {
-            Err(AudioError::InvalidName)
+            Err(AudioError::EmptyString)
         } else {
             Ok(value)
         }

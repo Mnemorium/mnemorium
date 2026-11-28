@@ -199,8 +199,8 @@ where
 /// Map a failed recording-name write to the use-case error.
 fn name_error(error: MusicRecordingError) -> PatchAlbumTrackError {
     match error {
-        MusicRecordingError::InvalidIsrcCode => PatchAlbumTrackError::InvalidIsrc,
-        MusicRecordingError::InvalidName => {
+        MusicRecordingError::IsrcCodeWrongLength => PatchAlbumTrackError::InvalidIsrc,
+        MusicRecordingError::NameEmpty => {
             warn!(
                 target: "security",
                 event = "input_validation_failed",
@@ -210,14 +210,13 @@ fn name_error(error: MusicRecordingError) -> PatchAlbumTrackError {
             );
             PatchAlbumTrackError::InvalidName
         }
-        MusicRecordingError::Unknown(source) => PatchAlbumTrackError::Unknown(source),
     }
 }
 
 /// Map a failed recording-ISRC write to the use-case error.
 fn isrc_error(error: MusicRecordingError) -> PatchAlbumTrackError {
     match error {
-        MusicRecordingError::InvalidIsrcCode => {
+        MusicRecordingError::IsrcCodeWrongLength => {
             warn!(
                 target: "security",
                 event = "input_validation_failed",
@@ -227,8 +226,7 @@ fn isrc_error(error: MusicRecordingError) -> PatchAlbumTrackError {
             );
             PatchAlbumTrackError::InvalidIsrc
         }
-        MusicRecordingError::InvalidName => PatchAlbumTrackError::InvalidName,
-        MusicRecordingError::Unknown(source) => PatchAlbumTrackError::Unknown(source),
+        MusicRecordingError::NameEmpty => PatchAlbumTrackError::InvalidName,
     }
 }
 

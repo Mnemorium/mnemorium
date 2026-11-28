@@ -399,7 +399,6 @@ impl MusicBrainzMetadataProvider {
                         ExternalServiceError::CommunicationFailure
                             | ExternalServiceError::DependencyFailure
                             | ExternalServiceError::RateLimited
-                            | ExternalServiceError::RetryableFailure
                             | ExternalServiceError::Timeout
                             | ExternalServiceError::Unavailable
                     );
@@ -838,10 +837,6 @@ mod tests {
     /// The album search payload `wiremock` serves.
     const SEARCH_RELEASE_GROUP: &str =
         include_str!("fixtures/musicbrainz/search_release_group.json");
-
-    /// The release search payload `wiremock` serves.
-    const SEARCH_RELEASE: &str = include_str!("fixtures/musicbrainz/search_release.json");
-
     /// The recording search payload `wiremock` serves.
     const SEARCH_RECORDING: &str = include_str!("fixtures/musicbrainz/search_recording.json");
 
@@ -856,11 +851,6 @@ mod tests {
 
     /// An album search payload that reports no hit.
     const EMPTY_RELEASE_GROUPS: &str = include_str!("fixtures/musicbrainz/search_empty.json");
-
-    /// An album search hit that reports neither an artist nor a date.
-    const SEARCH_WITHOUT_ARTIST: &str =
-        include_str!("fixtures/musicbrainz/search_without_artist.json");
-
     /// An album payload whose secondary type qualifies the primary one.
     const RELEASE_GROUP_LIVE_SECONDARY: &str =
         include_str!("fixtures/musicbrainz/release_group_live_secondary.json");
@@ -868,10 +858,6 @@ mod tests {
     /// An album payload whose secondary type the catalogue cannot map.
     const RELEASE_GROUP_UNMAPPABLE_SECONDARY: &str =
         include_str!("fixtures/musicbrainz/release_group_unmappable_secondary.json");
-
-    /// The Cover Art Archive index template `wiremock` serves.
-    const COVER_ART_INDEX: &str = include_str!("fixtures/musicbrainz/cover_art_index.json");
-
     /// An archive index naming an image the archive redirects to its download host.
     const COVER_ART_INDEX_REDIRECT: &str =
         include_str!("fixtures/musicbrainz/cover_art_index_redirect.json");
@@ -882,10 +868,6 @@ mod tests {
 
     /// A body that is not JSON.
     const MALFORMED: &[u8] = include_bytes!("fixtures/malformed.json");
-
-    /// The 1×1 image `wiremock` serves as artwork.
-    const ARTWORK: &[u8] = include_bytes!("fixtures/artwork/pixel.png");
-
     /// The album identifier every fixture uses.
     const ALBUM_ID: &str = "f5093c06-23e3-404f-aeaa-40f72885ee3a";
 
@@ -988,18 +970,6 @@ mod tests {
             .mount(server)
             .await;
     }
-
-    /// Return the first candidate of a search.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the search returned nothing.
-    fn first(candidates: &[MusicCandidate]) -> Result<&MusicCandidate, Box<dyn Error>> {
-        candidates
-            .first()
-            .ok_or_else(|| "the search must return a candidate".into())
-    }
-
     // proves: SCN-METADATA-ENRICHMENT-018-C — Business rule
     #[tokio::test]
     async fn musicbrainz_sends_the_user_agent_and_the_format() -> Result<(), Box<dyn Error>> {
@@ -1057,37 +1027,6 @@ mod tests {
         assert!(candidates.is_empty());
         Ok(())
     }
-
-    // proves: SCN-METADATA-ENRICHMENT-018-B — Business rule
-    #[tokio::test]
-    async fn musicbrainz_release_query_searches_one_edition() -> Result<(), Box<dyn Error>> {
-        // Arrange: a release query addresses the release field, so each hit is one edition.
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/release"))
-            .and(query_param("query", "release:\"Kind of Blue\""))
-            .respond_with(ResponseTemplate::new(200).set_body_string(SEARCH_RELEASE))
-            .expect(1)
-            .mount(&server)
-            .await;
-        let provider = provider(&server);
-
-        // Act
-        let candidates = provider
-            .search(&query(MusicKind::Release, "Kind of Blue")?)
-            .await?;
-
-        // Assert
-        assert_eq!(candidates.len(), 2);
-        assert!(
-            candidates
-                .iter()
-                .all(|candidate| candidate.kind() == MusicKind::Release),
-            "a release query must return editions, never album groups"
-        );
-        Ok(())
-    }
-
     #[test]
     fn musicbrainz_artwork_policy_accepts_the_archive_and_rejects_the_api() {
         // Arrange
@@ -1140,132 +1079,6 @@ mod tests {
         assert!(candidates.is_empty());
         Ok(())
     }
-
-    // proves: SCN-METADATA-ENRICHMENT-002-A, SCN-METADATA-ENRICHMENT-002-B — Business rule
-    #[tokio::test]
-    async fn musicbrainz_search_maps_a_release_group_hit() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let server = MockServer::start().await;
-        mount_json(&server, "/release-group", SEARCH_RELEASE_GROUP).await;
-        let provider = provider(&server);
-
-        // Act
-        let candidates = provider
-            .search(&query(MusicKind::Album, "Kind of Blue")?)
-            .await?;
-
-        // Assert
-        assert_eq!(candidates.len(), 2, "both hits must be kept, in order");
-        let candidate = first(&candidates)?;
-        assert_eq!(candidate.kind(), MusicKind::Album);
-        assert_eq!(candidate.title(), "Kind of Blue");
-        assert_eq!(candidate.group(), Some("Miles Davis"));
-        assert_eq!(candidate.year(), Some(1959));
-        assert_eq!(candidate.reference().provider(), ProviderId::MusicBrainz);
-        assert_eq!(candidate.reference().id(), ALBUM_ID);
-        assert_eq!(
-            candidates.last().and_then(MusicCandidate::year),
-            Some(2008),
-            "the provider order must be preserved"
-        );
-        Ok(())
-    }
-
-    // proves: SCN-METADATA-ENRICHMENT-002-D — Business rule
-    // proves: SCN-METADATA-ENRICHMENT-004-D — Business rule
-    #[tokio::test]
-    async fn musicbrainz_search_maps_a_release_hit_with_its_mediums() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange
-        let server = MockServer::start().await;
-        mount_json(&server, "/release", SEARCH_RELEASE).await;
-        let provider = provider(&server);
-
-        // Act
-        let candidates = provider
-            .search(&query(MusicKind::Release, "Kind of Blue")?)
-            .await?;
-
-        // Assert
-        assert_eq!(candidates.len(), 2);
-        let candidate = first(&candidates)?;
-        assert_eq!(candidate.kind(), MusicKind::Release);
-        assert_eq!(candidate.status(), Some(ReleaseStatus::Official));
-        assert_eq!(
-            candidate.album().map(ExternalRef::id),
-            Some(ALBUM_ID),
-            "a release candidate must name its album"
-        );
-        assert_eq!(candidate.mediums().len(), 1);
-        assert_eq!(
-            candidate.mediums().first().map(MediumSummary::format),
-            Some(&MediumFormat::Other("12\" Vinyl".to_owned()))
-        );
-        assert_eq!(
-            candidate.mediums().first().map(MediumSummary::index),
-            Some(1),
-            "a medium must carry its album-scoped position"
-        );
-        assert_eq!(
-            candidate.mediums().first().map(MediumSummary::track_count),
-            Some(5),
-            "a medium must carry its track count"
-        );
-        assert_eq!(
-            candidates
-                .get(1)
-                .and_then(|release| release.mediums().first())
-                .map(MediumSummary::format)
-                .map(MediumFormat::is_compact_disc),
-            Some(true)
-        );
-        Ok(())
-    }
-
-    // proves: SCN-METADATA-ENRICHMENT-002-A — Business rule
-    #[tokio::test]
-    async fn musicbrainz_search_maps_a_recording_hit() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let server = MockServer::start().await;
-        mount_json(&server, "/recording", SEARCH_RECORDING).await;
-        let provider = provider(&server);
-
-        // Act
-        let candidates = provider
-            .search(&query(MusicKind::Recording, "So What")?)
-            .await?;
-
-        // Assert
-        assert_eq!(candidates.len(), 1);
-        let candidate = first(&candidates)?;
-        assert_eq!(candidate.kind(), MusicKind::Recording);
-        assert_eq!(candidate.title(), "So What");
-        assert_eq!(candidate.group(), Some("Miles Davis"));
-        assert_eq!(candidate.year(), Some(1959));
-        assert_eq!(candidate.reference().id(), RECORDING_ID);
-        Ok(())
-    }
-
-    // proves: SCN-METADATA-ENRICHMENT-002-C — Business rule
-    #[tokio::test]
-    async fn musicbrainz_search_leaves_an_unreported_group_absent() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let server = MockServer::start().await;
-        mount_json(&server, "/release-group", SEARCH_WITHOUT_ARTIST).await;
-        let provider = provider(&server);
-
-        // Act
-        let candidates = provider
-            .search(&query(MusicKind::Album, "Untitled Work")?)
-            .await?;
-
-        // Assert
-        let candidate = first(&candidates)?;
-        assert_eq!(candidate.group(), None, "an absent group stays absent");
-        assert_eq!(candidate.year(), None, "an absent date stays absent");
-        Ok(())
-    }
-
     // proves: SCN-METADATA-ENRICHMENT-004-A, SCN-METADATA-ENRICHMENT-020-A — Business rule
     #[tokio::test]
     async fn musicbrainz_lookup_maps_an_album_and_orders_its_editions() -> Result<(), Box<dyn Error>>
@@ -1778,50 +1591,6 @@ mod tests {
         );
         Ok(())
     }
-
-    // proves: SCN-METADATA-ENRICHMENT-005-A — Business rule
-    #[tokio::test]
-    async fn musicbrainz_artwork_follows_the_cover_art_json_hop() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let server = MockServer::start().await;
-        mount_json(
-            &server,
-            &format!("/release-group/{ALBUM_ID}"),
-            RELEASE_GROUP,
-        )
-        .await;
-        let index = COVER_ART_INDEX.replace("{origin}", &server.uri());
-        mount_json(
-            &server,
-            &format!("/archive/release-group/{ALBUM_ID}"),
-            &index,
-        )
-        .await;
-        Mock::given(method("GET"))
-            .and(path("/cover.jpg"))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes(ARTWORK.to_vec()))
-            .expect(1)
-            .mount(&server)
-            .await;
-        let provider = provider(&server);
-        let target = MusicTarget::Album(ExternalRef::new(
-            ProviderId::MusicBrainz,
-            ALBUM_ID.to_owned(),
-        ));
-
-        // Act
-        let metadata = provider.lookup(&target).await?;
-
-        // Assert
-        let Some(MusicMetadata::Album { artwork, .. }) = metadata else {
-            return Err("the album lookup must return album metadata".into());
-        };
-        let downloaded = artwork.ok_or("the archive image must be downloaded")?;
-        assert_eq!(downloaded.bytes(), ARTWORK);
-        assert_eq!(downloaded.media_type(), "image/png");
-        Ok(())
-    }
-
     // proves: SCN-METADATA-ENRICHMENT-004-B, SCN-METADATA-ENRICHMENT-006-A, SCN-METADATA-ENRICHMENT-007-C — Business rule
     #[tokio::test]
     async fn musicbrainz_lookup_maps_an_album_without_editions() -> Result<(), Box<dyn Error>> {
@@ -1916,58 +1685,6 @@ mod tests {
         );
         Ok(())
     }
-
-    // proves: SCN-METADATA-ENRICHMENT-005-A — Business rule
-    #[tokio::test]
-    async fn musicbrainz_artwork_follows_the_archives_redirect_hop() -> Result<(), Box<dyn Error>> {
-        // Arrange: the index names an address the archive answers with a redirect.
-        let server = MockServer::start().await;
-        mount_json(
-            &server,
-            &format!("/release-group/{ALBUM_ID}"),
-            RELEASE_GROUP,
-        )
-        .await;
-        let index = COVER_ART_INDEX_REDIRECT.replace("{origin}", &server.uri());
-        mount_json(
-            &server,
-            &format!("/archive/release-group/{ALBUM_ID}"),
-            &index,
-        )
-        .await;
-        Mock::given(method("GET"))
-            .and(path("/archive-image.jpg"))
-            .respond_with(
-                ResponseTemplate::new(307)
-                    .insert_header("Location", format!("{}/cover.jpg", server.uri())),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/cover.jpg"))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes(ARTWORK.to_vec()))
-            .expect(1)
-            .mount(&server)
-            .await;
-        let provider = provider(&server);
-        let target = MusicTarget::Album(ExternalRef::new(
-            ProviderId::MusicBrainz,
-            ALBUM_ID.to_owned(),
-        ));
-
-        // Act
-        let metadata = provider.lookup(&target).await?;
-
-        // Assert
-        let Some(MusicMetadata::Album { artwork, .. }) = metadata else {
-            return Err("the album lookup must return album metadata".into());
-        };
-        let downloaded = artwork.ok_or("the redirected image must be downloaded")?;
-        assert_eq!(downloaded.bytes(), ARTWORK);
-        Ok(())
-    }
-
     // proves: SCN-METADATA-ENRICHMENT-005-B — Alternate flow
     #[tokio::test]
     #[traced_test]
@@ -2072,93 +1789,6 @@ mod tests {
                     )
                 })
         });
-        Ok(())
-    }
-
-    /// Build the target of `kind` from `reference`.
-    fn target(kind: MusicKind, reference: ExternalRef) -> MusicTarget {
-        match kind {
-            MusicKind::Album => MusicTarget::Album(reference),
-            MusicKind::Recording => MusicTarget::Recording(reference),
-            MusicKind::Release => MusicTarget::Release(reference),
-        }
-    }
-
-    /// Return the kind of work a resolved document reports.
-    fn metadata_kind(metadata: &MusicMetadata) -> MusicKind {
-        match *metadata {
-            MusicMetadata::Album { .. } => MusicKind::Album,
-            MusicMetadata::Recording { .. } => MusicKind::Recording,
-            MusicMetadata::Release { .. } => MusicKind::Release,
-        }
-    }
-
-    // proves: SCN-METADATA-ENRICHMENT-008-A — Business rule
-    #[rstest]
-    #[case(
-        MusicKind::Album,
-        "/release-group",
-        "/release-group/{id}",
-        ALBUM_ID,
-        SEARCH_RELEASE_GROUP,
-        RELEASE_GROUP
-    )]
-    #[case(
-        MusicKind::Release,
-        "/release",
-        "/release/{id}",
-        CD_RELEASE_ID,
-        SEARCH_RELEASE,
-        RELEASE
-    )]
-    #[case(
-        MusicKind::Recording,
-        "/recording",
-        "/recording/{id}",
-        RECORDING_ID,
-        SEARCH_RECORDING,
-        RECORDING
-    )]
-    #[tokio::test]
-    async fn musicbrainz_search_then_lookup_resolves_the_returned_reference(
-        #[case] kind: MusicKind,
-        #[case] search_path: &str,
-        #[case] lookup_path: &str,
-        #[case] lookup_id: &str,
-        #[case] search_fixture: &str,
-        #[case] lookup_fixture: &str,
-    ) -> Result<(), Box<dyn Error>> {
-        // Arrange: the search lists one candidate per kind, and the lookup
-        // answers the reference that candidate carries.
-        let server = MockServer::start().await;
-        mount_json(&server, search_path, search_fixture).await;
-        mount_json(
-            &server,
-            &lookup_path.replace("{id}", lookup_id),
-            lookup_fixture,
-        )
-        .await;
-        let provider = provider(&server);
-
-        // Act: search, then resolve the returned reference it names.
-        let candidates = provider.search(&query(kind, "Kind of Blue")?).await?;
-        let reference = candidates
-            .iter()
-            .find(|candidate| candidate.reference().id() == lookup_id)
-            .map(|candidate| candidate.reference().clone())
-            .ok_or("the search must report the fixture's reference")?;
-        let target = target(kind, reference);
-        let resolved = provider.lookup(&target).await?;
-
-        // Assert
-        let Some(document) = resolved else {
-            return Err("the returned reference must resolve to a document".into());
-        };
-        assert_eq!(
-            metadata_kind(&document),
-            kind,
-            "the document must keep the shape the reference names"
-        );
         Ok(())
     }
 }

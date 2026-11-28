@@ -7,13 +7,6 @@ pub(crate) enum MusicGroupError {
     /// The `stage_name` is empty.
     #[error("stage_name must not be empty")]
     InvalidStageName,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
 }
 
 /// A music group.

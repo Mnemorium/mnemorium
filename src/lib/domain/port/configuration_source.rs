@@ -14,19 +14,6 @@ pub(crate) struct LoadedFileConfiguration {
 }
 
 impl LoadedFileConfiguration {
-    /// Return whether this load generated the default configuration file.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "part of the type's declared contract; no caller exercises it yet"
-        )
-    )]
-    pub(crate) fn file_created(&self) -> bool {
-        self.file_created
-    }
-
     /// Split the result into its partial configuration and its file-created
     /// flag.
     #[must_use]
@@ -41,19 +28,6 @@ impl LoadedFileConfiguration {
             file_created,
             partial,
         }
-    }
-
-    /// Return the settings the file names.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "part of the type's declared contract; no caller exercises it yet"
-        )
-    )]
-    pub(crate) fn partial(&self) -> &PartialConfiguration {
-        &self.partial
     }
 }
 

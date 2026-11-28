@@ -30,6 +30,7 @@ use tracing::{error, warn};
 use crate::domain::model::{Orientation, ProbedAudio, ProbedImage, ProbedVideo, ScanType};
 use crate::domain::port::{MediaProbe, MediaProbeError};
 use crate::domain::{NonNegativeF64, PositiveI64, ScalarError};
+use crate::infrastructure::integral_i64;
 
 /// Name of the video probe binary resolved from `PATH`.
 const FFPROBE: &str = "ffprobe";
@@ -168,7 +169,7 @@ struct ProbeStream {
 }
 
 impl MediaProbe for LocalMediaProbe {
-    fn probe_audio(
+    fn audio(
         &self,
         path: &Path,
     ) -> impl Future<Output = Result<Option<ProbedAudio>, MediaProbeError>> + Send {
@@ -234,7 +235,7 @@ impl MediaProbe for LocalMediaProbe {
         }
     }
 
-    fn probe_image(
+    fn image(
         &self,
         path: &Path,
     ) -> impl Future<Output = Result<Option<ProbedImage>, MediaProbeError>> + Send {
@@ -292,7 +293,7 @@ impl MediaProbe for LocalMediaProbe {
         }
     }
 
-    fn probe_video(
+    fn video(
         &self,
         path: &Path,
     ) -> impl Future<Output = Result<Option<ProbedVideo>, MediaProbeError>> + Send {
@@ -368,12 +369,7 @@ impl MediaProbe for LocalMediaProbe {
                     if frames < 1.0f64 {
                         return None;
                     }
-                    #[expect(
-                        clippy::cast_possible_truncation,
-                        reason = "the rounded frame count is bounded by the video's duration"
-                    )]
-                    let rounded_frames = frames as i64;
-                    Some(rounded_frames)
+                    integral_i64(frames)
                 })
                 .ok_or_else(|| {
                     log_validation_failure("missing_frame_count");
@@ -704,10 +700,7 @@ mod tests {
         let probe = LocalMediaProbe::new();
 
         // Act
-        let probed = probe
-            .probe_image(&path)
-            .await?
-            .ok_or("the image should exist")?;
+        let probed = probe.image(&path).await?.ok_or("the image should exist")?;
 
         // Assert
         assert_eq!(probed.width_px.value(), 4);
@@ -725,10 +718,7 @@ mod tests {
         let probe = LocalMediaProbe::new();
 
         // Act
-        let probed = probe
-            .probe_image(&path)
-            .await?
-            .ok_or("the image should exist")?;
+        let probed = probe.image(&path).await?.ok_or("the image should exist")?;
 
         // Assert
         assert_eq!(probed.width_px.value(), 2);
@@ -744,7 +734,7 @@ mod tests {
         let probe = LocalMediaProbe::new();
 
         // Act
-        let probed = probe.probe_image(&tmp.path().join("absent.png")).await?;
+        let probed = probe.image(&tmp.path().join("absent.png")).await?;
 
         // Assert
         assert!(probed.is_none());
@@ -760,7 +750,7 @@ mod tests {
         let probe = LocalMediaProbe::new();
 
         // Act
-        let result = probe.probe_image(&path).await;
+        let result = probe.image(&path).await;
 
         // Assert
         assert!(matches!(result, Err(MediaProbeError::UnsupportedMedia)));
@@ -782,10 +772,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let probed = probe
-            .probe_video(&media)
-            .await?
-            .ok_or("the video should exist")?;
+        let probed = probe.video(&media).await?.ok_or("the video should exist")?;
 
         // Assert
         assert_eq!(probed.codec, "h264");
@@ -813,7 +800,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let result = probe.probe_video(&media).await;
+        let result = probe.video(&media).await;
 
         // Assert: a measurement the domain cannot represent is unsupported
         // content, not a server fault.
@@ -864,15 +851,40 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let probed = probe
-            .probe_video(&media)
-            .await?
-            .ok_or("the video should exist")?;
+        let probed = probe.video(&media).await?.ok_or("the video should exist")?;
 
         // Assert
         assert_eq!(probed.frame_count.value(), 30);
         assert_eq!(probed.color_id, "Grayscale");
         assert_eq!(probed.scan_type, ScanType::Progressive);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn probe_video_frame_count_beyond_i64_returns_unsupported_media()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let _gate = spawn_gate().acquire_owned().await?;
+        let tmp = tempdir()?;
+        // The duration and frame rate multiply past `i64`; the derived count is
+        // rejected rather than saturated.
+        let program = stub(
+            tmp.path(),
+            "ffprobe",
+            "cat <<'JSON'\n{\"streams\":[{\"codec_type\":\"video\",\"codec_name\":\"vp9\",\"width\":100,\"height\":50,\"pix_fmt\":\"gray8\",\"field_order\":\"progressive\",\"avg_frame_rate\":\"1000000000000000000/1\",\"duration\":\"100\"}]}\nJSON",
+        )?;
+        let media = tmp.path().join("clip.webm");
+        fs::write(&media, b"stub")?;
+        let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
+
+        // Act
+        let result = probe.video(&media).await;
+
+        // Assert
+        assert!(
+            matches!(result, Err(MediaProbeError::UnsupportedMedia)),
+            "unexpected probe result: {result:?}"
+        );
         Ok(())
     }
 
@@ -883,7 +895,7 @@ mod tests {
         let probe = LocalMediaProbe::new();
 
         // Act
-        let probed = probe.probe_video(&tmp.path().join("absent.mp4")).await?;
+        let probed = probe.video(&tmp.path().join("absent.mp4")).await?;
 
         // Assert
         assert!(probed.is_none());
@@ -901,7 +913,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let result = probe.probe_video(&media).await;
+        let result = probe.video(&media).await;
 
         // Assert
         assert!(
@@ -922,7 +934,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let result = probe.probe_video(&media).await;
+        let result = probe.video(&media).await;
 
         // Assert
         assert!(
@@ -947,7 +959,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let result = probe.probe_video(&media).await;
+        let result = probe.video(&media).await;
 
         // Assert
         assert!(
@@ -968,7 +980,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, Duration::from_millis(200));
 
         // Act
-        let result = probe.probe_video(&media).await;
+        let result = probe.video(&media).await;
 
         // Assert
         assert!(
@@ -989,7 +1001,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(missing, STUB_TIMEOUT);
 
         // Act
-        let result = probe.probe_video(&media).await;
+        let result = probe.video(&media).await;
 
         // Assert
         assert!(
@@ -1016,10 +1028,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let probed = probe
-            .probe_video(&media)
-            .await?
-            .ok_or("the video should exist")?;
+        let probed = probe.video(&media).await?.ok_or("the video should exist")?;
         assert_eq!(probed.width.value(), 10);
         let recorded = fs::read_to_string(tmp.path().join("args.txt"))?;
 
@@ -1110,10 +1119,7 @@ mod tests {
         let probe = LocalMediaProbe::new();
 
         // Act
-        let probed = probe
-            .probe_image(&path)
-            .await?
-            .ok_or("the image should exist")?;
+        let probed = probe.image(&path).await?.ok_or("the image should exist")?;
 
         // Assert
         assert_eq!(probed.width_px.value(), 3);
@@ -1136,7 +1142,7 @@ mod tests {
         let probe = LocalMediaProbe::new();
 
         // Act
-        let result = probe.probe_image(&path).await;
+        let result = probe.image(&path).await;
 
         // Assert
         assert!(matches!(result, Err(MediaProbeError::UnsupportedMedia)));
@@ -1151,7 +1157,7 @@ mod tests {
         let probe = LocalMediaProbe::new();
 
         // Act
-        let result = probe.probe_image(tmp.path()).await;
+        let result = probe.image(tmp.path()).await;
 
         // Assert
         assert!(matches!(result, Err(MediaProbeError::Unknown(_))));
@@ -1188,7 +1194,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let result = probe.probe_video(&media).await;
+        let result = probe.video(&media).await;
 
         // Assert
         assert!(
@@ -1215,10 +1221,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let probed = probe
-            .probe_video(&media)
-            .await?
-            .ok_or("the video should exist")?;
+        let probed = probe.video(&media).await?.ok_or("the video should exist")?;
 
         // Assert
         assert_eq!(probed.frame_count.value(), 30);
@@ -1241,7 +1244,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let result = probe.probe_video(&media).await;
+        let result = probe.video(&media).await;
 
         // Assert
         assert!(
@@ -1278,10 +1281,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let probed = probe
-            .probe_video(&media)
-            .await?
-            .ok_or("the video should exist")?;
+        let probed = probe.video(&media).await?.ok_or("the video should exist")?;
 
         // Assert
         assert_eq!(probed.color_id, expected);
@@ -1304,10 +1304,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let probed = probe
-            .probe_audio(&media)
-            .await?
-            .ok_or("the audio should exist")?;
+        let probed = probe.audio(&media).await?.ok_or("the audio should exist")?;
 
         // Assert
         assert_eq!(probed.codec, "aac");
@@ -1339,10 +1336,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let probed = probe
-            .probe_audio(&media)
-            .await?
-            .ok_or("the audio should exist")?;
+        let probed = probe.audio(&media).await?.ok_or("the audio should exist")?;
 
         // Assert
         assert_eq!(probed.bit_depth, Some(32));
@@ -1362,7 +1356,7 @@ mod tests {
         let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
 
         // Act
-        let result = probe.probe_audio(&media).await;
+        let result = probe.audio(&media).await;
 
         // Assert
         assert!(
@@ -1379,7 +1373,7 @@ mod tests {
         let probe = LocalMediaProbe::new();
 
         // Act
-        let probed = probe.probe_audio(&tmp.path().join("absent.mp3")).await?;
+        let probed = probe.audio(&tmp.path().join("absent.mp3")).await?;
 
         // Assert
         assert!(probed.is_none());

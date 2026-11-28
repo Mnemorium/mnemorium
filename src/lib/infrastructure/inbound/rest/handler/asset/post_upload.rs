@@ -179,7 +179,7 @@ pub(crate) async fn post_upload(
     caller: AuthenticatedUser,
     payload: JsonObject<PostUploadRequest>,
 ) -> Result<Response, ApiError> {
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     // The handler is where the wire form is parsed into the domain value object:
     // a malformed digest never reaches the use case.
     let integrity_hash = IntegrityHash::<DIGEST_HEX_LENGTH>::try_new(request.integrity_hash)

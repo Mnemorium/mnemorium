@@ -45,24 +45,6 @@ pub(crate) trait MusicPlaylistRepository: Send + Sync {
         filter: &MusicPlaylistFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
-    /// Remove the placement at `track_index` from `playlist_id`.
-    ///
-    /// Returns `Ok(true)` when a placement matched the index and was deleted,
-    /// and `Ok(false)` when no placement matched. The remaining indices are left
-    /// unchanged, so a gap may remain.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "part of the type's declared contract; no caller exercises it yet"
-        )
-    )]
-    fn delete_track(
-        &mut self,
-        playlist_id: NumericID,
-        track_index: u32,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
-
     /// Update an existing `playlist` targeted by its identifier, replacing its
     /// track placements with `playlist.tracks()` in order.
     ///
@@ -99,15 +81,6 @@ impl<T: MusicPlaylistRepository + ?Sized> MusicPlaylistRepository for &mut T {
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
         (**self).delete(filter)
     }
-
-    fn delete_track(
-        &mut self,
-        playlist_id: NumericID,
-        track_index: u32,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete_track(playlist_id, track_index)
-    }
-
     fn save(
         &mut self,
         playlist: MusicPlaylist,

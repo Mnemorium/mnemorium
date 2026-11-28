@@ -69,7 +69,7 @@ where
                 let gallery = unit_of_work
                     .galleries()
                     .search(&GalleryFilter {
-                        gallery_id: Some(command.gallery_id()),
+                        id: Some(command.gallery_id()),
                         ..GalleryFilter::default()
                     })
                     .await
@@ -81,7 +81,7 @@ where
                 authorize(
                     &mut unit_of_work.resources(),
                     &caller,
-                    ResourceRef::new(ResourceKind::Gallery, gallery.gallery_id()),
+                    ResourceRef::new(ResourceKind::Gallery, gallery.id()),
                     Action::View,
                     None,
                 )
@@ -92,7 +92,7 @@ where
                     .galleries()
                     .search_items(&GalleryItemFilter {
                         gallery_id: Some(command.gallery_id()),
-                        gallery_item_id: Some(command.gallery_item_id()),
+                        item_id: Some(command.gallery_item_id()),
                         ..GalleryItemFilter::default()
                     })
                     .await
@@ -103,7 +103,7 @@ where
                 let item = detail.item();
 
                 Ok(GetGalleryItemResponse::new(
-                    item.gallery_item_id(),
+                    item.item_id(),
                     item.gallery_id(),
                     item.media(),
                     detail.file_id(),
@@ -187,18 +187,18 @@ mod tests {
         })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
         (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
-            let gallery_id = gallery.gallery_id();
+            let gallery_id = gallery.id();
             galleries
                 .expect_search()
                 .times(1)
-                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .withf(move |filter| filter.id == Some(gallery_id))
                 .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
         })(&mut galleries, gallery(3, Some(4), "Mine", false));
         let found = detail(42, 3)?;
         galleries
             .expect_search_items()
             .times(1)
-            .withf(|filter| filter.gallery_id == Some(3) && filter.gallery_item_id == Some(42))
+            .withf(|filter| filter.gallery_id == Some(3) && filter.item_id == Some(42))
             .return_once(move |_| {
                 let value = found.clone();
                 Box::pin(async move { Ok(vec![value]) })
@@ -256,11 +256,11 @@ mod tests {
         })(&mut users, 0, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
         (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
-            let gallery_id = gallery.gallery_id();
+            let gallery_id = gallery.id();
             galleries
                 .expect_search()
                 .times(1)
-                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .withf(move |filter| filter.id == Some(gallery_id))
                 .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
         })(&mut galleries, gallery(3, Some(4), "Mine", false));
         let found = detail(42, 3)?;
@@ -312,11 +312,11 @@ mod tests {
         })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
         (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
-            let gallery_id = gallery.gallery_id();
+            let gallery_id = gallery.id();
             galleries
                 .expect_search()
                 .times(1)
-                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .withf(move |filter| filter.id == Some(gallery_id))
                 .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
         })(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries
@@ -442,11 +442,11 @@ mod tests {
         })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
         (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
-            let gallery_id = gallery.gallery_id();
+            let gallery_id = gallery.id();
             galleries
                 .expect_search()
                 .times(1)
-                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .withf(move |filter| filter.id == Some(gallery_id))
                 .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
         })(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries
@@ -493,11 +493,11 @@ mod tests {
         })(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
         (move |galleries: &mut MockGalleryRepository, gallery: Gallery| {
-            let gallery_id = gallery.gallery_id();
+            let gallery_id = gallery.id();
             galleries
                 .expect_search()
                 .times(1)
-                .withf(move |filter| filter.gallery_id == Some(gallery_id))
+                .withf(move |filter| filter.id == Some(gallery_id))
                 .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
         })(&mut galleries, gallery(3, Some(4), "Mine", false));
         let found = detail(42, 3)?;

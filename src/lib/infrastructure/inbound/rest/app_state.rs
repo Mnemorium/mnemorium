@@ -50,19 +50,6 @@ impl AppState {
         Arc::clone(&self.identity_use_case_factory)
     }
 
-    /// Return the immutable instance identity.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "part of the type's declared contract; no caller exercises it yet"
-        )
-    )]
-    pub(crate) fn instance_state(&self) -> Arc<InstanceState> {
-        Arc::clone(&self.instance_state)
-    }
-
     /// Return the factory building the Library use cases.
     #[must_use]
     pub(crate) fn library_use_case_factory(&self) -> Arc<dyn LibraryUseCaseFactory> {
@@ -126,23 +113,6 @@ mod tests {
         // Assert: the extracted provider is built from the immutable identity,
         // not from a startup-cached provider.
         assert_eq!(provider.validate(&token).await?, 11);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn instance_state_is_shared_immutably() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let state = app_state()?;
-
-        // Act
-        let first = state.instance_state();
-        let second = state.instance_state();
-
-        // Assert
-        assert!(
-            Arc::ptr_eq(&first, &second),
-            "the identity must be a single shared immutable value"
-        );
         Ok(())
     }
 }

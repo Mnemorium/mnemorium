@@ -110,7 +110,7 @@ pub(crate) async fn post_series_episode_apply(
     let series_id = parse_series_id(&series_id_value)?;
     let season_index = parse_season_index(&season_index_value)?;
     let episode_index = parse_episode_index(&episode_index_value)?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let provider = ProviderId::parse(&request.reference.provider)
         .filter(|provider| provider.serves_video())
         .ok_or_else(|| ApiError::reject_enum("provider"))?;

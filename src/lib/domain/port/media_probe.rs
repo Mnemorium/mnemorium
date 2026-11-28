@@ -1,8 +1,3 @@
-#![cfg_attr(
-    test,
-    expect(clippy::struct_field_names, reason = "It's a valid prefix method name")
-)]
-
 use std::future::Future;
 use std::path::Path;
 
@@ -25,7 +20,7 @@ pub(crate) trait MediaProbe: Send + Sync {
     /// [`MediaProbeError::Timeout`] when probing exceeds the allowed time, and
     /// [`MediaProbeError::OperationFailed`] or [`MediaProbeError::Unknown`] when
     /// the probe cannot complete.
-    fn probe_audio(
+    fn audio(
         &self,
         path: &Path,
     ) -> impl Future<Output = Result<Option<ProbedAudio>, MediaProbeError>> + Send;
@@ -42,7 +37,7 @@ pub(crate) trait MediaProbe: Send + Sync {
     /// [`MediaProbeError::Timeout`] when probing exceeds the allowed time, and
     /// [`MediaProbeError::OperationFailed`] or [`MediaProbeError::Unknown`] when
     /// the probe cannot complete.
-    fn probe_image(
+    fn image(
         &self,
         path: &Path,
     ) -> impl Future<Output = Result<Option<ProbedImage>, MediaProbeError>> + Send;
@@ -59,7 +54,7 @@ pub(crate) trait MediaProbe: Send + Sync {
     /// [`MediaProbeError::Timeout`] when probing exceeds the allowed time, and
     /// [`MediaProbeError::OperationFailed`] or [`MediaProbeError::Unknown`] when
     /// the probe cannot complete.
-    fn probe_video(
+    fn video(
         &self,
         path: &Path,
     ) -> impl Future<Output = Result<Option<ProbedVideo>, MediaProbeError>> + Send;

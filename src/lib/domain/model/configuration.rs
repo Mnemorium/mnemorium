@@ -302,22 +302,18 @@ impl Asset {
 }
 
 /// Error returned when initialising or updating a `Logging` value object.
-#[expect(
-    clippy::enum_variant_names,
-    reason = "each variant names the logging setting it rejects, so the shared `Level` prefix is the subject"
-)]
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum LoggingError {
     /// The verbosity filter disables logging as a whole (`off`/`none`).
     #[error("logging level must not disable logging")]
-    LevelDisablesLogging,
+    DisablesLogging,
     /// The verbosity filter directives are empty.
     #[error("logging level must not be empty")]
-    LevelEmpty,
+    EmptyFilter,
     /// The verbosity filter targets the reserved `security` target.
     #[error("logging level must not target the reserved security target")]
-    LevelTargetsSecurity,
+    TargetsSecurity,
 }
 
 /// Rotation period of the log files.
@@ -400,9 +396,9 @@ impl Logging {
     ///
     /// # Errors
     ///
-    /// Returns [`LoggingError::LevelEmpty`] when `level` is empty,
-    /// [`LoggingError::LevelDisablesLogging`] when `level` is a bare `off` or
-    /// `none`, and [`LoggingError::LevelTargetsSecurity`] when a directive
+    /// Returns [`LoggingError::EmptyFilter`] when `level` is empty,
+    /// [`LoggingError::DisablesLogging`] when `level` is a bare `off` or
+    /// `none`, and [`LoggingError::TargetsSecurity`] when a directive
     /// targets the reserved `security` target.
     pub(crate) fn try_new(
         ansi: bool,
@@ -411,17 +407,17 @@ impl Logging {
         rotation: Rotation,
     ) -> Result<Self, LoggingError> {
         if level.is_empty() {
-            return Err(LoggingError::LevelEmpty);
+            return Err(LoggingError::EmptyFilter);
         }
         let directives = level.trim();
         if matches!(directives.to_ascii_lowercase().as_str(), "off" | "none") {
-            return Err(LoggingError::LevelDisablesLogging);
+            return Err(LoggingError::DisablesLogging);
         }
         if directives
             .split(',')
             .any(|directive| directive.trim().starts_with(SECURITY_TARGET))
         {
-            return Err(LoggingError::LevelTargetsSecurity);
+            return Err(LoggingError::TargetsSecurity);
         }
         Ok(Self {
             ansi,
@@ -554,25 +550,21 @@ impl Jwt {
 }
 
 /// Error returned when initialising or updating a `RateLimit` value object.
-#[expect(
-    clippy::enum_variant_names,
-    reason = "each variant names the rate-limit setting it rejects, so the shared `Invalid` prefix is the subject"
-)]
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum RateLimitError {
-    /// The burst size is zero.
-    #[error("rate limit burst size must be greater than zero")]
-    InvalidBurstSize,
-    /// The header named as the client-address source is not supported.
-    #[error("rate limit client ip header must be one of x-forwarded-for, x-real-ip, forwarded")]
-    InvalidClientIpHeader,
-    /// The replenishment period is zero.
-    #[error("rate limit period must be greater than zero")]
-    InvalidPeriodSeconds,
     /// An entry of the trusted-proxy list is not a valid IP address.
     #[error("rate limit trusted proxy must be a valid IP address")]
-    InvalidTrustedProxy,
+    MalformedTrustedProxy,
+    /// The header named as the client-address source is not supported.
+    #[error("rate limit client ip header must be one of x-forwarded-for, x-real-ip, forwarded")]
+    UnsupportedClientIpHeader,
+    /// The burst size is zero.
+    #[error("rate limit burst size must be greater than zero")]
+    ZeroBurstSize,
+    /// The replenishment period is zero.
+    #[error("rate limit period must be greater than zero")]
+    ZeroPeriodSeconds,
 }
 
 /// Header the trusted reverse proxy overwrites with the client address.
@@ -607,14 +599,14 @@ impl ClientIpHeader {
     ///
     /// # Errors
     ///
-    /// Returns [`RateLimitError::InvalidClientIpHeader`] when `value` is not one
+    /// Returns [`RateLimitError::UnsupportedClientIpHeader`] when `value` is not one
     /// of the supported header names.
     pub(crate) fn parse(value: &str) -> Result<Self, RateLimitError> {
         match value.trim().to_ascii_lowercase().as_str() {
             "forwarded" => Ok(Self::Forwarded),
             "x-forwarded-for" => Ok(Self::XForwardedFor),
             "x-real-ip" => Ok(Self::XRealIp),
-            _ => Err(RateLimitError::InvalidClientIpHeader),
+            _ => Err(RateLimitError::UnsupportedClientIpHeader),
         }
     }
 }
@@ -724,8 +716,8 @@ impl RateLimit {
     ///
     /// # Errors
     ///
-    /// Returns [`RateLimitError::InvalidBurstSize`] when `burst_size` is zero,
-    /// and [`RateLimitError::InvalidPeriodSeconds`] when `period_seconds` is
+    /// Returns [`RateLimitError::ZeroBurstSize`] when `burst_size` is zero,
+    /// and [`RateLimitError::ZeroPeriodSeconds`] when `period_seconds` is
     /// zero.
     pub(crate) fn try_new(
         burst_size: u32,
@@ -734,10 +726,10 @@ impl RateLimit {
         trusted_proxies: Vec<IpAddr>,
     ) -> Result<Self, RateLimitError> {
         if burst_size == 0 {
-            return Err(RateLimitError::InvalidBurstSize);
+            return Err(RateLimitError::ZeroBurstSize);
         }
         if period_seconds == 0 {
-            return Err(RateLimitError::InvalidPeriodSeconds);
+            return Err(RateLimitError::ZeroPeriodSeconds);
         }
         Ok(Self {
             burst_size,
@@ -1485,13 +1477,13 @@ impl Configuration {
 ///
 /// # Errors
 ///
-/// Returns [`RateLimitError::InvalidTrustedProxy`] when a non-empty entry is
+/// Returns [`RateLimitError::MalformedTrustedProxy`] when a non-empty entry is
 /// not a valid IP address.
 pub(crate) fn parse_trusted_proxies(value: &str) -> Result<Vec<IpAddr>, RateLimitError> {
     value
         .split(TRUSTED_PROXIES_SEPARATOR)
         .map(str::trim)
         .filter(|entry| !entry.is_empty())
-        .map(|entry| IpAddr::from_str(entry).map_err(|_| RateLimitError::InvalidTrustedProxy))
+        .map(|entry| IpAddr::from_str(entry).map_err(|_| RateLimitError::MalformedTrustedProxy))
         .collect()
 }

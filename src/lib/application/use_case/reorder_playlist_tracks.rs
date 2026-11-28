@@ -39,10 +39,6 @@ where
     F: UnitOfWorkFactory,
     F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "MusicPlaylistError is non_exhaustive, so a catch-all arm is required"
-    )]
     fn execute<'future>(
         &'future self,
         command: ReorderPlaylistTracksCommand,
@@ -116,7 +112,9 @@ where
                                 );
                                 ReorderPlaylistTracksError::InvalidOrder
                             }
-                            _ => ReorderPlaylistTracksError::Unknown(anyhow::Error::new(error)),
+                            MusicPlaylistError::RecordingAlreadyPresent => {
+                                ReorderPlaylistTracksError::Unknown(anyhow::Error::new(error))
+                            }
                         })?;
 
                 playlist

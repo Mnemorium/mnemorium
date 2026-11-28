@@ -1220,10 +1220,6 @@ pub(crate) struct MusicMediumResponse {
 impl MusicMediumResponse {
     /// Build the representation of a medium summary.
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms borrow the format out of a non-Copy enum matched by reference"
-    )]
     pub(crate) fn new(medium: &MediumSummary) -> Self {
         let format = match medium.format() {
             MediumFormat::Cd => "CD".to_owned(),
@@ -1456,10 +1452,6 @@ pub(crate) enum VideoMetadataResponse {
 }
 
 impl From<&MediaMetadata> for VideoMetadataResponse {
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms borrow the metadata out of a non-Copy enum matched by reference"
-    )]
     fn from(metadata: &MediaMetadata) -> Self {
         match metadata {
             MediaMetadata::Episode {

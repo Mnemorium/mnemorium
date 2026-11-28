@@ -199,7 +199,6 @@ where
                     other @ (UploadError::InvalidChunkSize
                     | UploadError::ChunkNumberOutOfRange
                     | UploadError::IntegrityHash(_)
-                    | UploadError::UploadIncomplete
                     | UploadError::Unknown(_)) => {
                         BeginUploadError::Unknown(anyhow::Error::new(other))
                     }
@@ -214,13 +213,13 @@ where
                 // From here on a staging file may exist on disk for this
                 // identifier; the cleanup below must remove it unless the unit
                 // of work commits.
-                staged_upload_id = Some(upload.upload_id());
+                staged_upload_id = Some(upload.id());
 
                 unit_of_work
                     .resources()
                     .create(NewResource {
                         kind: ResourceKind::Upload,
-                        entity_id: upload.upload_id(),
+                        entity_id: upload.id(),
                         owner_id: Some(command.user_id()),
                         auth_parent: Some(ResourceRef::new(ResourceKind::Instance, 0)),
                         visibility: Visibility::Private,
@@ -229,7 +228,7 @@ where
                     .map_err(|error| BeginUploadError::Unknown(error.into()))?;
 
                 file_storage
-                    .create_upload_file(&staged_path(upload.upload_id()), upload.file_size())
+                    .create_upload_file(&staged_path(upload.id()), upload.file_size())
                     .await
                     .map_err(|error| BeginUploadError::Unknown(error.into()))?;
 
@@ -259,7 +258,7 @@ where
                     })?;
 
                 Ok(BeginUploadResponse::new(
-                    upload.upload_id(),
+                    upload.id(),
                     chunk_size,
                     expires_at,
                 ))

@@ -33,16 +33,3 @@ pub(crate) trait UnitOfWorkFactory: Send + Sync {
     /// instead of waiting on the busy timeout.
     fn begin_write(&self) -> impl Future<Output = Result<Self::Uow, UnitOfWorkError>> + Send;
 }
-
-/// Compile-time proof that [`UnitOfWork`] requires `Send + Sync`.
-///
-/// Never called: the body is type-checked against the trait's declared
-/// supertraits, so removing `Sync` from [`UnitOfWork`] breaks the build.
-#[cfg(test)]
-#[expect(dead_code, reason = "compile-time bound assertion; never called")]
-fn unit_of_work_is_send_and_sync<T: UnitOfWork>() {
-    /// Assert `T` implements `Send + Sync`.
-    fn assert_send_sync<T: Send + Sync + ?Sized>() {}
-
-    assert_send_sync::<T>();
-}

@@ -7,7 +7,7 @@ use chrono::Utc;
 use tracing::{info, warn};
 
 use crate::application::port::{SetupRootAdminCommand, SetupRootAdminError, SetupRootAdminUseCase};
-use crate::domain::model::{Credential, User, UserError};
+use crate::domain::model::{Credential, User};
 use crate::domain::port::{
     CredentialRepository as _, IdentityUnitOfWork, PasswordHasher, RepositoryError,
     SetupAttemptLimiter, SetupGrantRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
@@ -143,12 +143,7 @@ where
                     let mut updated_root = root;
                     updated_root
                         .set_email(Some(address))
-                        .map_err(|error| match error {
-                            UserError::InvalidEmail(_) => SetupRootAdminError::InvalidEmail,
-                            UserError::Unknown(_) => {
-                                SetupRootAdminError::Unknown(anyhow::Error::new(error))
-                            }
-                        })?;
+                        .map_err(|_| SetupRootAdminError::InvalidEmail)?;
                     unit_of_work
                         .users()
                         .save(updated_root)
@@ -213,7 +208,7 @@ where
 mod tests {
     use super::*;
 
-    use crate::domain::model::{Role, SetupGrant};
+    use crate::domain::model::{Role, SetupGrant, UserError};
     use crate::domain::port::{
         MockCredentialRepository, MockPasswordHasher, MockSetupAttemptLimiter,
         MockSetupGrantRepository, MockUserRepository, PasswordHasherError,

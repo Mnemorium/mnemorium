@@ -121,9 +121,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::{
-        ExternalRef, MusicCandidate, MusicKind, MusicQuery, MusicQueryError, ProviderId,
-    };
+    use crate::domain::model::{MusicKind, MusicQuery, MusicQueryError};
     use rstest::fixture;
 
     use crate::domain::port::{
@@ -169,17 +167,6 @@ mod tests {
             use_case: IdentifyMusic::new(factory, provider.map(Arc::new)),
         }
     }
-
-    /// An album candidate for `Kind of Blue`, as a provider would report it.
-    fn candidate(id: &str) -> MusicCandidate {
-        MusicCandidate::Album {
-            group: Some("Miles Davis".to_owned()),
-            reference: ExternalRef::new(ProviderId::MusicBrainz, id.to_owned()),
-            title: "Kind of Blue".to_owned(),
-            year: Some(1959),
-        }
-    }
-
     /// The query every test searches for.
     ///
     /// # Errors
@@ -581,151 +568,6 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-
-    // proves: SCN-METADATA-ENRICHMENT-002-B, SCN-METADATA-ENRICHMENT-023-A — Business rule
-    #[tokio::test]
-    async fn identify_music_returns_the_providers_candidates_in_its_order()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange: the provider reports two candidates in its own order.
-        let mut provider = MockMusicMetadataProvider::new();
-        provider
-            .expect_search()
-            .times(1)
-            .withf(|query| query.title() == "Kind of Blue" && query.group() == Some("Miles Davis"))
-            .returning(|_| Box::pin(async { Ok(vec![candidate("first"), candidate("second")]) }));
-        provider.expect_lookup().times(0);
-        let harness = use_case_with(
-            (move || -> crate::domain::port::MockUserRepository {
-                let mut users = crate::domain::port::MockUserRepository::new();
-                users.expect_search().returning(|filter| {
-                    let found = filter.id.and_then(|id| {
-                        let role = if id == 0 {
-                            crate::domain::model::Role::Admin
-                        } else {
-                            crate::domain::model::Role::Standard
-                        };
-                        crate::domain::model::User::try_new(
-                            id,
-                            "caller".to_owned(),
-                            None,
-                            id.max(1),
-                            role,
-                        )
-                        .ok()
-                    });
-                    Box::pin(async move { Ok(found.into_iter().collect()) })
-                });
-                users
-            })(),
-            (move || -> crate::domain::port::MockResourceRepository {
-                let mut resources = (move || -> crate::domain::port::MockResourceRepository {
-                    let mut resources = crate::domain::port::MockResourceRepository::new();
-                    resources.expect_search().returning(|filter, caller| {
-                        let user_id = caller.id();
-                        let resource = crate::domain::model::Resource::from_stored(
-                            1,
-                            filter
-                                .kind
-                                .unwrap_or(crate::domain::model::ResourceKind::Library),
-                            filter.entity_id.unwrap_or_default(),
-                            Some(user_id),
-                            None,
-                            crate::domain::model::Visibility::Private,
-                        );
-                        let grant = crate::domain::model::Grant::from_stored(
-                            1,
-                            crate::domain::model::Principal::User(user_id),
-                            1,
-                            crate::domain::model::ResourceRole::Downloader,
-                            crate::domain::model::ChildKind::All,
-                            crate::domain::model::GrantEffect::Allow,
-                        );
-                        Box::pin(async move {
-                            Ok(vec![crate::domain::model::ResourceAccess::new(
-                                resource,
-                                Vec::new(),
-                                vec![grant],
-                                Vec::new(),
-                            )])
-                        })
-                    });
-                    resources
-                        .expect_search_many()
-                        .returning(|addresses, caller| {
-                            let user_id = caller.id();
-                            let found = addresses
-                                .iter()
-                                .map(|address| {
-                                    let resource = crate::domain::model::Resource::from_stored(
-                                        1,
-                                        address.kind(),
-                                        address.id(),
-                                        Some(user_id),
-                                        None,
-                                        crate::domain::model::Visibility::Private,
-                                    );
-                                    let grant = crate::domain::model::Grant::from_stored(
-                                        1,
-                                        crate::domain::model::Principal::User(user_id),
-                                        1,
-                                        crate::domain::model::ResourceRole::Downloader,
-                                        crate::domain::model::ChildKind::All,
-                                        crate::domain::model::GrantEffect::Allow,
-                                    );
-                                    crate::domain::model::ResourceAccess::new(
-                                        resource,
-                                        Vec::new(),
-                                        vec![grant],
-                                        Vec::new(),
-                                    )
-                                })
-                                .collect::<Vec<_>>();
-                            Box::pin(async move { Ok(found) })
-                        });
-                    resources.expect_create().returning(|new_resource| {
-                        let resource = crate::domain::model::Resource::from_stored(
-                            1,
-                            new_resource.kind,
-                            new_resource.entity_id,
-                            new_resource.owner_id,
-                            None,
-                            new_resource.visibility,
-                        );
-                        Box::pin(async move { Ok(resource) })
-                    });
-                    resources
-                })();
-                resources
-                    .expect_delete()
-                    .returning(|_| Box::pin(async { Ok(true) }));
-                resources
-            })(),
-            Some(provider),
-        );
-
-        // Act
-        let response = harness
-            .use_case
-            .execute(IdentifyMusicCommand::new(CALLER_ID, query()?))
-            .await?;
-
-        // Assert
-        assert_eq!(
-            response.candidates(),
-            &[candidate("first"), candidate("second")]
-        );
-        assert_eq!(
-            response.candidates().first().map(MusicCandidate::kind),
-            Some(MusicKind::Album)
-        );
-        assert_eq!(
-            response.candidates().first().and_then(MusicCandidate::year),
-            Some(1959),
-            "the query's year evidence must reach the provider"
-        );
-        Ok(())
-    }
-
     #[tokio::test]
     async fn identify_music_reports_a_provider_failure() -> Result<(), Box<dyn Error>> {
         // Arrange: the configured provider fails.

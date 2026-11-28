@@ -60,7 +60,7 @@ where
                 let image = unit_of_work
                     .images()
                     .search(&ImageFilter {
-                        image_id: Some(command.image_id()),
+                        id: Some(command.image_id()),
                         ..ImageFilter::default()
                     })
                     .await
@@ -91,7 +91,7 @@ where
                 .map_err(|_| GetImageError::NoSuchImage)?;
 
                 Ok(GetImageResponse::new(
-                    image.image_id(),
+                    image.id(),
                     image.name().to_owned(),
                     image.width_px(),
                     image.height_px(),

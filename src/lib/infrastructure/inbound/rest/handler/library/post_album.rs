@@ -135,7 +135,7 @@ pub(crate) async fn post_album(
     caller: AuthenticatedUser,
     payload: JsonObject<PostAlbumRequest>,
 ) -> Result<Response, ApiError> {
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let production_type = request.production_type.map(ProductionType::from);
     let release_date = match request.release_date.as_deref() {
         Some(value) => Some(parse_wire_date(value).map_err(|()| {

@@ -43,20 +43,6 @@ pub(crate) trait SeriesRepository: Send + Sync {
         series: Series,
     ) -> impl Future<Output = Result<Series, RepositoryError>> + Send;
 
-    /// Delete every show matching `filter`.
-    ///
-    /// Returns `Ok(true)` when at least one show was deleted, and `Ok(false)`
-    /// when none matched. An all-`None` filter deletes every show; seasons and
-    /// episodes cascade.
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
-    fn delete(
-        &mut self,
-        filter: &SeriesFilter,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
-
     /// Delete every episode matching `filter`.
     ///
     /// The season and the show are retained. Returns `Ok(true)` when at least
@@ -133,14 +119,6 @@ impl<T: SeriesRepository + ?Sized> SeriesRepository for &mut T {
     ) -> impl Future<Output = Result<Series, RepositoryError>> + Send {
         (**self).create(series)
     }
-
-    fn delete(
-        &mut self,
-        filter: &SeriesFilter,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete(filter)
-    }
-
     fn delete_episode(
         &mut self,
         filter: &EpisodeFilter,

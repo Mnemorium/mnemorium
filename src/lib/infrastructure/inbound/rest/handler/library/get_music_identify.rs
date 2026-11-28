@@ -80,10 +80,6 @@ enum MusicCandidateResponse {
 }
 
 impl From<&MusicCandidate> for MusicCandidateResponse {
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms borrow the candidate out of a non-Copy enum matched by reference"
-    )]
     fn from(candidate: &MusicCandidate) -> Self {
         match candidate {
             MusicCandidate::Album {

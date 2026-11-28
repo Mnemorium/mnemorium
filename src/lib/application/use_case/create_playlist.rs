@@ -42,10 +42,6 @@ where
     F: UnitOfWorkFactory,
     F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "RepositoryError is non_exhaustive, so a catch-all arm is required"
-    )]
     fn execute<'future>(
         &'future self,
         command: CreatePlaylistCommand,
@@ -175,7 +171,13 @@ where
                         RepositoryError::Conflict | RepositoryError::DataIntegrityViolation => {
                             CreatePlaylistError::InvalidCover
                         }
-                        other => CreatePlaylistError::Unknown(other.into()),
+                        // Every other variant maps to `Unknown`; naming them
+                        // keeps a new port variant a compile error here.
+                        RepositoryError::ConcurrencyConflict
+                        | RepositoryError::OperationFailed
+                        | RepositoryError::Timeout
+                        | RepositoryError::Unavailable
+                        | RepositoryError::Unknown(_) => CreatePlaylistError::Unknown(error.into()),
                     })?;
 
                 unit_of_work

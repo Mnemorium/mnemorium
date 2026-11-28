@@ -109,7 +109,7 @@ pub(crate) async fn post_movie_apply(
         );
         ApiError::BadRequest("invalid film identifier".to_owned())
     })?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let provider = ProviderId::parse(&request.reference.provider)
         .filter(|provider| provider.serves_video())
         .ok_or_else(|| ApiError::reject_enum("provider"))?;

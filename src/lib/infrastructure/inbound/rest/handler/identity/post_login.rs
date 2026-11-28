@@ -162,7 +162,7 @@ pub(crate) async fn post_login(
     State(state): State<AppState>,
     payload: JsonObject<LoginRequest>,
 ) -> Result<Response, ApiError> {
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     match state
         .identity_use_case_factory()
         .login_user()

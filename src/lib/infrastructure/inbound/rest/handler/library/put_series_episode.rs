@@ -148,7 +148,7 @@ pub(crate) async fn put_series_episode(
     let series_id = parse_series_id(&series_id_value)?;
     let season_index = parse_season_index(&season_index_value)?;
     let episode_index = parse_episode_index(&episode_index_value)?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let air_date = match request.air_date.as_deref() {
         Some(value) => Some(parse_wire_date(value).map_err(|()| {
             warn!(

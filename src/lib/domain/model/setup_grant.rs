@@ -20,13 +20,6 @@ pub(crate) enum SetupGrantError {
     /// The nonce is shorter than the declared minimum.
     #[error("setup grant nonce must be at least {MIN_SETUP_GRANT_NONCE_LENGTH} characters long")]
     NonceTooShort,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
 }
 
 /// The single Root Admin setup grant.

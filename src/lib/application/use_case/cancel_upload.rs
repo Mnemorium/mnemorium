@@ -96,7 +96,7 @@ where
                 let found = match unit_of_work
                     .uploads()
                     .search(&UploadFilter {
-                        upload_id: Some(command.upload_id()),
+                        id: Some(command.upload_id()),
                         ..UploadFilter::default()
                     })
                     .await
@@ -116,7 +116,7 @@ where
                 if authorize(
                     &mut unit_of_work.resources(),
                     &caller,
-                    ResourceRef::new(ResourceKind::Upload, upload.upload_id()),
+                    ResourceRef::new(ResourceKind::Upload, upload.id()),
                     Action::ReplaceMedia,
                     None,
                 )
@@ -139,7 +139,7 @@ where
                     if unit_of_work
                         .uploads()
                         .delete(&UploadFilter {
-                            upload_id: Some(command.upload_id()),
+                            id: Some(command.upload_id()),
                             ..UploadFilter::default()
                         })
                         .await
@@ -170,11 +170,11 @@ where
                 // The staged content is removed before the row so no session
                 // ever points at a file that is already gone; a failed deletion
                 // is best-effort and the reaper removes the orphan later.
-                discard_staged(&file_storage, upload.upload_id()).await;
+                discard_staged(&file_storage, upload.id()).await;
                 let deleted = unit_of_work
                     .uploads()
                     .delete(&UploadFilter {
-                        upload_id: Some(upload.upload_id()),
+                        id: Some(upload.id()),
                         ..UploadFilter::default()
                     })
                     .await;
@@ -182,7 +182,7 @@ where
                     Ok(true) => {
                         if let Err(error) = unit_of_work
                             .resources()
-                            .delete(ResourceRef::new(ResourceKind::Upload, upload.upload_id()))
+                            .delete(ResourceRef::new(ResourceKind::Upload, upload.id()))
                             .await
                         {
                             return Flow::Failed(CancelUploadError::Unknown(error.into()));

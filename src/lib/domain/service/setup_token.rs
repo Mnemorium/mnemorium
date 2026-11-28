@@ -29,10 +29,6 @@ impl SetupTokenDeriver {
     /// The token is eight Crockford base32 characters: the first 40 bits of
     /// `HMAC-SHA256(pepper, domain-separation-prefix || nonce)`.
     #[must_use]
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "the accumulator holds at most twelve bits and every shift is bounded by the 40-bit digest"
-    )]
     pub(crate) fn derive(pepper: &str, nonce: &str) -> String {
         let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(pepper.as_bytes()) else {
             return String::new();
@@ -41,23 +37,21 @@ impl SetupTokenDeriver {
         mac.update(nonce.as_bytes());
         let digest = mac.finalize().into_bytes();
 
-        let mut token = String::with_capacity(SETUP_TOKEN_LENGTH);
-        let mut accumulator: u32 = 0;
-        let mut available_bits: u32 = 0;
+        // The first forty bits of the digest, held in a value wide enough that
+        // no group extraction can overflow.
+        let mut bits: u64 = 0;
         for byte in digest.iter().take(5) {
-            accumulator = (accumulator << 8u32) | u32::from(*byte);
-            available_bits += 8u32;
-            while available_bits >= 5u32 && token.len() < SETUP_TOKEN_LENGTH {
-                let shift = available_bits - 5u32;
-                let index = (accumulator >> shift) & 0x1Fu32;
-                if let Some(symbol) = usize::try_from(index)
-                    .ok()
-                    .and_then(|position| CROCKFORD_ALPHABET.get(position))
-                {
-                    token.push(char::from(*symbol));
-                }
-                available_bits -= 5u32;
+            bits = bits.wrapping_shl(8) | u64::from(*byte);
+        }
+
+        let mut token = String::with_capacity(SETUP_TOKEN_LENGTH);
+        let mut shift = 35u32;
+        for _ in 0..SETUP_TOKEN_LENGTH {
+            let index = usize::try_from(bits.wrapping_shr(shift) & 0x1F).ok();
+            if let Some(symbol) = index.and_then(|position| CROCKFORD_ALPHABET.get(position)) {
+                token.push(char::from(*symbol));
             }
+            shift = shift.saturating_sub(5);
         }
         token
     }

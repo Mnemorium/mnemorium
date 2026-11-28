@@ -39,6 +39,7 @@ use crate::infrastructure::inbound::rest::handler::library::library_routes;
 use crate::infrastructure::inbound::rest::handler::user::user_routes;
 use crate::infrastructure::inbound::rest::middleware::{LoginRateLimiter, hal_errors, tracing};
 use crate::infrastructure::inbound::rest::{ApiError, AppState, Link, SelfLinks, hal_json};
+use crate::infrastructure::{integral_i64, integral_u64};
 
 /// Wire format of every timestamp representation: RFC 3339 UTC (`REQ-API-017`).
 ///
@@ -118,11 +119,14 @@ pub(crate) struct ApiIndexResponse {
 /// struct). JSON Schema also treats a whole-number float such as `1.0` as an
 /// integer, while serde rejects it for an integer field; the extractor
 /// normalises those floats before deserializing.
-#[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "handlers destructure the crate-private tuple; no public surface is exposed"
-)]
-pub(crate) struct JsonObject<T>(pub(crate) T);
+pub(crate) struct JsonObject<T>(T);
+
+impl<T> JsonObject<T> {
+    /// Return the request body the extractor deserialized.
+    pub(crate) fn into_inner(self) -> T {
+        self.0
+    }
+}
 
 /// The query a business operation with no query parameters accepts.
 ///
@@ -229,11 +233,6 @@ pub(crate) async fn get_api_index(_query: Query<NoParametersQuery>) -> Response 
 /// The conversion only applies when the value is finite, integral and inside
 /// the target range, so a genuinely fractional or out-of-range value still
 /// fails deserialization.
-#[expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    reason = "the value is finite, integral and range-checked before the cast, so neither truncation nor sign loss can occur"
-)]
 fn normalise_numbers(value: Value) -> Value {
     match value {
         Value::Number(number) => {
@@ -252,13 +251,19 @@ fn normalise_numbers(value: Value) -> Value {
             // for serde to reject. An integral `f64` inside these bounds is
             // exactly representable as its target integer.
             let i64_bound = 2.0f64.powi(63);
-            if float > -i64_bound && float < i64_bound {
-                return Value::Number(Number::from(float as i64));
+            if float > -i64_bound
+                && float < i64_bound
+                && let Some(integer) = integral_i64(float)
+            {
+                return Value::Number(Number::from(integer));
             }
             // 2^64 is the exclusive upper bound.
             let u64_bound = 2.0f64.powi(64);
-            if float > 0.0 && float < u64_bound {
-                return Value::Number(Number::from(float as u64));
+            if float > 0.0
+                && float < u64_bound
+                && let Some(integer) = integral_u64(float)
+            {
+                return Value::Number(Number::from(integer));
             }
             Value::Number(number)
         }
@@ -294,11 +299,7 @@ fn normalise_numbers(value: Value) -> Value {
 /// `/api/v1` API base: the interactive reference at `/doc` and the document
 /// `rest::openapi` assembles, as JSON, at `/doc/openapi.json`.
 pub(crate) fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum::Router {
-    #[cfg_attr(
-        not(feature = "api-docs"),
-        expect(unused_mut, reason = "the documentation route is feature-gated")
-    )]
-    let mut api: OpenApiRouter<()> = OpenApiRouter::new()
+    let api: OpenApiRouter<()> = OpenApiRouter::new()
         .routes(routes!(get_health::get_health))
         .nest(
             "/api/v1",
@@ -314,25 +315,34 @@ pub(crate) fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum
         // too, so a client following the document reaches the index.
         .route("/api/v1/", routing::get(get_api_index));
 
-    #[cfg(feature = "api-docs")]
-    {
-        use crate::infrastructure::inbound::rest::openapi;
-        let document = openapi();
-        let json_document = document.clone();
-        let documentation: axum::Router = utoipa_scalar::Scalar::with_url("/doc", document).into();
-        let specification: axum::Router = axum::Router::new().route(
-            "/doc/openapi.json",
-            routing::get(move || {
-                let response_document = json_document.clone();
-                async move { axum::Json(response_document) }
-            }),
-        );
-        api = api.merge(OpenApiRouter::from(documentation.merge(specification)));
-    }
-
-    api.layer(middleware::from_fn(tracing))
+    mount_documentation(api)
+        .layer(middleware::from_fn(tracing))
         .layer(middleware::from_fn(hal_errors))
         .into()
+}
+
+/// Mount the documentation routes the `api-docs` feature carries.
+#[cfg(feature = "api-docs")]
+fn mount_documentation(api: OpenApiRouter<()>) -> OpenApiRouter<()> {
+    use crate::infrastructure::inbound::rest::openapi;
+
+    let document = openapi();
+    let json_document = document.clone();
+    let documentation: axum::Router = utoipa_scalar::Scalar::with_url("/doc", document).into();
+    let specification: axum::Router = axum::Router::new().route(
+        "/doc/openapi.json",
+        routing::get(move || {
+            let response_document = json_document.clone();
+            async move { axum::Json(response_document) }
+        }),
+    );
+    api.merge(OpenApiRouter::from(documentation.merge(specification)))
+}
+
+/// Leave the router as it is: the `api-docs` feature is off.
+#[cfg(not(feature = "api-docs"))]
+fn mount_documentation(api: OpenApiRouter<()>) -> OpenApiRouter<()> {
+    api
 }
 
 #[cfg(test)]

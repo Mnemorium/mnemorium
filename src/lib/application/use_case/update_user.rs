@@ -8,7 +8,7 @@ use tracing::info;
 use crate::application::port::{
     UpdateUserCommand, UpdateUserError, UpdateUserResponse, UpdateUserUseCase,
 };
-use crate::domain::model::{Action, ResourceKind, ResourceRef, Role, UserError};
+use crate::domain::model::{Action, ResourceKind, ResourceRef, Role};
 use crate::domain::port::{
     IdentityUnitOfWork, RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
     UserRepository as _, UserUnitOfWork,
@@ -36,10 +36,6 @@ where
     F: UnitOfWorkFactory,
     F::Uow: IdentityUnitOfWork + UserUnitOfWork,
 {
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "RepositoryError is non_exhaustive, so a catch-all arm is required"
-    )]
     fn execute<'future>(
         &'future self,
         command: UpdateUserCommand,
@@ -125,12 +121,8 @@ where
                     user.set_username(username);
                 }
                 if let Some(email) = command.email().map(str::to_owned) {
-                    user.set_email(Some(email)).map_err(|error| match error {
-                        UserError::InvalidEmail(_) => UpdateUserError::InvalidEmail,
-                        UserError::Unknown(_) => {
-                            UpdateUserError::Unknown(anyhow::Error::new(error))
-                        }
-                    })?;
+                    user.set_email(Some(email))
+                        .map_err(|_| UpdateUserError::InvalidEmail)?;
                 }
                 if let Some(role) = command.role() {
                     user.set_role(role);
@@ -178,7 +170,15 @@ where
                         .await
                         .map_err(|error| match error {
                             RepositoryError::AlreadyExist => UpdateUserError::UserAlreadyExists,
-                            other => UpdateUserError::Unknown(other.into()),
+                            // Every other variant maps to `Unknown`; naming them
+                            // keeps a new port variant a compile error here.
+                            RepositoryError::Conflict
+                            | RepositoryError::DataIntegrityViolation
+                            | RepositoryError::ConcurrencyConflict
+                            | RepositoryError::OperationFailed
+                            | RepositoryError::Timeout
+                            | RepositoryError::Unavailable
+                            | RepositoryError::Unknown(_) => UpdateUserError::Unknown(error.into()),
                         })?;
 
                 Ok(UpdateUserResponse::new(
@@ -219,7 +219,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::{Role, User};
+    use crate::domain::model::{Role, User, UserError};
 
     use crate::domain::port::MockUserRepository;
 

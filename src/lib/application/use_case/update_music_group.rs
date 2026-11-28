@@ -40,10 +40,6 @@ where
     F: UnitOfWorkFactory,
     F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "RepositoryError is non_exhaustive, so a catch-all arm is required"
-    )]
     fn execute<'future>(
         &'future self,
         command: UpdateMusicGroupCommand,
@@ -183,7 +179,16 @@ where
                             RepositoryError::Conflict | RepositoryError::DataIntegrityViolation => {
                                 UpdateMusicGroupError::Conflict
                             }
-                            other => UpdateMusicGroupError::Unknown(other.into()),
+                            // Every other variant maps to `Unknown`; naming them
+                            // keeps a new port variant a compile error here.
+                            RepositoryError::AlreadyExist
+                            | RepositoryError::ConcurrencyConflict
+                            | RepositoryError::OperationFailed
+                            | RepositoryError::Timeout
+                            | RepositoryError::Unavailable
+                            | RepositoryError::Unknown(_) => {
+                                UpdateMusicGroupError::Unknown(error.into())
+                            }
                         },
                     )?;
 

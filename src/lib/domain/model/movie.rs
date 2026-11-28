@@ -9,17 +9,10 @@ use crate::domain::model::Video;
 pub(crate) enum MovieError {
     /// A genre identifier is empty.
     #[error("a genre identifier must not be empty")]
-    InvalidGenre,
+    EmptyGenre,
     /// The `name` is empty.
     #[error("name must not be empty")]
-    InvalidName,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
+    NameEmpty,
 }
 
 /// A film the server holds.
@@ -90,8 +83,8 @@ impl Movie {
     ///
     /// # Errors
     ///
-    /// Returns [`MovieError::InvalidName`] when `name` is empty, and
-    /// [`MovieError::InvalidGenre`] when a genre identifier is empty.
+    /// Returns [`MovieError::NameEmpty`] when `name` is empty, and
+    /// [`MovieError::EmptyGenre`] when a genre identifier is empty.
     pub(crate) fn try_new(
         id: NumericID,
         name: String,
@@ -103,10 +96,10 @@ impl Movie {
         video: Video,
     ) -> Result<Self, MovieError> {
         if name.is_empty() {
-            return Err(MovieError::InvalidName);
+            return Err(MovieError::NameEmpty);
         }
         if genre_ids.iter().any(String::is_empty) {
-            return Err(MovieError::InvalidGenre);
+            return Err(MovieError::EmptyGenre);
         }
         Ok(Self {
             country_of_origin,

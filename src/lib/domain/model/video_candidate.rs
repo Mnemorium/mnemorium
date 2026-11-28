@@ -87,10 +87,6 @@ pub(crate) enum Target {
 impl Target {
     /// Return the reference the target resolves through.
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms borrow the reference out of a non-Copy enum matched by reference"
-    )]
     pub(crate) fn reference(&self) -> &ExternalRef {
         match self {
             Self::Episode { reference, .. } | Self::Movie(reference) | Self::Series(reference) => {

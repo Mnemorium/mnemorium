@@ -16,13 +16,6 @@ pub(crate) enum FileError {
     /// The path is empty.
     #[error("path must not be empty")]
     PathEmpty,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
 }
 
 /// Whether the server stored the file's bytes.
@@ -127,44 +120,10 @@ impl File {
         self.origin
     }
 
-    /// Return the resource that owns the file, absent when nothing references it.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the asset decision follows the resource graph now; the accessor stays part of the model contract"
-        )
-    )]
-    pub(crate) fn owner(&self) -> Option<AssetOwner> {
-        self.owner
-    }
-
     /// Return the path relative to the library root.
     #[must_use]
     pub(crate) fn path(&self) -> &str {
         &self.path
-    }
-
-    /// Update the `integrity_hash`.
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
-    fn set_integrity_hash(&mut self, integrity_hash: IntegrityHash<DIGEST_HEX_LENGTH>) {
-        self.integrity_hash = Some(integrity_hash);
-    }
-
-    /// Update whether the file is publicly accessible.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "part of the type's declared contract; no caller exercises it yet"
-        )
-    )]
-    pub(crate) fn set_is_public(&mut self, is_public: bool) {
-        self.is_public = is_public;
     }
 
     /// Update the path.

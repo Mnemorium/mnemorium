@@ -84,7 +84,6 @@ fn map_source_error(error: ConfigurationSourceError) -> LoadConfigurationError {
             LoadConfigurationError::InvalidConfiguration(source)
         }
         other @ (ConfigurationSourceError::FileWriteFailed(_)
-        | ConfigurationSourceError::OperationFailed
         | ConfigurationSourceError::Unknown(_)) => {
             LoadConfigurationError::Unknown(anyhow::Error::new(other))
         }
@@ -278,10 +277,10 @@ fn merge(
     )
     .map_err(|error| {
         let setting = match error {
-            RateLimitError::InvalidBurstSize => "security.rate_limit.burst_size",
-            RateLimitError::InvalidClientIpHeader => "security.rate_limit.client_ip_header",
-            RateLimitError::InvalidPeriodSeconds => "security.rate_limit.period_seconds",
-            RateLimitError::InvalidTrustedProxy => "security.rate_limit.trusted_proxies",
+            RateLimitError::ZeroBurstSize => "security.rate_limit.burst_size",
+            RateLimitError::UnsupportedClientIpHeader => "security.rate_limit.client_ip_header",
+            RateLimitError::ZeroPeriodSeconds => "security.rate_limit.period_seconds",
+            RateLimitError::MalformedTrustedProxy => "security.rate_limit.trusted_proxies",
         };
         invalid(setting, error)
     })?;
@@ -735,26 +734,6 @@ mod tests {
         );
         Ok(())
     }
-
-    #[tokio::test]
-    async fn load_configuration_file_failure_is_unknown() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut file = MockConfigurationSource::new();
-        file.expect_load()
-            .times(1)
-            .returning(|| Box::pin(async { Err(ConfigurationSourceError::OperationFailed) }));
-        let mut environment = MockEnvironmentConfiguration::new();
-        environment.expect_load().times(0);
-        let use_case = use_case(file, environment);
-
-        // Act
-        let result = use_case.execute().await;
-
-        // Assert
-        assert!(matches!(result, Err(LoadConfigurationError::Unknown(_))));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn load_configuration_template_failure_is_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange

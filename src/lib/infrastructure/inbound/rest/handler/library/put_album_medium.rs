@@ -142,7 +142,7 @@ pub(crate) async fn put_album_medium(
         "medium_index",
         "invalid music medium index",
     )?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let response = state
         .library_use_case_factory()
         .put_album_medium()

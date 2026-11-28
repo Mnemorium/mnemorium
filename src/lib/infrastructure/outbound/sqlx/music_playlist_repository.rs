@@ -88,23 +88,6 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
         let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
     }
-
-    async fn delete_track(
-        &mut self,
-        playlist_id: NumericID,
-        track_index: u32,
-    ) -> Result<bool, RepositoryError> {
-        let result = sqlx::query(
-            "DELETE FROM music_track
-             WHERE music_playlist_id = ?1 AND track_index = ?2",
-        )
-        .bind(playlist_id)
-        .bind(i64::from(track_index))
-        .execute(&mut **self.transaction)
-        .await?;
-        Ok(result.rows_affected() > 0)
-    }
-
     async fn save(&mut self, playlist: MusicPlaylist) -> Result<MusicPlaylist, RepositoryError> {
         sqlx::query(
             "INSERT INTO music_playlist (
@@ -1003,45 +986,6 @@ mod tests {
         assert_eq!(result.tracks().first().map(MusicRecording::id), Some(30));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn remove_track_leaves_the_remaining_indices_unchanged() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction, 1).await?;
-        seed_one_recording(&mut transaction, 30, "First").await?;
-        seed_one_recording(&mut transaction, 31, "Second").await?;
-        let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
-        let created = repository.create(playlist("Mix", 1, false)).await?;
-        let mut aggregate = load(&mut repository, created.id()).await?;
-        aggregate.add_track(track(30, 0)?)?;
-        aggregate.add_track(track(31, 1)?)?;
-        repository.save(aggregate).await?;
-
-        // Act
-        let removed = repository.delete_track(created.id(), 0).await?;
-        let missing = repository.delete_track(created.id(), 0).await?;
-        let found = repository
-            .search(&MusicPlaylistFilter {
-                id: Some(created.id()),
-                ..MusicPlaylistFilter::default()
-            })
-            .await?;
-
-        // Assert
-        assert!(removed);
-        assert!(!missing, "a missing placement must report false");
-        let indexes: Vec<_> = found
-            .first()
-            .map(MusicPlaylist::tracks)
-            .unwrap_or_default()
-            .iter()
-            .filter_map(|track| track.index().playlist_index())
-            .collect();
-        assert_eq!(indexes, vec![1], "the remaining track keeps its index");
-        Ok(())
-    }
-
     #[tokio::test]
     async fn replace_tracks_reindexes_to_a_contiguous_sequence() -> Result<(), Box<dyn Error>> {
         // Arrange

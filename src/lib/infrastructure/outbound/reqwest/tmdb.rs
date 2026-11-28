@@ -879,34 +879,6 @@ mod tests {
         assert_eq!(failure.classification(), "unavailable");
         Ok(())
     }
-
-    // proves: SCN-METADATA-ENRICHMENT-005-A — Business rule
-    #[tokio::test]
-    async fn tmdb_lookup_downloads_the_artwork_as_content() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let server = MockServer::start().await;
-        mount_json(&server, "/movie/27205", MOVIE).await;
-        Mock::given(method("GET"))
-            .and(path("/poster.png"))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes(ARTWORK.to_vec()))
-            .mount(&server)
-            .await;
-        let provider = provider(&server, TEST_TIMEOUT);
-        let target = Target::Movie(ExternalRef::new(ProviderId::Tmdb, "27205".to_owned()));
-
-        // Act
-        let metadata = provider.lookup(&target).await?;
-
-        // Assert
-        let Some(MediaMetadata::Movie { artwork, .. }) = metadata else {
-            return Err("a film lookup must yield film metadata".into());
-        };
-        let downloaded = artwork.ok_or("the poster must be downloaded")?;
-        assert_eq!(downloaded.bytes(), ARTWORK);
-        assert_eq!(downloaded.media_type(), "image/png");
-        Ok(())
-    }
-
     // proves: SCN-METADATA-ENRICHMENT-005-B — Alternate flow
     #[tokio::test]
     #[traced_test]

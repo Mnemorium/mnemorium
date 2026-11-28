@@ -11,13 +11,6 @@ pub(crate) enum CredentialError {
     /// The password hash is empty.
     #[error("password hash must not be empty")]
     PasswordHashEmpty,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
 }
 
 /// A credential, holding the password hash used for authentication.
@@ -43,22 +36,6 @@ impl Credential {
     #[must_use]
     pub(crate) fn password_hash(&self) -> &str {
         &self.password_hash
-    }
-
-    /// Set the password hash, without touching `updated_at` (the caller
-    /// updates the timestamp).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CredentialError::PasswordHashEmpty`] when `password_hash` is
-    /// empty.
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
-    fn set_password_hash(&mut self, password_hash: String) -> Result<(), CredentialError> {
-        self.password_hash = Self::validate_password_hash(password_hash)?;
-        Ok(())
     }
 
     /// Initialise a new `Credential`, validating `password_hash` is non-empty.

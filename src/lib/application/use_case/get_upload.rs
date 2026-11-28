@@ -98,7 +98,7 @@ where
                 let found = match unit_of_work
                     .uploads()
                     .search(&UploadFilter {
-                        upload_id: Some(command.upload_id()),
+                        id: Some(command.upload_id()),
                         ..UploadFilter::default()
                     })
                     .await
@@ -117,7 +117,7 @@ where
                 if authorize(
                     &mut unit_of_work.resources(),
                     &caller,
-                    ResourceRef::new(ResourceKind::Upload, upload.upload_id()),
+                    ResourceRef::new(ResourceKind::Upload, upload.id()),
                     Action::ViewMetadata,
                     None,
                 )
@@ -147,7 +147,7 @@ where
                     if unit_of_work
                         .uploads()
                         .delete(&UploadFilter {
-                            upload_id: Some(command.upload_id()),
+                            id: Some(command.upload_id()),
                             ..UploadFilter::default()
                         })
                         .await

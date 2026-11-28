@@ -130,7 +130,7 @@ pub(crate) async fn patch_album_track(
         "track_index",
         "invalid music track index",
     )?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let response = state
         .library_use_case_factory()
         .patch_album_track()

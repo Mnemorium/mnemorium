@@ -107,7 +107,7 @@ pub(crate) async fn post_playlist(
     caller: AuthenticatedUser,
     payload: JsonObject<PostPlaylistRequest>,
 ) -> Result<Response, ApiError> {
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let response = state
         .library_use_case_factory()
         .create_playlist()

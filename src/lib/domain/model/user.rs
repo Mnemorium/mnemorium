@@ -11,13 +11,6 @@ pub(crate) enum UserError {
     /// The email does not respect a valid email format.
     #[error("email has an invalid format")]
     InvalidEmail(#[from] email_address::Error),
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
 }
 
 /// Role of a `User`.

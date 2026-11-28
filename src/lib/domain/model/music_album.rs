@@ -72,17 +72,10 @@ impl ProductionType {
 pub(crate) enum MusicAlbumError {
     /// A genre identifier is empty.
     #[error("a genre identifier must not be empty")]
-    InvalidGenre,
+    EmptyGenre,
     /// The `name` is empty.
     #[error("name must not be empty")]
-    InvalidName,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
+    NameEmpty,
 }
 
 /// A music album.
@@ -168,8 +161,8 @@ impl MusicAlbum {
     ///
     /// # Errors
     ///
-    /// Returns [`MusicAlbumError::InvalidName`] when `name` is empty, and
-    /// [`MusicAlbumError::InvalidGenre`] when a genre identifier is empty.
+    /// Returns [`MusicAlbumError::NameEmpty`] when `name` is empty, and
+    /// [`MusicAlbumError::EmptyGenre`] when a genre identifier is empty.
     pub(crate) fn try_new(
         id: NumericID,
         name: String,
@@ -182,10 +175,10 @@ impl MusicAlbum {
         mediums: Vec<MusicMedium>,
     ) -> Result<Self, MusicAlbumError> {
         if name.is_empty() {
-            return Err(MusicAlbumError::InvalidName);
+            return Err(MusicAlbumError::NameEmpty);
         }
         if genre_ids.iter().any(String::is_empty) {
-            return Err(MusicAlbumError::InvalidGenre);
+            return Err(MusicAlbumError::EmptyGenre);
         }
         let normalized_music_group_ids = match music_group_ids {
             Some(ids) if ids.is_empty() => None,

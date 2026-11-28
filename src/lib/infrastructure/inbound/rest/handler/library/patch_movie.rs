@@ -151,7 +151,7 @@ pub(crate) async fn patch_movie(
         );
         ApiError::BadRequest("invalid film identifier".to_owned())
     })?;
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let release_date = request.release_date.try_map(|value| {
         parse_wire_date(&value).map_err(|()| {
             warn!(

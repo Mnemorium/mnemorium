@@ -126,7 +126,7 @@ pub(crate) async fn post_series(
     caller: AuthenticatedUser,
     payload: JsonObject<PostSeriesRequest>,
 ) -> Result<Response, ApiError> {
-    let JsonObject(request) = payload;
+    let request = payload.into_inner();
     let first_air_date = match request.first_air_date.as_deref() {
         Some(value) => Some(parse_wire_date(value).map_err(|()| {
             warn!(

@@ -9,17 +9,10 @@ use crate::domain::model::Season;
 pub(crate) enum SeriesError {
     /// A genre identifier is empty.
     #[error("a genre identifier must not be empty")]
-    InvalidGenre,
+    EmptyGenre,
     /// The `name` is empty.
     #[error("name must not be empty")]
-    InvalidName,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
+    NameEmpty,
 }
 
 /// A show the server holds, with its seasons.
@@ -96,8 +89,8 @@ impl Series {
     ///
     /// # Errors
     ///
-    /// Returns [`SeriesError::InvalidName`] when `name` is empty, and
-    /// [`SeriesError::InvalidGenre`] when a genre identifier is empty.
+    /// Returns [`SeriesError::NameEmpty`] when `name` is empty, and
+    /// [`SeriesError::EmptyGenre`] when a genre identifier is empty.
     pub(crate) fn try_new(
         id: NumericID,
         name: String,
@@ -109,10 +102,10 @@ impl Series {
         seasons: Vec<Season>,
     ) -> Result<Self, SeriesError> {
         if name.is_empty() {
-            return Err(SeriesError::InvalidName);
+            return Err(SeriesError::NameEmpty);
         }
         if genre_ids.iter().any(String::is_empty) {
-            return Err(SeriesError::InvalidGenre);
+            return Err(SeriesError::EmptyGenre);
         }
         Ok(Self {
             country_of_origin,
