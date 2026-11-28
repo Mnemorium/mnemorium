@@ -1,0 +1,4 @@
+# GitHub language statistics (github-linguist).
+# The traceability report template is test tooling, not product source; it would
+# otherwise show up as Jinja in the repository language bar.
+test/util/templates/*.jinja linguist-detectable=false
