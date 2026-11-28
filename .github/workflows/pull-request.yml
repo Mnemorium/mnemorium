@@ -31,7 +31,7 @@ jobs:
   gatekeeper:
     runs-on: ubuntu-slim
     steps:
-      - uses: amannn/action-semantic-pull-request@c5e23b7e584519ee15caa684cf60d056aa9f035f  # v6
+      - uses: amannn/action-semantic-pull-request@66e72920af32222769c386d81f89656ebcb6d6d5  # v6
         if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -55,7 +55,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - id: betterleaks
-        uses: dortort/betterleaks-action@cd0b905aa4befb8f42f8b1ab98150180c9e77515  # v0.1.0
+        uses: dortort/betterleaks-action@a7fd234802174258836b901156ac35c5d692990c  # v0.2.0
         with:
           version: v1.8.1
           scan-mode: git
