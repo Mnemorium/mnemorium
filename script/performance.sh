@@ -146,7 +146,7 @@ login_token() {
 	local base_url=$1
 	curl -fsS -X POST "${base_url}/identity/login" \
 		-H 'Content-Type: application/json' \
-		--data '{"username":"alice","password":"C0rrect!Horse"}' |
+		--data '{"identifier":"alice","password":"C0rrect!Horse"}' |
 		jq -r '.access_token'
 }
 
